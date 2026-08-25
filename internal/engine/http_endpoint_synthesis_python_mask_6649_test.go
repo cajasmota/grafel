@@ -153,18 +153,31 @@ func TestPythonMaskInertRegions_PreservesLineStructure_6649(t *testing.T) {
 		kills string
 	}{
 		{
+			// #6648 changed what this row can see. The comment loop now halts
+			// ON a `\r` as well as a `\n`, so caller A never hands blank() a
+			// line terminator of EITHER kind any more: the CR of a CRLF is the
+			// byte it stops at. This row is therefore caller-A coverage of the
+			// blanking path only — it can no longer observe blank()'s preserve
+			// set, and it kills nothing. blankcr stays dead through caller C.
 			name:       "commentCRLF",
 			caller:     "A: `#`-comment loop",
 			src:        "import os\r\n# app.include_router(r, prefix='/ghost')\r\napp = FastAPI()\r\n",
 			mustVanish: "include_router",
-			kills:      "fails under blankcr and both; caller coverage only, redundant as a kill",
+			kills:      "kills nothing since #6648; caller-A coverage of the blanking path only",
 		},
 		{
+			// The lone-CR shape, kept because it is the one #6648 turned. The
+			// marker had to move INSIDE the comment: the bytes after the bare
+			// `\r` are live code on the next line now, so they are no longer
+			// blanked and the old marker made the premise guard fire. What the
+			// row still asserts is the whole-buffer claim — the lone `\r`
+			// survives at its own offset — which is exactly the byte-offset
+			// contract #6648 must not have disturbed.
 			name:       "commentLoneCR",
 			caller:     "A: `#`-comment loop",
-			src:        "# first half\rsecond half of the same comment\napp = FastAPI()\n",
-			mustVanish: "second half",
-			kills:      "fails under blankcr and both; caller coverage only, redundant as a kill",
+			src:        "import os\n# first half\rapp = FastAPI()\n",
+			mustVanish: "first half",
+			kills:      "kills nothing since #6648; caller-A coverage of the blanking path only",
 		},
 		{
 			// The #6649 witness, and the ONLY shape in this table that can

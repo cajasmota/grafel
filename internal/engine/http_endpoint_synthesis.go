@@ -3153,6 +3153,27 @@ func fastapiResolveMountedRouter(arg string, imports map[string]pyImportBinding)
 //     mint false mounts from the inside of a broken string. This is the same
 //     direction as #6598, which stopped a runaway quote from unmasking the
 //     regions that FOLLOW it.
+//
+// LINE TERMINATORS (#6648). Python's universal newlines make a lone `\r` a
+// line terminator as much as `\n` is, and the three sites that care about it
+// are decided SEPARATELY because they are not the same question:
+//
+//   - the `#`-COMMENT loop stops at `\n` AND at `\r`. A bare carriage return
+//     ends the comment, so what follows it is live code on the next line; the
+//     old `\n`-only test blanked that code away and hid real mounts. Well-
+//     formed CRLF reads identically under either rule.
+//   - the TRIPLE-QUOTED branch has no terminator test at all, deliberately: a
+//     lone `\r` inside a triple-quoted literal genuinely IS content.
+//   - the SINGLE-LINE literal scan still breaks on `\n` only. Making it
+//     `\r`-aware pulls in two opposite directions at once — a TERMINATED
+//     literal whose closing quote sits after a `\r` would stop counting as
+//     terminated (MORE masking) while an UNTERMINATED literal's blanked tail
+//     would end sooner (LESS) — which moves the #6418/#6614 boundary above.
+//     That is a separate decision, tracked as #6653, not a shared tweak.
+//
+// blank() preserving both `\n` and `\r` (#6649/#6650) is what keeps byte
+// offsets in the result addressing the same source positions; CR must never be
+// "normalised" away here as a shortcut.
 func pythonMaskInertRegions(src string) string {
 	b := []byte(src)
 	blank := func(i int) {
@@ -3164,7 +3185,14 @@ func pythonMaskInertRegions(src string) string {
 		c := b[i]
 		switch {
 		case c == '#':
-			for ; i < len(b) && b[i] != '\n'; i++ {
+			// A lone `\r` ENDS the comment, exactly as `\n` does (#6648):
+			// under Python's universal newlines a bare carriage return is a
+			// line terminator, so the bytes after it are live code on the next
+			// line. Stopping only at `\n` blanked them — a false negative that
+			// hid a real mount. Well-formed CRLF is unaffected either way,
+			// since the `\r` is immediately followed by the `\n` the loop
+			// already stopped on.
+			for ; i < len(b) && b[i] != '\n' && b[i] != '\r'; i++ {
 				blank(i)
 			}
 		case c == '"' || c == '\'':
