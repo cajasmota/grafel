@@ -190,3 +190,62 @@ func TestIssue6652_PythonLineOfOffset_SplitCRLFPair(t *testing.T) {
 		t.Errorf("#6652: past-EOF offset clamps to the last line, got %d", got)
 	}
 }
+
+// TestIssue6652_LFThenCR_MountStartLineMatchesPython pins the ADJACENCY the
+// original fixture set missed: a "\n" immediately followed by a "\r". Only
+// "\r\n" is a single terminator — "\n\r" is TWO, the "\n" ending one line and
+// the bare "\r" ending the (empty) next one. Arithmetic that subtracts "\n\r"
+// occurrences alongside "\r\n" survives every other fixture here and reports
+// two lines too few in this file.
+//
+// The shape is real: a CRLF file edited by a tool that writes bare LF, or line
+// endings reversed by a bad transform.
+func TestIssue6652_LFThenCR_MountStartLineMatchesPython(t *testing.T) {
+	src := "from fastapi import FastAPI\n\r" +
+		"app = FastAPI()\n\r" +
+		"app.include_router(users.router, prefix=\"/api\")\n"
+
+	want := pyLineOfMountForTest(t, src, "app.include_router")
+	if want != 5 {
+		t.Fatalf("#6652: oracle disagrees with the hand-computed fixture: got %d, want 5", want)
+	}
+	if got := mountStartLine(t, src, "app/main.py"); got != want {
+		t.Errorf("#6652: \\n\\r-adjacency file: mount StartLine = %d, want %d "+
+			"(\\n\\r is TWO terminators — the \\n ends a line and the bare \\r ends "+
+			"the empty line after it; only \\r\\n collapses to one)", got, want)
+	}
+}
+
+// TestIssue6652_PythonLineOfOffset_TerminatorAdjacency pins the adjacency cases
+// at the helper level, where the arithmetic actually lives. The three shapes
+// below are each distinct from the pairs already covered by
+// TestIssue6652_PythonLineOfOffset_SplitCRLFPair, whose source ("a\r\nb\r\nc")
+// never places two terminators next to each other.
+func TestIssue6652_PythonLineOfOffset_TerminatorAdjacency(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		off  int
+		want int
+	}{
+		// "\n\r" — TWO terminators. This is the survivor the rest of the suite
+		// missed: a `- strings.Count(prefix, "\n\r")` term returns 3 here.
+		{`"\n\r" adjacency, end of "a\n\rb\n\rc"`, "a\n\rb\n\rc", 7, 5},
+		{`"\n\r" adjacency, on the first \r`, "a\n\rb\n\rc", 2, 2},
+		{`"\n\r" adjacency, first byte of line 3`, "a\n\rb\n\rc", 3, 3},
+		// "\r\n\r\n" — two well-formed pairs, so two lines, not four.
+		{`two CRLF pairs "a\r\n\r\nb"`, "a\r\n\r\nb", 5, 3},
+		// "\r\r\n" — a lone CR followed by a pair: two terminators, not three.
+		{`lone CR then CRLF "a\r\r\nb"`, "a\r\r\nb", 4, 3},
+		// "\r\r" — two lone CRs, two lines.
+		{`two lone CRs "a\r\rb"`, "a\r\rb", 3, 3},
+		// "\n\n" — two LFs, the ordinary blank-line case, two lines.
+		{`two LFs "a\n\nb"`, "a\n\nb", 3, 3},
+	}
+	for _, tc := range cases {
+		if got := pythonLineOfOffset(tc.src, tc.off); got != tc.want {
+			t.Errorf("#6652: pythonLineOfOffset(%q, %d) [%s] = %d, want %d",
+				tc.src, tc.off, tc.name, got, tc.want)
+		}
+	}
+}
