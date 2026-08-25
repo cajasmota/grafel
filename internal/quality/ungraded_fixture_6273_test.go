@@ -484,11 +484,21 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 //
 // The count clause is the derived replacement for #6521's hand-maintained
 // integer: gated baseline entries against directories on disk, two
-// independently maintained sources, so neither can advance without the other.
-// It is deliberately NOT a second copy of TestBaselineCoversEveryFixture,
-// which compares the two sets by NAME and names the difference. This compares
-// the GATED count, so a directory whose baseline entry exists but excuses
-// itself with expectations_missing is caught here and is invisible there.
+// independently maintained sources (os.ReadDir of golden/ versus a parse of
+// the checked-in baseline.json), so neither can advance without the other.
+//
+// Its independent value is narrow and worth stating honestly. It is not a
+// second copy of TestBaselineCoversEveryFixture, which compares the two sets
+// by NAME — but with that name equality separately enforced, gated != len(dirs)
+// can only diverge via an expectations_missing entry, and the clause directly
+// above already reports that by name. No tree has been constructed where this
+// clause is the sole detector. It is kept because it is the thing the old
+// hand-maintained integer asserted, now derived rather than typed.
+//
+// A known hole, unchanged from before #6521: an OFFSETTING tree — 26
+// directories where the baseline gates 25 real entries plus one ghost —
+// keeps gated == len(dirs), so this clause is silent and only
+// TestBaselineCoversEveryFixture catches it, by name.
 func gradingProblems(goldenRoot string, dirs []string, doc baselineDoc) []string {
 	if len(dirs) == 0 {
 		// Without this every clause below passes on an empty set: nothing to
@@ -680,5 +690,165 @@ func TestGoldenSetFloorIsBelowTheRealSet(t *testing.T) {
 		t.Errorf("minFixtures is %d but golden/ holds %d directories — the floor is "+
 			"above the set, so TestGoldenSetIsFullyGraded_6273 can only fatal",
 			minFixtures, len(dirs))
+	}
+}
+
+// subprocessGuard names the env var the harness below sets on the child. The
+// child re-runs this package's own test binary, so without a guard the harness
+// would re-enter itself.
+const subprocessGuard = "GRAFEL_6521_SUBPROCESS"
+
+// fixtureSetTree lays out a synthetic <tmp>/golden/ and returns tmp.
+//
+// The lever that makes this possible is that goldenDir and baselinePath are
+// RELATIVE ("golden", "golden/baseline.json"), so the tree a test reads is
+// chosen by the working directory, not by any constant. A child process with
+// cmd.Dir set to tmp therefore runs the real assertions against a hostile
+// fixture set without touching the checked-in golden/ at all.
+//
+// n directories are created, each carrying expected.json. The baseline gates
+// every one of them at 1/1, except those named in ungraded, which are recorded
+// as {"expectations_missing": true}.
+func fixtureSetTree(t *testing.T, n int, ungraded ...string) string {
+	t.Helper()
+	tmp := t.TempDir()
+	golden := filepath.Join(tmp, "golden")
+	if err := os.MkdirAll(golden, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	excused := map[string]bool{}
+	for _, u := range ungraded {
+		excused[u] = true
+	}
+	fixtures := map[string]any{}
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("f%02d-mini", i)
+		if err := os.MkdirAll(filepath.Join(golden, name, "src"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(golden, name, "expected.json")
+		if err := os.WriteFile(p, []byte(`{"fixture_name":"x"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if excused[name] {
+			fixtures[name] = map[string]any{"expectations_missing": true}
+			continue
+		}
+		fixtures[name] = map[string]any{
+			"entity_found": 1, "entity_expected": 1,
+			"relationship_found": 0, "relationship_expected": 0,
+		}
+	}
+	raw, err := json.Marshal(map[string]any{
+		"version":    1,
+		"regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
+		"fixtures":   fixtures,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(golden, "baseline.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return tmp
+}
+
+// TestFixtureSetRulesAreEnforced_6521 pins the CALL SITES, which no other test
+// in this package can observe.
+//
+// gradingProblems is exercised directly by TestGradingProblemsIsNotVacuous_6521
+// and minFixtures is inspected by TestGoldenSetFloorIsBelowTheRealSet, but
+// neither observes that TestGoldenSetIsFullyGraded_6273 actually REPORTS what
+// gradingProblems returns, or that it actually ENFORCES the floor. Both were
+// free to be silenced with the whole package still green:
+//
+//	t.Error(p)                 ->  _ = p          (problems computed, discarded)
+//	if len(dirs) < minFixtures ->  if len(dirs) < 0   (floor never enforced)
+//
+// This test re-executes the package's own test binary with cmd.Dir pointed at a
+// synthetic golden/ tree, so the real assertions run against a fixture set they
+// must reject. Both mutants above flip the child's exit code to 0 and are
+// caught here.
+//
+// The "healthy tree" case is the positive control. Without it a harness that
+// failed for an unrelated reason — wrong working directory, unparseable
+// baseline, a child that never started — would look like a passing test while
+// proving nothing about the rules.
+func TestFixtureSetRulesAreEnforced_6521(t *testing.T) {
+	if os.Getenv(subprocessGuard) != "" {
+		t.Skip("child process; the harness must not re-enter itself")
+	}
+	self, err := filepath.Abs(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sized to sit exactly on the floor so the floor is satisfied and only the
+	// grading rules can fire; and far below it for the deletion cases.
+	const atFloor = minFixtures
+	const shrunken = 3
+
+	for _, tc := range []struct {
+		name     string
+		dirs     int
+		ungraded []string
+		wantExit int
+		wantOut  []string
+	}{
+		{
+			// Positive control: proves the child reaches, parses and passes a
+			// well-formed tree, so the failures below are about the rules.
+			name:     "healthy fixture set is accepted",
+			dirs:     atFloor,
+			wantExit: 0,
+		},
+		{
+			// Kills the "problems computed then discarded" mutant: the floor is
+			// satisfied, so a silenced call site leaves nothing to fail on.
+			name:     "ungraded fixture is reported",
+			dirs:     atFloor,
+			ungraded: []string{"f07-mini"},
+			wantExit: 1,
+			wantOut: []string{
+				`baseline records fixture "f07-mini" as ungraded`,
+			},
+		},
+		{
+			// Kills both floor mutants: the call-site comparison relaxed to a
+			// constant that can never trip, and the deletion of the
+			// floor-above-the-set clause.
+			name:     "shrunken fixture set is reported",
+			dirs:     shrunken,
+			wantExit: 1,
+			wantOut: []string{
+				"below the recorded floor",
+				"the floor is above the set",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := fixtureSetTree(t, tc.dirs, tc.ungraded...)
+			cmd := exec.Command(self, "-test.run=^TestGoldenSet", "-test.v")
+			cmd.Dir = tmp
+			cmd.Env = append(os.Environ(), subprocessGuard+"=1")
+			out, err := cmd.CombinedOutput()
+			exit := 0
+			if ee, ok := err.(*exec.ExitError); ok {
+				exit = ee.ExitCode()
+			} else if err != nil {
+				t.Fatalf("child could not be executed: %v\n%s", err, out)
+			}
+			if exit != tc.wantExit {
+				t.Fatalf("child exit %d, want %d:\n%s", exit, tc.wantExit, out)
+			}
+			if !strings.Contains(string(out), "TestGoldenSetIsFullyGraded_6273") {
+				t.Fatalf("child never ran the assertions under test:\n%s", out)
+			}
+			for _, want := range tc.wantOut {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("child output does not mention %q:\n%s", want, out)
+				}
+			}
+		})
 	}
 }
