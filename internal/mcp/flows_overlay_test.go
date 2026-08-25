@@ -99,6 +99,21 @@ func newFlowServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The loader keeps a resident mmap Reader over graph.fb for the process
+	// lifetime (S8, #2159). On POSIX that file can still be unlinked while
+	// mapped, so leaking the handle costs nothing at teardown; on Windows the
+	// mapping LOCKS graph.fb and t.TempDir's RemoveAll fails with "Access is
+	// denied" (#4285).
+	//
+	// That never surfaced while this seeder wrote into the real ~/.grafel,
+	// which nothing cleans up. #6645 moved the write into a t.TempDir, so the
+	// leak now has somewhere to show — the isolation seam did not create this,
+	// it revealed it.
+	//
+	// Registered AFTER the t.TempDir() calls above on purpose: cleanups run
+	// LIFO, so registering last is what makes Close run FIRST, before either
+	// temp dir is removed.
+	t.Cleanup(srv.Close)
 	return srv, stateDir
 }
 
