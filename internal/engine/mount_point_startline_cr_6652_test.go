@@ -231,7 +231,10 @@ func TestIssue6652_PythonLineOfOffset_TerminatorAdjacency(t *testing.T) {
 		// "\n\r" — TWO terminators. This is the survivor the rest of the suite
 		// missed: a `- strings.Count(prefix, "\n\r")` term returns 3 here.
 		{`"\n\r" adjacency, end of "a\n\rb\n\rc"`, "a\n\rb\n\rc", 7, 5},
-		{`"\n\r" adjacency, on the first \r`, "a\n\rb\n\rc", 2, 2},
+		// Offset lands ON a LONE "\r" (content[3] is 'b', so this \r is not
+		// part of a pair). This is the symmetric neighbour of the lone-"\n"
+		// offsets pinned by TestIssue6652_PythonLineOfOffset_OffsetOnLoneLF.
+		{`"\n\r" adjacency, ON a lone \r`, "a\n\rb\n\rc", 2, 2},
 		{`"\n\r" adjacency, first byte of line 3`, "a\n\rb\n\rc", 3, 3},
 		// "\r\n\r\n" — two well-formed pairs, so two lines, not four.
 		{`two CRLF pairs "a\r\n\r\nb"`, "a\r\n\r\nb", 5, 3},
@@ -246,6 +249,47 @@ func TestIssue6652_PythonLineOfOffset_TerminatorAdjacency(t *testing.T) {
 		if got := pythonLineOfOffset(tc.src, tc.off); got != tc.want {
 			t.Errorf("#6652: pythonLineOfOffset(%q, %d) [%s] = %d, want %d",
 				tc.src, tc.off, tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestIssue6652_PythonLineOfOffset_OffsetOnLoneLF pins the `content[off-1] ==
+// '\r'` half of the split-pair guard — the half no other case reaches.
+//
+// SplitCRLFPair already exercises the `content[off] == '\n'` half (its offsets
+// land on the "\n" OF A PAIR). Nothing, until now, passed an offset that lands
+// on a LONE "\n", where the guard must NOT fire. Dropping the "\r" check makes
+// the guard fire on every plain Unix newline and decrement a line number that
+// was never incremented, returning **line 0** — not a wrong line, an impossible
+// one.
+//
+// This matters precisely because of why the guard was kept (#6652 review):
+// pythonLineOfOffset is a GENERAL offset->line helper, and unreachable-today is
+// a property of one caller's regex, not of the helper. A general helper that
+// returns 0 for an ordinary offset is broken for exactly the callers that
+// generality was preserved for.
+func TestIssue6652_PythonLineOfOffset_OffsetOnLoneLF(t *testing.T) {
+	const src = "a\nb\nc" // plain Unix: every "\n" is lone, none is part of a pair
+	cases := []struct {
+		name string
+		off  int
+		want int
+	}{
+		{"ON the first lone \\n — terminator not yet crossed", 1, 1},
+		{"first byte of line 2", 2, 2},
+		{"ON the second lone \\n", 3, 2},
+		{"first byte of line 3", 4, 3},
+	}
+	for _, tc := range cases {
+		got := pythonLineOfOffset(src, tc.off)
+		if got != tc.want {
+			t.Errorf("#6652: pythonLineOfOffset(%q, %d) [%s] = %d, want %d",
+				src, tc.off, tc.name, got, tc.want)
+		}
+		if got < 1 {
+			t.Errorf("#6652: pythonLineOfOffset(%q, %d) returned %d — line numbers "+
+				"are 1-based and no offset may ever produce a line below 1",
+				src, tc.off, got)
 		}
 	}
 }
