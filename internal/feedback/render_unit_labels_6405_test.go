@@ -60,12 +60,44 @@ func TestRender_OrphanTableNamesItsUnitAndFloor(t *testing.T) {
 	out := sectionTwoPreamble(t, renderLabelFixture(t))
 
 	for _, want := range []string{
-		"`Total` counts UNIQUE entities of the kind, in every language including entities with none, published when that kind has >= 10 unique entities.",
-		"a different unit, scope and floor from the occurrence ranges in Section 1",
+		// unit — unique IDs, not occurrences. "IDs" and not "entities": an ID
+		// collision (#6368) merges two entities into one count, and this whole
+		// change exists to stop a label over-promising.
+		"`Total` counts UNIQUE entity IDs of the kind — an ID collision merges two entities into one — in every language, including entities carrying none.",
+		// floor — >= 10 for the defect table, and the EXTRA condition on the
+		// terminal table (report.go: terminal > 0), which >= 10 alone does not
+		// imply.
+		"A kind reaches this table when it has >= 10 of them; the Expected/terminal table below additionally requires at least one terminal orphan.",
+		// The verdict #6405 actually asked for. Asserted verbatim because it
+		// is invertible: dropping the "not" leaves a confident, FALSE label,
+		// which is strictly worse than the silence the issue reports, and the
+		// first version of this test stopped one clause short of observing it.
+		"That is a different unit, scope and floor from the occurrence ranges in Section 1 — the two tables are not comparable row-for-row.",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("orphan-table unit label missing clause:\nwant substring: %q", want)
 		}
+	}
+}
+
+// TestRender_EachCaptionAppearsOnlyOverItsOwnTable is the exclusivity half of
+// the placement requirement. The per-section tests above assert PRESENCE, which
+// emitting BOTH captions over BOTH tables satisfies — and that report is no
+// better than an unlabelled one, since each table would carry two contradictory
+// unit claims and the reader still cannot tell which is theirs.
+func TestRender_EachCaptionAppearsOnlyOverItsOwnTable(t *testing.T) {
+	out := renderLabelFixture(t)
+
+	const (
+		distMarker   = "Counts entity OCCURRENCES"
+		orphanMarker = "counts UNIQUE entity IDs"
+	)
+
+	if got := sectionOneKindDist(t, out); strings.Contains(got, orphanMarker) {
+		t.Errorf("the Section-2 unit caption (%q) also appears over the Section-1 kind x language table — that table counts occurrences, so the label is false there", orphanMarker)
+	}
+	if got := sectionTwoPreamble(t, out); strings.Contains(got, distMarker) {
+		t.Errorf("the Section-1 unit caption (%q) also appears over the Section-2 orphan table — that table counts unique entity IDs, so the label is false there", distMarker)
 	}
 }
 

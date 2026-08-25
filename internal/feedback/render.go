@@ -105,16 +105,19 @@ func Render(w io.Writer, r *Report) error {
 	// Section 2 — Orphan Rate
 	fmt.Fprintf(w, "## 2. Orphan Rate\n\n")
 	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions). The table below counts only orphans of kinds that carry a semantic edge SOMEWHERE in this group; kinds where no entity does are listed separately under **Expected/terminal orphans**, so a kind reading 0 here may still be entirely unwired there.\n\n")
-	// #6405: unit label for the two Section-2 tables. It lives here, in prose,
-	// and NOT in the pipe-delimited header row below: history.go matches
-	// "| Kind | Total | Orphan | Orphan % |" literally to recover per-kind
-	// participation from reports already on disk, and that key is OR-ed across
-	// every stored report and never expires. Editing that row is a one-way
-	// door.
-	fmt.Fprintf(w, "`Total` counts UNIQUE entities of the kind, in every language including entities with none, published when that kind has >= 10 unique entities. That is a different unit, scope and floor from the occurrence ranges in Section 1 — the two tables are not comparable row-for-row.\n\n")
 	if len(r.OrphanByKind) == 0 {
 		fmt.Fprintf(w, "_No entity kind with >= 10 entities found._\n\n")
 	} else {
+		// #6405: unit label for the Section-2 tables. It lives here, in prose,
+		// and NOT in the pipe-delimited header row below: history.go matches
+		// "| Kind | Total | Orphan | Orphan % |" literally to recover per-kind
+		// participation from reports already on disk, and that key is OR-ed
+		// across every stored report and never expires. Editing that row is a
+		// one-way door.
+		//
+		// Emitted inside this branch, not above it: a report with no
+		// qualifying kind has no `Total` column to describe.
+		fmt.Fprintf(w, "`Total` counts UNIQUE entity IDs of the kind — an ID collision merges two entities into one — in every language, including entities carrying none. A kind reaches this table when it has >= 10 of them; the Expected/terminal table below additionally requires at least one terminal orphan. That is a different unit, scope and floor from the occurrence ranges in Section 1 — the two tables are not comparable row-for-row.\n\n")
 		fmt.Fprintf(w, "| Kind | Total | Orphan | Orphan %% |\n|---|---|---|---|\n")
 		kinds := sortedKindStatsKeys(r.OrphanByKind)
 		for _, kind := range kinds {
