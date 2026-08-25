@@ -321,6 +321,70 @@ class MeasuredOnIsDurable(unittest.TestCase):
             self.assertEqual(got, base)
 
 
+    def test_quality_base_ref_override_outranks_origin_head(self):
+        """`QUALITY_BASE_REF` is first in the candidate list, above even the
+        `origin/HEAD` symref, and the docstring says why: it is the escape
+        hatch for "a checkout that knows its own base and cannot be discovered
+        from refs". An override that automatic discovery can silently outvote
+        is not an escape hatch.
+
+        Nothing observed the top rung until now. #6569 pinned symref-over-tuple
+        and tuple-over-local; moving the override below the symref left the
+        suite green, because no fixture set the variable in a checkout that
+        also had a resolvable `origin/HEAD` naming somewhere else.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            git(root, "init", "--quiet", "--initial-branch=release")
+            git(root, "config", "user.email", "t@example.com")
+            git(root, "config", "user.name", "t")
+            git(root, "config", "commit.gpgsign", "false")
+            with open(os.path.join(root, "a"), "w") as fh:
+                fh.write("1")
+            git(root, "add", "a")
+            git(root, "commit", "--quiet", "-m", "the base this checkout knows it has")
+            override_base = git(root, "rev-parse", "--short", "HEAD")
+            git(root, "update-ref", "refs/remotes/origin/stable", "HEAD")
+            with open(os.path.join(root, "a"), "w") as fh:
+                fh.write("2")
+            git(root, "commit", "--quiet", "-am", "what discovery would find instead")
+            discovered = git(root, "rev-parse", "--short", "HEAD")
+            git(root, "update-ref", "refs/remotes/origin/release", "HEAD")
+            git(root, "symbolic-ref", "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/release")
+            git(root, "checkout", "--quiet", "-b", "feature")
+            with open(os.path.join(root, "a"), "w") as fh:
+                fh.write("3")
+            git(root, "commit", "--quiet", "-am", "feature work")
+            head = git(root, "rev-parse", "--short", "HEAD")
+
+            # The premise, asserted rather than assumed: discovery has a real
+            # answer of its own here, and it is NOT the override's. Without
+            # this the override would win merely by being the only candidate
+            # that resolves, and the ordering would be unobservable again.
+            self.assertTrue(
+                has_ref(root, "refs/remotes/origin/HEAD"),
+                "no competing symref; the override would win by default")
+            self.assertTrue(
+                has_ref(root, "refs/remotes/origin/stable"),
+                "the override names a ref that does not resolve")
+            self.assertNotEqual(override_base, discovered)
+
+            os.environ["QUALITY_BASE_REF"] = "refs/remotes/origin/stable"
+            self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+
+            self.assertEqual(
+                ratchet.default_branch_ref(), "refs/remotes/origin/stable",
+                "discovery outvoted an explicitly-set QUALITY_BASE_REF")
+            got = ratchet.git_sha()
+            self.assertNotEqual(got, "unknown", "failed to honour the override")
+            self.assertNotEqual(got, head, "stamped the feature-branch HEAD")
+            self.assertNotEqual(
+                got, discovered,
+                "anchored measured_on to what origin/HEAD found, silently "
+                "ignoring QUALITY_BASE_REF")
+            self.assertEqual(got, override_base)
+
+
 class WriteTimeRefusal(unittest.TestCase):
     """The killing mutant from #6564: revert the sha source to `rev-parse HEAD`,
     run the writer on a feature branch, squash-merge. Nothing at write time
