@@ -108,6 +108,69 @@ func TestDeriveOwningBackend_CmdRuleNeedsAGoModule_6593(t *testing.T) {
 	}
 }
 
+// TestDeriveOwningBackend_NestedModuleBelowCmdWins_6593 pins the third
+// behaviour flip this change carries, in both directions. Pass 0 runs ahead of
+// #6555's manifest pass, so it could preempt a *real* manifest below
+// cmd/<name> — contradicting the principle #6555 established, that a manifest
+// is a service boundary. It defers instead: a go.mod under cmd/api/sub is its
+// own module and names the boundary, while a nested manifest that is not on
+// the handler's ancestor chain (a cousin under cmd/api) does not defer,
+// matching how pass 1 anchors its own walk.
+func TestDeriveOwningBackend_NestedModuleBelowCmdWins_6593(t *testing.T) {
+	t.Run("nested module on the chain wins", func(t *testing.T) {
+		root := t.TempDir()
+		writeTree(t, root,
+			"go.mod",
+			"cmd/api/main.go",
+			"cmd/api/sub/go.mod",
+			"cmd/api/sub/h/x.go",
+		)
+		t.Chdir(root)
+
+		const handler = "cmd/api/sub/h/x.go"
+		if got := deriveOwningBackend(handler); got != "sub" {
+			t.Errorf("deriveOwningBackend(%q) = %q, want %q (a real module below cmd/<name> is the boundary)", handler, got, "sub")
+		}
+	})
+
+	t.Run("nested module off the chain does not defer", func(t *testing.T) {
+		root := t.TempDir()
+		writeTree(t, root,
+			"go.mod",
+			"cmd/api/main.go",
+			"cmd/api/internal/go.mod",
+			"cmd/api/handlers/x.go",
+		)
+		t.Chdir(root)
+
+		const handler = "cmd/api/handlers/x.go"
+		if got := deriveOwningBackend(handler); got != "api" {
+			t.Errorf("deriveOwningBackend(%q) = %q, want %q (a cousin module is not on the handler chain)", handler, got, "api")
+		}
+	})
+}
+
+// TestDeriveOwningBackend_CmdWithNonGoMarkerIsNotABinary_6593 closes the other
+// half of the main.go condition. CmdWithoutMainGoIsNotABinary_6593 pins only
+// the coarsest case — cmd/<name> holding nothing — which leaves
+// `[]string{"main.go"}` widened to frameworkMarkerFiles alive: an index.js in
+// cmd/api would then make it a "binary" directory. It is not a Go binary
+// directory, so #6555's root-manifest answer stands.
+func TestDeriveOwningBackend_CmdWithNonGoMarkerIsNotABinary_6593(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root,
+		"go.mod",
+		"cmd/api/index.js",
+		"cmd/api/h/x.go",
+	)
+	t.Chdir(root)
+
+	const handler = "cmd/api/h/x.go"
+	if got := deriveOwningBackend(handler); got != "" {
+		t.Errorf("deriveOwningBackend(%q) = %q, want %q (a non-main.go marker does not make cmd/api a Go binary)", handler, got, "")
+	}
+}
+
 // TestDeriveOwningBackend_CmdRuleIsTopLevelOnly_6593 is the third permissive
 // guard: a nested cmd/ belongs to the service above it, and that service's own
 // manifest must still win. Red if the rule matches "cmd" anywhere in the path,
