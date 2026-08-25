@@ -114,10 +114,12 @@ relationship_rules:
     relationship: ROUTES_TO
     source_group: 1
     target_group: 1
-  # FastAPI mount: app.include_router(graphql_app, prefix="/graphql")
-  - pattern: "(\\w+)\\.include_router\\s*\\(\\s*(\\w+)"
-    source_type: Service
-    target_type: Route
-    relationship: ROUTES_TO
-    source_group: 1
-    target_group: 2
+  # NOTE (#6514): the `app.include_router(graphql_app, prefix="/graphql")` mount
+  # rule used to live here as well, byte-identical to fastapi.yaml's copy (same
+  # pattern, source_type, target_type, relationship and groups). It is deleted,
+  # not moved: `include_router` is FastAPI/APIRouter API, and Detect resolves
+  # rule sets by file.Language ("python") alone — every python rule set runs on
+  # every python file — so fastapi.yaml's copy already fires on Strawberry-on-
+  # FastAPI mounts. Keeping both emitted the SAME RelationshipRecord twice
+  # (relationship_rules have no per-file dedup) and made either copy untestable:
+  # deleting one left every gate green. Do not re-add it here.
