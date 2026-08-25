@@ -68,9 +68,17 @@
 //	                   RENAMED_FROM is history-dependent, so it is scoped out of
 //	                   the comparator (cpIgnoredRelKinds) and asserted positively
 //	                   instead. See #6482 and the note on the test itself.
-//	MOUNT / path A   RED.    1 divergence, edges full=54 inc=53:
+//	MOUNT / path A   was RED (1 divergence, edges full=54 inc=53):
 //	                   [EDGE-LOST] Service/mp_app@mpmain_mount.py
 //	                     → Route/mp_router@mpmarkets_route.py :ROUTES_TO
+//	                   now GREEN and UNGATED. Step 7c in
+//	                   internal/extractors/incremental.go re-offers the
+//	                   Pass-2.5 standalone stubs the FILE-SCOPED binder refused
+//	                   (`pass25_rels_bound=0 pass25_rels_dropped=4`) to a
+//	                   corpus-wide, ambiguity-refusing `Kind:Name` index. Only
+//	                   that one edge changed: the three Django diagnostics
+//	                   below report byte-identical divergence lists before and
+//	                   after.
 //
 // So #6461's GHOST does NOT reproduce on FastAPI today, and the reason is
 // worth stating precisely rather than treating the gate as a failure: FastAPI
@@ -115,17 +123,21 @@
 //
 // WHAT THE UNGATED (ALWAYS-RUN) SET ACTUALLY WATCHES
 // ───────────────────────────────────────────────────
-// FOUR run by default as of #6482: ROUTE/path A, ROUTE/path B, MOUNT/path B,
-// and the new ungated rename assertion
-// (`TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom`). So the ungated
-// ratchet covers Path A for the ROUTE direction ONLY — the MOUNT direction's
-// Path A (`TestMountParity_6461_MountEdit_PathA`) is still gated behind
-// GRAFEL_TEST_6461 because it reproduces #6461 today, which means a regression
-// that only drops entities attributed to the unchanged ROUTE file when the
-// MOUNT file is edited is NOT caught by the default suite. Setting the env var
-// additionally runs that pair plus the three Django diagnostics.
+// FIVE run by default: ROUTE/path A, ROUTE/path B, MOUNT/path B, the rename
+// assertion (`TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom`), and —
+// as of the MOUNT-direction fix — MOUNT/path A. Four of those were ungated by
+// #6482; MOUNT/path A stayed gated because it still reproduced. It no longer
+// does, so BOTH directions of BOTH paths are now live ratchets and a
+// regression that drops an edge or entity attributed to the unchanged ROUTE
+// file when the MOUNT file is edited turns the default suite red. Verified by
+// mutation: disabling Step 7c fails TestMountParity_6461_MountEdit_PathA in
+// the DEFAULT suite (GRAFEL_TEST_6461 unset).
 //
-// Refs #6461, #6414, #6415, #6385, #6129, #6482.
+// What GRAFEL_TEST_6461 still gates is the THREE Django diagnostics, and they
+// are a DIFFERENT cause — the cross-extractor residual tracked as #6529, not
+// this file's SourceFile-prune story. See mp6461Cause.
+//
+// Refs #6461, #6414, #6415, #6385, #6129, #6482, #6529.
 package main
 
 import (
@@ -327,9 +339,11 @@ func mpLogEndpointDelta(t *testing.T, label string, full, inc *graph.Document) {
 
 // ─────────────────────── the #6461 red-gate switch ───────────────────────
 
-// mp6461Env is the switch that makes the #6461 gate run. The branch must not
-// land a red suite, so any direction/path pair that currently reproduces the
-// defect SKIPS with an explicit issue reference unless this is set.
+// mp6461Env is the switch that makes the remaining DIAGNOSTICS run. The branch
+// must not land a red suite, so any direction/path pair that currently
+// reproduces SKIPS with an explicit issue reference unless this is set. As of
+// the MOUNT-direction fix only the three Django diagnostics are behind it;
+// every FastAPI direction/path pair is a live, always-run ratchet.
 //
 // Reproduce on demand with:
 //
@@ -347,8 +361,17 @@ const mp6461Env = "GRAFEL_TEST_6461"
 // had anything to do with its failure. The skip line still read plausibly,
 // which is exactly why the mis-attribution survived review. That test is now
 // ungated; the cause is a parameter so the mistake cannot recur silently.
-const mp6461Cause = "the daemon fast path prunes only by SourceFile and runs no " +
-	"cross-file composition pass"
+// Updated with the MOUNT-direction fix: the daemon DOES now run cross-file
+// composition (Step 7b, #6528) and cross-file Pass-2.5 stub binding (Step 7c),
+// so the old wording — "prunes only by SourceFile and runs no cross-file
+// composition pass" — would have been a cause the remaining gated pairs no
+// longer exhibit, which is exactly the mis-attribution #6482 removed once.
+// What the three Django diagnostics below still exhibit is the cross-extractor
+// residual: TryIncremental runs no cross extractors, so Django's nested-URLConf
+// composition is only partially reproducible on the fast path.
+const mp6461Cause = "TryIncremental runs no cross extractors, so Django's " +
+	"nested-URLConf composition is only partially reproducible on the fast " +
+	"path (#6529)"
 
 // mp6461Gate skips unless mp6461Env is set, naming the issue, the pair, and
 // the exact command that reproduces. `cause` is a PARAMETER, not a constant
@@ -607,8 +630,23 @@ func TestRenameParity_6482_PathBIncremental_EmitsRenamedFrom(t *testing.T) {
 // the daemon path re-derives what a full rebuild composes across the pair, so
 // composed endpoints VANISH rather than going stale.
 
+// UNGATED as of the MOUNT-direction fix. This was the last #6461 pair still
+// behind GRAFEL_TEST_6461: editing ONLY the mount file pruned the mount file's
+// own entities and re-extracted it FILE-SCOPED, so Pass 2.5's standalone
+// `Service:mp_app → Route:mp_router` REGISTERED_ON/ROUTES_TO relationship —
+// whose TARGET is attributed to the UNCHANGED route file — could not bind and
+// was dropped (`pass25_rels_dropped=4`, `pass25_rels_bound=0`), losing
+//
+//	[EDGE-LOST] Service/mp_app@mpmain_mount.py
+//	  → Route/mp_router@mpmarkets_route.py :ROUTES_TO
+//
+// The fix (Step 7c in internal/extractors/incremental.go) re-offers those
+// dropped stubs to a GLOBALLY-unique `Kind:Name` index built over the whole
+// post-prune entity set, which is the same evidence base the full path's
+// corpus resolver uses. It is now a live ratchet, so a regression that drops
+// entities/edges attributed to the unchanged ROUTE file when the MOUNT file is
+// edited turns `go test ./cmd/grafel/` red.
 func TestMountParity_6461_MountEdit_PathA(t *testing.T) {
-	mp6461Gate(t, "direction MOUNT, path A (daemon extractors.TryIncremental)", mp6461Cause)
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 	mpWrite(t, repo, "/terms", 0, 0)
