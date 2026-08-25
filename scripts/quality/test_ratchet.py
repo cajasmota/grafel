@@ -63,9 +63,20 @@ def chdir(path):
         os.chdir(prior)
 
 
-def make_repo(root, with_origin=True):
-    """A repo shaped like a re-record: default branch, then a feature branch
-    that has moved past it. Returns (base_sha, feature_head_sha), short."""
+def make_repo(root, with_origin=True, advance_default_branch=True):
+    """A repo shaped like a re-record: a feature branch cut from the default
+    branch, which then moved on without it.
+
+    Returns (base_sha, feature_head_sha, default_tip_sha), short.
+
+    THREE DISTINCT COMMITS BY CONSTRUCTION. `base` is the branch point,
+    `tip` is where the default-branch ref now points, and they are deliberately
+    not the same commit: a fixture that leaves the ref tip AT the branch point
+    cannot tell `merge-base(HEAD, ref)` apart from `rev-parse(ref)`, and every
+    test of git_sha() built on it is vacuous for the property it claims to pin
+    (Refs #6607). `advance_default_branch=False` builds exactly that degenerate
+    shape and exists only so a test can prove it is degenerate.
+    """
     git(root, "init", "--quiet", "--initial-branch=main")
     git(root, "config", "user.email", "t@example.com")
     git(root, "config", "user.name", "t")
@@ -75,17 +86,26 @@ def make_repo(root, with_origin=True):
     git(root, "add", "a")
     git(root, "commit", "--quiet", "-m", "base")
     base = git(root, "rev-parse", "--short", "HEAD")
+    # Cut the feature branch HERE — at `base` — before the default branch moves.
+    git(root, "branch", "feature")
+    if advance_default_branch:
+        with open(os.path.join(root, "b"), "w") as fh:
+            fh.write("someone else landed this")
+        git(root, "add", "b")
+        git(root, "commit", "--quiet", "-m", "default branch moves on")
+    tip = git(root, "rev-parse", "--short", "HEAD")
     if with_origin:
         # The remote-tracking ref is what a clone has; no network needed.
         git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
         git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-    git(root, "checkout", "--quiet", "-b", "feature")
+    git(root, "checkout", "--quiet", "feature")
     with open(os.path.join(root, "a"), "w") as fh:
         fh.write("2")
     git(root, "commit", "--quiet", "-am", "feature work")
     head = git(root, "rev-parse", "--short", "HEAD")
     assert base != head
-    return base, head
+    assert tip != head
+    return base, head, tip
 
 
 def make_repo_stale_local_main(root):
@@ -184,7 +204,7 @@ class MeasuredOnIsDurable(unittest.TestCase):
 
     def test_records_merge_base_not_branch_head(self):
         with tempfile.TemporaryDirectory() as root, chdir(root):
-            base, head = make_repo(root)
+            base, head, _tip = make_repo(root)
             got = ratchet.git_sha()
             self.assertNotEqual(
                 got, head,
@@ -192,6 +212,60 @@ class MeasuredOnIsDurable(unittest.TestCase):
             self.assertEqual(
                 got, base,
                 "git_sha() must stamp the merge-base with the default branch")
+
+    def test_records_the_branch_point_not_the_default_branch_tip(self):
+        """The distinction `test_records_merge_base_not_branch_head` does NOT
+        make (Refs #6607).
+
+        That test separates the merge-base from HEAD. This one separates it
+        from the OTHER commit it could plausibly be: the tip of the default
+        branch ref. `merge-base(HEAD, ref)` and `rev-parse(ref)` agree on every
+        repo whose ref tip sits at the branch point, so only a fixture where
+        the default branch has moved on can tell the two apart — and only that
+        distinction makes `measured_on` mean "the point this was measured from"
+        rather than "wherever main is now".
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            base, _head, tip = make_repo(root)
+            # Premise, asserted rather than assumed: if a later fixture change
+            # collapses these two commits, this test must fail here and say so,
+            # not keep passing while observing nothing.
+            self.assertNotEqual(
+                base, tip,
+                "DEGENERATE FIXTURE: the default-branch ref tip is the branch "
+                "point, so merge-base(HEAD, ref) and rev-parse(ref) cannot be "
+                "told apart and this test observes nothing. Advance the "
+                "default branch after cutting `feature` (Refs #6607).")
+            self.assertEqual(
+                tip, git(root, "rev-parse", "--short", "refs/remotes/origin/main"),
+                "premise broken: `tip` is not where the default branch ref points")
+
+            got = ratchet.git_sha()
+
+            self.assertNotEqual(
+                got, tip,
+                "git_sha() stamped the default-branch TIP; measured_on would "
+                "then drift with main and claim a newer provenance point than "
+                "the tree the numbers were measured on")
+            self.assertEqual(
+                got, base,
+                "git_sha() must stamp the branch point — the merge-base of "
+                "HEAD with the default branch")
+
+    def test_the_degenerate_fixture_shape_cannot_tell_the_two_apart(self):
+        """Control for the test above: prove the premise is load-bearing.
+
+        With the default branch left at the branch point, the ref tip IS the
+        merge-base — so a `rev-parse(ref)` implementation and the real one
+        return the same commit. This is the shape every fixture had before
+        #6607, and it is why the mutant survived.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            base, _head, tip = make_repo(root, advance_default_branch=False)
+            self.assertEqual(
+                base, tip,
+                "expected the degenerate shape to put the ref tip at the branch point")
+            self.assertEqual(ratchet.git_sha(), base)
 
     def test_recorded_sha_is_an_ancestor_of_the_default_branch(self):
         with tempfile.TemporaryDirectory() as root, chdir(root):
@@ -224,7 +298,7 @@ class MeasuredOnIsDurable(unittest.TestCase):
 
     def test_falls_back_to_the_local_default_branch_without_a_remote(self):
         with tempfile.TemporaryDirectory() as root, chdir(root):
-            base, head = make_repo(root, with_origin=False)
+            base, head, _tip = make_repo(root, with_origin=False)
             self.assertEqual(ratchet.git_sha(), base)
 
     def test_prefers_the_remote_tracking_ref_over_a_stale_local_main(self):
@@ -393,7 +467,7 @@ class WriteTimeRefusal(unittest.TestCase):
 
     def test_build_refuses_a_measured_on_that_is_not_an_ancestor(self):
         with tempfile.TemporaryDirectory() as root, chdir(root):
-            _, head = make_repo(root)
+            _, head, _tip = make_repo(root)
             golden, reports, baseline = make_fixture(root)
             os.environ["QUALITY_RUN_STAMP"] = STAMP
             self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
@@ -405,7 +479,7 @@ class WriteTimeRefusal(unittest.TestCase):
 
     def test_build_accepts_the_merge_base(self):
         with tempfile.TemporaryDirectory() as root, chdir(root):
-            base, _ = make_repo(root)
+            base, _head, _tip = make_repo(root)
             golden, reports, baseline = make_fixture(root)
             os.environ["QUALITY_RUN_STAMP"] = STAMP
             self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
