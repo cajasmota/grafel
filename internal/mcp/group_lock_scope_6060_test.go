@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 )
 
@@ -244,6 +243,9 @@ func TestGroup_NoCallerObservesHalfRevivedGroup(t *testing.T) {
 // "b"), each with a real graph.fb on disk, both resident.
 func seedTwoGroups(t *testing.T) *State {
 	t.Helper()
+	// #6645: both groups must share ONE sandboxed home, so the seam is entered
+	// once outside the loop and its resolver used per repo.
+	stateDirFor := sandboxStateDirs(t)
 	reg := &Registry{Groups: map[string]RegistryGroup{}}
 	type seeded struct {
 		lr *LoadedRepo
@@ -251,7 +253,7 @@ func seedTwoGroups(t *testing.T) *State {
 	seeds := map[string]seeded{}
 	for _, name := range []string{"a", "b"} {
 		repoDir := t.TempDir()
-		stateDir := daemon.StateDirForRepo(repoDir)
+		stateDir := stateDirFor(repoDir)
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("mkdir state dir: %v", err)
 		}

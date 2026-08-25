@@ -21,6 +21,13 @@ import (
 // coreTestServer builds a one-group/one-repo server over the standard fixture.
 func coreTestServer(t *testing.T) *Server {
 	t.Helper()
+	// #6645: writeGraph pins GRAFEL_DAEMON_ROOT, so the GRAPH is isolated — but
+	// the grafel HOME is not, and the meta/event handlers this server exists to
+	// drive (grafel_event → feedback/persona) resolve their writers under
+	// registry.HomeDir(). TestMetaEventDispatch was therefore appending to the
+	// developer's real ~/.grafel/events/*.jsonl on every run. Sandbox the home
+	// FIRST so writeGraph's own t.TempDir() and the event writers agree.
+	sandboxGrafelHome(t)
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "r1")
 	if err := os.MkdirAll(repo, 0o755); err != nil {

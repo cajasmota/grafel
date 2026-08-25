@@ -226,13 +226,17 @@ func TestFlowOverlay_StaleFallback(t *testing.T) {
 	}
 }
 
-// TestFlowOverlay_MmapPath_Replace: the REPLACE merge also holds on the flag-ON
-// mmap read path (baked flow in graph.fb, cross-repo flow in the sidecar).
-func TestFlowOverlay_MmapPath_Replace(t *testing.T) {
-	forceServeFromMMap(t, true)
+// newMmapFlowServer (#6645) is the flag-ON mmap seeder shared by the two mmap
+// overlay tests. It was duplicated inline in both, and BOTH copies resolved the
+// state dir with a bare daemon.StateDirForRepo — writing a fixture graph.fb into
+// the developer's real ~/.grafel/store on every run. Extracting it makes the
+// sandbox seam a property of the seeder rather than of each copy of it.
+func newMmapFlowServer(t *testing.T) (*Server, string) {
+	t.Helper()
+	stateDirFor := sandboxStateDirs(t)
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "r1")
-	stateDir := daemon.StateDirForRepo(repo)
+	stateDir := stateDirFor(repo)
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -248,6 +252,14 @@ func TestFlowOverlay_MmapPath_Replace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return srv, stateDir
+}
+
+// TestFlowOverlay_MmapPath_Replace: the REPLACE merge also holds on the flag-ON
+// mmap read path (baked flow in graph.fb, cross-repo flow in the sidecar).
+func TestFlowOverlay_MmapPath_Replace(t *testing.T) {
+	forceServeFromMMap(t, true)
+	srv, stateDir := newMmapFlowServer(t)
 	ents, rels := crossRepoFlowDelta()
 	if err := flows.Upsert(stateDir, ents, rels); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -268,23 +280,7 @@ func TestFlowOverlay_MmapPath_Replace(t *testing.T) {
 // key in the adjacency and this test fails.
 func TestFlowOverlay_StepAdjReplace_Mmap(t *testing.T) {
 	forceServeFromMMap(t, true)
-	dir := t.TempDir()
-	repo := filepath.Join(dir, "r1")
-	stateDir := daemon.StateDirForRepo(repo)
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := fbwriter.WriteAtomic(filepath.Join(stateDir, "graph.fb"), bakedFlowDoc("r1")); err != nil {
-		t.Fatalf("write graph.fb: %v", err)
-	}
-	reg := Registry{Groups: map[string]RegistryGroup{"g": {Repos: map[string]RegistryRepo{"r1": {Path: repo}}}}}
-	regPath := filepath.Join(dir, "registry.json")
-	d, _ := json.MarshalIndent(reg, "", "  ")
-	_ = os.WriteFile(regPath, d, 0o644)
-	srv, err := NewServer(Config{RegistryPath: regPath})
-	if err != nil {
-		t.Fatal(err)
-	}
+	srv, stateDir := newMmapFlowServer(t)
 	ents, rels := crossRepoFlowDelta()
 	if err := flows.Upsert(stateDir, ents, rels); err != nil {
 		t.Fatalf("upsert: %v", err)

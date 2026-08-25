@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 )
@@ -23,11 +22,15 @@ import (
 // multi-group case so an evict-then-revive round-trip can reconstruct from disk.
 func seedGroupsOnDisk(t *testing.T, docs map[string]*graph.Document) *State {
 	t.Helper()
+	// #6645: one sandboxed grafel home for the whole seeder — every group's
+	// store must land under the SAME home, which is why the seam hands back a
+	// resolver instead of being called per repo.
+	stateDirFor := sandboxStateDirs(t)
 	regGroups := map[string]RegistryGroup{}
 	loaded := map[string]*LoadedGroup{}
 	for gname, doc := range docs {
 		repoDir := t.TempDir()
-		stateDir := daemon.StateDirForRepo(repoDir)
+		stateDir := stateDirFor(repoDir)
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("mkdir state dir: %v", err)
 		}
