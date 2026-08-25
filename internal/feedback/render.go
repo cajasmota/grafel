@@ -54,6 +54,14 @@ func Render(w io.Writer, r *Report) error {
 	if len(r.EntityKindDist) == 0 {
 		fmt.Fprintf(w, "_No kind x language combination with >= 10 entities._\n\n")
 	} else {
+		// #6405: this table and the Section-2 orphan table were never
+		// comparable — different unit (occurrences vs unique entity IDs),
+		// different scope (this one drops language-less entities), different
+		// publication floor (kind x language vs kind). Say so rather than let
+		// a reader subtract one from the other. Neither counter is changed:
+		// unifying the unit alone would leave the other two axes and make a
+		// "same units" label false.
+		fmt.Fprintf(w, "Counts entity OCCURRENCES (one entity emitted into two documents counts twice) as a bucketed range, and only entities that carry a language — entities with no language are excluded from this table entirely. A row is published when that kind x language pair has >= 10 occurrences. Not comparable with `Total` in Section 2: different unit, different scope, different floor.\n\n")
 		fmt.Fprintf(w, "| Kind | Language | Count (range) |\n|---|---|---|\n")
 		rows := make([]EntityKindLang, len(r.EntityKindDist))
 		copy(rows, r.EntityKindDist)
@@ -97,6 +105,13 @@ func Render(w io.Writer, r *Report) error {
 	// Section 2 — Orphan Rate
 	fmt.Fprintf(w, "## 2. Orphan Rate\n\n")
 	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions). The table below counts only orphans of kinds that carry a semantic edge SOMEWHERE in this group; kinds where no entity does are listed separately under **Expected/terminal orphans**, so a kind reading 0 here may still be entirely unwired there.\n\n")
+	// #6405: unit label for the two Section-2 tables. It lives here, in prose,
+	// and NOT in the pipe-delimited header row below: history.go matches
+	// "| Kind | Total | Orphan | Orphan % |" literally to recover per-kind
+	// participation from reports already on disk, and that key is OR-ed across
+	// every stored report and never expires. Editing that row is a one-way
+	// door.
+	fmt.Fprintf(w, "`Total` counts UNIQUE entities of the kind, in every language including entities with none, published when that kind has >= 10 unique entities. That is a different unit, scope and floor from the occurrence ranges in Section 1 — the two tables are not comparable row-for-row.\n\n")
 	if len(r.OrphanByKind) == 0 {
 		fmt.Fprintf(w, "_No entity kind with >= 10 entities found._\n\n")
 	} else {
