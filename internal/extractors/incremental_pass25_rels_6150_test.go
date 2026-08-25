@@ -55,7 +55,8 @@ func TestBindPass25StubEndpoints_BindsBothEndsInFile(t *testing.T) {
 		Kind:   "REGISTERED_ON",
 	}}
 
-	out, bound, dropped := bindPass25StubEndpoints(recs, rels, "test-repo")
+	out, bound, deferredRels := bindPass25StubEndpoints(recs, rels, "test-repo")
+	dropped := len(deferredRels)
 	if bound != 1 || dropped != 0 {
 		t.Fatalf("bound=%d dropped=%d; want 1/0", bound, dropped)
 	}
@@ -95,7 +96,8 @@ func TestBindPass25StubEndpoints_DropsUnbindableStub(t *testing.T) {
 		{FromID: "Controller:absent", ToID: "Controller:Probe", Kind: "REGISTERED_ON"},
 	}
 
-	out, bound, dropped := bindPass25StubEndpoints(recs, rels, "test-repo")
+	out, bound, deferredRels := bindPass25StubEndpoints(recs, rels, "test-repo")
+	dropped := len(deferredRels)
 	if bound != 0 || dropped != 2 {
 		t.Fatalf("bound=%d dropped=%d; want 0/2", bound, dropped)
 	}
@@ -178,7 +180,8 @@ func TestBindPass25StubEndpoints_NoCrossFileBind(t *testing.T) {
 	rels := []types.RelationshipRecord{{
 		FromID: "Controller:Probe", ToID: "Service:app", Kind: "REGISTERED_ON",
 	}}
-	_, bound, dropped := bindPass25StubEndpoints(recs, rels, "test-repo")
+	_, bound, deferredRels := bindPass25StubEndpoints(recs, rels, "test-repo")
+	dropped := len(deferredRels)
 	if bound != 0 || dropped != 1 {
 		t.Fatalf("bound=%d dropped=%d; want 0/1 (target lives in another file)", bound, dropped)
 	}
@@ -198,7 +201,8 @@ func TestBindPass25StubEndpoints_AmbiguousStubIsRefused(t *testing.T) {
 	rels := []types.RelationshipRecord{{
 		FromID: "Controller:Probe", ToID: "Service:app", Kind: "REGISTERED_ON",
 	}}
-	_, bound, dropped := bindPass25StubEndpoints(recs, rels, "test-repo")
+	_, bound, deferredRels := bindPass25StubEndpoints(recs, rels, "test-repo")
+	dropped := len(deferredRels)
 	if bound != 0 || dropped != 1 {
 		t.Fatalf("bound=%d dropped=%d; want 0/1 (ambiguous target)", bound, dropped)
 	}
@@ -257,7 +261,8 @@ func TestBindPass25StubEndpoints_AmbiguousSourceIsRefused(t *testing.T) {
 	rels := []types.RelationshipRecord{{
 		FromID: "Controller:Probe", ToID: "Service:app", Kind: "REGISTERED_ON",
 	}}
-	out, bound, dropped := bindPass25StubEndpoints(recs, rels, "test-repo")
+	out, bound, deferredRels := bindPass25StubEndpoints(recs, rels, "test-repo")
+	dropped := len(deferredRels)
 	if bound != 0 || dropped != 1 {
 		t.Fatalf("bound=%d dropped=%d; want 0/1 — the source stub names two records in two files", bound, dropped)
 	}

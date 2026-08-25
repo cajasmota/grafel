@@ -940,6 +940,12 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// signature of a rule set whose endpoints stopped naming in-file records,
 	// which is silent in the graph (the rows simply are not there).
 	pass25RelsBound, pass25RelsDropped := 0, 0
+	// #6461 (MOUNT direction) — standalone Pass-2.5 relationships that
+	// bindPass25StubEndpoints refused because one end names an entity OUTSIDE
+	// the single file it had evidence about. Re-offered at Step 7c, once the
+	// whole post-prune entity set is known.
+	var deferredStubs []deferredStubRel
+	pass25RelsLateBound := 0
 	// #6150 — endpoint→handler outcomes for the re-extracted files.
 	// `kept_unresolved` is the cross-file-handler count (#6159): those endpoints
 	// survive with source_handler intact but without the IMPLEMENTS bridge, the
@@ -1267,10 +1273,14 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 				records, superseded = pruneSupersededEndpointSynthetics(records, survivingEndpoints)
 				endpointsSuperseded += superseded
 
-				var bound, unbindable int
+				var bound int
+				var unbindable []types.RelationshipRecord
 				records, bound, unbindable = bindPass25StubEndpoints(records, fwRes.Relationships, doc.Repo)
 				pass25RelsBound += bound
-				pass25RelsDropped += unbindable
+				pass25RelsDropped += len(unbindable)
+				for _, u := range unbindable {
+					deferredStubs = append(deferredStubs, deferredStubRel{rel: u, file: rel})
+				}
 			}
 		}
 
@@ -1436,6 +1446,61 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		newRels = append(newRels, compose.addedRels...)
 	}
 	endCompose()
+
+	// --- Step 7c: cross-file Pass-2.5 stub bind (#6461, MOUNT direction) ─────
+	// Step 7b above fixes the ROUTE-edit direction for COMPOSED ENTITIES. The
+	// MOUNT-edit direction fails one level down, on an EDGE, and for the same
+	// root cause stated the other way round: pruning is by SourceFile, but a
+	// Pass-2.5 standalone relationship emitted while re-extracting the CHANGED
+	// file can name a target attributed to a file that was NOT edited. That
+	// target is not in the re-extracted records, so bindPass25StubEndpoints —
+	// which deliberately has evidence about ONE file only — refuses it and the
+	// edge is dropped. Measured on the #6461 mount fixture: editing only
+	// `mpmain_mount.py` gave `pass25_rels_bound=0 pass25_rels_dropped=4` and
+	// lost `Service/mp_app@mpmain_mount.py → Route/mp_router@mpmarkets_route.py
+	// :ROUTES_TO`, an edge a full rebuild holds.
+	//
+	// Here the whole post-prune entity set IS known — survivors plus everything
+	// re-extracted — which is the same evidence base the full path's corpus
+	// resolver works from, so binding the target across files is no longer a
+	// guess. Two refusals are kept, and they are what stops this from becoming
+	// the "wrong bind is worse than a missing row" failure (#6123) the
+	// file-scoped binder warns about:
+	//
+	//   - the TARGET must be globally UNIQUE by `Kind:Name` over that set. An
+	//     ambiguous key has no tiebreak here any more than it did in-file.
+	//   - the SOURCE must resolve inside the CHANGED file that emitted the stub
+	//     — never corpus-wide. Two reasons, and the second is the load-bearing
+	//     one: the rule fired on that file, so that file is the only evidence
+	//     for the source end; and the resulting edge is owned by a re-extracted
+	//     entity, so the FromID-keyed stale-edge eviction (#6094) reclaims it on
+	//     the next edit of that file. An edge hung off an UNCHANGED file's
+	//     entity would never be evicted and would outlive the rule that made it.
+	//
+	// ORDERING IS LOAD-BEARING: this MUST run AFTER Step 7b, and the constraint
+	// is enforced, not merely documented. Step 7b deletes entities
+	// (`compose.removedIDs`) and their edges (`compose.prunesRel`), but the edge
+	// filter walks `doc.Relationships` ONLY — never `newRels`. Run this pass
+	// first and its target index is built over the PRE-prune entity set, so a
+	// stub can bind to an entity 7b is about to delete; the edge then lands in
+	// `newRels`, is appended at Step 8 AFTER the relationship prune has already
+	// happened, and reaches graph.fb dangling — a row no full rebuild holds.
+	// Hoisting the pass would also lose `compose.added` from the target index.
+	// `compose.removedIDs` is therefore passed in and refused explicitly: a
+	// reordering has to defeat a check to become a defect instead of silently
+	// being one. Pinned by
+	// TestBindDeferredPass25Stubs_RefusesComposeRemovedTarget.
+	endLateBind := tr.span("pass25-late-bind")
+	if len(deferredStubs) > 0 {
+		lateRels := bindDeferredPass25Stubs(deferredStubs, doc.Entities, newEntities, doc.Relationships, newRels, compose.removedIDs)
+		if len(lateRels) > 0 {
+			pass25RelsLateBound = len(lateRels)
+			pass25RelsDropped -= len(lateRels)
+			newRels = append(newRels, lateRels...)
+			logger.Printf("incremental: pass2.5 cross-file late-bind rescued %d relationship(s) (#6461)", len(lateRels))
+		}
+	}
+	endLateBind()
 
 	// --- Step 7a: stamp Properties["module"] on new entities (#5309 layer 2) ---
 	// The full-rebuild path stamps every sourced entity with a deterministic
@@ -1663,9 +1728,9 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	dur := time.Since(t0)
-	logger.Printf("incremental: done changed=%d entities=%d rels=%d class_kind_folds=%d pass25_rels_bound=%d pass25_rels_dropped=%d endpoints_resolved=%d endpoints_kept_unresolved=%d endpoints_superseded=%d flows_recomputed=%t took=%s",
+	logger.Printf("incremental: done changed=%d entities=%d rels=%d class_kind_folds=%d pass25_rels_bound=%d pass25_rels_late_bound=%d pass25_rels_dropped=%d endpoints_resolved=%d endpoints_kept_unresolved=%d endpoints_superseded=%d flows_recomputed=%t took=%s",
 		len(reallyChanged), len(newEntities), len(newRels), classKindFolds,
-		pass25RelsBound, pass25RelsDropped, endpointsResolved, endpointsKeptUnresolved, endpointsSuperseded,
+		pass25RelsBound, pass25RelsLateBound, pass25RelsDropped, endpointsResolved, endpointsKeptUnresolved, endpointsSuperseded,
 		flowsRecomputed, dur.Truncate(time.Millisecond))
 
 	return Result{
@@ -2341,14 +2406,17 @@ func pruneSupersededEndpointSynthetics(records []types.EntityRecord, survivors m
 // look up kind "http_endpoint_definition", name "http" and miss every endpoint.
 //
 // Returns the records (same slice, mutated in place), the number of standalone
-// relationships bound, and the number dropped as unbindable.
+// relationships bound, and the ones it REFUSED — returned rather than merely
+// counted so Step 7c can re-offer them to a corpus-wide index (#6461 MOUNT
+// direction). Refusing here is still correct: this call has evidence about ONE
+// file, and the returned slice is not a promise that any of them will bind.
 func bindPass25StubEndpoints(
 	records []types.EntityRecord,
 	standalone []types.RelationshipRecord,
 	repoTag string,
-) ([]types.EntityRecord, int, int) {
+) ([]types.EntityRecord, int, []types.RelationshipRecord) {
 	if len(records) == 0 {
-		return records, 0, len(standalone)
+		return records, 0, standalone
 	}
 
 	// (file, "Kind:Name") → index into records, or ambiguousStubIdx when more
@@ -2411,20 +2479,21 @@ func bindPass25StubEndpoints(
 		srcIdxByRef[ref] = i
 	}
 
-	// Standalone relationships: bind both ends or drop.
-	bound, dropped := 0, 0
+	// Standalone relationships: bind both ends or defer.
+	bound := 0
+	var deferred []types.RelationshipRecord
 	for _, sr := range standalone {
 		// The SOURCE end decides which file's records the target is looked up
 		// in, so a relationship rule that fired in file X can only ever bind
 		// within X — which is the only file this call has evidence about.
 		srcIdx, ok := srcIdxByRef[sr.FromID]
 		if !ok || srcIdx == ambiguousStubIdx {
-			dropped++
+			deferred = append(deferred, sr)
 			continue
 		}
 		toID, tok := resolve(records[srcIdx].SourceFile, sr.ToID)
 		if !tok {
-			dropped++
+			deferred = append(deferred, sr)
 			continue
 		}
 		e := sr
@@ -2433,7 +2502,126 @@ func bindPass25StubEndpoints(
 		records[srcIdx].Relationships = append(records[srcIdx].Relationships, e)
 		bound++
 	}
-	return records, bound, dropped
+	return records, bound, deferred
+}
+
+// deferredStubRel is one standalone Pass-2.5 relationship that the file-scoped
+// binder refused, paired with the repo-relative path of the CHANGED file whose
+// Detect run emitted it. The file is carried because the source end must bind
+// inside THAT file and nowhere else — see Step 7c.
+type deferredStubRel struct {
+	rel  types.RelationshipRecord
+	file string
+}
+
+// bindDeferredPass25Stubs re-offers the refused stubs to a corpus-wide index
+// (#6461, MOUNT direction).
+//
+// `survivors` are the post-prune entities carried forward (including those on
+// files that were NOT edited — the whole point), `fresh` are the re-extracted
+// ones. Together they are the entity set this build will emit, which is what
+// makes a cross-file target lookup evidence rather than a guess.
+//
+// It returns only relationships that are NEW: anything whose (from, to, kind)
+// id already exists among `existingRels` or `freshRels` is skipped, so a stub
+// that ALSO bound in-file cannot land twice.
+//
+// The two refusals — globally-ambiguous target, and a source that does not
+// resolve within the emitting file — are the contract; see Step 7c for why
+// each is load-bearing.
+//
+// `composeRemoved` is Step 7b's deletion set. It is normally redundant —
+// running after 7b, those ids are already gone from `survivors` — and that is
+// exactly why it is a parameter: it turns "call me after 7b" from a comment
+// into something a caller cannot quietly get wrong, and a hoisted call site
+// binding to a composed entity 7b is deleting produces nothing instead of a
+// dangling edge. See Step 7c's ORDERING note.
+func bindDeferredPass25Stubs(
+	deferred []deferredStubRel,
+	survivors []graph.Entity,
+	fresh []graph.Entity,
+	existingRels []graph.Relationship,
+	freshRels []graph.Relationship,
+	composeRemoved map[string]bool,
+) []graph.Relationship {
+	if len(deferred) == 0 {
+		return nil
+	}
+
+	const ambiguous = "\x00ambiguous"
+
+	// TARGET index: `Kind:Name` → entity id, over EVERY entity being emitted.
+	// Ambiguity is sticky: a key seen twice is poisoned for good, so index
+	// order cannot decide a bind.
+	target := make(map[string]string, len(survivors)+len(fresh))
+	addTarget := func(e *graph.Entity) {
+		if e.Kind == "" || e.Name == "" || composeRemoved[e.ID] {
+			return
+		}
+		k := string(e.Kind) + ":" + e.Name
+		if prev, seen := target[k]; seen {
+			if prev != e.ID {
+				target[k] = ambiguous
+			}
+			return
+		}
+		target[k] = e.ID
+	}
+	for i := range survivors {
+		addTarget(&survivors[i])
+	}
+	for i := range fresh {
+		addTarget(&fresh[i])
+	}
+
+	// SOURCE index: (changed file, `Kind:Name`) → entity id, over the
+	// RE-EXTRACTED entities only. Survivors are deliberately absent.
+	type srcKey struct{ file, kindName string }
+	source := make(map[srcKey]string, len(fresh))
+	for i := range fresh {
+		e := &fresh[i]
+		if e.Kind == "" || e.Name == "" || e.SourceFile == "" {
+			continue
+		}
+		k := srcKey{e.SourceFile, string(e.Kind) + ":" + e.Name}
+		if prev, seen := source[k]; seen {
+			if prev != e.ID {
+				source[k] = ambiguous
+			}
+			continue
+		}
+		source[k] = e.ID
+	}
+
+	seen := make(map[string]struct{}, len(existingRels)+len(freshRels))
+	for i := range existingRels {
+		seen[existingRels[i].ID] = struct{}{}
+	}
+	for i := range freshRels {
+		seen[freshRels[i].ID] = struct{}{}
+	}
+
+	var out []graph.Relationship
+	for _, d := range deferred {
+		fromID, ok := source[srcKey{d.file, d.rel.FromID}]
+		if !ok || fromID == ambiguous {
+			continue
+		}
+		toID, ok := target[d.rel.ToID]
+		if !ok || toID == ambiguous {
+			continue
+		}
+		r := d.rel
+		r.FromID = ""
+		r.ToID = toID
+		g := relRecordToGraphRel(r, fromID)
+		if _, dup := seen[g.ID]; dup {
+			continue
+		}
+		seen[g.ID] = struct{}{}
+		out = append(out, g)
+	}
+	return out
 }
 
 // relRecordToGraphRel converts an embedded types.RelationshipRecord to a
