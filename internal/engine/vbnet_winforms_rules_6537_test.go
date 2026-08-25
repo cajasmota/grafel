@@ -94,12 +94,45 @@ End Class
 
 // vbModuleSource covers the second VB.NET WinForms shape: the application
 // entry-point Module with Application.Run.
+//
+// It constructs two NON-form types as well, one on each side of the
+// Application.Run call. Only the type passed to Application.Run is a Form; the
+// INSTANTIATES rule must not target the other two.
+//
+// The ordering is load-bearing. The INSTANTIATES pattern is non-greedy, so a
+// rule that stopped requiring the Application.Run prefix would pair the Module
+// with the FIRST constructor it can reach — hence SqlConnection sits ahead of
+// Application.Run, not behind it. The fixture is also kept tight because the
+// pattern's join window is only 600 characters wide.
 const vbModuleSource = `Imports System.Windows.Forms
+Imports System.Data.SqlClient
 
 Module Program
     <STAThread()> _
     Public Sub Main()
+        Dim conn As New SqlConnection("Data Source=.;Initial Catalog=Orders")
+        conn.Open()
         Application.EnableVisualStyles()
+        Application.Run(New OrderEntryForm())
+        Dim idle As New Timer()
+        idle.Stop()
+    End Sub
+End Module
+`
+
+// vbTwoModuleSource is a single file declaring two Modules, which VB permits.
+// It exists to pin a KNOWN DEFECT — see
+// TestVBNet6537_InstantiatesWindowMispairsAcrossModules.
+const vbTwoModuleSource = `Imports System.Windows.Forms
+
+Module DiagnosticsHelpers
+    Public Sub Log(ByVal msg As String)
+        System.Diagnostics.Debug.WriteLine(msg)
+    End Sub
+End Module
+
+Module Program
+    Public Sub Main()
         Application.Run(New OrderEntryForm())
     End Sub
 End Module
@@ -252,6 +285,25 @@ func TestVBNet6537_FiresOnEntryPointModule(t *testing.T) {
 			formatVBRelationships(res))
 	}
 
+	// NEGATIVE CASE (review round 3). The INSTANTIATES rule earns its `View`
+	// target only from the `Application.Run(` prefix — nothing else in the
+	// pattern makes the captured name a form. Drop that prefix and the rule
+	// pairs the Module with any nearby constructor: `New SqlConnection(`,
+	// `New Timer(`, `New DataTable(`. Each such edge targets a View that no
+	// file will ever emit — the same dangling-target defect class as the
+	// Config/View mismatch fixed above, just reached from the edge side
+	// instead of the entity side. Asserting the edge EXISTS does not catch
+	// this; only asserting which edges must NOT exist does.
+	for _, notAForm := range []string{"SqlConnection", "Timer"} {
+		for _, r := range res.Relationships {
+			if r.Kind == "INSTANTIATES" && r.ToID == "View:"+notAForm {
+				t.Errorf("INSTANTIATES edge targets View:%s, which is not a form — the rule is "+
+					"pairing the Module with an arbitrary constructor rather than with the type "+
+					"passed to Application.Run: %s", notAForm, formatVBRelationships(res))
+			}
+		}
+	}
+
 	// Regression guard for the orphan this rule used to mint (review of
 	// PR #6600). An `Application.Run` source_pattern emitted Config:<FormName>
 	// while the edge targeted View:<FormName>, so the entity could never be any
@@ -262,6 +314,36 @@ func TestVBNet6537_FiresOnEntryPointModule(t *testing.T) {
 			t.Errorf("Config:OrderEntryForm was emitted; no relationship rule in this bucket "+
 				"targets Config, so it is an orphan by construction: %s", formatVBEntities(res))
 		}
+	}
+}
+
+// TestVBNet6537_InstantiatesWindowMispairsAcrossModules PINS A KNOWN DEFECT so
+// it cannot get quietly worse, and so that fixing it is forced to update this
+// comment.
+//
+// The INSTANTIATES pattern joins `Module (\w+)` to `Application.Run(New (\w+)(`
+// through a `[\s\S]{0,600}?` window. That window is POSITIONAL, not
+// structural: it has no notion of `End Module`, so in a file declaring two
+// Modules — legal and not unusual in VB — the first Module's header pairs with
+// the second Module's Application.Run. RE2 has no negative lookahead, so "no
+// intervening End Module" is not expressible in this schema; the fix needs
+// containment awareness the text-rule engine does not have.
+//
+// Observed today: the edge is attributed to DiagnosticsHelpers, and Program —
+// the module that actually calls Application.Run — gets no edge at all. Both
+// halves are wrong. Tracked in #6605.
+func TestVBNet6537_InstantiatesWindowMispairsAcrossModules(t *testing.T) {
+	res := detectVBNet(t, "src/Program.vb", vbTwoModuleSource)
+
+	if !hasVBRelationship(res, "INSTANTIATES", "Module:DiagnosticsHelpers", "View:OrderEntryForm") {
+		t.Errorf("the known cross-module mispairing no longer reproduces — if this was fixed, "+
+			"delete this test and the KNOWN LIMITATION note in winforms.yaml; got %s",
+			formatVBRelationships(res))
+	}
+	if hasVBRelationship(res, "INSTANTIATES", "Module:Program", "View:OrderEntryForm") {
+		t.Errorf("Module:Program now gets the edge it should always have had — the window defect "+
+			"appears fixed; update this test and winforms.yaml; got %s",
+			formatVBRelationships(res))
 	}
 }
 

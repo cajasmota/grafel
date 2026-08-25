@@ -27,6 +27,18 @@
 #     FIRST binding; the remaining clauses are dropped.
 #   * The two file_conventions below are not exercised by any fixture path, so
 #     their globs are declared but unobserved by the test suite.
+#   * The INSTANTIATES rule joins `Module (\w+)` to `Application.Run(New (\w+)(`
+#     across a `{0,600}` window. That window is POSITIONAL, not structural — it
+#     has no notion of `End Module` — so in a file declaring two Modules (legal
+#     VB) the FIRST module's header pairs with the SECOND module's
+#     Application.Run. Measured: a two-module file yields
+#     `Module:DiagnosticsHelpers -INSTANTIATES-> View:OrderEntryForm` while
+#     Module:Program, which actually makes the call, gets no edge at all. Both
+#     halves are wrong. RE2 has no negative lookahead, so "no intervening
+#     End Module" is not expressible here; the repair needs containment
+#     awareness this engine does not have. Tracked in #6605; pinned by
+#     TestVBNet6537_InstantiatesWindowMispairsAcrossModules so it cannot get
+#     quietly worse.
 
 frameworks:
   name: WinForms
