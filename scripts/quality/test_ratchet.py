@@ -45,6 +45,14 @@ def git(repo, *args):
     ).stdout.decode().strip()
 
 
+def has_ref(repo, ref):
+    """True if `ref` resolves in `repo`. Used to prove a fixture OMITS one."""
+    return subprocess.call(
+        ["git", "rev-parse", "--verify", "--quiet", ref],
+        cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    ) == 0
+
+
 @contextlib.contextmanager
 def chdir(path):
     prior = os.getcwd()
@@ -78,6 +86,54 @@ def make_repo(root, with_origin=True):
     head = git(root, "rev-parse", "--short", "HEAD")
     assert base != head
     return base, head
+
+
+def make_repo_stale_local_main(root):
+    """A repo whose local `main` is BEHIND `refs/remotes/origin/main` — the
+    ordinary state of any checkout that has not pulled recently.
+
+    `make_repo` points local `main` and the remote-tracking ref at the same
+    commit, so the preference order in DEFAULT_BRANCH_REFS is structurally
+    unobservable there: both candidates resolve identically. Here they do not.
+
+    Two things are deliberate and BOTH are load-bearing (Refs #6569):
+
+    1. Local `main` is reset one commit back from `refs/remotes/origin/main`,
+       so the two refs yield DIFFERENT merge-bases with the feature branch.
+    2. `refs/remotes/origin/HEAD` is NOT set. `default_branch_ref()` consults
+       that symref before it reaches DEFAULT_BRANCH_REFS at all, so with it
+       present a remote ref wins regardless of how the tuple is ordered and
+       the ordering stays unobservable for a second, independent reason.
+
+    Returns (remote_tip_sha, stale_local_main_sha, feature_head_sha), short.
+    The first is the correct answer: the merge-base of the feature branch with
+    what the merge will actually land on.
+    """
+    git(root, "init", "--quiet", "--initial-branch=main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    git(root, "config", "commit.gpgsign", "false")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("1")
+    git(root, "add", "a")
+    git(root, "commit", "--quiet", "-m", "old base")
+    stale = git(root, "rev-parse", "--short", "HEAD")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("2")
+    git(root, "commit", "--quiet", "-am", "landed on origin/main since the last pull")
+    remote_tip = git(root, "rev-parse", "--short", "HEAD")
+    # What a clone that has fetched but not merged looks like: the remote
+    # -tracking ref is at the tip, the local branch is not. No origin/HEAD.
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(root, "checkout", "--quiet", "-b", "feature")
+    git(root, "branch", "--quiet", "-f", "main", stale)
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("3")
+    git(root, "commit", "--quiet", "-am", "feature work")
+    head = git(root, "rev-parse", "--short", "HEAD")
+    assert stale != remote_tip != head
+    assert git(root, "rev-parse", "--short", "refs/heads/main") == stale
+    return remote_tip, stale, head
 
 
 STAMP = "test-stamp-6564"
@@ -170,6 +226,79 @@ class MeasuredOnIsDurable(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root, chdir(root):
             base, head = make_repo(root, with_origin=False)
             self.assertEqual(ratchet.git_sha(), base)
+
+    def test_prefers_the_remote_tracking_ref_over_a_stale_local_main(self):
+        """DEFAULT_BRANCH_REFS tries remote-tracking refs first, and says why:
+        they are what the merge lands on, and a local `main` can be stale.
+
+        Nothing observed that until #6569. This does: local `main` is a commit
+        behind `refs/remotes/origin/main`, so preferring the local ref anchors
+        `measured_on` to an older point than the branch will really merge onto
+        — provenance that claims to derive from further back than it does.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            remote_tip, stale, head = make_repo_stale_local_main(root)
+            # The premise the kill rests on: with origin/HEAD set, the symref
+            # short-circuits default_branch_ref() before the tuple is read and
+            # the ordering is unobservable no matter what the local ref is.
+            self.assertFalse(
+                has_ref(root, "refs/remotes/origin/HEAD"),
+                "fixture set refs/remotes/origin/HEAD; the symref would decide "
+                "this before DEFAULT_BRANCH_REFS is consulted, and the kill "
+                "below would prove nothing about the ordering")
+
+            self.assertEqual(
+                ratchet.default_branch_ref(), "refs/remotes/origin/main",
+                "resolved a local ref while a remote-tracking ref existed")
+            got = ratchet.git_sha()
+            self.assertNotEqual(
+                got, stale,
+                "git_sha() anchored measured_on to the stale local main")
+            self.assertNotEqual(got, head, "stamped the feature-branch HEAD")
+            self.assertEqual(
+                got, remote_tip,
+                "measured_on must be the merge-base with the remote-tracking "
+                "ref — what the merge will actually land on")
+
+
+    def test_origin_head_names_a_default_branch_the_tuple_does_not_list(self):
+        """`refs/remotes/origin/HEAD` is consulted before DEFAULT_BRANCH_REFS,
+        and that is the only thing that can answer a repo whose default branch
+        is neither `main` nor `master`. Nothing observed it until #6569:
+        deleting the symref lookup left the suite green, because every fixture
+        also had an `origin/main` for the tuple to find.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            git(root, "init", "--quiet", "--initial-branch=release")
+            git(root, "config", "user.email", "t@example.com")
+            git(root, "config", "user.name", "t")
+            git(root, "config", "commit.gpgsign", "false")
+            with open(os.path.join(root, "a"), "w") as fh:
+                fh.write("1")
+            git(root, "add", "a")
+            git(root, "commit", "--quiet", "-m", "base")
+            base = git(root, "rev-parse", "--short", "HEAD")
+            git(root, "update-ref", "refs/remotes/origin/release", "HEAD")
+            git(root, "symbolic-ref", "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/release")
+            git(root, "checkout", "--quiet", "-b", "feature")
+            with open(os.path.join(root, "a"), "w") as fh:
+                fh.write("2")
+            git(root, "commit", "--quiet", "-am", "feature work")
+            head = git(root, "rev-parse", "--short", "HEAD")
+
+            # Nothing in DEFAULT_BRANCH_REFS can resolve here: the premise.
+            for ref in ratchet.DEFAULT_BRANCH_REFS:
+                self.assertFalse(
+                    has_ref(root, ref),
+                    f"{ref} resolves, so the tuple could answer without the symref")
+
+            self.assertEqual(
+                ratchet.default_branch_ref(), "refs/remotes/origin/release")
+            got = ratchet.git_sha()
+            self.assertNotEqual(got, "unknown", "failed to find the default branch")
+            self.assertNotEqual(got, head, "stamped the feature-branch HEAD")
+            self.assertEqual(got, base)
 
 
 class WriteTimeRefusal(unittest.TestCase):
