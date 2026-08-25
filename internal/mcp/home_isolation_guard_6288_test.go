@@ -61,8 +61,16 @@ import (
 // has to survive a panic that kills the binary.
 func TestMain(m *testing.M) {
 	unisolated := reportUnisolatedHomeTests(os.Stderr)
+	// #6639: two post-run checks on state the suite is not allowed to leave
+	// behind — the package-level docgen run registry, and staging directories
+	// written into this checkout. Both are reported AFTER m.Run() because both
+	// are about what the suite leaves, not what it inherits; the rationale for
+	// asserting rather than only draining is in docgen_run_registry_6639_test.go.
+	stagingRoot, stagingBefore := snapshotRepoStaging()
 	code := m.Run()
-	if unisolated > 0 && code == 0 {
+	leaked := reportLeakedDocgenRuns(os.Stderr)
+	leaked += reportNewRepoStaging(os.Stderr, stagingRoot, stagingBefore)
+	if (unisolated > 0 || leaked > 0) && code == 0 {
 		code = 1
 	}
 	os.Exit(code)

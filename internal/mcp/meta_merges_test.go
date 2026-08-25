@@ -27,6 +27,11 @@ func TestWorkflowDocgenDispatch(t *testing.T) {
 	sandboxGrafelHome(t)
 	project := t.TempDir()
 
+	// #6639: this test starts a real run under group "g" and never aborts it
+	// (the run ID below is deliberately unresolvable), so without this the
+	// entry outlives the test in docgenRunsByGroup.
+	releaseDocgenRuns(t)
+
 	srv := coreTestServer(t)
 	runID := "2026-05-26-testid01"
 	start := map[string]any{"group": "g", "no_git": true, "cwd": project}
