@@ -359,6 +359,32 @@ def is_ancestor(repo, sha, ref):
     ) == 0
 
 
+def set_base_ref(case, value):
+    """Set (or, with `value=None`, unset) `QUALITY_BASE_REF` for one test and
+    RESTORE whatever was there before, ambient value included.
+
+    `os.environ.pop("QUALITY_BASE_REF", None)` with no restore drops an ambient
+    value for the remainder of the process, which is a cross-test coupling: the
+    next test to read it sees a different environment depending on whether this
+    one ran first. Nothing in this file depends on that today — which is
+    exactly why it would surface later, as an order-dependent failure in a test
+    that has nothing to do with the one that broke it.
+    """
+    prior = os.environ.get("QUALITY_BASE_REF")
+
+    def restore():
+        if prior is None:
+            os.environ.pop("QUALITY_BASE_REF", None)
+        else:
+            os.environ["QUALITY_BASE_REF"] = prior
+
+    case.addCleanup(restore)
+    if value is None:
+        os.environ.pop("QUALITY_BASE_REF", None)
+    else:
+        os.environ["QUALITY_BASE_REF"] = value
+
+
 def make_repo_divergent_default_ref(root):
     """A checkout whose default-branch ref is NOT `origin/main`, and where the
     two disagree about what is reachable (Refs #6627).
@@ -1182,6 +1208,166 @@ class AncestryFollowsTheDiscoveredRef(unittest.TestCase):
             self.assertEqual(doc["measured_on"], branch_point)
 
 
+class PaddedBaseRefOverrideIsHonoured(unittest.TestCase):
+    """`QUALITY_BASE_REF` must survive the whitespace its own sources add
+    (Refs #6633).
+
+    `default_branch_ref()` strips the override, and until this class nothing
+    observed it: dropping the `.strip()` passed all 24 tests. The property was
+    asserted only in the docstring ("QUALITY_BASE_REF overrides the search"),
+    which is the dominant defect shape in this file.
+
+    The whitespace is not hypothetical. The two ways an operator produces this
+    value both append a newline: `QUALITY_BASE_REF=$(git symbolic-ref …)` in a
+    shell, and a YAML block scalar in a workflow. A leading space is what a
+    hand-edited `env:` line or a `read`-into-variable produces.
+
+    Witness, with `QUALITY_BASE_REF=" refs/remotes/origin/release\\n"` on the
+    `make_repo_divergent_default_ref` fixture:
+
+        | .strip() | default_branch_ref()          | git_sha()   | durable? |
+        | present  | refs/remotes/origin/release   | branch pt   | accepted |
+        | absent   | refs/remotes/origin/main      | "unknown"   | REFUSED  |
+
+    Every consequence in that second row is wrong and none of them mentions
+    whitespace: the override is discarded, the search falls through to the
+    `origin/main` that is disjoint from this checkout's history, provenance
+    degrades to "unknown", and a sha that IS durable against the operator's
+    real base is refused — naming a ref they never chose.
+
+    These tests assert the RESOLVED REF, the STAMPED SHA and the ancestry
+    DECISION, never the message text. #6630 established why: the `SystemExit`
+    f-string interpolates `ref`, so a message assertion reads back the ref the
+    code chose and can go green on a call that consulted a different one.
+
+    Per-clause drop analysis (measured, Refs #6633). Three mutant families were
+    scored, not one: `.strip()` deleted, `.strip()` -> `.rstrip()`, and
+    `.strip()` -> `.lstrip()`. All three survive the suite without this class
+    and all three die with it.
+
+      * The LEADING SPACE in `PADDED` is load-bearing: pad only with a trailing
+        newline and the `.rstrip()` mutant goes green, because `rstrip()`
+        removes exactly the padding that shape supplies.
+      * The TRAILING NEWLINE is load-bearing for the mirror reason: pad only
+        with a leading space and the `.lstrip()` mutant goes green.
+      * `origin/main` resolving in the fixture is load-bearing for
+        `test_the_durability_decision_follows_the_padded_override`: delete it
+        and the discarded override leaves NO ref at all, so
+        `ensure_durable_measured_on` takes its second early return and accepts
+        the sha quietly — the mutant survives that test. The other two tests
+        kill it either way, since `default_branch_ref()` returns None and
+        `git_sha()` still degrades to "unknown".
+      * `test_the_durability_decision_follows_the_padded_override` is
+        DECORATIVE for this mutant family, and is labelled so rather than
+        credited with weight it does not carry: delete it and all three mutants
+        still die, on both remaining tests. It is kept for two reasons that are
+        not "it kills something" — it is the consequence an operator actually
+        sees (a refusal naming a ref they never chose), and it is the only
+        clause here that would notice a future change discarding the override
+        somewhere downstream of `default_branch_ref()`.
+
+    Measured drop matrix (3 selected tests; "survives" = mutant goes green):
+
+        drop                     | no strip | rstrip() | lstrip()
+        (none)                   |  3 fail  |  3 fail  |  3 fail
+        pad trailing \\n only     |  3 fail  | SURVIVES |  3 fail
+        pad leading space only   |  3 fail  |  3 fail  | SURVIVES
+        origin/main deleted      |  2 fail  |  2 fail  |  2 fail   (durability
+                                 |          |          |    test passes)
+        durability test deleted  |  2 fail  |  2 fail  |  2 fail
+    """
+
+    BASE_REF = "refs/remotes/origin/release"
+    FALLBACK = "refs/remotes/origin/main"
+    # Padded on BOTH sides on purpose: one side alone cannot distinguish
+    # `.strip()` from the one-sided strip that happens to remove it.
+    PADDED = " refs/remotes/origin/release\n"
+
+    def _fixture(self, root):
+        """Build the repo, arm the padded override, and assert every premise
+        directly of git — never by reading it back out of `ratchet.py`."""
+        branch_point, orphan = make_repo_divergent_default_ref(root)
+        set_base_ref(self, self.PADDED)
+
+        # Premise 1 — the STRIPPED spelling really does resolve here. Without
+        # this the tests below could pass on a ref that never worked.
+        self.assertTrue(
+            has_ref(root, self.BASE_REF + "^{commit}"),
+            f"DEGENERATE FIXTURE: {self.BASE_REF} does not resolve, so nothing "
+            f"below distinguishes a stripped override from a broken one")
+
+        # Premise 2 — and every UNSTRIPPED spelling genuinely does not, one per
+        # mutant family. If any of these resolved, that mutant would be
+        # equivalent on this fixture and its death would prove nothing.
+        for label, spelling in (
+            ("no strip at all", self.PADDED),
+            ("rstrip() only, leading space survives", self.PADDED.rstrip()),
+            ("lstrip() only, trailing newline survives", self.PADDED.lstrip()),
+        ):
+            self.assertFalse(
+                has_ref(root, spelling + "^{commit}"),
+                f"DEGENERATE FIXTURE: {spelling!r} ({label}) resolves, so this "
+                f"padding cannot observe the strip that removes it")
+
+        # Premise 3 — the ref the search falls through to is present and is a
+        # DIFFERENT one. Without it the mutant produces None rather than a
+        # wrong answer, which is a weaker and differently-caused failure.
+        self.assertTrue(
+            has_ref(root, self.FALLBACK),
+            f"DEGENERATE FIXTURE: {self.FALLBACK} does not resolve, so a "
+            f"discarded override yields no ref rather than the wrong ref")
+        self.assertNotEqual(self.BASE_REF, self.FALLBACK)
+
+        # Premise 4 — the two refs disagree about the branch point, so the
+        # durability decision is observable and not merely reported.
+        self.assertTrue(is_ancestor(root, branch_point, self.BASE_REF))
+        self.assertFalse(is_ancestor(root, branch_point, self.FALLBACK))
+        self.assertNotEqual(branch_point, orphan)
+        return branch_point
+
+    def test_the_padded_override_is_the_ref_that_is_chosen(self):
+        """The resolved ref itself — the value every consequence hangs off."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            self._fixture(root)
+            self.assertEqual(
+                ratchet.default_branch_ref(), self.BASE_REF,
+                f"QUALITY_BASE_REF={self.PADDED!r} was discarded: the search "
+                f"fell through to a ref the operator never chose. The override "
+                f"exists for a checkout that cannot be discovered from refs, "
+                f"and an override that silently does nothing is worse than "
+                f"none, because nothing signals that it was ignored")
+
+    def test_the_padded_override_still_stamps_a_real_provenance_sha(self):
+        """The writer's own output: a sha, not the "unknown" degradation."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            branch_point = self._fixture(root)
+            self.assertEqual(
+                ratchet.git_sha(), branch_point,
+                f"measured_on degraded away from the branch point with a "
+                f"perfectly good base ref set: the padded override was "
+                f"discarded and merge-base was taken against {self.FALLBACK}, "
+                f"which shares no history with this checkout")
+
+    def test_the_durability_decision_follows_the_padded_override(self):
+        """The operator-visible consequence: the durable sha must be written,
+        not refused against a ref they never named."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            branch_point = self._fixture(root)
+            err = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(err):
+                    ratchet.ensure_durable_measured_on(branch_point)
+            except SystemExit as exc:
+                self.fail(
+                    f"the writer refused {branch_point!r}, which IS reachable "
+                    f"from the padded override {self.PADDED!r} once stripped — "
+                    f"durability was judged against some other ref ({exc})")
+            self.assertEqual(
+                err.getvalue(), "",
+                "the 'unknown' guard fired, so the ancestry check was never "
+                "reached and this test observed nothing")
+
+
 class SecondEarlyReturnIsReached(unittest.TestCase):
     """`ensure_durable_measured_on` must return quietly when handed a REAL sha
     in a checkout with no default-branch ref (Refs #6627).
@@ -1206,7 +1392,7 @@ class SecondEarlyReturnIsReached(unittest.TestCase):
     def test_returns_quietly_for_a_real_sha_with_no_ref_to_check_against(self):
         with tempfile.TemporaryDirectory() as root, chdir(root):
             sha = make_repo_no_default_branch_ref(root)
-            os.environ.pop("QUALITY_BASE_REF", None)
+            set_base_ref(self, None)
 
             # Premise 1 — the sha resolves. Asked of git, not of ratchet.py.
             self.assertTrue(
@@ -1254,7 +1440,7 @@ class SecondEarlyReturnIsReached(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as root, chdir(root):
             make_repo_no_default_branch_ref(root)
-            os.environ.pop("QUALITY_BASE_REF", None)
+            set_base_ref(self, None)
             self.assertIsNone(ratchet.default_branch_ref())
             self.assertEqual(
                 ratchet.git_sha(), "unknown",
