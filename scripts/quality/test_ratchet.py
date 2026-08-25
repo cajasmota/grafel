@@ -19,6 +19,7 @@ same suite as the baseline gate itself.
 
 import contextlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -154,6 +155,191 @@ def make_repo_stale_local_main(root):
     assert stale != remote_tip != head
     assert git(root, "rev-parse", "--short", "refs/heads/main") == stale
     return remote_tip, stale, head
+
+
+
+def make_repo_shallow_disconnected(root):
+    """A doubly-shallow CI checkout: `refs/remotes/origin/main` RESOLVES, but
+    shares no *reachable* commit with HEAD (Refs #6613).
+
+    This is the shape `default_branch_ref()`'s docstring names first — "a
+    shallow clone (actions/checkout defaults to fetch-depth 1)" — built the
+    way CI really produces it, with no network: clone the feature branch at
+    depth 1, then fetch the default branch at depth 1 into its own
+    remote-tracking ref. Both tips exist; the history that would join them was
+    grafted away, so `merge-base HEAD origin/main` has no answer and
+    `git_sha()` degrades to "unknown".
+
+    This is NOT the only shape that kills the `sha == "unknown"` mutant, and
+    an earlier draft of this file wrongly said it was. The ref-less checkout in
+    `test_degrades_to_unknown_when_no_default_branch_is_available` kills it
+    too: `ensure_durable_measured_on()` returns at its `ref is None` check, so
+    the WARNING is never printed and the assertion on it fires. MEASURED, not
+    assumed — with every premise guard in the test below neutralised and this
+    fixture degraded to the ref-less shape, pristine `ratchet.py` stays green
+    and the mutant still fails, on `'WARNING' not found in ''`.
+
+    What this shape buys is the STRONGER consequence, and the one #6613 is
+    actually about. Because a ref resolves, the mutant reaches `merge-base
+    --is-ancestor unknown <ref>`; that call fails and the writer raises
+    SystemExit — a hard refusal to write any baseline at all, where the design
+    is an advisory warning. The ref-less shape can only observe a missing
+    warning, never the refusal.
+
+    Returns the working checkout's path.
+    """
+    origin = os.path.join(root, "origin")
+    work = os.path.join(root, "work")
+    os.makedirs(origin)
+    git(origin, "init", "--quiet", "--initial-branch=main")
+    git(origin, "config", "user.email", "t@example.com")
+    git(origin, "config", "user.name", "t")
+    git(origin, "config", "commit.gpgsign", "false")
+    with open(os.path.join(origin, "a"), "w") as fh:
+        fh.write("1")
+    git(origin, "add", "a")
+    git(origin, "commit", "--quiet", "-m", "root")
+    with open(os.path.join(origin, "a"), "w") as fh:
+        fh.write("2")
+    git(origin, "commit", "--quiet", "-am", "second, so depth 1 truncates something")
+    git(origin, "checkout", "--quiet", "-b", "feature")
+    with open(os.path.join(origin, "a"), "w") as fh:
+        fh.write("3")
+    git(origin, "commit", "--quiet", "-am", "feature work")
+    git(origin, "checkout", "--quiet", "main")
+    with open(os.path.join(origin, "a"), "w") as fh:
+        fh.write("4")
+    git(origin, "commit", "--quiet", "-am", "default branch moves on")
+
+    git(root, "clone", "--quiet", "--depth", "1", "--branch", "feature",
+        "file://" + origin, work)
+    git(work, "config", "user.email", "t@example.com")
+    git(work, "config", "user.name", "t")
+    # The second shallow fetch: CI asks for the base branch it wants to diff
+    # against and gets one commit of it, unconnected to the one it has.
+    git(work, "fetch", "--quiet", "--depth", "1", "origin",
+        "main:refs/remotes/origin/main")
+    return work
+
+
+def make_repo_annotated_tag_default_ref(root):
+    """A checkout whose candidate default-branch ref is an ANNOTATED TAG.
+
+    Returns (tag_ref, tagged_commit_sha, feature_head_sha), short.
+
+    Exists to be a CONTROL, not a kill: see
+    `AnnotatedTagCandidateIsNotADistinguisher`.
+    """
+    git(root, "init", "--quiet", "--initial-branch=main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    git(root, "config", "commit.gpgsign", "false")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("1")
+    git(root, "add", "a")
+    git(root, "commit", "--quiet", "-m", "base")
+    tagged = git(root, "rev-parse", "--short", "HEAD")
+    git(root, "tag", "-a", "-m", "release", "v1")
+    git(root, "checkout", "--quiet", "-b", "feature")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("2")
+    git(root, "commit", "--quiet", "-am", "feature work")
+    head = git(root, "rev-parse", "--short", "HEAD")
+    return "refs/tags/v1", tagged, head
+
+
+def make_repo_non_commit_candidate_ref(root):
+    """A checkout where the FIRST candidate ref resolves but is not a commit,
+    and a correct `origin/main` sits behind it (Refs #6613).
+
+    `refs/tags/tree-only` is a tag on a TREE. `rev-parse --verify` accepts it;
+    `rev-parse --verify <ref>^{commit}` does not. That difference is the whole
+    of the `^{commit}` peel in `default_branch_ref()`, and it is the only shape
+    that can observe it — an annotated tag resolves under both spellings (see
+    `AnnotatedTagCandidateIsNotADistinguisher`).
+
+    The candidate is fed in through `QUALITY_BASE_REF`, which is the only
+    candidate slot that can hold an arbitrary ref: `DEFAULT_BRANCH_REFS` names
+    branches, and `refs/remotes/origin/HEAD` is a symref to one. Tags on
+    non-commit objects are real (git.git ships `junio-gpg-pub`, a tag on a
+    blob), so pointing the override at one is a mistake a human can make.
+
+    Returns (bad_ref, good_base_sha, feature_head_sha), short.
+    """
+    git(root, "init", "--quiet", "--initial-branch=main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    git(root, "config", "commit.gpgsign", "false")
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("1")
+    git(root, "add", "a")
+    git(root, "commit", "--quiet", "-m", "base")
+    base = git(root, "rev-parse", "--short", "HEAD")
+    git(root, "tag", "tree-only", git(root, "rev-parse", "HEAD^{tree}"))
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    with open(os.path.join(root, "b"), "w") as fh:
+        fh.write("someone else landed this")
+    git(root, "add", "b")
+    git(root, "commit", "--quiet", "-m", "default branch moves on")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(root, "checkout", "--quiet", "-b", "feature", base)
+    with open(os.path.join(root, "a"), "w") as fh:
+        fh.write("2")
+    git(root, "commit", "--quiet", "-am", "feature work")
+    head = git(root, "rev-parse", "--short", "HEAD")
+    return "refs/tags/tree-only", base, head
+
+
+def make_repo_criss_cross(root):
+    """A repo where HEAD and the default-branch ref have TWO merge-bases.
+
+    Criss-cross history is what two branches that each merged the other's
+    earlier tip produce, and it is ordinary in any repo where a long-lived
+    branch is kept up to date by merging rather than rebasing. `merge-base`
+    picks one; `merge-base --all` prints both.
+
+    Every other fixture here is linear, so `--all` and plain `merge-base` are
+    indistinguishable in all of them (Refs #6613).
+
+    Returns (feature_head_sha, [merge_base_shas]), short.
+    """
+    git(root, "init", "--quiet", "--initial-branch=main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    git(root, "config", "commit.gpgsign", "false")
+    with open(os.path.join(root, "r"), "w") as fh:
+        fh.write("root")
+    git(root, "add", "r")
+    git(root, "commit", "--quiet", "-m", "root")
+    git(root, "checkout", "--quiet", "-b", "left")
+    with open(os.path.join(root, "l"), "w") as fh:
+        fh.write("l")
+    git(root, "add", "l")
+    git(root, "commit", "--quiet", "-m", "left work")
+    left_tip = git(root, "rev-parse", "--short", "HEAD")
+    git(root, "checkout", "--quiet", "-b", "right", "main")
+    with open(os.path.join(root, "rt"), "w") as fh:
+        fh.write("r")
+    git(root, "add", "rt")
+    git(root, "commit", "--quiet", "-m", "right work")
+    right_tip = git(root, "rev-parse", "--short", "HEAD")
+    # The criss-cross: each side merges the other's tip. Neither merge commit
+    # is an ancestor of the other, and both `left work` and `right work` are
+    # ancestors of both — so both are merge-bases.
+    git(root, "merge", "--quiet", "--no-edit", "-m", "right merges left", left_tip)
+    git(root, "checkout", "--quiet", "left")
+    git(root, "merge", "--quiet", "--no-edit", "-m", "left merges right", right_tip)
+    # The default branch is one arm; the checkout under measurement is the other.
+    git(root, "update-ref", "refs/remotes/origin/main", "refs/heads/right")
+    git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    git(root, "checkout", "--quiet", "left")
+    head = git(root, "rev-parse", "--short", "HEAD")
+    bases = [
+        git(root, "rev-parse", "--short", sha)
+        for sha in git(root, "merge-base", "--all", "HEAD",
+                       "refs/remotes/origin/main").split()
+    ]
+    return head, bases
 
 
 STAMP = "test-stamp-6564"
@@ -498,6 +684,284 @@ class WriteTimeRefusal(unittest.TestCase):
             self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
             doc = ratchet.build(golden, reports, baseline)
             self.assertEqual(doc.get("measured_on_note"), note)
+
+
+
+class DegradedShaIsAdvisoryNotFatal(unittest.TestCase):
+    """`ensure_durable_measured_on("unknown")` must WARN and return.
+
+    `git_sha()`'s docstring commits to "unknown" as the honest degradation, and
+    #6569 pinned that `git_sha()` PRODUCES it. Nothing observed what the WRITER
+    does when handed it. Removing the `sha == "unknown"` early return leaves
+    every test green while turning an advisory warning into a hard SystemExit
+    on exactly the checkouts the design set out to tolerate: `merge-base
+    --is-ancestor unknown <ref>` fails, and the writer refuses to write
+    anything at all (Refs #6613).
+    """
+
+    def test_writer_warns_and_records_unknown_on_a_shallow_disconnected_checkout(self):
+        with tempfile.TemporaryDirectory() as root:
+            work = make_repo_shallow_disconnected(root)
+            with chdir(work):
+                # The three checks below pin the fixture's SHAPE. None of
+                # them is what makes the kill — measured: neutralise all three,
+                # degrade the fixture to the ref-less shape, and pristine stays
+                # green while the mutant still fails. What they do is keep this
+                # test observing the consequence it claims to (the SystemExit,
+                # not merely a missing warning), and make a later fixture edit
+                # fail HERE by name instead of somewhere further down.
+                #
+                # Shape 1 — the sha really degrades. Without this the writer
+                # never sees "unknown" at all.
+                self.assertEqual(
+                    ratchet.git_sha(), "unknown",
+                    "DEGENERATE FIXTURE: git_sha() found a merge-base, so the "
+                    "sha never degrades and the 'unknown' guard is never "
+                    "reached. The checkout must be shallow on BOTH sides "
+                    "(Refs #6613).")
+                # Shape 2 — a ref resolves. `ensure_durable_measured_on`
+                # returns early a SECOND time when `default_branch_ref()` is
+                # None; in that state the mutant is caught by the missing
+                # WARNING rather than by the SystemExit, and this fixture stops
+                # being distinguishable from the ref-less one.
+                self.assertTrue(
+                    has_ref(work, "refs/remotes/origin/main"),
+                    "DEGENERATE FIXTURE: no default-branch ref resolves, so "
+                    "ensure_durable_measured_on() returns at its `ref is None` "
+                    "check and the 'unknown' guard is unobserved")
+                self.assertIsNotNone(
+                    ratchet.default_branch_ref(),
+                    "DEGENERATE FIXTURE: default_branch_ref() is None, so the "
+                    "second early return carries this case, not the guard "
+                    "under test")
+                # Shape 3 — what the guard protects against is real here:
+                # the call it skips genuinely fails.
+                self.assertNotEqual(
+                    0,
+                    subprocess.call(
+                        ["git", "merge-base", "--is-ancestor", "unknown",
+                         "refs/remotes/origin/main"],
+                        cwd=work,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
+                    "premise broken: `merge-base --is-ancestor unknown <ref>` "
+                    "succeeded, so skipping it would cost nothing and this test "
+                    "would no longer be observing the SystemExit it exists for")
+
+                golden, reports, baseline = make_fixture(work)
+                os.environ["QUALITY_RUN_STAMP"] = STAMP
+                self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    try:
+                        doc = ratchet.build(golden, reports, baseline)
+                    except SystemExit as exc:
+                        self.fail(
+                            "the writer REFUSED a legitimately-degraded sha "
+                            "instead of warning: a shallow checkout is a "
+                            "supported state and 'unknown' is its documented "
+                            f"answer, not a fatal error ({exc})")
+                self.assertEqual(
+                    doc["measured_on"], "unknown",
+                    "the writer must record the honest 'unknown', never a sha "
+                    "it cannot prove durable")
+                self.assertIn(
+                    "WARNING", err.getvalue(),
+                    "the degradation was silent; it is advisory, so it must "
+                    "still be said out loud")
+
+    def test_ensure_durable_does_not_raise_on_unknown_directly(self):
+        """The unit statement of the above, with no writer around it."""
+        with tempfile.TemporaryDirectory() as root:
+            work = make_repo_shallow_disconnected(root)
+            with chdir(work):
+                self.assertIsNotNone(
+                    ratchet.default_branch_ref(),
+                    "DEGENERATE FIXTURE: with no ref the second early return "
+                    "carries this, not the guard under test")
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    ratchet.ensure_durable_measured_on("unknown")
+                self.assertIn("WARNING", err.getvalue())
+
+    def test_the_no_ref_shape_observes_only_the_weaker_consequence(self):
+        """Companion to the fixture above — and a correction (Refs #6613).
+
+        `test_degrades_to_unknown_when_no_default_branch_is_available` builds a
+        checkout with no default-branch ref at all. It degrades to "unknown"
+        too, and it DOES kill the `sha == "unknown"` mutant: with the guard
+        deleted, `ensure_durable_measured_on` falls through to its `ref is
+        None` return, the WARNING is never printed, and an assertion on that
+        warning fires.
+
+        An earlier draft of this file claimed the reverse — that the guard was
+        "dead code for that shape" and any kill built on it "would be vacuous".
+        That was prose asserting what no test observed, and measuring it showed
+        it false. It is recorded here rather than quietly deleted because this
+        file exists to fight exactly that habit.
+
+        What the ref-less shape genuinely cannot observe is the SystemExit: it
+        never reaches the `merge-base --is-ancestor unknown <ref>` call. That
+        is the user-visible half of the defect, and it is why the
+        shallow-disconnected fixture is worth its cost — not because it is the
+        only shape that can kill the mutant.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            git(root, "init", "--quiet", "--initial-branch=wip")
+            git(root, "config", "user.email", "t@example.com")
+            git(root, "config", "user.name", "t")
+            git(root, "config", "commit.gpgsign", "false")
+            with open(os.path.join(root, "a"), "w") as fh:
+                fh.write("1")
+            git(root, "add", "a")
+            git(root, "commit", "--quiet", "-m", "only")
+            self.assertEqual(ratchet.git_sha(), "unknown")
+            self.assertIsNone(
+                ratchet.default_branch_ref(),
+                "expected the degenerate shape to have no default-branch ref")
+
+
+class CandidateRefsMustPeelToACommit(unittest.TestCase):
+    """`default_branch_ref()` accepts a candidate only if it peels to a commit.
+
+    Every ref in every other fixture is already a commit, so `rev-parse --verify
+    <ref>` and `rev-parse --verify <ref>^{commit}` agree everywhere and the peel
+    does no work (Refs #6613).
+    """
+
+    def test_a_ref_that_resolves_but_is_not_a_commit_is_skipped(self):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            bad_ref, base, head = make_repo_non_commit_candidate_ref(root)
+
+            # Premise 1 — the bad candidate DOES resolve. If it did not, a
+            # peel-less check would reject it too and this test would pass
+            # either way.
+            self.assertTrue(
+                has_ref(root, bad_ref),
+                f"DEGENERATE FIXTURE: {bad_ref} does not resolve at all, so "
+                f"`rev-parse --verify <ref>` would reject it without the peel "
+                f"and the peel is unobserved")
+            # Premise 2 — and it does NOT peel to a commit. That gap is the
+            # entire behaviour under test.
+            self.assertFalse(
+                has_ref(root, bad_ref + "^{commit}"),
+                f"DEGENERATE FIXTURE: {bad_ref} peels to a commit, so both "
+                f"spellings accept it and this test observes nothing")
+            # Premise 3 — a real answer exists behind it, so a correct
+            # implementation has somewhere to fall through TO.
+            self.assertTrue(has_ref(root, "refs/remotes/origin/main"))
+
+            os.environ["QUALITY_BASE_REF"] = bad_ref
+            self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+
+            self.assertEqual(
+                ratchet.default_branch_ref(), "refs/remotes/origin/main",
+                f"accepted {bad_ref}, which resolves but is not a commit; the "
+                f"`^{{commit}}` peel is what rejects it")
+            got = ratchet.git_sha()
+            self.assertNotEqual(
+                got, "unknown",
+                "measured_on silently emptied: the candidate was accepted "
+                "without peeling, and merge-base against a non-commit fails")
+            self.assertNotEqual(got, head, "stamped the feature-branch HEAD")
+            self.assertEqual(got, base)
+
+
+class AnnotatedTagCandidateIsNotADistinguisher(unittest.TestCase):
+    """Control, and a correction to a plausible-sounding fixture idea.
+
+    An annotated tag looks like the obvious way to observe the `^{commit}`
+    peel, and it is NOT one: `rev-parse --verify refs/tags/v1` and `rev-parse
+    --verify refs/tags/v1^{commit}` both succeed, `default_branch_ref()`
+    returns the ref STRING either way, and `merge-base` / `merge-base
+    --is-ancestor` peel tags themselves. A kill built on an annotated tag would
+    be a false DEAD. This test exists so the next person does not have to
+    rediscover that (Refs #6613).
+    """
+
+    def test_both_spellings_accept_an_annotated_tag(self):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            tag_ref, tagged, head = make_repo_annotated_tag_default_ref(root)
+            self.assertTrue(has_ref(root, tag_ref))
+            self.assertTrue(
+                has_ref(root, tag_ref + "^{commit}"),
+                "an annotated tag peels to a commit; that is why it cannot "
+                "tell the two spellings apart")
+            self.assertNotEqual(
+                git(root, "rev-parse", tag_ref),
+                git(root, "rev-parse", tag_ref + "^{commit}"),
+                "premise broken: this tag is lightweight, not annotated — the "
+                "tag object and the commit must be different objects")
+
+            os.environ["QUALITY_BASE_REF"] = tag_ref
+            self.addCleanup(os.environ.pop, "QUALITY_BASE_REF", None)
+
+            self.assertEqual(ratchet.default_branch_ref(), tag_ref)
+            got = ratchet.git_sha()
+            self.assertNotEqual(got, head)
+            self.assertEqual(
+                got, tagged,
+                "merge-base peels the tag itself, so the resolved answer is "
+                "the tagged commit whether or not default_branch_ref() peeled")
+
+
+class MergeBasePicksOneCommit(unittest.TestCase):
+    """`git_sha()` must stamp A merge-base, not the whole set.
+
+    Criss-cross history has more than one. `merge-base --all` prints them all,
+    `rev-parse --short` cannot parse the multi-line result, and `git_sha()`
+    degrades to "unknown" — a provenance field quietly emptied on exactly the
+    repositories with the most complex history. Every other fixture here is
+    linear, so nothing observed it (Refs #6613).
+    """
+
+    def test_stamps_a_merge_base_when_history_has_several(self):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            head, bases = make_repo_criss_cross(root)
+
+            # Premise, asserted rather than assumed: this history really does
+            # have more than one merge-base. A later fixture edit that
+            # linearises it must fail HERE, loudly, not keep passing while
+            # observing nothing.
+            self.assertGreater(
+                len(bases), 1,
+                f"DEGENERATE FIXTURE: HEAD and the default-branch ref have "
+                f"{len(bases)} merge-base(s). With one, `merge-base` and "
+                f"`merge-base --all` print the same single line and this test "
+                f"cannot tell them apart (Refs #6613). Restore the criss-cross "
+                f"merges.")
+            self.assertTrue(
+                has_ref(root, "refs/remotes/origin/main"),
+                "premise broken: no default-branch ref to take a merge-base with")
+
+            got = ratchet.git_sha()
+
+            self.assertNotEqual(
+                got, "unknown",
+                "measured_on was silently emptied on a criss-cross history: "
+                "more than one merge-base was collected and `rev-parse "
+                "--short` could not parse the multi-line result")
+            self.assertNotEqual(got, head, "stamped the feature-branch HEAD")
+            self.assertIn(
+                got, bases,
+                f"stamped {got!r}, which is not one of this history's "
+                f"merge-bases {bases}")
+
+    def test_a_linear_history_cannot_observe_the_multi_base_case(self):
+        """Control: prove the premise above is load-bearing.
+
+        `make_repo`'s shape — every other fixture's shape — has exactly one
+        merge-base, so `merge-base` and `merge-base --all` are the same call
+        there. This is why the mutant survived.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            base, _head, _tip = make_repo(root)
+            bases = git(root, "merge-base", "--all", "HEAD",
+                        "refs/remotes/origin/main").split()
+            self.assertEqual(
+                len(bases), 1,
+                "expected the linear shape to have exactly one merge-base")
+            self.assertEqual(git(root, "rev-parse", "--short", bases[0]), base)
 
 
 if __name__ == "__main__":
