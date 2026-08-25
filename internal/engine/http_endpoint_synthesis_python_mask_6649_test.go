@@ -158,12 +158,14 @@ func TestPythonMaskInertRegions_PreservesLineStructure_6649(t *testing.T) {
 			// line terminator of EITHER kind any more: the CR of a CRLF is the
 			// byte it stops at. This row is therefore caller-A coverage of the
 			// blanking path only — it can no longer observe blank()'s preserve
-			// set, and it kills nothing. blankcr stays dead through caller C.
+			// set. It still fails under the INVERTED predicate (blank only the
+			// terminators), but every row here does, so it is load-bearing
+			// against nothing. blankcr stays dead through caller C.
 			name:       "commentCRLF",
 			caller:     "A: `#`-comment loop",
 			src:        "import os\r\n# app.include_router(r, prefix='/ghost')\r\napp = FastAPI()\r\n",
 			mustVanish: "include_router",
-			kills:      "kills nothing since #6648; caller-A coverage of the blanking path only",
+			kills:      "cannot observe the preserve set since #6648; dies only under the inverted predicate, which every row here kills — load-bearing against nothing",
 		},
 		{
 			// The lone-CR shape, kept because it is the one #6648 turned. The
@@ -177,7 +179,7 @@ func TestPythonMaskInertRegions_PreservesLineStructure_6649(t *testing.T) {
 			caller:     "A: `#`-comment loop",
 			src:        "import os\n# first half\rapp = FastAPI()\n",
 			mustVanish: "first half",
-			kills:      "kills nothing since #6648; caller-A coverage of the blanking path only",
+			kills:      "cannot observe the preserve set since #6648; dies only under the inverted predicate, which every row here kills — load-bearing against nothing",
 		},
 		{
 			// The #6649 witness, and the ONLY shape in this table that can

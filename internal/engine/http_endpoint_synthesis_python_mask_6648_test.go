@@ -51,6 +51,12 @@ import (
 //	                        content. On a lone CR this is behaviourally the
 //	                        PRISTINE code, which is why it is the family that
 //	                        matters here.
+//	M4  any control byte    `for ; i < len(b) && b[i] >= 0x20; i++` — the
+//	                        PERMISSIVE direction, and the only one here that
+//	                        MINTS rather than hides. It reads naturally as
+//	                        "stop at a line terminator" but also stops at a
+//	                        TAB, ending a comment early and handing the rest
+//	                        of a commented-out line to the mount scan.
 //
 // Measured on 65c5bef10, `go vet` 0 throughout, scored on the exit code of the
 // FULL package (no `-run` filter):
@@ -60,15 +66,25 @@ import (
 //	M1         DEAD                                                  DEAD
 //	M2         DEAD                                                  DEAD
 //	M3         SURVIVOR                                              DEAD
+//	M4         SURVIVOR                                              DEAD
 //
 // The prediction that M1 would be a survivor was WRONG and is recorded here
 // rather than quietly corrected: M1 and M2 both let the comment run past a
 // `\n`, which is the OVER-masking direction, and that was already dead under
-// TestSynth_FastAPI_MountedRouter_AbsentWhenUnresolvable_6414. M3 is the only
-// family this file kills at package level — and it is the one that matters,
-// because on a lone `\r` M3 IS the old behaviour. The other thing this file
+// TestSynth_FastAPI_MountedRouter_AbsentWhenUnresolvable_6414. M3 and M4 are
+// the families this file kills at package level. The other thing this file
 // changes is not a mutant at all: the pristine terminator itself now fails
 // here, which is the bug.
+//
+// M3 and M4 are the two HALVES of the claim, and they were not found together.
+// M3 is "a `\r` DOES end the comment" — the false negative this issue reports.
+// M4 is "and nothing else does", the half the first round of this file left
+// entirely unobserved: the doc comment asserted the terminator set was exactly
+// {`\n`, `\r`} while every fixture here only ever exercised the first half.
+// M4 is the strictly worse direction — it MINTS a mount from a commented-out
+// line rather than dropping a real one — which is the recurring shape #6659
+// records: prose asserts what no test observes, and the permissive direction
+// is the one to mutate first. Found by independent review of PR #6667.
 //
 // #6649's three blank() families (blankcr, blanknl, blankboth) were re-scored
 // after the fix and all three are still DEAD — see the note at the end of this
@@ -89,6 +105,10 @@ import (
 //	C4 dropped: nothing live after the `\r`    SURV      kills  kills  SURV   PASS
 //	C5 dropped: no second `\n`-ended comment   kills     SURV   kills  kills  PASS
 //
+// C6, added after review, is scored on its own: dropping the tab from the
+// `/ghost` line leaves M4 a SURVIVOR (exit 0) while every other family is
+// unaffected, since no other family stops at a sub-0x20 byte.
+//
 // Read off that matrix, each verdict naming the family it is scored against
 // because an unqualified "load-bearing" is an incomplete claim (#6632):
 //
@@ -104,6 +124,9 @@ import (
 //	    package level M1 was already dead via #6414, so C5 adds no kill there.
 //	    It is kept because a fixture whose only comment ends in `\r` cannot tell
 //	    a comment loop that stops at `\r` from one that stops at both.
+//	C6  load-bearing against M4 only, and the only clause here guarding the
+//	    permissive direction. It is also the only one whose kill runs through
+//	    the direction check (an unexpected mount) rather than a missing one.
 //
 // Well-formed CRLF is identical under every family above, because the `\r` is
 // immediately followed by the `\n` the loop already stopped on. A `\r\n`
@@ -129,13 +152,20 @@ import (
 //	/people  sits after a comment terminated by a plain `\n` — live pristine
 //	         and under M3, masked away under M1 and M2, whose comment loops
 //	         run past the `\n` and eat the rest of the file. Kills M1 and M2.
+//	/ghost   is COMMENTED OUT behind a TAB, and must never be synthesised at
+//	         all. It is the permissive direction: a loop that stops at any
+//	         byte below 0x20 — a plausible reading of "stop at a line
+//	         terminator" — ends the comment at the tab and mints a mount that
+//	         does not exist. Kills M4, via the direction check at the end of
+//	         the test rather than via a mount-present assertion.
 const crFixture = "from fastapi import FastAPI\n" +
 	"from app.api import markets, users\n" +
 	"\n" +
 	"app = FastAPI()\n" +
 	"# mount the market router\rapp.include_router(markets.router, prefix=\"/network\")\n" +
 	"# and the people one\n" +
-	"app.include_router(users.router, prefix=\"/people\")\n"
+	"app.include_router(users.router, prefix=\"/people\")\n" +
+	"# TODO\tapp.include_router(ghost.router, prefix=\"/ghost\")\n"
 
 // crlfControl is crFixture with the lone `\r` replaced by a well-formed `\r\n`.
 // Both mounts are live under EVERY behaviour scored above except M2, so this
@@ -253,6 +283,39 @@ func TestPythonMaskInertRegions_LoneCREndsComment_6648(t *testing.T) {
 			"that runs past `\\n` swallows nothing observable. VACUOUS for M1 and M2.")
 	}
 
+	// C6, LOAD-BEARING against M4 — the PERMISSIVE direction, and the only
+	// clause here guarding against a mutant that MINTS rather than hides. The
+	// doc comment on pythonMaskInertRegions claims the comment terminator set
+	// is exactly {`\n`, `\r`}; nothing observed the "and nothing else" half
+	// until this clause. A loop written `b[i] >= 0x20` reads naturally as
+	// "stop at a line terminator" and also stops at a TAB, ending the comment
+	// early and handing the rest of a commented-out line to the mount scan.
+	// That is strictly worse than the false negative this issue fixes: a
+	// phantom endpoint is asserted, not merely a real one dropped.
+	ctrl := -1
+	for k := 0; k < len(src); k++ {
+		if src[k] < 0x20 && src[k] != '\n' && src[k] != '\r' {
+			ctrl = k
+			break
+		}
+	}
+	if ctrl < 0 {
+		t.Fatalf("#6648 premise broken: the fixture holds no sub-0x20 byte other than `\n` " +
+			"and `\r`, so a comment loop that stops at ANY control byte behaves exactly like " +
+			"the correct one here and SURVIVES. This test is VACUOUS for M4.")
+	}
+	ctrlEOL := strings.IndexByte(src[ctrl:], '\n')
+	if ctrlEOL < 0 {
+		ctrlEOL = len(src)
+	} else {
+		ctrlEOL += ctrl
+	}
+	if !strings.Contains(src[ctrl:ctrlEOL], "include_router") {
+		t.Fatalf("#6648 premise broken: nothing that looks like a mount follows the control "+
+			"byte at %d (%q), so a comment loop stopping there unmasks nothing observable "+
+			"and M4 SURVIVES.", ctrl, src[ctrl:ctrlEOL])
+	}
+
 	// --- claim, at the masking layer ---------------------------------------
 	masked := pythonMaskInertRegions(src)
 
@@ -302,13 +365,18 @@ func TestPythonMaskInertRegions_LoneCREndsComment_6648(t *testing.T) {
 			"/people", keysOfMounts(mounts))
 	}
 
-	// Direction check. The fix removes masking, so it can only stop discarding
-	// real code — it must never MINT a mount. Nothing in this file mounts
-	// anything other than these two prefixes.
+	// Direction check, and the assertion that kills M4. The fix removes
+	// masking, so it can only stop discarding real code — it must never MINT a
+	// mount. `/ghost` is commented out behind a tab and exists precisely to be
+	// absent: a comment loop that stops at any sub-0x20 byte ends the comment
+	// at that tab and synthesises it.
 	for prefix := range mounts {
 		if prefix != "/network" && prefix != "/people" {
-			t.Errorf("#6648: unexpected mount %q synthesised. Less masking must never invent an "+
-				"endpoint; that asymmetry is why this branch was decidable on its own.", prefix)
+			t.Errorf("#6648: unexpected mount %q synthesised. The comment terminator set is "+
+				"exactly {`\\n`, `\\r`} and NOTHING else may end a comment — a loop that also "+
+				"stops at a tab or another sub-0x20 byte hands a commented-out mount to the "+
+				"scan and MINTS an endpoint that does not exist. Less masking must never "+
+				"invent one; that asymmetry is why this branch was decidable on its own.", prefix)
 		}
 	}
 }
@@ -342,7 +410,9 @@ func TestPythonMaskInertRegions_WellFormedCRLFControl_6648(t *testing.T) {
 		strings.Repeat(" ", len("# mount the market router")) +
 		"\r\napp.include_router(markets.router, prefix=\"/network\")\n" +
 		strings.Repeat(" ", len("# and the people one")) +
-		"\napp.include_router(users.router, prefix=\"/people\")\n"
+		"\napp.include_router(users.router, prefix=\"/people\")\n" +
+		strings.Repeat(" ", len("# TODO\tapp.include_router(ghost.router, prefix=\"/ghost\")")) +
+		"\n"
 	if masked != want {
 		t.Errorf("#6648 control: the well-formed CRLF shape MOVED.\n got  %q\n want %q\n"+
 			"A `\\r` immediately followed by `\\n` ends the comment under both the old and the "+
