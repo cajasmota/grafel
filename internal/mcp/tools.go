@@ -662,12 +662,27 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	// min_score filtering. Used by the "always-1" fallback (#2554b) to scope
 	// the PageRank-fallback entity to the repo most textually similar to the
 	// query, preventing cross-context entity bleed.
+	//
+	// #6314: the per-repo candidate pool is derived from maxResults rather than
+	// hardcoded to 10. The cull runs BEFORE fusion, de-noise, kind filtering,
+	// re-ranking and min_score, so anything it drops is ABSENT from the answer
+	// — not low-ranked — and no later stage or caller argument can recover it.
+	// With a fixed 10, a repo holding eleven entities that share a query token
+	// (file stem is the heaviest indexed field, scoring.go:23-26) could hide an
+	// entity whose NAME is exactly the query, however large max_results was.
+	//
+	// Bound: maxResults is already clamped to [1,200] above, so the pre-filter
+	// slice grows to at most 200 candidates per repo instead of 10 — the same
+	// ceiling the caller-visible contract already imposes, with no new
+	// constant introduced. max_results still gates the RETURNED set at the end
+	// of the pipeline; this only widens what is eligible to be ranked.
+	perRepoCull := maxResults
 	all := []scored{}
 	bm25HitsByRepo := make(map[*LoadedRepo]int, len(repos))
 	var qVec []float32
 	var qHave bool
 	for _, r := range repos {
-		bm25Hits := r.getBM25().Search(question, 10)
+		bm25Hits := r.getBM25().Search(question, perRepoCull)
 		bm25HitsByRepo[r] = len(bm25Hits)
 		if r.Semantic != nil && r.Semantic.Len() > 0 {
 			if !qHave {
@@ -678,7 +693,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 				}
 			}
 			if qHave && len(qVec) == r.Semantic.Dims {
-				semIDs := r.Semantic.Search(qVec, 10)
+				semIDs := r.Semantic.Search(qVec, perRepoCull)
 				semHits := make([]Hit, 0, len(semIDs))
 				for _, s := range semIDs {
 					if e, ok := r.getByIDOne(s.ID); ok {
