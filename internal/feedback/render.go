@@ -104,7 +104,7 @@ func Render(w io.Writer, r *Report) error {
 
 	// Section 2 — Orphan Rate
 	fmt.Fprintf(w, "## 2. Orphan Rate\n\n")
-	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions). The table below counts only orphans of kinds that carry a semantic edge SOMEWHERE in this group; kinds where no entity does are listed separately under **Expected/terminal orphans**, so a kind reading 0 here may still be entirely unwired there. Unwired STORAGE LEAVES (`field`, `column`, `property`) are excluded from the count too and listed under **Terminal-by-subtype leaves** — they declare state and nothing else, so they have nothing to link.\n\n")
+	fmt.Fprintf(w, "An entity is orphan when it has no semantic edge in EITHER direction (CONTAINS/DECLARES excluded, in both directions). The table below counts only orphans of kinds that carry a semantic edge SOMEWHERE in this group; kinds where no entity does are listed separately under **Expected/terminal orphans**, so a kind reading 0 here may still be entirely unwired there. Unwired STORAGE LEAVES (`field`, `column`, `property`) are excluded from the count too — they declare state and nothing else, so they have nothing to link. Where they are listed depends on their kind: under **Terminal-by-subtype leaves** when the kind carries semantic edges elsewhere, and under **Expected/terminal orphans** when it does not, because then the whole kind is terminal.\n\n")
 	if len(r.OrphanByKind) == 0 {
 		fmt.Fprintf(w, "_No entity kind with >= 10 entities found._\n\n")
 	} else {
@@ -156,7 +156,7 @@ func Render(w io.Writer, r *Report) error {
 		// participated, OR-ed across every stored report and never expiring —
 		// exactly the kinds listed below would be libelled by it.
 		if len(r.OrphanLeafByKind) > 0 {
-			fmt.Fprintf(w, "**Terminal-by-subtype leaves** — unwired entities whose subtype is a storage leaf (`field`, `column`, `property`) inside a kind that DOES carry semantic edges elsewhere. A leaf declares state and nothing else, so its only edge is the structural CONTAINS this metric excludes; it is not an edge gap. Excluded from the orphan defect count above, and still counted in that table's `Total`.\n\n")
+			fmt.Fprintf(w, "**Terminal-by-subtype leaves** — unwired entities whose subtype is a storage leaf (`field`, `column`, `property`) inside a kind that DOES carry semantic edges elsewhere. A leaf declares state and nothing else, so its only edge is the structural CONTAINS this metric excludes; it is not an edge gap. Excluded from the orphan defect count above, and still counted in that table's `Total`. Same unit, scope and floor as that table — unique entity IDs of the kind, in every language, published only once the kind has >= 10 of them, so a kind under the floor is suppressed here too.\n\n")
 			for _, kind := range sortedKindStatsKeys(r.OrphanLeafByKind) {
 				lks := r.OrphanLeafByKind[kind]
 				fmt.Fprintf(w, "- `%s`: %d of %d (%.1f%%)\n", kind, lks.OrphanCount, lks.Total, lks.OrphanPct)

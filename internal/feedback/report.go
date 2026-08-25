@@ -773,17 +773,29 @@ func datastoreEmitSiteKey(language, subtype string) string {
 // declare state and nothing else, so they have nothing to link and their being
 // unwired is not an edge gap (#6599).
 //
-// This is the same judgement nonClassSubtypes already encodes for the
-// field-extraction denominator, applied to the orphan bucket — and it is a
-// STRICT SUBSET of it, deliberately. nonClassSubtypes also exempts populations
-// that are not leaves and whose unwired state IS signal, and copying it whole
-// would excuse them:
+// It is the same judgement nonClassSubtypes already encodes for the
+// field-extraction denominator, re-asked for the orphan bucket — but the two
+// sets are NOT in a subset relation, and saying so precisely matters because
+// the difference is where the judgement is actually being made. Their
+// INTERSECTION ({"field", "column"}) is a strict subset of nonClassSubtypes;
+// "property" is ADDED here deliberately, and is in neither set today —
+// nonClassSubtypes is keyed on class-like KINDS, and a VB.NET property is
+// SCOPE.Operation, one kind over, so the question never arose there.
+//
+// In the other direction, nonClassSubtypes exempts populations that are not
+// leaves and whose unwired state IS signal. Copying it whole would excuse them:
 //
 //   - "file" — a file carrier is a CONTAINER, and an unwired one is a real
 //     finding (#6597 measured 51 of 274 orphaned, 16.8% of that kind's pool).
-//   - "import" — an import placeholder that carries nothing is the #6597
-//     mechanism-B defect (a C# `using` carrier escaping PruneImportPlaceholders);
-//     exempting it would hide the defect instead of fixing it.
+//   - "import" — an import placeholder is a REFERENCE to a module, and a
+//     reference that references nothing is a defect, not a leaf: it exists
+//     solely to carry an IMPORTS edge, so an unwired one means the edge was
+//     never built or the placeholder was never pruned. (It is NOT true that an
+//     entry here would have hidden #6597's mechanism-B carriers: those were
+//     SCOPE.Component with Subtype UNSET — which is precisely why the
+//     Subtype == "import" prune predicate skipped them, considered=0 — so no
+//     subtype-keyed rule could have reached them either way. #6601 fixed the
+//     emit site, so the exclusion bites from now on rather than retroactively.)
 //   - "enum" / "const" / "delegate" — exempt from the FIELD metric because they
 //     own no members, which is a different question from whether they can be
 //     referenced. They can: an enum with no inbound reference is a genuine gap.
@@ -794,6 +806,13 @@ func datastoreEmitSiteKey(language, subtype string) string {
 //     (BuildSchemaFieldStructuralRef). Its only edge is the structural
 //     CONTAINS the orphan definition excludes by design.
 //   - "column" — the SQL analogue of "field" (sql.go:358), same shape (#6543).
+//     Included BY ANALOGY, not by measurement: columns appear in neither #6583
+//     nor #6597, so unlike "field" and "property" there is no corpus number
+//     behind this entry. It is expected to be inert in practice — a column
+//     population is normally wholly terminal, so the per-KIND test above
+//     catches it first and this entry is never reached — and it is here so a
+//     mixed SQL kind behaves like the mixed schema kinds that WERE measured.
+//     If a corpus ever shows columns carrying semantic edges, re-measure it.
 //   - "property" — VB.NET/C# emit properties as SCOPE.Operation
 //     (vbnet/extractor.go:253-256), i.e. the field-leaf shape one KIND over.
 //     Measured (#6583, 4,304 properties): auto-properties 94.3% orphaned, full
@@ -805,7 +824,13 @@ func datastoreEmitSiteKey(language, subtype string) string {
 //
 // The set is deliberately small. An over-broad entry here makes the orphan rate
 // look healthy by excusing entities that genuinely should carry edges, which is
-// strictly worse than the over-reporting #6599 exists to fix.
+// strictly worse than the over-reporting #6599 exists to fix — so the set is
+// asserted MEMBER BY MEMBER, and by length, in
+// TestTerminalLeafSubtypesIsExactlyTheseThree_6599. A fixture loop over a
+// hand-listed set of non-leaf subtypes cannot do that job: it can only fail on
+// the subtypes someone thought to list, and "enum", "const", "variable" and
+// "parameter" are all real emitted subtypes that such a list missed. Widening
+// this set must be a deliberate edit to that test.
 var terminalLeafSubtypes = map[string]bool{
 	"field":    true,
 	"column":   true,

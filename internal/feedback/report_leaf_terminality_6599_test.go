@@ -245,7 +245,7 @@ func TestRender_LeafCaptionIsAccurateAndNotATable_6599(t *testing.T) {
 	}
 	out := sb.String()
 
-	const wantLeafClause = "Unwired STORAGE LEAVES (`field`, `column`, `property`) are excluded from the count too and listed under **Terminal-by-subtype leaves** — they declare state and nothing else, so they have nothing to link."
+	const wantLeafClause = "Unwired STORAGE LEAVES (`field`, `column`, `property`) are excluded from the count too — they declare state and nothing else, so they have nothing to link. Where they are listed depends on their kind: under **Terminal-by-subtype leaves** when the kind carries semantic edges elsewhere, and under **Expected/terminal orphans** when it does not, because then the whole kind is terminal."
 	if !strings.Contains(out, wantLeafClause) {
 		t.Errorf("Section-2 legend does not disclose the leaf exclusion, so the defect table's own caption over-promises what it counts.\nwant substring: %q", wantLeafClause)
 	}
@@ -254,7 +254,7 @@ func TestRender_LeafCaptionIsAccurateAndNotATable_6599(t *testing.T) {
 	// legend clause above already contains it, so the whole block could be
 	// renamed or lose its unit statement with the package still green (this
 	// test's first version did exactly that, and mutant M5 survived it).
-	const wantLeafCaption = "**Terminal-by-subtype leaves** — unwired entities whose subtype is a storage leaf (`field`, `column`, `property`) inside a kind that DOES carry semantic edges elsewhere. A leaf declares state and nothing else, so its only edge is the structural CONTAINS this metric excludes; it is not an edge gap. Excluded from the orphan defect count above, and still counted in that table's `Total`."
+	const wantLeafCaption = "**Terminal-by-subtype leaves** — unwired entities whose subtype is a storage leaf (`field`, `column`, `property`) inside a kind that DOES carry semantic edges elsewhere. A leaf declares state and nothing else, so its only edge is the structural CONTAINS this metric excludes; it is not an edge gap. Excluded from the orphan defect count above, and still counted in that table's `Total`. Same unit, scope and floor as that table — unique entity IDs of the kind, in every language, published only once the kind has >= 10 of them, so a kind under the floor is suppressed here too."
 	if !strings.Contains(out, wantLeafCaption) {
 		t.Fatalf("the leaf list is missing or its caption is stale — it must name the unit (UNWIRED entities only), the scope (a participating kind) and its relation to the table above.\nwant substring: %q", wantLeafCaption)
 	}
@@ -274,5 +274,51 @@ func TestRender_LeafCaptionIsAccurateAndNotATable_6599(t *testing.T) {
 	// And the two real headers must both still be exactly what history matches.
 	if !strings.Contains(out, defectTableHeader) {
 		t.Errorf("defect table header changed — that is the one-way join key %q", defectTableHeader)
+	}
+}
+
+// TestTerminalLeafSubtypesIsExactlyTheseThree_6599 asserts the SET, not a
+// sample of the behaviour it produces.
+//
+// TestNonLeafSubtypesAreNotExempt_6599 above is a fixture loop over a
+// hand-written list of non-leaf subtypes, and a hand-written list can only fail
+// on the entries someone thought to write down. Review scored three permissive
+// mutants against it that the whole package passed: adding "enum" and "const"
+// (which this file's own doc comment argues OUT, with nothing observing that
+// argument), adding "variable"/"parameter"/"constant", and swapping the exact
+// map lookup for a HasPrefix scan over the set. Every one of those widens the
+// exemption — the dangerous direction, because an over-broad exemption makes
+// the orphan rate look healthy by excusing entities that genuinely should carry
+// edges — and every one was invisible.
+//
+// Exact membership plus length closes that: any widening, by a new entry or by
+// a looser matcher, has to be a deliberate edit here. The length check is not
+// redundant with the membership check — membership alone passes on a superset.
+func TestTerminalLeafSubtypesIsExactlyTheseThree_6599(t *testing.T) {
+	want := map[string]bool{"field": true, "column": true, "property": true}
+
+	if len(terminalLeafSubtypes) != len(want) {
+		t.Errorf("terminalLeafSubtypes has %d entries, want exactly %d — the exemption was widened without a decision. Membership alone cannot catch this: it passes on any superset. Got %v", len(terminalLeafSubtypes), len(want), terminalLeafSubtypes)
+	}
+	for subtype := range want {
+		if !terminalLeafSubtypes[subtype] {
+			t.Errorf("terminalLeafSubtypes is missing %q — a measured leaf population is back in the defect bucket", subtype)
+		}
+	}
+	for subtype := range terminalLeafSubtypes {
+		if !want[subtype] {
+			t.Errorf("terminalLeafSubtypes contains %q, which is not one of the three storage leaves. Adding a subtype here EXCUSES its unwired entities from the orphan defect count, so it needs a corpus measurement and a doc-comment entry, not just a map key.", subtype)
+		}
+	}
+
+	// The lookup must be exact-match, not a prefix/substring scan: "const" is a
+	// prefix of nothing here but "property" is a prefix of nothing either, and
+	// a HasPrefix matcher would silently admit e.g. "fieldset" or "columnar".
+	// Probed through Generate so this observes the call site, not a helper.
+	for _, near := range []string{"fieldset", "columnar", "properties", "propertygroup", "field_ref"} {
+		r := leafFixture(t, near, 12, 0)
+		if got := r.OrphanByKind["SCOPE.Operation"].OrphanCount; got != 12 {
+			t.Errorf("subtype %q: defect orphans = %d, want 12 — the leaf lookup is matching on more than exact equality", near, got)
+		}
 	}
 }
