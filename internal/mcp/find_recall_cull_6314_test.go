@@ -12,10 +12,13 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/embed"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -120,5 +123,183 @@ func TestFindRecall_CullTracksMaxResults_6314(t *testing.T) {
 	tight := call(3)
 	if n := strings.Count(tight, `"name"`); n > 3 {
 		t.Errorf("max_results=3 must gate the returned set; got %d rows:\n%s", n, tight)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The SEMANTIC half of the same cull (#6314).
+//
+// tools.go caps the vector index identically to BM25. A recall test that only
+// crowds the BM25 index leaves that second call site free to be reverted to a
+// hard 10 by a later edit with the suite still green — so the semantic side is
+// crowded here on its own terms.
+// ---------------------------------------------------------------------------
+
+// fixedVecBackend is a query embedder that always returns the same vector.
+// The fixture controls semantic RANK entirely through the stored entity
+// vectors (see buildSemanticCrowdedRepo), so the query side only has to be
+// deterministic and dimensionally compatible.
+type fixedVecBackend struct{ vec []float32 }
+
+func (f *fixedVecBackend) Dims() int    { return len(f.vec) }
+func (f *fixedVecBackend) Name() string { return "fixedvec-test" }
+func (f *fixedVecBackend) Close() error { return nil }
+func (f *fixedVecBackend) Embed(_ context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i := range texts {
+		out[i] = append([]float32(nil), f.vec...)
+	}
+	return out, nil
+}
+
+// installQueryEmbedder points the package-level query embedder at be for the
+// duration of the test.
+//
+// This deliberately does NOT call t.Parallel: Go defers every top-level
+// parallel test until the serial ones have finished, so a serial test owns the
+// global outright and no concurrent reader can observe the swap.
+func installQueryEmbedder(t *testing.T, be embed.Backend) {
+	t.Helper()
+	qe := &queryEmbedder{backend: be}
+	qe.once.Do(func() {}) // burn the once so get() never re-initialises from config
+	prev := globalQueryEmbedder
+	globalQueryEmbedder = qe
+	t.Cleanup(func() { globalQueryEmbedder = prev })
+}
+
+// buildSemanticCrowdedRepo builds a repo in which the target entity is
+// invisible to BM25 (its name, path and docstring share no token with the
+// query) and reachable ONLY through the vector index, where `decoys` entities
+// out-rank it. Vectors are 2-D unit vectors; cosine against the query vector
+// [1,0] decreases monotonically down the list, so the target sits at semantic
+// rank decoys+1.
+func buildSemanticCrowdedRepo(t *testing.T, decoys int) (*Server, string) {
+	t.Helper()
+	ents := make([]graph.Entity, 0, decoys+1)
+	for i := 0; i < decoys; i++ {
+		ents = append(ents, graph.Entity{
+			ID:         fmt.Sprintf("sdecoy_%02d", i),
+			Name:       fmt.Sprintf("CheckoutStepPanel%02d", i),
+			Kind:       "SCOPE.Function",
+			SourceFile: fmt.Sprintf("src/step%02d/checkout.ts", i),
+			StartLine:  10 + i,
+		})
+	}
+	const targetID = "starget_promo"
+	ents = append(ents, graph.Entity{
+		ID:         targetID,
+		Name:       "PromoBanner",
+		Kind:       "SCOPE.Function",
+		SourceFile: "src/promo/banner.ts",
+		StartLine:  7,
+	})
+	doc := &graph.Document{Repo: "shop", Entities: ents}
+	srv := newTestServer(t, doc)
+
+	// Stored vectors: angle grows with list position, so cosine against [1,0]
+	// falls monotonically and the target (last) is the weakest semantic match
+	// that still scores above zero.
+	store := embed.NewStore(2, "fixedvec-test")
+	for i, e := range ents {
+		theta := float64(i+1) * 0.05 // stays well inside the first quadrant
+		store.Put(embed.Record{
+			ID:     e.ID,
+			Hash:   e.ID,
+			Vector: []float32{float32(math.Cos(theta)), float32(math.Sin(theta))},
+		})
+	}
+	srv.State.groups["test"].Repos["shop"].Semantic = store
+	installQueryEmbedder(t, &fixedVecBackend{vec: []float32{1, 0}})
+	return srv, targetID
+}
+
+// TestSemanticRecall_VectorHitSurvivesCrowdedRepo_6314 pins the SECOND call
+// site changed for #6314: the vector index is culled per repo before RRF
+// fusion, so an entity at vector rank 11+ was absent from the answer even
+// though BM25 never had a chance to surface it either.
+func TestSemanticRecall_VectorHitSurvivesCrowdedRepo_6314(t *testing.T) {
+	const decoys = 14
+	srv, targetID := buildSemanticCrowdedRepo(t, decoys)
+
+	lr := srv.State.groups["test"].Repos["shop"]
+
+	// Fixture validity 1: the target must be invisible to BM25, so that only
+	// the semantic cull can decide whether it reaches the answer.
+	for _, h := range lr.getBM25().Search("checkout", 0) {
+		if h.Entity != nil && h.Entity.ID == targetID {
+			t.Fatalf("fixture invalid: target is reachable via BM25; the semantic cull would not be the deciding stage")
+		}
+	}
+	// Fixture validity 2: the target must rank past 10 in the vector index.
+	rank := -1
+	for i, h := range lr.Semantic.Search([]float32{1, 0}, 0) {
+		if h.ID == targetID {
+			rank = i + 1
+			break
+		}
+	}
+	if rank <= 10 {
+		t.Fatalf("fixture invalid: target ranks %d in the vector index (<=10), so a top-10 cull would not drop it", rank)
+	}
+	t.Logf("target ranks %d in the vector index and is absent from BM25", rank)
+
+	res := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
+		"group":     "test",
+		"question":  "checkout",
+		"full":      true,
+		"min_score": 0.0,
+	})
+
+	if !strings.Contains(res, `"PromoBanner"`) {
+		t.Errorf("entity reachable only through the vector index at rank %d is ABSENT from results\n"+
+			"(%d entities out-rank it semantically); got:\n%s", rank, decoys, res)
+	}
+}
+
+// TestFindRecall_PoolNeverExceedsCallerCeiling_6314 pins the memory bound in
+// the widening direction, using the ceiling the caller-visible contract
+// already defines (max_results is clamped to 200 at tools.go:602-607) rather
+// than any invented number.
+//
+// It is observable without reaching into internals: `truncation_note` is
+// emitted iff the pre-cap candidate pool exceeded max_results. With the pool
+// derived from the clamped max_results, a repo far larger than the ceiling
+// still yields at most `ceiling` candidates and therefore no note. A pool
+// widened beyond the ceiling (e.g. maxResults*4) admits more candidates than
+// can be returned, and the note appears.
+func TestFindRecall_PoolNeverExceedsCallerCeiling_6314(t *testing.T) {
+	const ceiling = 200 // tools.go:606 — the documented max_results ceiling
+	const corpus = 260  // comfortably larger than the ceiling
+	ents := make([]graph.Entity, 0, corpus)
+	for i := 0; i < corpus; i++ {
+		ents = append(ents, graph.Entity{
+			ID:         fmt.Sprintf("wide_%03d", i),
+			Name:       fmt.Sprintf("CheckoutStepPanel%03d", i),
+			Kind:       "SCOPE.Function",
+			SourceFile: fmt.Sprintf("src/step%03d/checkout.ts", i),
+			StartLine:  1 + i,
+		})
+	}
+	srv := newTestServer(t, &graph.Document{Repo: "shop", Entities: ents})
+
+	// Ask for more than the ceiling; the clamp must bound the POOL, not just
+	// the returned rows.
+	res := callEndpointToolText(t, srv.handleQueryGraph, map[string]any{
+		"group":       "test",
+		"question":    "checkout",
+		"full":        true,
+		"min_score":   0.0,
+		"max_results": 1000,
+	})
+
+	// The response body is 200 rows wide; report the note, not the payload.
+	if i := strings.Index(res, "truncation_note"); i >= 0 {
+		t.Errorf("candidate pool exceeded the caller-visible ceiling of %d in a %d-entity repo:\n"+
+			"a truncation_note means more candidates were admitted than max_results can return, "+
+			"which is unbounded pre-filter growth in a package whose RSS is already contended.\nnote: %s",
+			ceiling, corpus, res[i:])
+	}
+	if n := strings.Count(res, `"name"`); n > ceiling {
+		t.Errorf("returned %d rows, above the max_results ceiling of %d", n, ceiling)
 	}
 }
