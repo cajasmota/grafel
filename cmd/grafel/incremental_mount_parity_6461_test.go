@@ -134,8 +134,10 @@
 // the DEFAULT suite (GRAFEL_TEST_6461 unset).
 //
 // What GRAFEL_TEST_6461 still gates is the THREE Django diagnostics, and they
-// are a DIFFERENT cause — the cross-extractor residual tracked as #6529, not
-// this file's SourceFile-prune story. See mp6461Cause.
+// are DIFFERENT causes — plural — neither of which is this file's
+// SourceFile-prune story: the cross-extractor residual (#6529) accounts for
+// only 3 of the 6 divergences, and #6529 itself disowns the other 3 as an
+// unfiled scoped-resolver binding difference. See mp6461Cause.
 //
 // Refs #6461, #6414, #6415, #6385, #6129, #6482, #6529.
 package main
@@ -361,17 +363,36 @@ const mp6461Env = "GRAFEL_TEST_6461"
 // had anything to do with its failure. The skip line still read plausibly,
 // which is exactly why the mis-attribution survived review. That test is now
 // ungated; the cause is a parameter so the mistake cannot recur silently.
-// Updated with the MOUNT-direction fix: the daemon DOES now run cross-file
-// composition (Step 7b, #6528) and cross-file Pass-2.5 stub binding (Step 7c),
-// so the old wording — "prunes only by SourceFile and runs no cross-file
-// composition pass" — would have been a cause the remaining gated pairs no
-// longer exhibit, which is exactly the mis-attribution #6482 removed once.
-// What the three Django diagnostics below still exhibit is the cross-extractor
-// residual: TryIncremental runs no cross extractors, so Django's nested-URLConf
-// composition is only partially reproducible on the fast path.
-const mp6461Cause = "TryIncremental runs no cross extractors, so Django's " +
-	"nested-URLConf composition is only partially reproducible on the fast " +
-	"path (#6529)"
+// The original wording — "prunes only by SourceFile and runs no cross-file
+// composition pass" — is no longer a cause the remaining gated pairs exhibit:
+// the daemon now runs cross-file composition (Step 7b, #6528) and cross-file
+// Pass-2.5 stub binding (Step 7c). It has to change.
+//
+// It is NOT replaced with a single new cause, and that is deliberate. The
+// obvious substitution — "the cross-extractor residual, #6529" — is wrong in
+// the same way the old text was wrong, and #6529's own body says so: of the 6
+// residual divergences it measured, only 3 are cross-extractor. It explicitly
+// disowns the other 3 as "a third, separate cause … NOT covered here either".
+// All three of those are in the measured output of the diagnostics below:
+//
+//	[EDGE-INVENTED] SCOPE.Component/mpsite/urls.py → Module/mpsite.views :IMPORTS
+//	[EDGE-LOST]     SCOPE.Component/mpsite/urls.py → SCOPE.Component/mpsite/views.py :IMPORTS
+//	[EDGE-LOST]     Module/mpsite.urls → Module/mpsite.urls :ROUTES_TO
+//
+// Naming one cause for a pair that exhibits two is the defect class this file
+// has now hit twice (#6482 removed the first instance). So the cause is stated
+// as the SET it is, with the unfiled half marked unfiled — an honest "two
+// causes, one of them not yet located" beats a confident single attribution.
+//
+// #6529 also contradicts the tempting "composition is only partially
+// reproducible" phrasing: its root cause is that TryIncremental runs no cross
+// extractors, which is not a composition gap at all.
+const mp6461Cause = "TWO causes, not one: (a) TryIncremental runs no cross " +
+	"extractors, so a cross-emitted entity vanishes on the fast path (#6529, " +
+	"3 of the 6 measured divergences); and (b) scoped-resolver binding " +
+	"differences — IMPORTS binding to Module/mpsite.views rather than " +
+	"SCOPE.Component/mpsite/views.py, and a lost self-ROUTES_TO — which #6529 " +
+	"explicitly disowns and which is NOT YET FILED"
 
 // mp6461Gate skips unless mp6461Env is set, naming the issue, the pair, and
 // the exact command that reproduces. `cause` is a PARAMETER, not a constant
@@ -661,6 +682,91 @@ func TestMountParity_6461_MountEdit_PathA(t *testing.T) {
 	mpLogEndpointDelta(t, "MOUNT/path A", full, inc)
 	cpAssertParity(t, "#6461 direction MOUNT, path A (extractors.TryIncremental)",
 		full, inc, mpKnown)
+}
+
+// ───────────── direction MOUNT, AMBIGUOUS target (#6461 Step 7c) ─────────────
+//
+// Same shape as MountEdit_PathA, plus one extra file that declares a SECOND
+// `mp_router = APIRouter()`. That makes the Pass-2.5 stub `Route:mp_router`
+// AMBIGUOUS corpus-wide, which is the one input Step 7c's target index must
+// refuse — a coin flip between two files is exactly the "a wrong bind is worse
+// than a missing row" failure (#6123) the file-scoped binder was written to
+// avoid, and the sentinel must be STICKY so index order cannot decide it.
+//
+// It gets its OWN fixture rather than an extra file in mpRouteFile, because
+// adding the collision to the SHARED fixture would make the unambiguous bind
+// unobservable: MountEdit_PathA's edge would become allow-listed, and a mutant
+// that disables Step 7c entirely would then survive there. Measured — that is
+// not a prediction: with Step 7c disabled, MountEdit_PathA fails; with the
+// ambiguity folded into the shared fixture it would not.
+func mpAmbigRouterFile(t *testing.T, repo string) {
+	t.Helper()
+	dvWriteFile(t, repo, "mpother_route.py", `from fastapi import APIRouter
+
+mp_router = APIRouter()
+
+
+@mp_router.get("/mpother")
+def mp_read_other():
+    return {"other": True}
+`)
+}
+
+func mpAmbigWrite(t *testing.T, repo, routePath string, routePass, mountPass int) {
+	t.Helper()
+	mpWrite(t, repo, routePath, routePass, mountPass)
+	mpAmbigRouterFile(t, repo)
+}
+
+// mpAmbigKnown allow-lists the ONE divergence this fixture carries on correct
+// code, and nothing else.
+//
+// MEASURED on the fix, with the ambiguity present: the full rebuild keeps
+// `Service/mp_app → «unbound»Route:mp_router :ROUTES_TO` — an UNBOUND row, the
+// corpus resolver having refused the same ambiguity — while the incremental
+// path DROPS the stub rather than emitting it unbound. So the divergence is a
+// pre-existing residual of a policy difference between the two paths (emit
+// unbound vs drop), not of this fix: it is present with Step 7c disabled too.
+// Filed as #6594.
+//
+// It obeys the 6129 rule — an entry needs a filed issue and a stated reason,
+// and the list can only shrink. Crucially it names the UNBOUND form
+// («unbound»Route:mp_router), so a BOUND row appearing here — which is what a
+// mutant that drops the ambiguity sentinel produces — is a NEW divergence and
+// fails.
+var mpAmbigKnown = []cpKnown{{
+	Issue: "#6594",
+	Why: "the FULL path emits the ambiguity-refused stub UNBOUND; the " +
+		"incremental path drops it. A policy difference between the two " +
+		"resolvers, pre-existing and independent of #6461 Step 7c — it " +
+		"reproduces with Step 7c disabled.",
+	Bucket:   cpEdgeLost,
+	Contains: []string{"«unbound»Route:mp_router", "ROUTES_TO"},
+}}
+
+// TestMountParity_6461_MountEdit_PathA_AmbiguousRouter is the END-TO-END kill
+// for the ambiguity sentinel. With the sentinel removed (last-writer-wins),
+// this fixture gains a SECOND divergence — an [EDGE-INVENTED] naming a BOUND
+// target, with `pass25_rels_late_bound=1` in the log — which mpAmbigKnown does
+// not match, so the test fails. Without this test the sentinel was pinned only
+// at unit level.
+func TestMountParity_6461_MountEdit_PathA_AmbiguousRouter(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	mpAmbigWrite(t, repo, "/terms", 0, 0)
+	dvFullRebuild(t, repo, stateDir)
+
+	endRepo := t.TempDir()
+	mpAmbigWrite(t, endRepo, "/terms", 0, 1)
+	full := dvFullRebuild(t, endRepo, t.TempDir())
+
+	dvSeedManifest(t, repo, stateDir)
+	mpMountFile(t, repo, 1) // ONLY the mount file changes
+	inc := dvIncremental(t, repo, stateDir)
+
+	mpLogEndpointDelta(t, "MOUNT/path A (ambiguous router)", full, inc)
+	cpAssertParity(t, "#6461 direction MOUNT, path A, AMBIGUOUS Route:mp_router",
+		full, inc, mpAmbigKnown)
 }
 
 func TestMountParity_6461_MountEdit_PathB(t *testing.T) {

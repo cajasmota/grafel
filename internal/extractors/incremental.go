@@ -1476,9 +1476,23 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	//     entity, so the FromID-keyed stale-edge eviction (#6094) reclaims it on
 	//     the next edit of that file. An edge hung off an UNCHANGED file's
 	//     entity would never be evicted and would outlive the rule that made it.
+	//
+	// ORDERING IS LOAD-BEARING: this MUST run AFTER Step 7b, and the constraint
+	// is enforced, not merely documented. Step 7b deletes entities
+	// (`compose.removedIDs`) and their edges (`compose.prunesRel`), but the edge
+	// filter walks `doc.Relationships` ONLY — never `newRels`. Run this pass
+	// first and its target index is built over the PRE-prune entity set, so a
+	// stub can bind to an entity 7b is about to delete; the edge then lands in
+	// `newRels`, is appended at Step 8 AFTER the relationship prune has already
+	// happened, and reaches graph.fb dangling — a row no full rebuild holds.
+	// Hoisting the pass would also lose `compose.added` from the target index.
+	// `compose.removedIDs` is therefore passed in and refused explicitly: a
+	// reordering has to defeat a check to become a defect instead of silently
+	// being one. Pinned by
+	// TestBindDeferredPass25Stubs_RefusesComposeRemovedTarget.
 	endLateBind := tr.span("pass25-late-bind")
 	if len(deferredStubs) > 0 {
-		lateRels := bindDeferredPass25Stubs(deferredStubs, doc.Entities, newEntities, doc.Relationships, newRels)
+		lateRels := bindDeferredPass25Stubs(deferredStubs, doc.Entities, newEntities, doc.Relationships, newRels, compose.removedIDs)
 		if len(lateRels) > 0 {
 			pass25RelsLateBound = len(lateRels)
 			pass25RelsDropped -= len(lateRels)
@@ -2515,12 +2529,20 @@ type deferredStubRel struct {
 // The two refusals — globally-ambiguous target, and a source that does not
 // resolve within the emitting file — are the contract; see Step 7c for why
 // each is load-bearing.
+//
+// `composeRemoved` is Step 7b's deletion set. It is normally redundant —
+// running after 7b, those ids are already gone from `survivors` — and that is
+// exactly why it is a parameter: it turns "call me after 7b" from a comment
+// into something a caller cannot quietly get wrong, and a hoisted call site
+// binding to a composed entity 7b is deleting produces nothing instead of a
+// dangling edge. See Step 7c's ORDERING note.
 func bindDeferredPass25Stubs(
 	deferred []deferredStubRel,
 	survivors []graph.Entity,
 	fresh []graph.Entity,
 	existingRels []graph.Relationship,
 	freshRels []graph.Relationship,
+	composeRemoved map[string]bool,
 ) []graph.Relationship {
 	if len(deferred) == 0 {
 		return nil
@@ -2533,7 +2555,7 @@ func bindDeferredPass25Stubs(
 	// order cannot decide a bind.
 	target := make(map[string]string, len(survivors)+len(fresh))
 	addTarget := func(e *graph.Entity) {
-		if e.Kind == "" || e.Name == "" {
+		if e.Kind == "" || e.Name == "" || composeRemoved[e.ID] {
 			return
 		}
 		k := string(e.Kind) + ":" + e.Name

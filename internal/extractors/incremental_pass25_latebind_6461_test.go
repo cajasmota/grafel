@@ -50,7 +50,7 @@ func TestBindDeferredPass25Stubs_BindsCrossFileTarget(t *testing.T) {
 
 	got := bindDeferredPass25Stubs(
 		[]deferredStubRel{lbStub("mount.py", "Service:mp_app", "Route:mp_router", "ROUTES_TO")},
-		survivors, fresh, nil, nil)
+		survivors, fresh, nil, nil, nil)
 
 	if len(got) != 1 {
 		t.Fatalf("late-bound %d relationship(s); want 1: %+v", len(got), got)
@@ -80,7 +80,7 @@ func TestBindDeferredPass25Stubs_RefusesAmbiguousTarget(t *testing.T) {
 
 	got := bindDeferredPass25Stubs(
 		[]deferredStubRel{lbStub("mount.py", "Service:mp_app", "Route:mp_router", "ROUTES_TO")},
-		survivors, fresh, nil, nil)
+		survivors, fresh, nil, nil, nil)
 
 	if len(got) != 0 {
 		t.Fatalf("bound an AMBIGUOUS target: %+v", got)
@@ -97,7 +97,7 @@ func TestBindDeferredPass25Stubs_RefusesSourceOutsideEmittingFile(t *testing.T) 
 
 	got := bindDeferredPass25Stubs(
 		[]deferredStubRel{lbStub("mount.py", "Service:mp_app", "Route:mp_router", "ROUTES_TO")},
-		survivors, fresh, nil, nil)
+		survivors, fresh, nil, nil, nil)
 
 	if len(got) != 0 {
 		t.Fatalf("bound a source outside the emitting file: %+v", got)
@@ -116,7 +116,7 @@ func TestBindDeferredPass25Stubs_RefusesSurvivorSource(t *testing.T) {
 
 	got := bindDeferredPass25Stubs(
 		[]deferredStubRel{lbStub("mount.py", "Service:mp_app", "Route:mp_router", "ROUTES_TO")},
-		survivors, nil, nil, nil)
+		survivors, nil, nil, nil, nil)
 
 	if len(got) != 0 {
 		t.Fatalf("bound a SURVIVOR source: %+v", got)
@@ -138,16 +138,16 @@ func TestBindDeferredPass25Stubs_SkipsAlreadyPresentEdge(t *testing.T) {
 
 	stub := []deferredStubRel{lbStub("mount.py", "Service:mp_app", "Route:mp_router", "ROUTES_TO")}
 
-	if got := bindDeferredPass25Stubs(stub, survivors, fresh, []graph.Relationship{dup}, nil); len(got) != 0 {
+	if got := bindDeferredPass25Stubs(stub, survivors, fresh, []graph.Relationship{dup}, nil, nil); len(got) != 0 {
 		t.Fatalf("re-emitted an edge already among the SURVIVING relationships: %+v", got)
 	}
-	if got := bindDeferredPass25Stubs(stub, survivors, fresh, nil, []graph.Relationship{dup}); len(got) != 0 {
+	if got := bindDeferredPass25Stubs(stub, survivors, fresh, nil, []graph.Relationship{dup}, nil); len(got) != 0 {
 		t.Fatalf("re-emitted an edge already among the FRESH relationships: %+v", got)
 	}
 
 	// Positive control: without the duplicate it DOES bind, so the two
 	// assertions above are observing the dedup and not a broken premise.
-	if got := bindDeferredPass25Stubs(stub, survivors, fresh, nil, nil); len(got) != 1 {
+	if got := bindDeferredPass25Stubs(stub, survivors, fresh, nil, nil, nil); len(got) != 1 {
 		t.Fatalf("positive control: want 1 bound, got %d", len(got))
 	}
 }
@@ -162,9 +162,41 @@ func TestBindDeferredPass25Stubs_LeavesNonStructuralRefsAlone(t *testing.T) {
 	for _, to := range []string{"mp_router", "cfg.mp_router", "a1b2c3d4e5f60718"} {
 		got := bindDeferredPass25Stubs(
 			[]deferredStubRel{lbStub("mount.py", "Service:mp_app", to, "ROUTES_TO")},
-			survivors, fresh, nil, nil)
+			survivors, fresh, nil, nil, nil)
 		if len(got) != 0 {
 			t.Errorf("to=%q: bound a non-structural ref: %+v", to, got)
 		}
+	}
+}
+
+// TestBindDeferredPass25Stubs_RefusesComposeRemovedTarget pins the 7b→7c
+// ORDERING, which is load-bearing and was otherwise documented nowhere.
+//
+// A permissive mutant that HOISTS Step 7c above Step 7b survives every other
+// assertion in this file and both full packages: `go vet` 0,
+// `./internal/extractors/` 0, `./cmd/grafel/` 0. It is a real defect because
+// Step 7b deletes entities via `compose.removedIDs` and their edges via
+// `compose.prunesRel`, and that edge filter walks `doc.Relationships` ONLY,
+// never `newRels`. A late bind made against the PRE-prune entity set therefore
+// lands in `newRels`, is appended at Step 8 after the relationship prune has
+// already run, and reaches graph.fb as a dangling row no full rebuild holds.
+//
+// Passing the deletion set in and refusing it makes the hoist produce NOTHING
+// rather than a dangling edge, and makes the constraint observable here.
+func TestBindDeferredPass25Stubs_RefusesComposeRemovedTarget(t *testing.T) {
+	fresh := []graph.Entity{lbEnt("Service", "mp_app", "mount.py")}
+	survivors := []graph.Entity{lbEnt("Route", "mp_router", "route.py")}
+	stub := []deferredStubRel{lbStub("mount.py", "Service:mp_app", "Route:mp_router", "ROUTES_TO")}
+
+	// Positive control FIRST: with an empty deletion set this binds, so the
+	// refusal below is observing composeRemoved and not a broken premise.
+	if got := bindDeferredPass25Stubs(stub, survivors, fresh, nil, nil, map[string]bool{}); len(got) != 1 {
+		t.Fatalf("positive control: want 1 bound, got %d", len(got))
+	}
+
+	removed := map[string]bool{survivors[0].ID: true}
+	if got := bindDeferredPass25Stubs(stub, survivors, fresh, nil, nil, removed); len(got) != 0 {
+		t.Fatalf("bound a target Step 7b is deleting — the edge would land in "+
+			"newRels and survive the relationship prune: %+v", got)
 	}
 }
