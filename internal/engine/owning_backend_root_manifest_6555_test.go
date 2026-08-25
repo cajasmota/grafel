@@ -104,3 +104,84 @@ func TestDeriveOwningBackend_RootMarkerIsNotABoundary_6555(t *testing.T) {
 		t.Errorf("deriveOwningBackend(%q) = %q, want %q (a root marker is not a boundary; fallback applies)", handler, got, "src")
 	}
 }
+
+// TestDeriveOwningBackend_RootManifestBeatsDeeperMarker_6555 pins the
+// consequence of the two-pass order that this PR's review surfaced: once a
+// manifest exists anywhere in the chain — including at "." — pass 2 never
+// runs, so a framework marker below a *root* manifest is not a boundary
+// either, and these shapes return "" where the parent returned a directory
+// name.
+//
+// This is a deliberate decision, not a side effect. It cannot be decided
+// per-shape, because the shape here is byte-identical to the issue's row 1
+// (root pyproject.toml + app/main.py + app/api/endpoints/notifications.py,
+// which must NOT be "app"). Only the directory names differ, so no rule can
+// return "" for `app` and `svc-a` for `svc-a`. MEASURED against the parent:
+//
+//	root pyproject.toml, app/main.py    | app/api/endpoints/notifications.py | "app"   -> ""
+//	root pyproject.toml, svc-a/main.py  | svc-a/api/x.py                     | "svc-a" -> ""
+//	root package.json,   svc-a/server.js| svc-a/routes/x.js                  | "svc-a" -> ""
+//	root go.mod,         cmd/api/main.go| cmd/api/handlers/x.go              | "api"   -> ""
+//
+// The Go row is the one with a real cost: every single-module Go repository
+// carries go.mod at the root, so `cmd/api` and `cmd/worker` both collapse to
+// "". That is a marker-classification question — main.go under cmd/ names a
+// separate binary, unlike main.py under app/ — and is filed as #6593 rather
+// than settled by weakening the manifest-over-marker rule this issue is about.
+func TestDeriveOwningBackend_RootManifestBeatsDeeperMarker_6555(t *testing.T) {
+	cases := []struct {
+		name    string
+		tree    []string
+		handler string
+	}{
+		{
+			name:    "python: root pyproject.toml over svc-a/main.py",
+			tree:    []string{"pyproject.toml", "svc-a/main.py", "svc-a/api/x.py"},
+			handler: "svc-a/api/x.py",
+		},
+		{
+			name:    "node: root package.json over svc-a/server.js",
+			tree:    []string{"package.json", "svc-a/server.js", "svc-a/routes/x.js"},
+			handler: "svc-a/routes/x.js",
+		},
+		{
+			name:    "go: root go.mod over cmd/api/main.go",
+			tree:    []string{"go.mod", "cmd/api/main.go", "cmd/api/handlers/x.go"},
+			handler: "cmd/api/handlers/x.go",
+		},
+		{
+			name:    "go: root go.mod with several cmd/ binaries",
+			tree:    []string{"go.mod", "cmd/api/main.go", "cmd/worker/main.go", "cmd/api/handlers/x.go"},
+			handler: "cmd/api/handlers/x.go",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeTree(t, root, tc.tree...)
+			t.Chdir(root)
+			if got := deriveOwningBackend(tc.handler); got != "" {
+				t.Errorf("deriveOwningBackend(%q) = %q, want %q (a marker below a root manifest is not a boundary)", tc.handler, got, "")
+			}
+		})
+	}
+}
+
+// TestDeriveOwningBackend_ExhaustedWalkIsNotEmpty_6555 pins the invariant the
+// doc comment states: "" is returned ONLY for a manifest found at ".", never
+// for an exhausted walk. "./x.py" reaches the fallback with an unusable top
+// segment, and must still return the "unknown" sentinel rather than "" —
+// otherwise `owning_backend == ""` stops meaning "the repository is the
+// boundary" and the consumers' fallbacks fire on a path that never decided
+// anything. Red if the final `return "unknown"` becomes `return ""`.
+func TestDeriveOwningBackend_ExhaustedWalkIsNotEmpty_6555(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "x.py")
+	t.Chdir(root)
+
+	const handler = "./x.py"
+	if got := deriveOwningBackend(handler); got != "unknown" {
+		t.Errorf("deriveOwningBackend(%q) = %q, want %q (an exhausted walk must not yield the root-manifest signal)", handler, got, "unknown")
+	}
+}
