@@ -55,8 +55,9 @@ cleanup argument in #6671:
    declaration. The two bounds catch different defects and neither stands in for the other:
 
    - The **opening** bound rejects a range that starts anywhere but the doc comment — including
-     one starting on the declaration line and skipping the doc comment, which is the shape of two
-     of the five corrections it forced. It rejects `terraform_deep.go:1-900` *for opening at line
+     one starting on the declaration line and skipping the doc comment, which is the shape of
+     three of the five corrections it forced (`slsFunction`, `parseProviderBlock` and
+     `cdkPyAddEventSourceRe` each cited their own declaration line; the other two opened at doc+1). It rejects `terraform_deep.go:1-900` *for opening at line
      1*, not for its width.
    - The **closing** bound is the only width limit. With the opening bound alone, width was
      unlimited: `cdk_edges.go:137-900` opened correctly and was accepted, claiming a 764-line span

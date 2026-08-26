@@ -343,7 +343,11 @@ func validateCiteSymbols(res *ValidationResult, capPrefix string, cap Capability
 		//                 that starts anywhere else, including one
 		//                 starting on the declaration line itself and
 		//                 skipping the doc comment — the exact shape of
-		//                 two of the five corrections this rule forced.
+		//                 THREE of the five corrections this rule
+		//                 forced (`slsFunction` 24, `parseProviderBlock`
+		//                 128 and `cdkPyAddEventSourceRe` 203, each
+		//                 citing its own declaration line). The other
+		//                 two opened at doc+1, a different shape.
 		//   closesRight — range only: it CLOSES no later than the last
 		//                 line of the declaration. This is what bounds
 		//                 the WIDTH; opensRight does not. A range

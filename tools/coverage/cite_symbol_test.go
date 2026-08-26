@@ -202,7 +202,11 @@ func TestCiteSymbol_AnchoredCitationsAcceptedAcrossFormsAndDeclKinds(t *testing.
 		{"no-doc-comment/range", fmt.Sprintf("`OtherVar` (%s:22-22) is the second one.", rel)},
 		// A range closing EXACTLY on the last line of the declaration
 		// is the boundary case of the upper bound, and must be accepted
-		// — five shipped citations sit exactly here.
+		// — FOUR shipped citations sit exactly here (`slsFunction`
+		// 28==28, `parseProviderBlock` 152==152, `extractRemoteStateDeps`
+		// 260==260 twice). `parseEventsBlock` cites 247-286 but its
+		// closing brace is on 287, so it is one short of the boundary,
+		// not on it.
 		{"range/closes-on-declaration-end", fmt.Sprintf("`BlockVar` (%s:20-21) is the pattern.", rel)},
 		{"method/single", fmt.Sprintf("the receiver helper `Method` (%s:12) does it.", rel)},
 		// The SECOND declaration of a name that is declared twice: the
@@ -271,9 +275,11 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 		{
 			// N2. A range opening on the DECLARATION line, skipping the
 			// doc comment, must be rejected — this is precisely the rot
-			// two of the five registry corrections fixed
+			// THREE of the five registry corrections fixed
 			// (`slsFunction` 24-28 for a doc opening at 23,
-			// `parseProviderBlock` 128-152 for a doc opening at 125).
+			// `parseProviderBlock` 128-152 for a doc opening at 125,
+			// `cdkPyAddEventSourceRe` 203-204 for a doc opening at 201).
+			// The remaining two opened at doc+1, a different shape.
 			// Without this case, relaxing the rule to
 			// `lo == DocStart || lo == Line` would go unnoticed and the
 			// suite would not pin the defect the rule exists for.
@@ -392,6 +398,42 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 			name:  "one-bare-one-anchored-in-the-same-note",
 			notes: fmt.Sprintf("dispatched at %s:999, minted by `TopLevelFunc` (%s:5).", rel, rel),
 			want:  "is not symbol-anchored",
+		},
+		{
+			// R7 — ADJACENCY. The anti-regrowth rule is that a
+			// backticked symbol must sit IMMEDIATELY before the
+			// citation. Nothing observed that until this case: the
+			// three anchoring fixtures above all miss it. `unanchored`
+			// carries no backtick at all, and the two same-note cases
+			// pair a bare citation with a genuinely adjacent anchor.
+			//
+			// This is the shape registry notes really have — prose full
+			// of backticked identifiers, then a bare `file.go:N` later
+			// in the same sentence — and the cited line is CORRECT
+			// here, so nothing but the adjacency rule can reject it.
+			// Relaxing the separator to `[^`]*?` makes this note pass
+			// clean, which is the population growing back.
+			name:  "backticked-symbol-earlier-in-the-sentence-does-not-anchor",
+			notes: fmt.Sprintf("`TopLevelFunc` mints the edges; the dispatch happens at %s:5.", rel),
+			want:  "is not symbol-anchored",
+		},
+		{
+			// Same defect with a WRONG line, so the case does not rest
+			// on the citation being otherwise valid: a relaxed
+			// adjacency rule reports this as symbol drift, which is a
+			// different error and still not the one the rule owes.
+			name:  "backticked-symbol-earlier-in-the-sentence-stale-line",
+			notes: fmt.Sprintf("`TopLevelFunc` mints the edges; the dispatch happens at %s:12.", rel),
+			want:  "is not symbol-anchored",
+		},
+		{
+			// R1 — the EOF bound is exact, not a tolerance. At exactly
+			// one line past the end the EOF message must still be the
+			// one reported; the closing bound has the same
+			// exact-boundary case in range-closes-one-line-past-body.
+			name:  "single-line-one-past-eof",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:32).", rel),
+			want:  "runs past the end of internal/fixture/sample.go, which has 31 lines",
 		},
 		{
 			// `extractor.go` alone matches 50 files in this tree.
