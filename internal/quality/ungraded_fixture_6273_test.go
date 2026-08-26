@@ -90,6 +90,8 @@ func (h runShHarness) addFixture(t *testing.T, name string, withExpectations boo
 		"expected_entities": []map[string]any{
 			{"name": "A", "kind": "SCOPE.Component", "must_exist": true},
 		},
+		// #6490: the key must be DECLARED, even when empty.
+		"expected_relationships": []map[string]any{},
 	})
 	if err != nil {
 		t.Fatal(err)

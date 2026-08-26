@@ -26,5 +26,6 @@
 
     { "name": "cache_entry",  "kind": "SCOPE.Component", "source_file": "cache.hrl", "must_exist": true, "note": "Record definition." },
     { "name": "cache_stats",  "kind": "SCOPE.Component", "source_file": "cache.hrl", "must_exist": true, "note": "Record definition." }
-  ]
+  ],
+  "expected_relationships": []
 }

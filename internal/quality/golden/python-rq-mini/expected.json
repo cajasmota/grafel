@@ -6,5 +6,6 @@
     { "name": "send_email.enqueue", "kind": "SCOPE.Operation", "source_file": "api/notifications.py", "must_exist": true, "note": "Producer: queue.enqueue(callable)." },
     { "name": "workers.email.generate_report.enqueue_call", "kind": "SCOPE.Operation", "source_file": "api/notifications.py", "must_exist": true, "note": "Producer: queue.enqueue_call(func=string)." },
     { "name": "Worker([notification_queue, report_queue])", "kind": "SCOPE.Service", "source_file": "worker_runner.py", "must_exist": true, "note": "Consumer: RQ Worker declaration." }
-  ]
+  ],
+  "expected_relationships": []
 }

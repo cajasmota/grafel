@@ -10,5 +10,6 @@
     { "name": "JobBuilder.newJob<SendEmailJob>", "kind": "SCOPE.Operation", "source_file": "AppScheduler.java", "must_exist": true, "note": "Producer: JobBuilder.newJob()." },
     { "name": "newJob<GenerateReportJob>", "kind": "SCOPE.Operation", "source_file": "AppScheduler.java", "must_exist": true, "note": "Producer: static import newJob()." },
     { "name": "scheduler.scheduleJob", "kind": "SCOPE.Operation", "source_file": "AppScheduler.java", "must_exist": true, "note": "Producer: scheduler.scheduleJob()." }
-  ]
+  ],
+  "expected_relationships": []
 }

@@ -120,6 +120,36 @@ func LoadFixture(dir string) (*Fixture, error) {
 	if f.Name == "" {
 		return nil, fmt.Errorf("%s: fixture_name is required", p)
 	}
+	// #6490: a fixture that OMITS `expected_relationships` is not the same
+	// claim as one asserting zero, but json.Unmarshal makes them identical —
+	// both leave the slice nil, and the grader scores both as a pass. Seven of
+	// the twenty-six golden fixtures were in the absent shape, so the golden
+	// gate reported "relationships: 0/0 — pass" for languages whose edge
+	// extraction it was in fact grading with nothing at all.
+	//
+	// So the key must be DECLARED. An empty array stays legal on purpose: it
+	// is the visible "we assert nothing here" marker, which is a statement a
+	// reviewer can see and challenge, unlike an absent key. `null` is rejected
+	// with absence because it decodes to the same nil slice — declaring the
+	// key while saying nothing with it is the absent shape in disguise.
+	//
+	// `f.ExpectedRelationships == nil` would in fact separate the two on its
+	// own — encoding/json yields a non-nil empty slice for `[]` — so this
+	// re-read is not the only way to tell them apart. It is used because it
+	// names the key it is checking, which a nil test does not, and because it
+	// keeps working if the field ever gains a non-slice type or a custom
+	// UnmarshalJSON.
+	var declared map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &declared); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", p, err)
+	}
+	if v, ok := declared["expected_relationships"]; !ok || string(v) == "null" {
+		return nil, fmt.Errorf("%s: expected_relationships is required — an absent key "+
+			"is indistinguishable from asserting zero, so the grader can never fail the "+
+			"fixture on relationships; declare real must-have rows, or an explicit "+
+			"\"expected_relationships\": [] to state that this fixture deliberately "+
+			"asserts none", p)
+	}
 	// `match_by: qualified_name` and `source_file` on one row state two
 	// different intents, and only one of them is honoured: resolveEntity's
 	// qualified-name path returns before the file-narrowed lookup is ever
