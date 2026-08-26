@@ -151,6 +151,16 @@ func TestDoctorReportsTruncatedRenameScan(t *testing.T) {
 	// The count comes from the sidecar's companion field, so a wiring that
 	// hard-codes a message without reading the numbers is caught too. fmtInt
 	// group-separates, hence the comma: assert the RENDERED form.
+	//
+	// EQUIVALENT MUTANT, deliberately not covered: guarding the report with
+	// `&& rh.RenameAddedSkipped > 0` cannot change behaviour on any sidecar
+	// grafel can write. internal/algorithms/rename_detection.go:348-353 sets
+	// stats.Truncated = true only inside a branch whose immediately-following
+	// `for _, rest := range probes[pi:]` loop increments AddedSkipped at least
+	// once (pi is always a valid index), so truncated ⟹ AddedSkipped ≥ 1 is a
+	// writer invariant. Forcing that mutant to die would mean hand-writing a
+	// sidecar in a state the writer cannot produce — a fixture asserting
+	// against reality rather than pinning it.
 	if !strings.Contains(out, "1,234") {
 		t.Errorf("doctor does not report how many added entities were skipped (want 1,234).\n%s", out)
 	}
@@ -300,6 +310,14 @@ func TestDoctorTreatsAbsentRenameFieldAsComplete(t *testing.T) {
 // missing rather than slicing on a -1 index, so a renamed section header shows
 // up as a failed premise instead of a silently-empty haystack that every
 // "does not contain" assertion would pass against.
+//
+// SINGLE-GROUP ONLY. PrintDoctorHealth emits both markers once PER GROUP, so on
+// a multi-group report this returns group 1's table but EVERYTHING from group
+// 1's "Issues found:" to EOF — which includes groups 2..N's tables. A
+// "the Issues section does not mention X" assertion would then be silently
+// satisfiable by another group's repo table. Every fixture here registers
+// exactly one group and premise-guards that, which is what makes this safe;
+// reusing the helper on a multi-group report needs a per-group split first.
 func splitDoctorOutput6640(out string) (table, issues string, ok bool) {
 	q := strings.Index(out, "Quality:")
 	i := strings.Index(out, "Issues found:")
@@ -307,4 +325,182 @@ func splitDoctorOutput6640(out string) (table, issues string, ok bool) {
 		return "", "", false
 	}
 	return out[:q], out[i:], true
+}
+
+// ─── attribution: WHICH repo the warning belongs to ─────────────────────────
+//
+// The fixtures above use a single repo, which makes "the warning attaches to
+// the right row" byte-identical to "the warning attaches to row 0" — so every
+// attribution clause in them is unscoreable. Multi-repo groups are grafel's
+// normal case, and a ⚠ printed under the WRONG repo is a confident wrong
+// answer, strictly worse than a missing one.
+//
+// This fixture is two repos where only the SECOND is truncated, and that one
+// is ALSO stale. That combination is what makes three otherwise-invisible
+// mutants scoreable:
+//
+//   - the print loop reading g.Repos[0] instead of the loop variable r,
+//   - the Issues message dropping rh.Slug (the repo is named nowhere),
+//   - the truncation check swallowed when the group is ALREADY degraded
+//     (`&& health.Healthy`), which staleness on the same repo guarantees.
+//
+// The single-repo fixtures cannot see any of these: with one repo, Repos[0] IS
+// r; "legacy" appears in the status row so a slugless Issues entry still leaves
+// it in the output; and an otherwise-healthy group never exercises the
+// already-degraded composition at all.
+func TestDoctorAttributesTruncationToTheOffendingRepo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GRAFEL_HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
+	t.Setenv(daemon.EnvRoot, t.TempDir())
+
+	// alpha sorts before zeta, so zeta is Repos[1] and a Repos[0] read cannot
+	// accidentally land on the truncated one.
+	seed := func(slug string, indexedAt time.Time, entities int, truncated bool, skipped int) string {
+		repoPath := filepath.Join(home, "repos", slug)
+		if err := os.MkdirAll(repoPath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		stateDir := daemon.StateDirForRepo(repoPath)
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		side := &graph.GraphStatsSidecar{
+			Version:                  1,
+			ComputedAt:               indexedAt,
+			TotalEntities:            entities,
+			RenameDetectTruncated:    truncated,
+			RenameDetectAddedSkipped: skipped,
+		}
+		if err := graph.WriteSidecar(graph.SidecarPath(stateDir), side, false); err != nil {
+			t.Fatal(err)
+		}
+		return repoPath
+	}
+	alphaPath := seed("alpha", time.Now(), 11, false, 0)
+	zetaPath := seed("zeta", time.Now().Add(-48*time.Hour), 22, true, 77)
+
+	cfgPath := filepath.Join(home, "groups", "multi.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := fmt.Sprintf(`{"name":"multi","repos":[{"slug":"alpha","path":%q},{"slug":"zeta","path":%q}]}`,
+		alphaPath, zetaPath)
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.AddGroup("multi", cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	groups, err := registry.Groups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reports := ComputeDoctorHealth(groups, false)
+
+	// PREMISE GUARDS. The attribution assertions below are all of the form
+	// "this text sits next to THAT repo"; if the fixture collapsed to one repo,
+	// or the two repos did not end up in the intended order, or either sidecar
+	// was never decoded, they would pass for reasons unrelated to attribution.
+	if len(reports) != 1 {
+		t.Fatalf("fixture produced %d groups, want exactly 1 (splitDoctorOutput6640 is single-group only)", len(reports))
+	}
+	repos := reports[0].Repos
+	if len(repos) != 2 {
+		t.Fatalf("fixture has %d repos, want 2 — attribution is unobservable with one", len(repos))
+	}
+	if repos[0].Slug != "alpha" || repos[1].Slug != "zeta" {
+		t.Fatalf("repo order is %q,%q, want alpha,zeta — a Repos[0] read must not land on the truncated repo",
+			repos[0].Slug, repos[1].Slug)
+	}
+	if repos[0].Entities != 11 || repos[1].Entities != 22 {
+		t.Fatalf("sidecars not decoded (entities %d,%d want 11,22)", repos[0].Entities, repos[1].Entities)
+	}
+	if repos[0].Status != "OK" {
+		t.Fatalf("alpha status = %q, want OK — the clean repo must be clean", repos[0].Status)
+	}
+	// The composition premise: zeta is ALREADY degrading the group via
+	// staleness before the truncation check runs. Without this, `&&
+	// health.Healthy` is definitionally unscoreable.
+	if repos[1].Status != "STALE" {
+		t.Fatalf("zeta status = %q, want STALE — the already-degraded composition is not exercised", repos[1].Status)
+	}
+
+	out := renderDoctor6640(t, reports)
+	table, issues, ok := splitDoctorOutput6640(out)
+	if !ok {
+		t.Fatalf("cannot locate doctor's sections.\n%s", out)
+	}
+
+	// ── (a) the warning is the line IMMEDIATELY after ITS row ──
+	lines := strings.Split(table, "\n")
+	rowIdx := func(slug string) int {
+		for i, l := range lines {
+			if strings.Contains(l, slug) && strings.Contains(l, "entities") {
+				return i
+			}
+		}
+		return -1
+	}
+	alphaRow, zetaRow := rowIdx("alpha"), rowIdx("zeta")
+	if alphaRow < 0 || zetaRow < 0 {
+		t.Fatalf("cannot find both repo rows (alpha=%d zeta=%d).\n%s", alphaRow, zetaRow, out)
+	}
+	if alphaRow > zetaRow {
+		t.Fatalf("rows are not in sorted order; adjacency below would be meaningless.\n%s", out)
+	}
+	if zetaRow+1 >= len(lines) || !strings.Contains(lines[zetaRow+1], "rename detection TRUNCATED") {
+		t.Errorf("the truncation warning is not the line directly under zeta's row — it is attributed "+
+			"to the wrong repo or missing.\n%s", out)
+	}
+	// ── and it does NOT hang off the clean repo ──
+	if strings.Contains(lines[alphaRow+1], "rename detection TRUNCATED") {
+		t.Errorf("a truncation warning is printed under alpha, whose rename scan completed.\n%s", out)
+	}
+	if n := strings.Count(table, "rename detection TRUNCATED"); n != 1 {
+		t.Errorf("per-repo table carries %d truncation warnings, want exactly 1 (one repo is truncated)\n%s", n, out)
+	}
+
+	// ── (c) column alignment, keyed off the row's ACTUAL status token ──
+	//
+	// The single-repo fixture keys this off "OK". zeta is STALE, so an "OK"
+	// lookup would return -1 there and the guard would silently compare -1 to
+	// -1 and pass. The status token is therefore taken from the row's real
+	// status; everything left of it is ASCII, so byte offsets are columns.
+	warnLine := lines[zetaRow+1]
+	if got, want := strings.Index(warnLine, "⚠"), strings.Index(lines[zetaRow], "STALE"); got < 0 || want < 0 || got != want {
+		t.Errorf("truncation warning column %d vs zeta's status column %d — the fixed-width table is ragged "+
+			"(or a token was not found at all).\nrow:  %q\nwarn: %q", got, want, lines[zetaRow], warnLine)
+	}
+
+	// ── (b) the Issues entry NAMES the offending repo ──
+	var truncIssue string
+	staleIssueForZeta := false
+	for _, l := range strings.Split(issues, "\n") {
+		if strings.Contains(l, "TRUNCATED") {
+			truncIssue = l
+		}
+		if strings.Contains(l, "hasn't been indexed") && strings.Contains(l, "zeta") {
+			staleIssueForZeta = true
+		}
+	}
+	if truncIssue == "" {
+		t.Fatalf("no truncation entry in the Issues section.\n%s", out)
+	}
+	if !strings.Contains(truncIssue, "zeta") {
+		t.Errorf("the Issues entry does not name the offending repo, so a reader of a multi-repo group "+
+			"cannot tell which index is partial: %q", truncIssue)
+	}
+	if strings.Contains(truncIssue, "alpha") {
+		t.Errorf("the Issues entry names the clean repo: %q", truncIssue)
+	}
+
+	// ── (c) BOTH entries survive: truncation is not swallowed by staleness ──
+	if !staleIssueForZeta {
+		t.Errorf("zeta's staleness entry vanished; the two issue sources are not composing.\n%s", out)
+	}
+	if !strings.Contains(out, "DEGRADED") {
+		t.Errorf("group is not DEGRADED despite a stale AND truncated repo.\n%s", out)
+	}
 }
