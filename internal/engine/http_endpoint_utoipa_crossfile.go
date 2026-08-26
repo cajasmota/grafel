@@ -494,6 +494,13 @@ func utoipaCrossFileRegistrations(content, relPath string) []types.EntityRecord 
 		if len(m) < 4 || m[2] < 0 {
 			continue
 		}
+		// The macro-NAME boundary (#6677), applied exactly as the mint applies
+		// it: utoipaRoutesMacroRe carries no leading `\b`, so without this a
+		// `my_routes!` / `Δroutes!` wrapper would emit cross-file registration
+		// markers for handlers it never registered with utoipa.
+		if !utoipaMacroNameIsBare(content, m[0]) {
+			continue
+		}
 		// Resolved once per MACRO, at the macro's own offset, exactly as the
 		// mint does — every handler in `routes!(a, b)` shares one mount point.
 		prefix := rustNestPrefixFor(content, nests, m[0])

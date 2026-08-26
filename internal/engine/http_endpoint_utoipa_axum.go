@@ -97,24 +97,31 @@
 // a raw identifier (`routes!(r#type)`) never matches, since `#` is outside the
 // identifier class; `routes ! ( a , b )` — whitespace before `!` is
 // Rust-legal — never matches, because the pattern requires `routes!` adjacent;
-// and a macro whose NAME ends in `routes!` after an ASCII identifier character
-// (`my_routes!(a)`, `app_routes!(a, b)`, `xroutes!(a)`) does not match, because
-// the pattern's leading `\b` finds no word boundary there.
+// and a macro whose NAME ends in `routes!` after an identifier-continuation
+// character (`my_routes!(a)`, `app_routes!(a, b)`, `xroutes!(a)`) does not
+// match, because utoipaMacroNameIsBare rejects it.
 //
-// That fourth bound is ASCII-ONLY and is stated deliberately narrowly. Go's RE2
-// `\b` sits between `[0-9A-Za-z_]` and anything else, so a NON-ASCII character
-// immediately before `routes` IS a boundary and DOES match: `Δroutes!(a, b)` —
-// a Rust-legal wrapper name, identifiers being UAX#31 — mints two phantom
-// endpoints today. `über_routes!` does not; the leak needs the non-ASCII
-// character adjacent to `routes`. #6677 owns that gap and the decision about
-// it; do not read this paragraph as saying the pattern is airtight.
+// That fourth bound is UNICODE-AWARE as of #6677 and no longer rests on the
+// pattern's `\b`. Go's RE2 `\b` is ASCII-only — it sits between `[0-9A-Za-z_]`
+// and anything else — so before #6677 a NON-ASCII character immediately before
+// `routes` was a boundary and DID match: `Δroutes!(a, b)`, a Rust-legal wrapper
+// name (identifiers are UAX#31, non-ASCII ones stable since Rust 1.53), minted
+// two phantom endpoints. The leading `\b` is gone and the boundary is now an
+// explicit identifier-continuation test on the rune preceding the match; see
+// utoipaMacroNameIsBare. That test APPROXIMATES XID_Continue rather than
+// implementing it, and it differs from it in both directions — the exact
+// codepoints, and why the permissive column is empty while the restrictive one
+// is not, are enumerated on utoipaIsIdentContinue.
 //
 // The first three are misses in the safe direction and none is a regression
 // from Arm A. The fourth is the opposite: losing what is left of that word
 // boundary would be PERMISSIVE — an ordinary user-defined wrapper macro would
 // mint one phantom endpoint per argument for a registration this pass never
 // saw. All four are pinned (TestUtoipaAxum_HeaderRecordedShapesMintNothing,
-// TestUtoipaAxum_PrefixedRoutesMacroMintsNothing).
+// TestUtoipaAxum_PrefixedRoutesMacroMintsNothing for the ASCII half of the
+// fourth, TestUtoipaAxum_NonASCIIRoutesMacroBoundary and
+// TestUtoipaCrossFile_NonASCIIWrappedRoutesMacroMarksNothing_6677 for the
+// non-ASCII half and for the restrictive direction of the same boundary).
 //
 // Known house behaviour, not new here: a `routes!(...)` occurrence inside a
 // block comment or a string literal is still read as a registration, exactly as
@@ -127,6 +134,8 @@ package engine
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/engine/httproutes"
 )
@@ -153,8 +162,112 @@ import (
 // Neither `(` nor `)` is in any character class here, so a match can never span
 // from one `routes!(...)` into the next; `\s` spans newlines so the rustfmt
 // multi-line form is read normally. A trailing comma is Rust-legal and accepted.
+//
+// The pattern carries NO leading `\b` (#6677). RE2's `\b` is ASCII-only, so it
+// admitted `Δroutes!` — a Rust-legal user-defined wrapper macro — as if it were
+// a utoipa registration. The macro-NAME boundary is instead asserted explicitly,
+// by utoipaMacroNameIsBare, on every match both call sites take. Every match
+// this pattern reports MUST be filtered through that predicate; the pattern
+// alone will happily match the `routes!` inside `my_routes!`.
 var utoipaRoutesMacroRe = regexp.MustCompile(
-	`\broutes!\s*\(\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*,?\s*\)`)
+	`routes!\s*\(\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*,?\s*\)`)
+
+// utoipaIsIdentContinue reports whether r may continue a Rust identifier, i.e.
+// whether r has the UAX#31 XID_Continue property (approximated by Go's Unicode
+// tables: letters, Nl, decimal digits, combining marks and connector
+// punctuation, which is where `_` lands).
+//
+// This is the Unicode-aware replacement for the `[0-9A-Za-z_]` side of RE2's
+// ASCII-only `\b`. It is deliberately a CONTINUATION test rather than a Start
+// test: the character immediately before `routes` in a wrapper macro's name may
+// be any continuation character (`api2routes!`, `r2_routes!`), not only one that
+// could have begun the name.
+//
+// Go's general categories are NOT XID_Continue, and the difference runs in BOTH
+// directions. Measured by diffing this predicate against a UAX#31 XID
+// implementation (CPython 3.x `("a"+ch).isidentifier()`, Unicode 16.0) over all
+// 0x110000 codepoints:
+//
+//   - XID_Continue characters the CATEGORIES MISS (18). This is the PERMISSIVE
+//     direction — each one is another `Δroutes!`, minting phantom endpoints for
+//     a wrapper macro. Sixteen are added back explicitly by utoipaOtherIDChars
+//     below. They are the two properties Go does not name: Other_ID_Start
+//     (U+2118 SCRIPT CAPITAL P, U+212E ESTIMATED SYMBOL — note U+2118 is `Sm`
+//     and U+212E is `So`, so general category alone cannot decide this) and
+//     Other_ID_Continue (U+00B7, U+0387, U+1369..U+1371, U+19DA, U+30FB,
+//     U+FF65).
+//
+//   - The remaining TWO, U+200C ZERO WIDTH NON-JOINER and U+200D ZERO WIDTH
+//     JOINER, are deliberately NOT added, and this is the one place where the
+//     oracle is followed to a different answer than Rust's. Both are `Cf`
+//     format controls admitted by UAX#31's OPTIONAL R1a profile, which Rust
+//     does not take: RFC 2457 excludes ZWJ/ZWNJ from Rust identifiers, so
+//     `\u200droutes!` is not a legal wrapper-macro name and treating the
+//     joiners as boundaries cannot mint a phantom for any compilable input.
+//
+//   - Characters this predicate claims that XID_Continue does NOT (18):
+//     U+037A, U+2E2F, U+FC5E..U+FC63, U+FDFA, U+FDFB and the even codepoints of
+//     U+FE70..U+FE7E. Go's unicode.IsLetter admits these NFKC-unstable letters;
+//     XID excludes them. This is the RESTRICTIVE direction — `\u037aroutes!(a)`
+//     mints NOTHING, a silently lost endpoint. None is reachable from
+//     compilable Rust (none may begin or continue a Rust identifier, so none can
+//     stand at the end of a wrapper macro's name), so this is DISCLOSED rather
+//     than fixed. Both directions are observed by
+//     TestUtoipaAxum_MacroBoundaryRecordedUnicodeDeviations.
+//
+// Anyone re-deriving these lists on a newer Unicode version should expect the
+// numbers to move; what must not move is that the PERMISSIVE column is empty.
+func utoipaIsIdentContinue(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) ||
+		unicode.In(r, unicode.Nl, unicode.Mn, unicode.Mc, unicode.Pc) ||
+		unicode.Is(utoipaOtherIDChars, r)
+}
+
+// utoipaOtherIDChars is the part of UAX#31's XID_Continue that Go's general
+// categories do not name: the Other_ID_Start and Other_ID_Continue properties.
+// Without it `℘routes!(a, b)` — U+2118 is XID_Continue but category `Sm` — mints
+// two phantom endpoints, which is the #6677 defect at a different codepoint.
+var utoipaOtherIDChars = &unicode.RangeTable{
+	R16: []unicode.Range16{
+		{Lo: 0x00B7, Hi: 0x00B7, Stride: 1}, // MIDDLE DOT (Po)
+		{Lo: 0x0387, Hi: 0x0387, Stride: 1}, // GREEK ANO TELEIA (Po)
+		{Lo: 0x1369, Hi: 0x1371, Stride: 1}, // ETHIOPIC DIGIT ONE..NINE (No)
+		{Lo: 0x19DA, Hi: 0x19DA, Stride: 1}, // NEW TAI LUE THAM DIGIT ONE (No)
+		{Lo: 0x2118, Hi: 0x2118, Stride: 1}, // SCRIPT CAPITAL P (Sm)
+		{Lo: 0x212E, Hi: 0x212E, Stride: 1}, // ESTIMATED SYMBOL (So)
+		{Lo: 0x30FB, Hi: 0x30FB, Stride: 1}, // KATAKANA MIDDLE DOT (Po)
+		{Lo: 0xFF65, Hi: 0xFF65, Stride: 1}, // HALFWIDTH KATAKANA MIDDLE DOT (Po)
+	},
+	// No LatinOffset. It is deliberately omitted rather than set: unicode.Is —
+	// the only accessor this table has — never reads it (unicode/letter.go
+	// Is()); only isExcludingLatin does, and nothing routes here through that.
+	// An earlier revision set it to 1 and a test comment claimed the U+0387 row
+	// pinned it; scoring the LatinOffset 1→2 mutant showed it ALIVE, because the
+	// field is inert here. Carrying a field nothing consults is what invited
+	// that false claim.
+}
+
+// utoipaMacroNameIsBare reports whether the `routes!` token starting at byte
+// offset start in content is the WHOLE macro name, rather than the tail of a
+// longer user-defined one (`my_routes!`, `Δroutes!`).
+//
+// It looks at the single rune immediately preceding the match and rejects the
+// match when that rune could continue an identifier. Two edge cases both fall
+// out as ACCEPT, which is the correct answer for each:
+//
+//   - start == 0. DecodeLastRuneInString("") returns (RuneError, 0), and
+//     RuneError is not an identifier character, so a `routes!` at byte 0 is
+//     bare. There is no preceding character, so there is no name to be a tail
+//     of.
+//   - invalid UTF-8 immediately before the match. DecodeLastRuneInString also
+//     returns RuneError there, so the match is accepted. Rust source is
+//     required to be UTF-8, so this shape is not reachable from a file rustc
+//     would compile, and accepting is the same answer the byte-oriented `\b`
+//     gave before #6677.
+func utoipaMacroNameIsBare(content string, start int) bool {
+	prev, _ := utf8.DecodeLastRuneInString(content[:start])
+	return !utoipaIsIdentContinue(prev)
+}
 
 // utoipaMacroHandlerArgs splits capture group 1 of utoipaRoutesMacroRe into its
 // handler identifiers, in source order. The regex has already guaranteed every
@@ -344,6 +457,13 @@ func synthesizeUtoipaAxumRoutes(content string, emit emitFn) {
 	minted := map[string]bool{}
 	for _, m := range utoipaRoutesMacroRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 || m[2] < 0 {
+			continue
+		}
+		// The macro-NAME boundary (#6677). The pattern has no leading `\b`, so
+		// this is the ONLY thing keeping `my_routes!` / `Δroutes!` — ordinary
+		// user-defined wrapper macros — from minting one phantom endpoint per
+		// argument for a registration this pass never saw.
+		if !utoipaMacroNameIsBare(content, m[0]) {
 			continue
 		}
 		// The nest prefix is resolved once per MACRO, at the macro's own byte
