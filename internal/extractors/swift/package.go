@@ -186,9 +186,12 @@ func extractTargets(src, filePath string) []types.EntityRecord {
 
 			// Emit DEPENDS_ON edge target → product entity.
 			rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
-				FromID: filePath + "::" + d.name,
-				ToID:   productName,
-				Kind:   "DEPENDS_ON",
+				// FromID stays EMPTY: these records are appended to `rec`, the
+				// swiftpm_target entity above, so graph assembly stamps the
+				// owning target as the FROM endpoint. A path-derived id names
+				// no node — the target's Name is the bare target name (#6367).
+				ToID: productName,
+				Kind: "DEPENDS_ON",
 				Properties: types.Props{
 					{K: "dep_kind", V: "product"},
 					{K: "package", V: packageName},
@@ -239,9 +242,12 @@ func extractTargets(src, filePath string) []types.EntityRecord {
 			}
 
 			rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
-				FromID: filePath + "::" + d.name,
-				ToID:   depName,
-				Kind:   "DEPENDS_ON",
+				// FromID stays EMPTY: these records are appended to `rec`, the
+				// swiftpm_target entity above, so graph assembly stamps the
+				// owning target as the FROM endpoint. A path-derived id names
+				// no node — the target's Name is the bare target name (#6367).
+				ToID: depName,
+				Kind: "DEPENDS_ON",
 				Properties: types.Props{
 					{K: "dep_kind", V: depKind},
 				},

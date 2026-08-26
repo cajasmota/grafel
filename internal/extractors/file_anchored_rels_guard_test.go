@@ -231,8 +231,12 @@
 //     svelte:extractReactiveStatements:USES {2},
 //     hcl:emitFileLevelRelationships:CONTAINS {2}, and
 //     knownInvisibleOffenders["swift:extractTargets:DEPENDS_ON"] {2}. The two
-//     svelte entries went away with the #6366 fix and the hcl one with #6367;
-//     the only remaining count>=2 entry is swift (RE-MEASURED 2026-08-21).
+//     svelte entries went away with the #6366 fix, the hcl one with #6367, and
+//     the swift one with the #6367 swift arm, which anchored both DEPENDS_ON
+//     sites on the owning swiftpm target and emptied knownInvisibleOffenders.
+//     RE-MEASURED 2026-08-27: NO count>=2 entry remains in either map, so the
+//     same-kind swap described here has no live site today. It is still the
+//     shape to watch: the next entry added with count >= 2 reopens it.
 //     What a "?" key ADDS on top of that is collapsing ACROSS FORMS: a form-A
 //     site and a form-I site key identically, so one can be replaced by the
 //     other. The only "?" entry today (yaml:extractHelmHelpers:?) has count 1,
@@ -487,32 +491,19 @@ var allowedFileAnchored = map[string]allowEntry{
 // mechanism", which is what the first two rounds asserted about it.
 //
 // Keyed and counted exactly like allowedFileAnchored.
-var knownInvisibleOffenders = map[string]allowEntry{
-	// swift/package.go:189 (product deps) and :242 (bare target deps) — the
-	// failure message reports 188 and 241, the lines the enclosing composite
-	// literals open on. Both are
-	// `FromID: filePath + "::" + d.name` — path FIRST, then a literal, then a
-	// non-literal ident, so isFilePathExpr's BinaryExpr case rejects them at the
-	// trailing operand. Not a structural ref:
-	//   - the owning record (swift/package.go:164-177) sets Name: d.name and NO
-	//     QualifiedName at all; the only two "::" occurrences in the package are
-	//     these two FromIDs;
-	//   - nothing in internal/resolve knows the swift_package / swiftpm "::"
-	//     spelling (grep for swiftpm|swift_package under internal/resolve is
-	//     empty), so there is no byQualifiedName scheme to land on;
-	//   - both edges are appended to rec.Relationships — the target component
-	//     itself — so FromID should simply be EMPTY.
-	// DANGLING and MISOWNED: the astro failure mode.
-	"swift:extractTargets:DEPENDS_ON": {2,
-		"KNOWN OFFENDER (#6298): dangling AND misowned. `filePath + \"::\" + d.name` on a " +
-			"record whose owner is the swiftpm target component; no node carries that " +
-			"string and internal/resolve has no swiftpm \"::\" scheme, so the raw value " +
-			"reaches the graph. INFERRED from the site + the record emission + an empty " +
-			"grep of internal/resolve, NOT measured. Invisible to the main scan (form F " +
-			"trailing-literal bound). Not fixed here for the same reason as the other six: " +
-			"each language needs its own measurement, and astro proved that assuming a " +
-			"shared shape is how this goes wrong."},
-}
+//
+// CURRENTLY EMPTY, and therefore DORMANT (#6367 review F2). swift's two
+// DEPENDS_ON sites were the last entries; the #6367 swift arm anchored both on
+// the owning swiftpm target and the entries were deleted, because a stale entry
+// fails the check below in the other direction. The map is deliberately KEPT
+// rather than removed: it is the shape the next offender of this form lands in,
+// and the surrounding documentation of the form-F blind spot hangs off it.
+//
+// While it is empty the stale-entry loop in
+// TestKnownInvisibleFileAnchoredOffenders iterates zero keys and CANNOT FAIL
+// under any mutation. Do not read that test's green as evidence about this map.
+// The live checks there are the coverage floor and the positive control.
+var knownInvisibleOffenders = map[string]allowEntry{}
 
 type fileAnchoredSite struct {
 	pkg, fn, kind, key, file string
@@ -936,6 +927,27 @@ func TestNoNewFileAnchoredTypeRelationships(t *testing.T) {
 	}
 }
 
+// scanCoverage records what a scan actually REACHED, independently of what it
+// matched. It exists because "found no sites" and "never looked" are the same
+// return value, and only one of them is good news.
+//
+// #6367 review (F1): the positive control in testdata/pathfirstconcat pins the
+// matcher's AST/kind axis — that it still recognises the path-first-concat shape
+// and still skips IMPORTS. It says NOTHING about whether the production walk
+// still descends into the language subdirectories. A reviewer's mutant narrowed
+// the walk to `if d.Name() == "testdata" || p != root` (no recursion); the
+// control passed, the package stayed green, and stacking the parent's DEFECTIVE
+// package.go on top of that ALSO passed — the original #6367 anchor fully
+// reintroduced with the guard silent. Under the old `len(sites) == 0 → fail`
+// check that mutant died, so the control alone was a net WEAKENING.
+//
+// Coverage closes that neighbour axis while keeping "zero production sites is
+// success": the walk must still be shown to have reached the code it grades.
+type scanCoverage struct {
+	filesParsed int
+	pkgDirs     map[string]bool
+}
+
 // scanPathFirstConcatFromIDs is the narrow companion matcher for
 // knownInvisibleOffenders. It finds FromID values that are a concatenation
 // STARTING with a recognised path spelling but which isFilePathExpr REJECTS,
@@ -951,10 +963,11 @@ func TestNoNewFileAnchoredTypeRelationships(t *testing.T) {
 //
 // It walks independently of scanFileAnchoredRels so that a narrowing of the
 // main matcher cannot silently narrow this one too.
-func scanPathFirstConcatFromIDs(t *testing.T, root string) []fileAnchoredSite {
+func scanPathFirstConcatFromIDs(t *testing.T, root string) ([]fileAnchoredSite, scanCoverage) {
 	t.Helper()
 	fset := token.NewFileSet()
 	var out []fileAnchoredSite
+	cov := scanCoverage{pkgDirs: map[string]bool{}}
 
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -979,6 +992,11 @@ func scanPathFirstConcatFromIDs(t *testing.T, root string) []fileAnchoredSite {
 		if pkg == "." {
 			pkg = "extractors"
 		}
+		// Coverage is recorded for every file actually PARSED, so a walk
+		// that stops descending shows up as a collapsed count/dir-set even
+		// when it still returns zero sites. See scanCoverage.
+		cov.filesParsed++
+		cov.pkgDirs[pkg] = true
 
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
@@ -1059,7 +1077,7 @@ func scanPathFirstConcatFromIDs(t *testing.T, root string) []fileAnchoredSite {
 		}
 		return a.line - b.line
 	})
-	return out
+	return out, cov
 }
 
 // TestKnownInvisibleFileAnchoredOffenders makes knownInvisibleOffenders
@@ -1067,17 +1085,68 @@ func scanPathFirstConcatFromIDs(t *testing.T, root string) []fileAnchoredSite {
 // FromID in the tree must be listed with its site count; every listed key must
 // still match that many sites.
 func TestKnownInvisibleFileAnchoredOffenders(t *testing.T) {
-	sites := scanPathFirstConcatFromIDs(t, ".")
+	sites, cov := scanPathFirstConcatFromIDs(t, ".")
+
+	// COVERAGE FLOOR (#6367 review F1). Assert the walk still reached the code
+	// it grades, BEFORE drawing any conclusion from the site count. Without
+	// this, a walk that stopped recursing returns zero sites and the
+	// `len(sites) == 0 → return` below reads that as total success.
+	//
+	// MEASURED 2026-08-27 at this commit, by raising minFilesParsed to a
+	// sentinel and reading the emitted diagnostic: 295 non-test .go files
+	// across 77 package dirs under internal/extractors.
+	//
+	// Do NOT re-derive these with a bare `find ... -not -path './testdata/*'`:
+	// that excludes only the TOP-LEVEL testdata and counts
+	// golang/testdata/issue4426/constants.go, giving 296/78. This walk SkipDirs
+	// any directory named testdata at ANY depth, and there are 19 nested ones.
+	// The first version of this comment carried that off-by-one.
+	//
+	// The floors are deliberately far below the measured figures so ordinary
+	// refactoring, file merges and extractor removals do not trip them; they are
+	// here to catch a walk that COLLAPSES, not to pin an exact inventory. A
+	// non-recursing walk sees only this directory's own files — one pkgDir,
+	// "extractors" — and dies on both.
+	//
+	// THE COUNTS ARE THE WEAKER HALF. A reviewer's mutant keyed the dir set per
+	// FILE (cov.pkgDirs[rel] rather than [pkg]), so 295 files reported 295
+	// "dirs" from however few real directories: it died, but NO collapse line
+	// fired — only the named-directory lookups below caught it. So minPkgDirs is
+	// satisfiable without 20 distinct directories, and the named arm is what
+	// makes this floor honest. Do not "simplify" it away as redundant.
+	const (
+		minFilesParsed = 100
+		minPkgDirs     = 20
+	)
+	if cov.filesParsed < minFilesParsed || len(cov.pkgDirs) < minPkgDirs {
+		t.Errorf("path-first-concat walk COLLAPSED: parsed %d files across %d package dirs, "+
+			"want >= %d files and >= %d dirs. The scan is no longer reaching the code it "+
+			"grades, so a zero-site result below would be 'never looked', not 'nothing to "+
+			"find'. Fix the walk — do NOT lower these floors to match it.",
+			cov.filesParsed, len(cov.pkgDirs), minFilesParsed, minPkgDirs)
+	}
+	// Named-directory check on top of the counts: the aggregate could in
+	// principle be met while the walk missed the very subdirectory whose defect
+	// this guard was extended for. swift is where #6367's anchor lived.
+	for _, want := range []string{"swift", "hcl"} {
+		if !cov.pkgDirs[want] {
+			t.Errorf("path-first-concat walk never reached internal/extractors/%s — "+
+				"the directory whose file-anchored FromID this guard exists to catch. "+
+				"A green run that never opened it proves nothing.", want)
+		}
+	}
 
 	observed := map[string][]fileAnchoredSite{}
 	for _, s := range sites {
 		observed[s.key] = append(observed[s.key], s)
 	}
 
-	// Stale-entry check FIRST. swift is currently the only site of this shape in
-	// the tree, so fixing it empties the matcher; if the vacuity guard ran first
-	// it would report "the matcher has broken" for what is actually a fix. Both
-	// fire, but the accurate diagnosis leads.
+	// Stale-entry check FIRST, so that when the map is non-empty the accurate
+	// diagnosis leads. DORMANT TODAY: knownInvisibleOffenders is empty, so this
+	// loop runs zero iterations and cannot fail under any mutation (#6367 review
+	// F2). It is retained for the next entry, not because it is load-bearing
+	// now — the checks that actually bite here are the coverage floor above and
+	// the positive control below.
 	for key := range knownInvisibleOffenders {
 		if len(observed[key]) == 0 {
 			t.Errorf("knownInvisibleOffenders[%q] matches no site any more — either the code "+
@@ -1085,11 +1154,48 @@ func TestKnownInvisibleFileAnchoredOffenders(t *testing.T) {
 		}
 	}
 
-	// Vacuity guard: the matcher must still match the shape it was written for.
+	// Vacuity guard, via a POSITIVE CONTROL rather than via production code.
+	//
+	// This check used to be `len(sites) == 0 → fail`: the matcher proved itself
+	// by pointing at a real offender, and swift was the last one. That made the
+	// guard green only while the defect still existed — fixing swift (#6367)
+	// reported "the walk / AST match has broken" for what was actually the fix.
+	// PRODUCTION REACHING ZERO SITES IS THE GOAL, not a failure, so the proof
+	// moved to testdata/pathfirstconcat, which both walks SkipDir past.
+	//
+	// The control pins the matcher's SHAPE/KIND axis in both of its directions:
+	// it must still match the path-first-concat shape, and it must still skip
+	// IMPORTS (#120). It does NOT pin the production walk's coverage — that is
+	// a separate axis, checked by the coverage floor above (#6367 review F1).
+	//
+	// KNOWN RESIDUAL HOLE, left open deliberately. Coverage and the control are
+	// scored on DIFFERENT ROOTS: coverage on ".", the control on
+	// testdata/pathfirstconcat. A mutant that made site detection conditional on
+	// the root — matching only when root != "." — would clear both: full
+	// coverage, green control, production silently blind. Closing it means
+	// asserting the production scan on a root that also contains a known
+	// positive, which would put an offending fixture inside the graded tree.
+	// Judged not worth that trade (#6367 review round 2, reviewer concurring);
+	// recorded here so the next person finds a decision rather than an
+	// oversight.
+	control, _ := scanPathFirstConcatFromIDs(t, filepath.Join("testdata", "pathfirstconcat"))
+	var controlKeys []string
+	for _, c := range control {
+		controlKeys = append(controlKeys, c.key+" ["+c.form+"]")
+	}
+	sort.Strings(controlKeys)
+	wantControl := []string{"extractors:emitPathFirstConcatDependsOn:DEPENDS_ON [F-hidden:keyed]"}
+	if !slices.Equal(controlKeys, wantControl) {
+		t.Errorf("path-first-concat matcher failed its positive control:\n got: %v\nwant: %v\n"+
+			"The matcher can no longer see the shape it exists to catch (or it stopped "+
+			"skipping IMPORTS), so a green run over production code proves nothing. "+
+			"Fix the matcher — do NOT edit testdata/pathfirstconcat to suit it.",
+			controlKeys, wantControl)
+	}
+
+	// With the control passing, zero production sites means every offender was
+	// genuinely fixed. That is success, and there is nothing further to check.
 	if len(sites) == 0 {
-		t.Error("path-first-concat matcher found no sites at all — either every listed " +
-			"offender above was genuinely fixed, or the walk / AST match has broken and " +
-			"a guard that matches nothing passes for free")
 		return
 	}
 	keys := make([]string, 0, len(observed))
