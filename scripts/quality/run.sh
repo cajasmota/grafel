@@ -62,6 +62,15 @@
 #                build/grafel on every run and that is what is graded (#6283).
 #   QUALITY_OUT_DIR  directory to write per-fixture JSON reports into
 #                    (default: reports/quality relative to repo root)
+#
+# Diagnosability (Refs #6573): each fixture's `grafel quality` stderr is captured
+# to a scratch file instead of /dev/null. It stays invisible on a normal run; if
+# EVERY fixture comes back UNMEASURED — the shape an environmental failure takes,
+# e.g. a half-set isolation triple tripping #6331's guard — the first fixture's
+# stderr is printed in full before the exit-3 bail, so the cause is named rather
+# than left to be rediscovered by re-running one fixture by hand. This changes
+# what the run SAYS, never what it DECIDES: exit codes, the ratchet, and the
+# order of the exit-3 bail relative to the mode dispatch are untouched.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -112,6 +121,52 @@ if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
   echo "error: --runs must be a positive integer (got '$RUNS')" >&2
   exit 1
 fi
+
+# ---------------------------------------------------------------------------
+# Isolation pre-flight (Refs #6331, #6573).
+#
+# internal/envguard refuses to run when exactly ONE of GRAFEL_HOME /
+# GRAFEL_DAEMON_ROOT redirects: half an isolation is worse than none, because
+# the store and the daemon plane then disagree about which home they live in.
+# Every fixture trips that guard identically, so a half-set environment turns
+# into 26 copies of "UNMEASURED" and no named cause — which is exactly the
+# incident #6573 was filed from. Say it once, up front, instead.
+#
+# Advisory only: this warns, it never decides. GRAFEL_ALLOW_PARTIAL_ISOLATION=1
+# downgrades the guard's refusal to a warning, in which case the run proceeds
+# and this notice is the only thing that would have been wrong to act on.
+# envguard remains the authority on the verdict.
+#
+# One normalisation is applied, and only to GRAFEL_HOME: envguard's
+# defaultGrafelHome is $HOME/.grafel on every platform, so a plain
+# `export GRAFEL_HOME=$HOME/.grafel` in a shell profile redirects nothing and
+# reads as unset there too. That is the whole of the correspondence.
+#
+# GRAFEL_DAEMON_ROOT deliberately gets NO such treatment, because envguard's
+# defaultDaemonRoot is NOT $HOME/.grafel: it is %APPDATA%\grafel on Windows,
+# and "" on Unix whenever XDG_RUNTIME_DIR is set (which makes ANY value a
+# redirect). Normalising it against $HOME/.grafel would have silently dropped
+# the warning on exactly the platforms where envguard refuses — the #6134 shape.
+#
+# The rest of envguard's logic (XDG_RUNTIME_DIR, %APPDATA%, filepath.Clean, the
+# real-HOME comparison) is NOT reimplemented, so this hint is coarser than the
+# guard in both directions: a trailing slash (`$HOME/.grafel/`) warns where
+# envguard would Clean it to OK. Advisory-only is what makes that acceptable —
+# nothing observes this warning, envguard remains the authority on the verdict,
+# and a coarse hint beats a comment claiming a fidelity it does not have.
+# ---------------------------------------------------------------------------
+_iso_home="${GRAFEL_HOME:-}"
+_iso_root="${GRAFEL_DAEMON_ROOT:-}"
+[[ -n "${HOME:-}" && "$_iso_home" == "$HOME/.grafel" ]] && _iso_home=""
+if [[ -n "$_iso_home" && -z "$_iso_root" ]] || [[ -z "$_iso_home" && -n "$_iso_root" ]]; then
+  echo "WARNING: PARTIALLY ISOLATED environment — every fixture is likely to fail identically." >&2
+  echo "  GRAFEL_HOME=${GRAFEL_HOME:-<unset>}" >&2
+  echo "  GRAFEL_DAEMON_ROOT=${GRAFEL_DAEMON_ROOT:-<unset>}" >&2
+  echo "  Neither variable alone is isolation (#6331). Set all three, or none:" >&2
+  echo "    export HOME=\$(mktemp -d); export GRAFEL_HOME=\$HOME/.grafel; export GRAFEL_DAEMON_ROOT=\$HOME/.grafel" >&2
+  echo "  (GRAFEL_ALLOW_PARTIAL_ISOLATION=1 downgrades the guard's refusal to a warning.)" >&2
+fi
+unset _iso_home _iso_root
 
 # ---------------------------------------------------------------------------
 # Resolve the binary to grade (Refs #6283).
@@ -201,8 +256,56 @@ EXIT=0
 # which is the /bin/bash macOS still ships.
 UNMEASURED=""
 UNMEASURED_N=0
+# Total fixture directories seen this run. Only needed to tell "one fixture
+# broke" from "the environment broke" (Refs #6573).
+FIXTURE_N=0
+
+# Per-fixture stderr captures (Refs #6573). `grafel quality`'s stderr used to go
+# to /dev/null unconditionally, so the one artifact that names WHY a fixture
+# failed was destroyed before anyone could read it. It is written to a scratch
+# file instead and surfaced only on the all-UNMEASURED path, which keeps the
+# normal summary as quiet as it was. Nothing survives the run: the directory is
+# under mktemp and removed on exit — success and exit 3 alike (measured: 0
+# residue in the real temp dir; note $TMPDIR cannot be used to scope such a
+# measurement, macOS mktemp ignores it).
+STDERR_DIR="$(mktemp -d)"
+# CUR_TMPDIR is the per-fixture scratch dir while one is live, "" otherwise.
+# One cleanup function owning both directories beats a trap that is swapped in
+# and out around every fixture: there is exactly one place that can leak.
+CUR_TMPDIR=""
+# shellcheck disable=SC2329  # invoked via trap
+cleanup_all() {
+  if [[ -n "$CUR_TMPDIR" ]]; then rm -rf "$CUR_TMPDIR"; fi
+  rm -rf "$STDERR_DIR"
+}
+# The INT/TERM traps are belt-and-braces, and the honest note is that they were
+# NOT observed firing on the bash this repo actually runs on. macOS ships bash
+# 3.2.57, and there a shell killed by SIGINT DOES run its EXIT trap (measured
+# directly: a 4-line script with `trap cleanup EXIT` and a `sleep`, interrupted,
+# prints "EXIT TRAP RAN" and exits 130). Residue was 0 on every path measured —
+# exit 0, exit 3, and SIGINT — both here and on ae2dae99e. They are kept because
+# that behaviour is bash's, not POSIX's, and a shell where EXIT does not run on
+# a fatal signal would otherwise leak both directories. They clean up, restore
+# the default disposition, and re-raise, so the caller still observes
+# death-by-signal (128+N) rather than a tidy exit.
+# shellcheck disable=SC2329  # invoked via trap
+on_signal() {
+  trap - EXIT INT TERM
+  cleanup_all
+  kill -"$1" $$
+}
+trap cleanup_all EXIT
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
+# The fixture whose captured stderr gets printed if EVERY fixture came back
+# UNMEASURED. First one wins: an environmental failure is the same failure 26
+# times, and one sample is the whole diagnosis.
+FIRST_ERR_NAME=""
+FIRST_ERR_FILE=""
+
 for fix in "$ROOT"/internal/quality/golden/*/ ; do
   name="$(basename "$fix")"
+  FIXTURE_N=$((FIXTURE_N + 1))
 
   # A directory with no expected.json cannot be graded by anything. Say so and
   # move on: `grafel quality` would refuse it anyway (LoadFixture), so indexing
@@ -222,16 +325,25 @@ for fix in "$ROOT"/internal/quality/golden/*/ ; do
   # Collect per-run JSON outputs in a temporary directory.
   # ------------------------------------------------------------------
   tmpdir="$(mktemp -d)"
-  # Cleanup on subshell exit; we reset the trap once we're done with $tmpdir.
-  cleanup_tmpdir() { rm -rf "$tmpdir"; }
-  trap cleanup_tmpdir EXIT
+  # Hand it to the run-level cleanup rather than installing a second trap: the
+  # traps set above already fire on exit AND on INT/TERM, and swapping them per
+  # fixture is how one of the two directories ends up uncovered.
+  CUR_TMPDIR="$tmpdir"
+
+  # One capture per fixture, appended across the repeat runs so a failure that
+  # only shows up on run 3 is not overwritten by run 4's silence.
+  errfile="$STDERR_DIR/$name.err"
+  : > "$errfile"
 
   run_idx=0
   while [[ $run_idx -lt $RUNS ]]; do
     rjson="$tmpdir/run${run_idx}.json"
     # `grafel quality` exits 2 on regression but still writes the JSON.
     # We capture both outcomes — the median aggregator decides pass/fail.
-    "$BIN" quality --json "$rjson" "$fix" 2>/dev/null || true
+    # stderr is captured, not discarded (Refs #6573): it is the only place the
+    # binary explains itself, and throwing it away is what made an
+    # environmental failure read as 26 identical content-free lines.
+    "$BIN" quality --json "$rjson" "$fix" 2>>"$errfile" || true
 
     # Short-circuit: once 3+ runs are available, check if they are stable
     # (entity_recall and relationship_recall all within 0.5pp of each other).
@@ -342,8 +454,8 @@ if regressed:
     sys.exit(2)
 PY
 
-  trap - EXIT
-  cleanup_tmpdir
+  rm -rf "$tmpdir"
+  CUR_TMPDIR=""
 
   # The aggregator above exits 1 for "no JSON reports produced" / "all JSON
   # reports unreadable" and 2 for "ran and missed". Only the second is a recall
@@ -354,6 +466,10 @@ PY
     UNMEASURED="$UNMEASURED  - $name
 "
     UNMEASURED_N=$((UNMEASURED_N + 1))
+    if [[ -z "$FIRST_ERR_FILE" && -s "$errfile" ]]; then
+      FIRST_ERR_NAME="$name"
+      FIRST_ERR_FILE="$errfile"
+    fi
     continue
   fi
 
@@ -382,6 +498,22 @@ if [[ $UNMEASURED_N -gt 0 ]]; then
   echo "  A fixture that was never graded is not a fixture that passed. Give it an" >&2
   echo "  expected.json, or move the directory out of internal/quality/golden/ —" >&2
   echo "  everything under golden/ is gated, there is no ungraded category." >&2
+
+  # All of them, not some of them (Refs #6573). One fixture failing is a fixture
+  # problem and its own stderr is a scroll away in $STDERR_DIR while the run
+  # lives; EVERY fixture failing is the environment, and the operator should not
+  # have to re-run one by hand with stderr attached to find that out. Print one
+  # sample in full — 26 copies of the same environmental message is not 26 facts.
+  if [[ $FIXTURE_N -gt 0 && $UNMEASURED_N -eq $FIXTURE_N && -n "$FIRST_ERR_FILE" && -s "$FIRST_ERR_FILE" ]]; then
+    echo >&2
+    echo "==> EVERY fixture ($UNMEASURED_N/$FIXTURE_N) was unmeasured, which is almost always" >&2
+    echo "    environmental rather than a fixture problem. Full stderr from the first" >&2
+    echo "    fixture, '$FIRST_ERR_NAME', verbatim:" >&2
+    echo "    ------------------------------------------------------------------" >&2
+    sed 's/^/    | /' "$FIRST_ERR_FILE" >&2
+    echo "    ------------------------------------------------------------------" >&2
+    echo "    (Command was: $BIN quality --json <tmp> <fixture>)" >&2
+  fi
   exit 3
 fi
 
