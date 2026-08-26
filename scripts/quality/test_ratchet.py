@@ -1474,6 +1474,210 @@ class SecondEarlyReturnIsReached(unittest.TestCase):
                 "through build() instead of calling it directly")
 
 
+class AnOverrideCannotVouchForItself(unittest.TestCase):
+    """`ensure_durable_measured_on` must not let `QUALITY_BASE_REF` be its own
+    authority (Refs #6564, #6568, #6570).
+
+    `git_sha()` computes the stamped sha FROM `default_branch_ref()`, and until
+    #6570 the durability guard re-derived that same ref and asked whether the
+    sha was reachable from it. With an override set those are the same ref by
+    construction, so the question answers itself: point `QUALITY_BASE_REF` at a
+    local feature branch and the writer stamps that branch's HEAD, the guard
+    agrees, and the recorded value is orphaned by the squash that lands the PR
+    — #6564 exactly, re-entered through the one door the guard did not cover.
+
+    The fix asks the ref the CHECKOUT discovered for itself as a second opinion,
+    which is why these tests are structured around three separate cases rather
+    than one:
+
+      * an override the discovered branch CANNOT reach must now be refused —
+        the permissive direction, and the red control for #6570;
+      * an override the discovered branch CAN reach must still be honoured, or
+        the fix has merely made the override useless;
+      * a discovered ref that shares NO history with the override must NOT get
+        a veto. That clause is not a convenience: `make_repo_divergent_default_
+        ref` builds an `origin/main` on an orphan root — "a different project's
+        main" — and `AncestryFollowsTheDiscoveredRef` / `PaddedBaseRefOverride
+        IsHonoured` both require a durable sha to be ACCEPTED there. A
+        cross-check without the disjointness gate refuses it, which is the
+        regression #6627 and #6633 pinned. Neither of those classes was
+        modified for #6570.
+
+    These tests assert the DECISION and the ARTEFACT — a `SystemExit` or a
+    written `measured_on` — never a counter and never the message text, for the
+    reason #6630 established: the message interpolates the ref it chose, so a
+    text assertion reads back the code's own claim about which ref it consulted.
+    """
+
+    def test_refuses_a_sha_the_discovered_default_branch_cannot_reach(self):
+        """PERMISSIVE DIRECTION — the red control for #6570.
+
+        Before the fix this goes green by ACCEPTING the feature HEAD.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            base, head, tip = make_repo(root)
+            set_base_ref(self, "refs/heads/feature")
+
+            # Premises, asked of git directly rather than of ratchet.py.
+            self.assertTrue(has_ref(root, "refs/heads/feature"))
+            self.assertTrue(has_ref(root, "refs/remotes/origin/main"))
+            self.assertTrue(
+                is_ancestor(root, head, "refs/heads/feature"),
+                "DEGENERATE FIXTURE: the override cannot reach the sha, so a "
+                "refusal would come from the FIRST check and prove nothing "
+                "about the cross-check")
+            self.assertFalse(
+                is_ancestor(root, head, "refs/remotes/origin/main"),
+                "DEGENERATE FIXTURE: the discovered branch can already reach "
+                "the sha, so there is nothing for the cross-check to object to")
+            self.assertNotEqual(base, head)
+            self.assertNotEqual(tip, head)
+            self.assertEqual(
+                ratchet.git_sha(), head,
+                "premise broken: the writer is not stamping the feature HEAD, "
+                "so this test does not exercise the #6564 shape at all")
+
+            with self.assertRaises(
+                SystemExit,
+                msg=(f"the writer ACCEPTED {head!r}, a feature-branch HEAD that "
+                     f"origin/main cannot reach, because QUALITY_BASE_REF named "
+                     f"the very branch the sha was computed from. Squash "
+                     f"orphans that commit on merge and internal/quality goes "
+                     f"red on main for everyone (#6564)"),
+            ):
+                ratchet.ensure_durable_measured_on(head)
+
+    def test_it_refuses_on_a_checkout_with_no_origin_HEAD_symref(self):
+        """The same refusal on a checkout that has `refs/remotes/origin/main`
+        but NO `refs/remotes/origin/HEAD`.
+
+        Measured, not assumed (Refs #6570): a cross-check that reads only the
+        symref and treats its absence as "nothing discovered, accept" survives
+        the whole suite without this test, because every other fixture with a
+        remote sets the symref. The shape is ordinary — `origin/HEAD` is written
+        by `git clone`, not by `git remote add` + `git fetch`, and it is exactly
+        the shape `make_repo_stale_local_main` documents — so an override on
+        such a checkout would still vouch for itself, which is the whole of the
+        bug. DEFAULT_BRANCH_REFS is the fallback that must be consulted.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            _base, head, _tip = make_repo(root)
+            git(root, "symbolic-ref", "--delete", "refs/remotes/origin/HEAD")
+            set_base_ref(self, "refs/heads/feature")
+
+            self.assertFalse(
+                has_ref(root, "refs/remotes/origin/HEAD"),
+                "DEGENERATE FIXTURE: the symref is still present, so this is "
+                "the same shape as the test above")
+            self.assertTrue(has_ref(root, "refs/remotes/origin/main"))
+            self.assertFalse(
+                is_ancestor(root, head, "refs/remotes/origin/main"))
+            self.assertEqual(ratchet.git_sha(), head)
+
+            with self.assertRaises(
+                SystemExit,
+                msg=(f"the writer ACCEPTED {head!r} because `origin/HEAD` was "
+                     f"absent — the cross-check treated a checkout that plainly "
+                     f"has origin/main as having no discoverable base, so the "
+                     f"override vouched for itself again")):
+                ratchet.ensure_durable_measured_on(head)
+
+    def test_the_writer_refuses_rather_than_stamping_a_feature_head(self):
+        """The operator-visible half: `--update-baseline` must not produce a
+        baseline carrying the orphan-to-be."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            _base, head, _tip = make_repo(root)
+            set_base_ref(self, "refs/heads/feature")
+            golden, reports, baseline = make_fixture(root)
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+
+            try:
+                doc = ratchet.build(golden, reports, baseline)
+            except SystemExit:
+                return
+            self.fail(
+                f"--update-baseline wrote measured_on {doc['measured_on']!r} "
+                f"(feature HEAD is {head!r}), which origin/main cannot reach")
+
+    def test_an_override_the_discovered_branch_agrees_with_is_still_honoured(self):
+        """The cross-check must FIRE and PASS here, not make the override
+        useless. Without this, "refuse whenever an override is set" is green."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            base, _head, tip = make_repo(root)
+            set_base_ref(self, "refs/heads/main")
+
+            # The override and the ref this checkout discovers for itself must
+            # be DIFFERENT refs, or the cross-check short-circuits and this test
+            # observes nothing. Asked of git, not of ratchet.py, so the premise
+            # holds whichever side of the fix this file is read on.
+            self.assertEqual(
+                git(root, "symbolic-ref", "refs/remotes/origin/HEAD"),
+                "refs/remotes/origin/main")
+            self.assertEqual(ratchet.default_branch_ref(), "refs/heads/main")
+            # ... and history-connected, or the disjointness gate carries it.
+            self.assertNotEqual(
+                git(root, "merge-base", "refs/heads/main",
+                    "refs/remotes/origin/main"), "")
+            self.assertTrue(is_ancestor(root, base, "refs/remotes/origin/main"))
+            self.assertEqual(ratchet.git_sha(), base)
+            self.assertNotEqual(base, tip)
+
+            err = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(err):
+                    ratchet.ensure_durable_measured_on(base)
+            except SystemExit as exc:
+                self.fail(
+                    f"the writer refused {base!r}, which BOTH the override and "
+                    f"origin/main can reach — the cross-check now vetoes every "
+                    f"override rather than only the ones that cannot be "
+                    f"vouched for ({exc})")
+            self.assertEqual(
+                err.getvalue(), "",
+                "the 'unknown' guard fired; neither ancestry check was reached "
+                "and this test observed nothing")
+
+    def test_a_discovered_ref_disjoint_from_the_override_gets_no_veto(self):
+        """The disjointness gate, named directly.
+
+        `AncestryFollowsTheDiscoveredRef` and `PaddedBaseRefOverrideIsHonoured`
+        both fail without it; this states WHY as its own proposition, so a
+        future edit that drops the gate reads a failure about disjoint history
+        rather than one about the padded override.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            branch_point, orphan = make_repo_divergent_default_ref(root)
+            set_base_ref(self, "refs/remotes/origin/release")
+
+            self.assertTrue(
+                has_ref(root, "refs/remotes/origin/main"),
+                "DEGENERATE FIXTURE: no discovered ref, so there is no veto to "
+                "withhold")
+            self.assertNotEqual(
+                subprocess.call(
+                    ["git", "merge-base", "refs/remotes/origin/release",
+                     "refs/remotes/origin/main"], cwd=root,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), 0,
+                "DEGENERATE FIXTURE: the two refs share history, so this is not "
+                "the disjoint case")
+            self.assertFalse(is_ancestor(root, branch_point,
+                                         "refs/remotes/origin/main"))
+            self.assertNotEqual(branch_point, orphan)
+
+            err = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(err):
+                    ratchet.ensure_durable_measured_on(branch_point)
+            except SystemExit as exc:
+                self.fail(
+                    f"the writer refused {branch_point!r} on the say-so of an "
+                    f"origin/main that shares NO history with this checkout — "
+                    f"a different project's main was given a veto over the "
+                    f"operator's declared base ({exc})")
+            self.assertEqual(err.getvalue(), "")
+
+
 if __name__ == "__main__":
     if subprocess.call(["git", "--version"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) != 0:
