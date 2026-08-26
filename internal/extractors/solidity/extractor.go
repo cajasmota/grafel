@@ -170,6 +170,54 @@ var solidityKeywords = map[string]bool{
 	"keccak256": true, "sha256": true, "ripemd160": true, "ecrecover": true,
 	"addmod": true, "mulmod": true, "gasleft": true, "blockhash": true,
 	"selfdestruct": true,
+	// #6425, the CALLS over-fire arm. Reachable through callBareRE today:
+	// `type(uint256).max`, `try … returns (uint256 v)` and
+	// `catch (bytes memory raw)` each minted a call target. Reachable only
+	// through callDotRE, via the root check in collectCallsFromBody's
+	// addCall: `abi.encode(…)`, `super.f()`, `this.f()`.
+	//
+	// `unchecked` and `try` are entered for completeness and cannot fire
+	// through callBareRE at all — both are followed by `{` or by an
+	// expression, never directly by `(`. Do not write a fixture asserting
+	// they are suppressed on the bare path; it would pass before the fix.
+	"returns": true, "type": true, "catch": true, "try": true,
+	"unchecked": true, "super": true, "this": true, "abi": true,
+}
+
+// solBuiltinNamespaces are dotted receivers whose MEMBERS are language
+// builtins rather than user-defined functions. `abi.encode(…)` produces two
+// regex hits — the dotted `abi.encode` and, because callBareRE also matches
+// the member half of the same expression, a bare `encode` — and neither names
+// anything in the Solidity surface (#6425; `solidity-mini/NOTICE.md:124`
+// records the bare one sitting in the graph as a `SCOPE.External` node called
+// `encode`). Suppressing the root alone would leave that second edge behind.
+//
+// `bytes` and `string` are here for `bytes.concat(…)` (>=0.8.4) and
+// `string.concat(…)` (>=0.8.12). They were already in solidityKeywords as type
+// names, so the root check above ALREADY dropped their dotted half — which
+// left precisely the half-state this set exists to prevent: no
+// `CALLS -> bytes.concat`, but a phantom `CALLS -> concat` still in the graph.
+// Measured on the fix before they were added. A membership rule reasoned out
+// from "which receivers have callable members" missed both, which is why
+// TestSolidity_6425_BuiltinNamespaceConcat asserts them rather than a comment.
+//
+// `super` and `this` are deliberately NOT here even though they are keywords.
+// They are *transparent* receivers: `super.ping()` names no entity called
+// `super`, so the dotted target goes, but the member it reaches is a real
+// function, so the bare `ping` must stay. Adding them here would trade this
+// issue's over-fire for an under-fire.
+//
+// `msg`/`block`/`tx` are absent under the same rule, applied narrowly: in
+// Solidity >= 0.5 their members are properties (`msg.sender`,
+// `block.timestamp`), so nothing of theirs reaches callBareRE. That is scoped
+// to >= 0.5 on purpose, because the universal form of the claim is false:
+// pre-0.5 `block.blockhash(n)` IS a call. It is already suppressed, but by the
+// leaf check above (`blockhash` is in solidityKeywords) rather than by
+// membership here — measured at this commit, `block.blockhash(uint256(n))`
+// yields `uint256` alone. Do not read this paragraph as "no member of any of
+// them is ever called".
+var solBuiltinNamespaces = map[string]bool{
+	"abi": true, "bytes": true, "string": true,
 }
 
 // Extract processes the Solidity source and returns entity records.
@@ -977,6 +1025,13 @@ func collectCallsFromBody(body, callerName string) []types.RelationshipRecord {
 		if solidityKeywords[target] {
 			return
 		}
+		// A dotted target whose ROOT is a language keyword names nothing in
+		// the Solidity surface: `abi.encode`, `super.ping`, `this.ceiling`
+		// (#6425). The check is on the root, never on the leaf — a call to a
+		// user-defined `helper.encode(...)` must survive unchanged.
+		if dot := strings.IndexByte(target, '.'); dot > 0 && solidityKeywords[target[:dot]] {
+			return
+		}
 		// Skip bare leaf that matches caller's own short name.
 		leaf := target
 		if dot := strings.LastIndexByte(target, '.'); dot >= 0 {
@@ -1013,12 +1068,42 @@ func collectCallsFromBody(body, callerName string) []types.RelationshipRecord {
 			addCall(m[1])
 		}
 	}
-	for _, m := range callBareRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) >= 2 {
-			addCall(m[1])
+	// callBareRE also matches the member half of a dotted expression —
+	// `abi.encode(` yields a bare `encode` alongside the dotted hit. When the
+	// qualifier is a builtin namespace that member is a builtin too, so the
+	// bare hit is dropped as well; suppressing only the dotted root would
+	// leave `Vault.fingerprint --[CALLS]--> encode` in the graph (#6425).
+	// Index form rather than FindAllStringSubmatch because the decision needs
+	// the byte before the match, which the string form discards.
+	for _, m := range callBareRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) < 4 || m[2] < 0 {
+			continue
 		}
+		if solBuiltinNamespaces[solQualifierBefore(scrubbed, m[2])] {
+			continue
+		}
+		addCall(scrubbed[m[2]:m[3]])
 	}
 	return out
+}
+
+// solQualifierBefore returns the identifier qualifying the token that starts at
+// pos — the `abi` in `abi.encode` — or "" when the token is not a member
+// access. Matching is whole-identifier: it walks back over identifier bytes to
+// the start of the qualifier, so `myabi.encode` reports `myabi`, not `abi`.
+func solQualifierBefore(s string, pos int) string {
+	if pos == 0 || s[pos-1] != '.' {
+		return ""
+	}
+	end := pos - 1
+	start := end
+	for start > 0 && isSolIdentPart(s[start-1]) {
+		start--
+	}
+	if start == end || !isSolIdentStart(s[start]) {
+		return ""
+	}
+	return s[start:end]
 }
 
 // extractBracedBody extracts the content between a matching pair of braces.

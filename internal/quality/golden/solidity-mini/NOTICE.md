@@ -191,12 +191,12 @@ loses exactly one entity (`Vault.helper`) and its four edges. The residual
 `Vault.roundUp --[CALLS]--> helper` now dangles as a bare name, which is the
 honest state — it names nothing in the Solidity surface.
 
-The other two rows still fire and stay in this file. The same run confirms
+The other two rows fired at the time this section was written. The run confirmed
 `Vault.ceiling --[CALLS]--> type` and `Vault.fingerprint --[CALLS]--> encode`,
-which appear in the graph as `SCOPE.External` nodes literally named `type` and
+which appeared in the graph as `SCOPE.External` nodes literally named `type` and
 `encode`.
 
-**Those entries are deliberately absent from `expected.json`**, because
+They were **deliberately absent from `expected.json`** while they fired, because
 `scripts/quality/ratchet.py:293-295` treats any forbidden hit as *always fatal*,
 and `Evaluate` in `internal/quality/diff.go` counts them unconditionally —
 `nice_to_have` does not apply to the forbidden list. There is no known-gaps or
@@ -204,25 +204,34 @@ expected-failure channel for precision the way the recorded floor is one for
 recall. Committing a currently-violated forbidden entry would therefore **break
 the gate rather than record a gap**, which is the one outcome #6424 ruled out.
 
-**When the rest of #6425 lands, add these two entries** — they are the
-assertion, held here only because the harness has nowhere else to put them yet.
-(The third, `Vault --[CONTAINS]--> Vault.helper`, has been moved into
-`expected.json`; it passes.)
+**Both entries are now in `expected.json`, and they pass**, promoted by the
+over-fire arm of #6425 (`solidityKeywords` gained the eight missing names, and
+`collectCallsFromBody` gained a keyword-root check for dotted targets plus a
+builtin-namespace check for the bare member half of the same expression).
+A **third** row went in alongside them that this file did not pre-specify:
+`Vault.fingerprint --[CALLS]--> abi.encode`, asserted with `to_bare_name`
+because it never folded into an entity. Without it, the two rows above could
+both be scored by suppressing only the bare `encode` while the dotted edge
+stayed in the graph.
 
-```json
-{
-  "from_name": "Vault.ceiling", "from_kind": "SCOPE.Operation", "from_file": "Vault.sol",
-  "kind": "CALLS", "to_name": "type", "to_kind": "SCOPE.External",
-  "must_exist": false,
-  "note": "#6425: `type(uint256).max` is a language builtin, not an invocation."
-},
-{
-  "from_name": "Vault.fingerprint", "from_kind": "SCOPE.Operation", "from_file": "Vault.sol",
-  "kind": "CALLS", "to_name": "encode", "to_kind": "SCOPE.External",
-  "must_exist": false,
-  "note": "#6425: from `abi.encode(...)`. The dotted target folds to a bare `encode` external node."
-}
+Measured both directions rather than assumed, with the fixture unchanged:
+
 ```
+binary built at cad97aa76 (parent):  forbidden hits: 3
+                                     entities 40/40, relationships 13/13
+                                     [extracted total: 61 entities, 150 relationships]
+binary with the #6425 over-fire fix: forbidden hits: 0
+                                     entities 40/40, relationships 13/13
+                                     [extracted total: 59 entities, 145 relationships]
+```
+
+So the graph delta is exactly **−2 entities** (the `type` and `encode`
+`SCOPE.External` nodes; `NOTICE.md`'s count of three drops to one, `Context`)
+and **−5 relationships**, with no movement in either recorded baseline figure —
+this change needs no `--update-baseline`.
+
+(The `Vault --[CONTAINS]--> Vault.helper` row was moved into `expected.json`
+earlier, by the #6423 review; it passes.)
 
 The opposite error in the same scan — `callBareRE` requiring a lowercase first
 character, so `IERC20(token).transfer(...)` yields no edge to `IERC20` — is
@@ -231,6 +240,11 @@ Whether an explicit type conversion is a call is a genuine design question, and
 a fixture is not entitled to settle it; #6425 should. `nice_to_have` makes the
 decision visible in the report's own counters (`relationships 0/1`) instead of
 invisible.
+
+**This half is still open.** The over-fire arm of #6425 landed without touching
+it, on purpose: implementing either side of the type-conversion question would
+answer it by fiat. The counter to watch is unchanged — `relationships 0/1` in
+the nice-to-have line.
 
 ## A note on `to_bare_name` — **read this before writing the next fixture**
 
@@ -245,6 +259,13 @@ folds every bare `CALLS`/`EXTENDS` target into a `SCOPE.External` entity.
   `_msgSender`, `abi.encode`, `ShortString.wrap`, `add`, `wrap`,
   `getStringSlot`, `unwrap`, `uint256`, `mstore`, the four `IMPORTS` paths, and
   more. The resolver's own line says it: `unmatched=29`.
+
+Those two counts are the **pre-#6425** measurement and are left as recorded,
+because they are what falsified the earlier claim. After the over-fire arm
+landed, `encode` and `type` are gone: **1** `SCOPE.External` entity (`Context`)
+and `unmatched=27`. Neither number changes the conclusion below — `Context`
+still folds and `computeFee` still does not — which is the point of keeping the
+larger sample.
 
 So **some** targets fold and most do not. The two targets this fixture actually
 asserts with `to_name` + `"to_kind": "SCOPE.External"` — `Context` and `ERC20` —
