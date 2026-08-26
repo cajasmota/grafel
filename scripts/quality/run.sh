@@ -137,17 +137,27 @@ fi
 # and this notice is the only thing that would have been wrong to act on.
 # envguard remains the authority on the verdict.
 #
-# One normalisation is mirrored from envguard so the common shell-profile case
-# does not produce a false alarm: a variable whose value is exactly the path
-# that would be resolved anyway redirects nothing, so it reads as unset. The
-# rest of envguard's path logic (XDG_RUNTIME_DIR, %APPDATA%, symlink
-# resolution) is deliberately NOT reimplemented here — this is a hint, and a
-# hint that drifts from the guard is worse than a coarse one.
+# One normalisation is applied, and only to GRAFEL_HOME: envguard's
+# defaultGrafelHome is $HOME/.grafel on every platform, so a plain
+# `export GRAFEL_HOME=$HOME/.grafel` in a shell profile redirects nothing and
+# reads as unset there too. That is the whole of the correspondence.
+#
+# GRAFEL_DAEMON_ROOT deliberately gets NO such treatment, because envguard's
+# defaultDaemonRoot is NOT $HOME/.grafel: it is %APPDATA%\grafel on Windows,
+# and "" on Unix whenever XDG_RUNTIME_DIR is set (which makes ANY value a
+# redirect). Normalising it against $HOME/.grafel would have silently dropped
+# the warning on exactly the platforms where envguard refuses — the #6134 shape.
+#
+# The rest of envguard's logic (XDG_RUNTIME_DIR, %APPDATA%, filepath.Clean, the
+# real-HOME comparison) is NOT reimplemented, so this hint is coarser than the
+# guard in both directions: a trailing slash (`$HOME/.grafel/`) warns where
+# envguard would Clean it to OK. Advisory-only is what makes that acceptable —
+# nothing observes this warning, envguard remains the authority on the verdict,
+# and a coarse hint beats a comment claiming a fidelity it does not have.
 # ---------------------------------------------------------------------------
 _iso_home="${GRAFEL_HOME:-}"
 _iso_root="${GRAFEL_DAEMON_ROOT:-}"
 [[ -n "${HOME:-}" && "$_iso_home" == "$HOME/.grafel" ]] && _iso_home=""
-[[ -n "${HOME:-}" && "$_iso_root" == "$HOME/.grafel" ]] && _iso_root=""
 if [[ -n "$_iso_home" && -z "$_iso_root" ]] || [[ -z "$_iso_home" && -n "$_iso_root" ]]; then
   echo "WARNING: PARTIALLY ISOLATED environment — every fixture is likely to fail identically." >&2
   echo "  GRAFEL_HOME=${GRAFEL_HOME:-<unset>}" >&2
@@ -255,11 +265,38 @@ FIXTURE_N=0
 # failed was destroyed before anyone could read it. It is written to a scratch
 # file instead and surfaced only on the all-UNMEASURED path, which keeps the
 # normal summary as quiet as it was. Nothing survives the run: the directory is
-# under mktemp and removed by the EXIT trap on every path, success included.
+# under mktemp and removed on exit — success and exit 3 alike (measured: 0
+# residue in the real temp dir; note $TMPDIR cannot be used to scope such a
+# measurement, macOS mktemp ignores it).
 STDERR_DIR="$(mktemp -d)"
-# shellcheck disable=SC2329  # invoked via trap, and from cleanup_tmpdir
-cleanup_run() { rm -rf "$STDERR_DIR"; }
-trap cleanup_run EXIT
+# CUR_TMPDIR is the per-fixture scratch dir while one is live, "" otherwise.
+# One cleanup function owning both directories beats a trap that is swapped in
+# and out around every fixture: there is exactly one place that can leak.
+CUR_TMPDIR=""
+# shellcheck disable=SC2329  # invoked via trap
+cleanup_all() {
+  if [[ -n "$CUR_TMPDIR" ]]; then rm -rf "$CUR_TMPDIR"; fi
+  rm -rf "$STDERR_DIR"
+}
+# The INT/TERM traps are belt-and-braces, and the honest note is that they were
+# NOT observed firing on the bash this repo actually runs on. macOS ships bash
+# 3.2.57, and there a shell killed by SIGINT DOES run its EXIT trap (measured
+# directly: a 4-line script with `trap cleanup EXIT` and a `sleep`, interrupted,
+# prints "EXIT TRAP RAN" and exits 130). Residue was 0 on every path measured —
+# exit 0, exit 3, and SIGINT — both here and on ae2dae99e. They are kept because
+# that behaviour is bash's, not POSIX's, and a shell where EXIT does not run on
+# a fatal signal would otherwise leak both directories. They clean up, restore
+# the default disposition, and re-raise, so the caller still observes
+# death-by-signal (128+N) rather than a tidy exit.
+# shellcheck disable=SC2329  # invoked via trap
+on_signal() {
+  trap - EXIT INT TERM
+  cleanup_all
+  kill -"$1" $$
+}
+trap cleanup_all EXIT
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
 # The fixture whose captured stderr gets printed if EVERY fixture came back
 # UNMEASURED. First one wins: an environmental failure is the same failure 26
 # times, and one sample is the whole diagnosis.
@@ -288,11 +325,10 @@ for fix in "$ROOT"/internal/quality/golden/*/ ; do
   # Collect per-run JSON outputs in a temporary directory.
   # ------------------------------------------------------------------
   tmpdir="$(mktemp -d)"
-  # Cleanup on script exit; we restore the run-level trap once we're done with
-  # $tmpdir. It chains cleanup_run so an early exit never leaks either directory.
-  # shellcheck disable=SC2329  # invoked via trap
-  cleanup_tmpdir() { rm -rf "$tmpdir"; cleanup_run; }
-  trap cleanup_tmpdir EXIT
+  # Hand it to the run-level cleanup rather than installing a second trap: the
+  # traps set above already fire on exit AND on INT/TERM, and swapping them per
+  # fixture is how one of the two directories ends up uncovered.
+  CUR_TMPDIR="$tmpdir"
 
   # One capture per fixture, appended across the repeat runs so a failure that
   # only shows up on run 3 is not overwritten by run 4's silence.
@@ -418,10 +454,8 @@ if regressed:
     sys.exit(2)
 PY
 
-  # Restore the run-level trap rather than clearing it — $STDERR_DIR still has
-  # to be removed on every later exit path, including `exit 3`.
-  trap cleanup_run EXIT
   rm -rf "$tmpdir"
+  CUR_TMPDIR=""
 
   # The aggregator above exits 1 for "no JSON reports produced" / "all JSON
   # reports unreadable" and 2 for "ran and missed". Only the second is a recall
