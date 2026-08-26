@@ -132,6 +132,13 @@ func LoadFixture(dir string) (*Fixture, error) {
 	// reviewer can see and challenge, unlike an absent key. `null` is rejected
 	// with absence because it decodes to the same nil slice — declaring the
 	// key while saying nothing with it is the absent shape in disguise.
+	//
+	// `f.ExpectedRelationships == nil` would in fact separate the two on its
+	// own — encoding/json yields a non-nil empty slice for `[]` — so this
+	// re-read is not the only way to tell them apart. It is used because it
+	// names the key it is checking, which a nil test does not, and because it
+	// keeps working if the field ever gains a non-slice type or a custom
+	// UnmarshalJSON.
 	var declared map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &declared); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", p, err)
