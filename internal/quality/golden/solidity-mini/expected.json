@@ -485,6 +485,35 @@
       "to_bare_name": "uint256",
       "must_exist": false,
       "note": "Precision guard on #6423 defect 4, the attribute scan. `function ceiling() public pure returns (uint256)` puts `uint256` in the region between the parameter list's `)` and the body's `{` -- the exact region declAttributes reads to find modifier usages. A scan that takes every identifier there raises relationship recall AND mints a type name as a call target; before this entry the three forbidden rows all targeted other defects, so the graded `forbidden hits: 0` said nothing about defect 4 at all. The assertion is `to_bare_name`, not `to_name` + `to_kind`: a minted type name never resolves to any entity, so it stays on the edge as a raw ToID string and an entity-lookup form would match nothing and be silently vacuous. Measured with the paren-skip in modifierUsages removed: `Vault.ceiling --[CALLS]--> uint256` is emitted and the graded forbidden hits go 0 -> 1."
+    },
+    {
+      "from_name": "Vault.ceiling",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_name": "type",
+      "to_kind": "SCOPE.External",
+      "must_exist": false,
+      "note": "#6425: `type(uint256).max` is a language builtin, not an invocation. Held back in NOTICE.md until the over-fire arm landed, because a currently-violated forbidden entry breaks the gate rather than recording a gap. `to_name` + `to_kind` is the right form here, as for the Vault.helper row above and unlike the `uint256` row: this target DID fold into a SCOPE.External node (NOTICE.md:124 counts it as one of exactly three), so a regression re-mints the entity and the lookup resolves precisely when the assertion needs to fail."
+    },
+    {
+      "from_name": "Vault.fingerprint",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_name": "encode",
+      "to_kind": "SCOPE.External",
+      "must_exist": false,
+      "note": "#6425: from `abi.encode(...)`. The dotted target folds to a bare `encode` external node. Also held back in NOTICE.md until the fix landed. This row is the reason the fix could not stop at the dotted root: callBareRE independently matches the member half of `abi.encode(`, so suppressing only `abi.encode` would have left this edge and this external node in the graph."
+    },
+    {
+      "from_name": "Vault.fingerprint",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_bare_name": "abi.encode",
+      "must_exist": false,
+      "note": "#6425, the dotted half of the same expression, and NOT one of the two rows NOTICE.md pre-specified. Added because those two alone leave a hole: a fix that suppressed only the bare `encode` would score them both while `Vault.fingerprint --[CALLS]--> abi.encode` stayed in the graph. `to_bare_name`, not `to_name` + `to_kind`, and measured rather than assumed: NOTICE.md:243-247 counts `abi.encode` among the 26 relationships that still carry a raw string ToID, so it never became an entity and an entity-lookup form would be silently vacuous."
     }
   ]
 }
