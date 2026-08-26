@@ -1092,12 +1092,28 @@ func TestKnownInvisibleFileAnchoredOffenders(t *testing.T) {
 	// this, a walk that stopped recursing returns zero sites and the
 	// `len(sites) == 0 → return` below reads that as total success.
 	//
-	// MEASURED 2026-08-27 at this commit: 296 non-test .go files across 78
-	// package dirs under internal/extractors. The floors are deliberately far
-	// below those figures so ordinary refactoring, file merges and extractor
-	// removals do not trip them; they are here to catch a walk that COLLAPSES,
-	// not to pin an exact inventory. A non-recursing walk sees only this
-	// directory's own files — one pkgDir, "extractors" — and dies on both.
+	// MEASURED 2026-08-27 at this commit, by raising minFilesParsed to a
+	// sentinel and reading the emitted diagnostic: 295 non-test .go files
+	// across 77 package dirs under internal/extractors.
+	//
+	// Do NOT re-derive these with a bare `find ... -not -path './testdata/*'`:
+	// that excludes only the TOP-LEVEL testdata and counts
+	// golang/testdata/issue4426/constants.go, giving 296/78. This walk SkipDirs
+	// any directory named testdata at ANY depth, and there are 19 nested ones.
+	// The first version of this comment carried that off-by-one.
+	//
+	// The floors are deliberately far below the measured figures so ordinary
+	// refactoring, file merges and extractor removals do not trip them; they are
+	// here to catch a walk that COLLAPSES, not to pin an exact inventory. A
+	// non-recursing walk sees only this directory's own files — one pkgDir,
+	// "extractors" — and dies on both.
+	//
+	// THE COUNTS ARE THE WEAKER HALF. A reviewer's mutant keyed the dir set per
+	// FILE (cov.pkgDirs[rel] rather than [pkg]), so 295 files reported 295
+	// "dirs" from however few real directories: it died, but NO collapse line
+	// fired — only the named-directory lookups below caught it. So minPkgDirs is
+	// satisfiable without 20 distinct directories, and the named arm is what
+	// makes this floor honest. Do not "simplify" it away as redundant.
 	const (
 		minFilesParsed = 100
 		minPkgDirs     = 20
@@ -1151,6 +1167,17 @@ func TestKnownInvisibleFileAnchoredOffenders(t *testing.T) {
 	// it must still match the path-first-concat shape, and it must still skip
 	// IMPORTS (#120). It does NOT pin the production walk's coverage — that is
 	// a separate axis, checked by the coverage floor above (#6367 review F1).
+	//
+	// KNOWN RESIDUAL HOLE, left open deliberately. Coverage and the control are
+	// scored on DIFFERENT ROOTS: coverage on ".", the control on
+	// testdata/pathfirstconcat. A mutant that made site detection conditional on
+	// the root — matching only when root != "." — would clear both: full
+	// coverage, green control, production silently blind. Closing it means
+	// asserting the production scan on a root that also contains a known
+	// positive, which would put an offending fixture inside the graded tree.
+	// Judged not worth that trade (#6367 review round 2, reviewer concurring);
+	// recorded here so the next person finds a decision rather than an
+	// oversight.
 	control, _ := scanPathFirstConcatFromIDs(t, filepath.Join("testdata", "pathfirstconcat"))
 	var controlKeys []string
 	for _, c := range control {
