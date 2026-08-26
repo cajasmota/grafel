@@ -194,7 +194,11 @@ func TestCiteSymbol_AnchoredCitationsAcceptedAcrossFormsAndDeclKinds(t *testing.
 		// the declaration (5) — convention rule (2).
 		{"func/range/doc-comment-open", fmt.Sprintf("matched by `TopLevelFunc` (%s:3-5).", rel)},
 		// A range on a declaration that has NO doc comment degenerates
-		// to the declaration line at both ends.
+		// to the declaration line at both ends. This is accepted
+		// because DocStart == Line there, NOT because opening on a
+		// declaration line is generally allowed — see
+		// range-opens-on-declaration-skipping-doc-comment, which
+		// rejects exactly that when a doc comment exists.
 		{"no-doc-comment/range", fmt.Sprintf("`OtherVar` (%s:22-22) is the second one.", rel)},
 		// A range closing EXACTLY on the last line of the declaration
 		// is the boundary case of the upper bound, and must be accepted
@@ -256,12 +260,32 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 			want:  "a range citation opens on the first doc-comment line",
 		},
 		{
-			// The unbounded-width case, kept inside the file so it
-			// isolates the OPENING bound rather than tripping the EOF
-			// rule: the declaration is inside, but the range is
-			// meaningless in both directions.
-			name:  "range-absurdly-wide",
+			// A range opening at the top of the file. Named for what
+			// it pins: the OPENING bound, not width — width is pinned
+			// by the closing-bound cases below. Kept inside the file so
+			// it cannot be rescued by the EOF rule.
+			name:  "range-opens-at-file-start",
 			notes: fmt.Sprintf("`TopLevelFunc` (%s:1-31).", rel),
+			want:  "a range citation opens on the first doc-comment line",
+		},
+		{
+			// N2. A range opening on the DECLARATION line, skipping the
+			// doc comment, must be rejected — this is precisely the rot
+			// two of the five registry corrections fixed
+			// (`slsFunction` 24-28 for a doc opening at 23,
+			// `parseProviderBlock` 128-152 for a doc opening at 125).
+			// Without this case, relaxing the rule to
+			// `lo == DocStart || lo == Line` would go unnoticed and the
+			// suite would not pin the defect the rule exists for.
+			name:  "range-opens-on-declaration-skipping-doc-comment",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:5-5).", rel),
+			want:  "a range citation opens on the first doc-comment line",
+		},
+		{
+			// Same shape on a declaration whose doc comment is further
+			// away, so the case is not passing on a one-line accident.
+			name:  "range-opens-on-declaration-skipping-multiline-doc",
+			notes: fmt.Sprintf("`Method` (%s:12-12).", rel),
 			want:  "a range citation opens on the first doc-comment line",
 		},
 		{
@@ -297,6 +321,17 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 			// can claim an arbitrary span by entering through the top.
 			name:  "range-closes-past-declaration-body",
 			notes: fmt.Sprintf("`TopLevelFunc` (%s:3-20).", rel),
+			want:  "a range citation closes on the declaration or in its body",
+		},
+		{
+			// Width, pinned as a RANGE and nothing else: opens on the
+			// correct doc-comment line, closes inside the file, and is
+			// still 28 lines wide for a one-line declaration. This is
+			// the shape the coordinator found surviving in the shipped
+			// registry as `cdk_edges.go:137-900`, reduced so the EOF
+			// rule cannot claim the kill.
+			name:  "range-opens-correctly-but-is-absurdly-wide",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:3-31).", rel),
 			want:  "a range citation closes on the declaration or in its body",
 		},
 		{

@@ -60,13 +60,21 @@ import (
 //     `ast.Node.End()`, i.e. the closing paren of a multi-line
 //     `regexp.MustCompile(…)` or the closing brace of a func body.
 //
-//     Bounding only one end leaves the other one open, and the drift
-//     just enters through it. Before the opening bound,
-//     `terraform_deep.go:1-900` validated clean; with only the opening
-//     bound, `cdk_edges.go:137-900` still did — opening on the correct
-//     doc-comment line while claiming a 764-line span running 366
-//     lines past the end of a 534-line file. Both were measured, not
-//     imagined.
+//     The two bounds catch different defects and neither substitutes
+//     for the other, which is worth stating precisely because it is
+//     easy to credit the wrong one:
+//
+//     - The OPENING bound rejects `terraform_deep.go:1-900` — but
+//     for opening at line 1, NOT for its width. With only the
+//     opening bound in place, width remained completely
+//     unlimited: `cdk_edges.go:137-900` opened on the correct
+//     doc-comment line and was accepted, claiming a 764-line span
+//     that ran 366 lines past the end of a 534-line file. So did
+//     `terraform_deep.go:220-9999`.
+//     - The CLOSING bound is what rejects those. It is the only
+//     width limit in the rule.
+//
+//     Both gaps were measured on the shipped registry, not imagined.
 //
 //     Enforcing both cost six registry corrections in total (five at
 //     the opening, one at the closing), every one of them rot of the
@@ -326,11 +334,21 @@ func validateCiteSymbols(res *ValidationResult, capPrefix string, cap Capability
 			continue
 		}
 		// Rule 1 (single line) and rule 2 (range) are both applied
-		// here. inRange is the shared half — the declaration must be
-		// covered by the citation. opensRight is the range half: the
-		// range must OPEN on the declaration's first doc-comment line.
-		// Without that bound a range has no width limit at all and
-		// `file.go:1-900` validates clean.
+		// here, in three parts:
+		//
+		//   inRange     — shared: the declaration is covered by the
+		//                 citation.
+		//   opensRight  — range only: it OPENS on the declaration's
+		//                 first doc-comment line. This rejects a range
+		//                 that starts anywhere else, including one
+		//                 starting on the declaration line itself and
+		//                 skipping the doc comment — the exact shape of
+		//                 two of the five corrections this rule forced.
+		//   closesRight — range only: it CLOSES no later than the last
+		//                 line of the declaration. This is what bounds
+		//                 the WIDTH; opensRight does not. A range
+		//                 opening correctly and closing anywhere was
+		//                 accepted until this half existed.
 		inRange, opensRight, closesRight := false, false, false
 		wantOpen, wantClose := 0, 0
 		for _, st := range sites {

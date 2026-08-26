@@ -52,11 +52,18 @@ cleanup argument in #6671:
    body. **Both ends are checked, and both matter.** The declaration must fall within the range;
    the range must open exactly on the declaration's first doc-comment line (the declaration line
    itself when there is no doc comment); and it must close no later than the last line of the
-   declaration. Bounding one end alone leaves the other open and the drift simply enters through
-   it — `terraform_deep.go:1-900` was accepted before the opening bound, and `cdk_edges.go:137-900`
-   (a 764-line span in a 534-line file) was still accepted with only the opening bound. A citation
-   whose closing line exceeds the file's length is reported separately, since that is wrong
-   regardless of which symbol it names.
+   declaration. The two bounds catch different defects and neither stands in for the other:
+
+   - The **opening** bound rejects a range that starts anywhere but the doc comment — including
+     one starting on the declaration line and skipping the doc comment, which is the shape of two
+     of the five corrections it forced. It rejects `terraform_deep.go:1-900` *for opening at line
+     1*, not for its width.
+   - The **closing** bound is the only width limit. With the opening bound alone, width was
+     unlimited: `cdk_edges.go:137-900` opened correctly and was accepted, claiming a 764-line span
+     in a 534-line file, as was `terraform_deep.go:220-9999`.
+
+   A citation whose closing line exceeds the file's length is reported separately, since that is
+   wrong regardless of which symbol it names.
 
 **If there is no symbol to anchor to — a statement block, a map-literal key, a regex body, a
 comment — do not write a line number at all.** Keep the file path and the prose. A number with
