@@ -207,3 +207,96 @@ public class UnmappedAController {
 		"Route:/a -> Controller:bc",
 	})
 }
+
+// TestDetect_SpringRoute_NamedArgsWithMediaTypeLiteral is the precision pin
+// for review finding F1 on #6702.
+//
+// The two halves of the claim key are computed by different engines and they
+// disagree about WHICH string literal in the annotation is the path:
+//
+//   - the AST side (annotationNameAndPath) prefers the `value=`/`path=` pair;
+//   - the YAML side (`[^)]*["']([^"'\n\r]+)["'][^)]*\)`) is greedy and takes
+//     the LAST string literal in the argument list.
+//
+// So `@PostMapping(value = "/things", consumes = "application/json")` yields a
+// YAML edge `Route:application/json -> Controller:create` that the claim must
+// still suppress. It dangles on BOTH ends — there is no `Route:application/json`
+// entity (the entity rule anchors on the FIRST literal) and `Controller:` stubs
+// resolve to nothing (#6429) — so leaving it in would trade #6498's rare recall
+// fix for a false edge on an ordinary Spring shape.
+//
+// Axis VARIED: which argument the literal sits in (`value=` vs `consumes=`/`produces=`).
+// Axis HELD CONSTANT: the class, the handler method name, and the real path.
+func TestDetect_SpringRoute_NamedArgsWithMediaTypeLiteral(t *testing.T) {
+	src := `package com.example.api;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api")
+public class ProbeController {
+
+    @PostMapping(value = "/things", consumes = "application/json")
+    public String create() {
+        return "x";
+    }
+
+    @GetMapping(value = "/widgets", produces = "text/plain")
+    public String read() {
+        return "y";
+    }
+}
+`
+	got := collectRoutesTo(t, src, "src/main/java/com/example/api/ProbeController.java")
+	assertEdgeSet(t, got, []string{
+		"Route:/api/things -> SCOPE.Operation:ProbeController.create",
+		"Route:/api/widgets -> SCOPE.Operation:ProbeController.read",
+	})
+}
+
+// TestDetect_SpringRoute_NonVerbAnnotationLiteralsAreNotClaimed bounds the
+// literal-claiming added for review finding F1.
+//
+// Only the VERB annotation's own string literals may be claimed. A handler
+// commonly carries other annotated metadata (`@Operation`, `@ApiResponse`,
+// `@Schema`) whose string arguments are not routes. Claiming those too would
+// let an unrelated literal suppress a sibling controller's real edge — the
+// #6498 defect again, arriving through the widening that fixed F1.
+//
+// Axis VARIED: which annotation the literal `/probe` sits in (`@Operation` on
+// the mapped class vs `@GetMapping` on the unmapped sibling).
+// Axis HELD CONSTANT: the handler method name (`check` in both classes).
+func TestDetect_SpringRoute_NonVerbAnnotationLiteralsAreNotClaimed(t *testing.T) {
+	src := `package com.example.api;
+
+import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api")
+public class DocumentedController {
+
+    @Operation(summary = "/probe")
+    @GetMapping("/x")
+    public String check() {
+        return "x";
+    }
+}
+
+@RestController
+public class ProbeSiblingController {
+
+    @GetMapping("/probe")
+    public String check() {
+        return "probe";
+    }
+}
+`
+	got := collectRoutesTo(t, src, "src/main/java/com/example/api/Documented.java")
+	assertEdgeSet(t, got, []string{
+		"Route:/api/x -> SCOPE.Operation:DocumentedController.check",
+		// `/probe` is a summary string on the mapped class, not a route it
+		// consumed, so the sibling's sole edge must survive.
+		"Route:/probe -> Controller:check",
+	})
+}

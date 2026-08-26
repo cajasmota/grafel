@@ -144,9 +144,14 @@ func applySpringRouteComposition(args DetectorPassArgs) DetectorPassResult {
 // springHandlerClaimKey builds the key for claimedHandlerEdges: the bare
 // annotation path the YAML rules matched, paired with the handler method name.
 // Both halves are required — see the claimedHandlerEdges doc comment (#6498).
-// The separator is a NUL byte, which cannot occur in a Java identifier or in a
-// route path captured by the spring_mvc.yaml regexes, so the pair cannot be
-// forged by a path/method combination that concatenates ambiguously.
+//
+// The two halves are separated rather than concatenated, because bare
+// concatenation is ambiguous: ("/ab","c") and ("/a","bc") both flatten to
+// "/abc", which would let one class's claim swallow a sibling's only edge.
+// TestDetect_SpringRoute_ConcatAmbiguousClaimKey pins exactly that. The
+// separator must be a byte that appears in neither half; NUL is one such byte
+// for the halves this pass produces, but the test observes the separation, not
+// the choice of NUL.
 func springHandlerClaimKey(barePath, methodName string) string {
 	return barePath + "\x00" + methodName
 }
@@ -271,7 +276,15 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			composedPath := joinRoutePaths(prefix, apath)
 
 			out.claimedMethodPaths[apath] = true
+			// #6702/F1 — claim every literal the YAML relationship regex could
+			// have captured, not just the one the AST picked as the path.
+			// `apath` itself is among them for every annotation that has a
+			// path argument; it is claimed explicitly so the `apath == ""`
+			// (bare `@GetMapping`) case still registers.
 			out.claimedHandlerEdges[springHandlerClaimKey(apath, methodName)] = true
+			for _, lit := range annotationStringLiterals(a, src) {
+				out.claimedHandlerEdges[springHandlerClaimKey(lit, methodName)] = true
+			}
 
 			routeProps := map[string]string{
 				"framework":    "java",
@@ -397,6 +410,47 @@ func annotationNameAndPath(anno ts.Node, src []byte) (string, string) {
 		return name, byKey
 	}
 	return name, positional
+}
+
+// annotationStringLiterals returns EVERY string literal in the annotation's
+// argument list, in source order, including ones nested inside an
+// array_initializer (`value = {"/a", "/b"}`).
+//
+// #6702/F1 — the AST side and the YAML side disagree about which literal is
+// the path: annotationNameAndPath prefers the `value=`/`path=` pair, while the
+// spring_mvc.yaml relationship regex (`[^)]*["']([^"'\n\r]+)["'][^)]*\)`) is
+// greedy and captures the LAST literal in the argument list. On
+// `@PostMapping(value = "/things", consumes = "application/json")` that is the
+// media type, so the YAML edge is `Route:application/json -> Controller:create`.
+// Claiming only the AST's preferred literal would leave that edge unsuppressed
+// — dangling on both ends, since no `Route:application/json` entity exists (the
+// entity rule anchors on the FIRST literal) and `Controller:` stubs resolve to
+// nothing (#6429). Claiming every literal the regex could land on restores
+// suppression without giving up the pair key that #6498 needs.
+func annotationStringLiterals(anno ts.Node, src []byte) []string {
+	if anno == nil {
+		return nil
+	}
+	args := anno.ChildByFieldName("arguments")
+	if args == nil {
+		return nil
+	}
+	var out []string
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
+		if n == nil {
+			return
+		}
+		if n.Type() == "string_literal" {
+			out = append(out, stripStringLiteral(nodeText(n, src)))
+			return
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			walk(n.Child(i))
+		}
+	}
+	walk(args)
+	return out
 }
 
 // stripStringLiteral removes the surrounding quotes from a Java string
