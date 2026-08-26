@@ -30,8 +30,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -39,6 +41,19 @@ import (
 
 	"github.com/cajasmota/grafel/internal/types"
 )
+
+// unparen strips redundant parentheses from a type or value expression, so
+// `(EntityKind)` is recognised as EntityKind rather than dropped as an
+// unrecognised shape.
+func unparen(e ast.Expr) ast.Expr {
+	for {
+		p, ok := e.(*ast.ParenExpr)
+		if !ok {
+			return e
+		}
+		e = p.X
+	}
+}
 
 // isASCII reports whether s contains only bytes below utf8.RuneSelf, i.e.
 // whether len(s) == utf8.RuneCountInString(s) is guaranteed.
@@ -402,26 +417,34 @@ func TestRebuildKindColumnPaddingUsesTheComputedWidth(t *testing.T) {
 // value declared as an EntityKind or RelationshipKind constant, keyed by
 // constant name.
 //
-// It reads the declarations rather than a hand-copied list. The bound is
-// exactly this, and no wider: EVERY const spec in that ONE FILE is either
-// evaluated and checked, or fails the test naming itself. Nothing is dropped
-// in silence. Kinds declared in some other file, kinds that come from YAML
-// rule files, and enrichment kinds read from JSON are outside it — see
-// TestEngineTaxonomyKindLiteralsAreASCII and the note on maxKindLen.
+// WHAT THIS ACTUALLY PINS, stated as the mechanism rather than as a slogan.
+// Three rounds of review have falsified a stronger-sounding sentence here, so
+// this one describes the branches:
 //
-// Two filters had to become intolerant to make that true, and both were found
-// by review rather than by design:
+// For each const spec in that ONE file, exactly one of these happens:
+//  1. its type resolves — through parentheses and file-local aliases — to
+//     EntityKind or RelationshipKind: the value is evaluated and checked, or
+//     the test fails naming the const if the value is not a string literal;
+//  2. its type resolves to some other NAME *and* every value is a literal
+//     that is provably not a string (int, float, rune, imaginary): skipped,
+//     on two independent grounds;
+//  3. anything else — no explicit type, a type expression that does not
+//     reduce to an identifier, or another named type with a string-ish
+//     value: the test FAILS naming the const.
 //
-//   - THE VALUE. A const whose value is a concatenation, a conversion or a
-//     Sprintf is not an *ast.BasicLit. Those used to be skipped silently, so
-//     a kind declared in that shape was covered by nothing.
+// So a spec is skipped in silence only in case 2. Everything else is either
+// checked or loud. Coverage does not depend on the kind reaching
+// types.AllEntityKinds().
 //
-//   - THE TYPE. A const with no explicit EntityKind/RelationshipKind type
-//     used to be skipped silently too, so an untyped `EntityKindFoo =
-//     "SCOPE.Foo"` was covered by nothing either — a narrower hole than the
-//     first, but the same hole. Only a spec that is PROVABLY not a string
-//     (an int, float, rune or imaginary literal) may now be skipped without
-//     an explicit type; anything else must say what it is.
+// OUTSIDE this bound, and covered by nothing here: kinds declared in any other
+// file, kinds that come from YAML rule files, and enrichment kinds read from
+// JSON. See TestEngineTaxonomyKindLiteralsAreASCII and the note on maxKindLen.
+//
+// Each branch above closed a hole a probe found, not a hole anyone predicted:
+// the value check (round 2) after a Sprintf-valued const passed; the untyped
+// check (round 3) after `EntityKindFoo = "SCOPE.Foo"` passed; the parenthesis
+// and alias resolution (round 4) after `(EntityKind)` and a `= EntityKind`
+// alias both passed.
 func kindConstantsFromSource(t *testing.T) map[string]string {
 	t.Helper()
 	const path = "../types/kinds.go"
@@ -445,6 +468,50 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 		return len(values) > 0
 	}
 
+	// Type aliases and definitions declared in this same file, so a const
+	// written against `type aliasEK = EntityKind` resolves to EntityKind
+	// instead of falling into a skip branch. Both `= T` (alias) and `T`
+	// (definition) are followed: a defined type over EntityKind carries the
+	// same string values and the same column arithmetic.
+	aliasOf := map[string]string{}
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			if id, ok := unparen(ts.Type).(*ast.Ident); ok {
+				aliasOf[ts.Name.Name] = id.Name
+			}
+		}
+	}
+	// resolveKindType walks a type expression to the kind type it ultimately
+	// names, following parentheses and file-local aliases. It returns the
+	// resolved name and whether the expression could be resolved to an
+	// identifier at all.
+	resolveKindType := func(e ast.Expr) (string, bool) {
+		id, ok := unparen(e).(*ast.Ident)
+		if !ok {
+			return "", false
+		}
+		name := id.Name
+		for i := 0; i < 16; i++ { // bounded: a cycle must not hang the test
+			if name == "EntityKind" || name == "RelationshipKind" {
+				return name, true
+			}
+			next, ok := aliasOf[name]
+			if !ok || next == name {
+				break
+			}
+			name = next
+		}
+		return name, true
+	}
+
 	out := map[string]string{}
 	for _, decl := range f.Decls {
 		gd, ok := decl.(*ast.GenDecl)
@@ -465,14 +532,11 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 			}
 
 			typeName := ""
+			resolved := true
 			values := vs.Values
 			switch {
 			case vs.Type != nil:
-				if id, ok := vs.Type.(*ast.Ident); ok {
-					typeName = id.Name
-				} else {
-					typeName = "<non-ident type>"
-				}
+				typeName, resolved = resolveKindType(vs.Type)
 				lastType, lastValues = typeName, values
 			case len(values) == 0:
 				typeName, values = lastType, lastValues
@@ -482,11 +546,11 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 			}
 
 			switch {
-			case typeName == "EntityKind" || typeName == "RelationshipKind":
+			case resolved && (typeName == "EntityKind" || typeName == "RelationshipKind"):
 				// fall through to the value check below
-			case typeName != "":
-				// Explicitly some other type. Not a kind; skipping is safe
-				// because the declaration says so.
+			case resolved && typeName != "" && nonStringLiteral(values):
+				// Explicitly some other type AND provably not a string. Two
+				// independent reasons it cannot be a kind; skipping is safe.
 				continue
 			case nonStringLiteral(values):
 				// Untyped, but provably not a string. Cannot be a kind.
@@ -497,12 +561,20 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 				// as `EntityKindFoo = "SCOPE.Foo"` is a kind for every
 				// practical purpose, reaches the graph like any other, and was
 				// covered by nothing. Refuse to guess.
+				shown := typeName
+				if !resolved {
+					shown = "<a type expression this test cannot resolve to a name>"
+				} else if shown == "" {
+					shown = "<no explicit type>"
+				}
 				for _, name := range vs.Names {
-					t.Errorf("%s: const %s in %s has no explicit EntityKind/RelationshipKind "+
-						"type and is not provably a non-string literal, so this test cannot "+
-						"tell whether it is a kind. Declare its type explicitly (every const "+
-						"in this file does today) — do NOT leave a possible kind unchecked.",
-						fset.Position(name.Pos()), name.Name, path)
+					t.Errorf("%s: const %s in %s has type %s, which this test cannot confirm "+
+						"is NOT an EntityKind/RelationshipKind, and its value is not provably "+
+						"a non-string literal — so it may be an unchecked kind. Write the type "+
+						"as a plain EntityKind or RelationshipKind identifier (every kind in "+
+						"this file does today), or give it a non-string value. Do NOT leave a "+
+						"possible kind unchecked.",
+						fset.Position(name.Pos()), name.Name, path, shown)
 				}
 				continue
 			}
@@ -602,6 +674,42 @@ func TestKindConstantsAreASCII(t *testing.T) {
 // files, and enrichment kinds read from enrichment-candidates.json, are NOT
 // covered by any invariant in this file — which is precisely why the column
 // arithmetic has to be correct rather than merely lucky.
+// engineCensus counts, by an INDEPENDENT traversal, the non-test .go files
+// directly under dir. It exists so the walk below has a denominator it cannot
+// narrow along with its numerator.
+//
+// This deliberately uses filepath.WalkDir rather than the os.ReadDir the walk
+// itself uses. A `parsed == len(eligible)` check where both sides come from
+// one filtered listing is tautological: a line added to the filter moves the
+// numerator and the denominator together and the test stays green. Measured —
+// adding `if name > "n" { continue }` to that filter dropped 65 of 204 files
+// (32%) and 7 of 53 literals with the suite still passing.
+func engineCensus(t *testing.T, dir string) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path == dir {
+				return nil
+			}
+			return fs.SkipDir // direct children only
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		out[name] = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("census walk of %s: %v", dir, err)
+	}
+	return out
+}
+
 func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 	const dir = "../engine"
 	entries, err := os.ReadDir(dir)
@@ -609,11 +717,7 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 		t.Fatalf("read %s: %v", dir, err)
 	}
 
-	// Pass 1 — establish the POPULATION this test claims to cover, before any
-	// parsing. A test whose purpose is to enumerate a population must fail
-	// when the enumeration narrows, not only when it collapses to nothing: a
-	// bare `seen == 0` guard let a walk restricted to a single file stay green
-	// with 202 of 203 files silently out of coverage.
+	// Pass 1 — establish the population this walk will cover.
 	var eligible []string
 	for _, e := range entries {
 		name := e.Name()
@@ -623,10 +727,10 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 		eligible = append(eligible, filepath.Join(dir, name))
 	}
 
-	// Loose floor on the population itself. internal/engine holds ~204
-	// non-test files; the exact count churns every week, so it is deliberately
-	// not pinned. This catches the directory being emptied, moved, or filtered
-	// down to a handful.
+	// Loose floor on the population. internal/engine holds ~204 non-test files;
+	// the exact count churns weekly so it is not pinned. This is a backstop for
+	// the directory being emptied or moved — the census below, not this floor,
+	// is what catches a narrowed enumeration.
 	const minEngineFiles = 100
 	if len(eligible) < minEngineFiles {
 		t.Fatalf("found %d non-test .go files under %s, want at least %d — the engine "+
@@ -634,18 +738,16 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 			len(eligible), dir, minEngineFiles)
 	}
 
-	// Pass 2 — every eligible file must actually be parsed. This is the
-	// derived guard: the denominator comes from pass 1, so a narrowed walk
-	// fails without anyone maintaining a count.
+	// Pass 2 — parse, recording WHICH files were actually read.
 	fset := token.NewFileSet()
-	parsed := 0
+	parsed := map[string]bool{}
 	seen := 0
 	for _, path := range eligible {
 		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 		if perr != nil {
 			t.Fatalf("parse %s: %v", path, perr)
 		}
-		parsed++
+		parsed[filepath.Base(path)] = true
 		ast.Inspect(f, func(n ast.Node) bool {
 			kv, ok := n.(*ast.KeyValueExpr)
 			if !ok {
@@ -673,23 +775,46 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 		})
 	}
 
-	if parsed != len(eligible) {
-		t.Errorf("parsed %d of %d eligible files under %s — the walk skipped files and "+
-			"those are silently outside this invariant", parsed, len(eligible), dir)
+	// The real guard: every file the INDEPENDENT census found must have been
+	// parsed. Narrowing either the eligibility filter or the parse loop leaves
+	// the census untouched, so the two cannot move together.
+	census := engineCensus(t, dir)
+	var missing []string
+	for name := range census {
+		if !parsed[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		show := missing
+		if len(show) > 10 {
+			show = show[:10]
+		}
+		t.Errorf("%d of %d non-test files under %s were never parsed, so they are silently "+
+			"outside this invariant: %v%s", len(missing), len(census), dir, show,
+			map[bool]string{true: " …", false: ""}[len(missing) > len(show)])
+	}
+	// And nothing may be parsed that the census does not know about, so the
+	// two enumerations are pinned to each other in both directions.
+	for name := range parsed {
+		if !census[name] {
+			t.Errorf("parsed %s under %s, which the independent census did not find — "+
+				"the two enumerations disagree", name, dir)
+		}
 	}
 
-	// Loose floor on the literals, for the same reason as the file floor: 53
-	// today, measured, not guessed — most engine producers reference a
-	// types.EntityKind* constant rather than writing a bare string, which is
-	// why the count is far below the file count. A walk that parses every file
-	// but stops collecting would pass the check above; this catches it. The
-	// exact number is deliberately not pinned, since converting a literal to a
-	// typed constant is an improvement and must not fail this test.
-	const minKindLiterals = 25
+	// Loose floor on the literals: 53 today, measured, not guessed — most
+	// engine producers reference a types.EntityKind* constant rather than
+	// writing a bare string, which is why the count is far below the file
+	// count. Set at 40 rather than 25: 25 tolerated losing more than half the
+	// population, while 40 still leaves room for the literal→typed-constant
+	// conversions that are an improvement and must not fail this test.
+	const minKindLiterals = 40
 	if seen < minKindLiterals {
 		t.Fatalf(`collected %d Kind: "..." literals from %d files under %s, want at least %d — `+
 			`the producer shape moved and this test is no longer reading it`,
-			seen, parsed, dir, minKindLiterals)
+			seen, len(parsed), dir, minKindLiterals)
 	}
 }
 
