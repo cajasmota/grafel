@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -328,6 +329,11 @@ func PrintRebuildSummary(w io.Writer, s *RebuildSummary) {
 	// --- Entities ---
 	fmt.Fprintf(w, "\nEntities (%s total):\n", fmtInt(s.TotalEntities))
 	topEnts, otherEnts := topNKinds(s.EntityByKind, 5)
+	// #6686: every %-*s below — here and in the relationship and enrichment
+	// tables — must take its width from maxKindLen and never re-derive one per
+	// row. maxKindLen counts runes to match what %-*s pads in; a per-row
+	// len(row.Kind) would reintroduce the byte/rune mismatch at that one site
+	// and put its line on a different column from the rest of its table.
 	colW := maxKindLen(topEnts, otherEnts > 0)
 	for _, row := range topEnts {
 		fmt.Fprintf(w, "  %-*s  %s\n", colW, row.Kind, fmtInt(row.Count))
@@ -399,16 +405,39 @@ func PrintRebuildSummary(w io.Writer, s *RebuildSummary) {
 	}
 }
 
-// maxKindLen returns the maximum string length of Kind values in rows, with a
-// minimum of 5 (length of "Other") when withOther is true.
+// maxKindLen returns the maximum RUNE count of Kind values in rows, with a
+// minimum of 5 (the rune count of "Other") when withOther is true.
+//
+// #6686: size this column by rune count, not by len()'s byte count. Every
+// PrintRebuildSummary call site pads with fmt's %-*s, which counts runes, so a
+// byte-derived width overshoots by (bytes - runes). %-*s pads and never
+// truncates and a string's rune count never exceeds its byte count, so the
+// symptom is not ragged rows — every row of a table shares this one width and
+// stays in agreement. The whole column is simply oversized and every payload
+// shifts right.
+//
+// This targets RUNE COUNT, NOT TERMINAL DISPLAY WIDTH. The two are not the
+// same: a CJK ideograph is one rune but occupies two terminal columns, and an
+// emoji may be one rune and two columns, or a grapheme cluster spanning
+// several runes. So this aligns the common European-accent case ("cafe" with
+// an acute e) exactly, and a kind containing CJK or emoji STILL renders
+// ragged. Correcting that needs a wcwidth table or grapheme segmentation, a
+// dependency this table does not justify; it is deliberately not done here.
+//
+// Today the mismatch is inert, because every entity and relationship kind is
+// an ASCII constant — see TestKindConstantsAreASCII, which reads that set from
+// internal/types/kinds.go and fails the day a non-ASCII kind is declared. The
+// enrichment breakdown is the exception: its kinds are free-form strings read
+// out of enrichment-candidates.json, so no invariant covers them and the
+// arithmetic has to be right rather than merely lucky.
 func maxKindLen(rows []kindRow, withOther bool) int {
 	w := 0
 	if withOther {
-		w = 5 // len("Other")
+		w = utf8.RuneCountInString("Other")
 	}
 	for _, r := range rows {
-		if len(r.Kind) > w {
-			w = len(r.Kind)
+		if n := utf8.RuneCountInString(r.Kind); n > w {
+			w = n
 		}
 	}
 	return w
