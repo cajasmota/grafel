@@ -410,3 +410,68 @@ jobs:
             echo "Running without -race"
             go test -count=1 -timeout 15m ./...
           fi
+
+  # ---------------------------------------------------------------------------
+  # Python unit tests for the quality ratchet (#6709).
+  #
+  # `scripts/quality/test_ratchet.py` is this repo's ONLY Python test file, and
+  # until this job existed NO workflow ran ANY Python test — its 33 tests, which
+  # guard `scripts/quality/ratchet.py` (the component that decides whether a
+  # quality regression blocks a merge), ran only when a human typed the command
+  # locally. #6570 / #6627 / #6633 all landed new tests for this file that were
+  # then never re-run automatically.
+  #
+  # WHY IT LIVES IN test.yml: this workflow has a plain `pull_request:` trigger
+  # (see the `on:` block above), so this job runs on every PR open/sync/reopen.
+  # Do NOT move it to `pre-merge.yml` or `quality.yml` — BOTH are
+  # `workflow_dispatch:`-only, so a job wired there would never fire on a PR,
+  # reproducing the exact defect #6709 is about. As of this commit the
+  # workflows with a real `pull_request` trigger are: board-hygiene.yml,
+  # coverage-docs.yml, cross-platform-compile.yml, test.yml (this file) and
+  # windows-installers.yml.
+  #
+  # SEPARATE JOB, ON PURPOSE: it deliberately does not sit under the `test`
+  # job's matrix or its multi-branch `if:`. It is Go-free (no toolchain, no
+  # module download, no build cache), single-platform, and finishes in ~20s
+  # locally, so it must not inherit the Go suite's 90-minute leg or its
+  # macOS/Windows fan-out. It carries its own `if:` that excludes only
+  # `pull_request_target`, where GitHub checks out the BASE ref — running the
+  # base branch's tests there would prove nothing about the PR.
+  #
+  # NO `paths:` FILTER, anywhere: not on this job and not on the workflow. A
+  # path filter is how this class of gate dies quietly — #6332 is the same
+  # shape one file over. The suite is ~20s on the cheapest runner, so there is
+  # no wall-clock argument for one.
+  #
+  # GIT IDENTITY: the suite builds ~12 temporary git repositories, but it sets
+  # `user.email`/`user.name` (and `commit.gpgsign=false`) per-repo itself
+  # immediately after each `git init` — verified by running the full suite with
+  # HOME pointed at an empty directory and both GIT_CONFIG_GLOBAL and
+  # GIT_CONFIG_SYSTEM neutralised: 33 tests, OK. So this job deliberately does
+  # NOT `git config` a committer identity; adding one here would be dead
+  # configuration that hides the day the suite stops setting its own.
+  python-quality-tests:
+    name: python ratchet tests
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python version
+        run: python3 --version
+
+      # Run from the repo root: the suite is addressed as the dotted path
+      # `scripts.quality.test_ratchet`, which resolves via implicit namespace
+      # packages (there is no `scripts/__init__.py` and none is needed), and
+      # the tests locate `ratchet.py` relative to their own file.
+      #
+      # No `pytest`, no `pip install`: the suite is stdlib-only (`unittest`,
+      # `subprocess`, `tempfile`, `json`, `importlib.util`), so the hosted
+      # image's preinstalled python3 is the entire dependency set.
+      #
+      # `-v` so a run that collects ZERO tests is visible in the log rather
+      # than reading as a pass. `python3 -m unittest` exits non-zero on both a
+      # test failure and an import error, so either lands this job red.
+      - name: Run ratchet unit tests
+        run: python3 -m unittest -v scripts.quality.test_ratchet
