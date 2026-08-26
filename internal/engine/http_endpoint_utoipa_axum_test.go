@@ -1172,7 +1172,7 @@ func TestUtoipaAxum_NestPrefixAtExactWindow(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // #6643 — the three narrower shapes the file header records (at
-// http_endpoint_utoipa_axum.go:94-105) as failing to match utoipaRoutesMacroRe.
+// http_endpoint_utoipa_axum.go:94-117) as failing to match utoipaRoutesMacroRe.
 //
 // These are DELIBERATE Arm-A/B1 boundaries, not defects. All three fail in the
 // safe direction: they mint nothing rather than minting a guess, and none is a
@@ -1316,7 +1316,7 @@ func TestUtoipaAxum_HeaderRecordedShapesMintNothing(t *testing.T) {
 			requireNotContains(t, ids, []string{"http:GET:/items", "http:POST:/items"}, label)
 			for _, h := range []string{"list_items", "create_item"} {
 				if got := countDefsForHandler(res, h); got != 0 {
-					t.Errorf("%s: want 0 definitions for %s, got %d — this shape is documented as minting nothing (http_endpoint_utoipa_axum.go:94-105); if that changed deliberately, change the header and the coverage doc with it",
+					t.Errorf("%s: want 0 definitions for %s, got %d — this shape is documented as minting nothing (http_endpoint_utoipa_axum.go:94-117); if that changed deliberately, change the header and the coverage doc with it",
 						label, h, got)
 				}
 			}
@@ -1349,12 +1349,26 @@ func TestUtoipaAxum_HeaderRecordedShapesMintNothing(t *testing.T) {
 // and framework=utoipa_axum is what minted — so "0 definitions for list_items"
 // is a decision this pass made, not the silence of a fixture that never ran.
 //
-// The rows vary the PREFIX rather than repeating one literal spelling: the pin
-// is on the family (any word character immediately before `routes`), so a
-// widening that special-cased `my_` could not pass while `app_`/`admin_` fail.
+// The rows vary the PREFIX rather than repeating one literal spelling, and they
+// vary it along the axis that matters: `my_`/`app_`/`admin_` all end in `_`, so
+// a table of only those pins nothing but the `_`-adjacent slice. Replacing the
+// `\b` with `(?:\b|[A-Za-z0-9])` — which leaks `xroutes!`, `Rroutes!` and
+// `2routes!` while every `_` row stays green — survived the whole package until
+// the letter and digit rows below were added.
+//
+// The pin is therefore on ASCII identifier characters generally, not on `_`.
+// It is NOT on the whole family a reader might assume: Go's RE2 `\b` is
+// ASCII-only, so a NON-ASCII character adjacent to `routes` is a boundary and
+// `Δroutes!(a, b)` DOES mint two phantom endpoints today. That is a real gap,
+// owned by #6677, and it is deliberately not asserted here — this test pins
+// what the pattern does, and a row asserting `Δroutes!` mints nothing would be
+// asserting a fix nobody has made.
 // ---------------------------------------------------------------------------
 func TestUtoipaAxum_PrefixedRoutesMacroMintsNothing(t *testing.T) {
-	for _, prefix := range []string{"my_", "app_", "admin_"} {
+	// Underscore, lowercase letter, uppercase letter and digit — the four
+	// shapes of ASCII identifier character that can sit immediately before
+	// `routes`. Dropping any one of the last three reopens a mutant.
+	for _, prefix := range []string{"my_", "app_", "admin_", "x", "adm", "R", "api2"} {
 		t.Run(prefix+"routes", func(t *testing.T) {
 			label := "utoipa-prefixed-macro-" + prefix + "routes"
 			src := utoipaFailToMintSrc(prefix + "routes!(list_items, create_item)")

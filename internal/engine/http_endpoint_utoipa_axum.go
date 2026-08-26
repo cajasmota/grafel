@@ -97,15 +97,23 @@
 // a raw identifier (`routes!(r#type)`) never matches, since `#` is outside the
 // identifier class; `routes ! ( a , b )` — whitespace before `!` is
 // Rust-legal — never matches, because the pattern requires `routes!` adjacent;
-// and a macro whose NAME merely ENDS in `routes!` (`my_routes!(a)`,
-// `app_routes!(a, b)`) never matches, because the pattern's leading `\b`
-// requires a word boundary before `routes`.
+// and a macro whose NAME ends in `routes!` after an ASCII identifier character
+// (`my_routes!(a)`, `app_routes!(a, b)`, `xroutes!(a)`) does not match, because
+// the pattern's leading `\b` finds no word boundary there.
+//
+// That fourth bound is ASCII-ONLY and is stated deliberately narrowly. Go's RE2
+// `\b` sits between `[0-9A-Za-z_]` and anything else, so a NON-ASCII character
+// immediately before `routes` IS a boundary and DOES match: `Δroutes!(a, b)` —
+// a Rust-legal wrapper name, identifiers being UAX#31 — mints two phantom
+// endpoints today. `über_routes!` does not; the leak needs the non-ASCII
+// character adjacent to `routes`. #6677 owns that gap and the decision about
+// it; do not read this paragraph as saying the pattern is airtight.
 //
 // The first three are misses in the safe direction and none is a regression
-// from Arm A. The fourth is the opposite: losing that word boundary would be
-// PERMISSIVE — an ordinary user-defined wrapper macro would mint one phantom
-// endpoint per argument for a registration this pass never saw. All four are
-// pinned (TestUtoipaAxum_HeaderRecordedShapesMintNothing,
+// from Arm A. The fourth is the opposite: losing what is left of that word
+// boundary would be PERMISSIVE — an ordinary user-defined wrapper macro would
+// mint one phantom endpoint per argument for a registration this pass never
+// saw. All four are pinned (TestUtoipaAxum_HeaderRecordedShapesMintNothing,
 // TestUtoipaAxum_PrefixedRoutesMacroMintsNothing).
 //
 // Known house behaviour, not new here: a `routes!(...)` occurrence inside a
