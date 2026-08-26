@@ -37,6 +37,14 @@ package solidity_test
 // deliberately NOT touched here: `solidity-mini/expected.json` marks it
 // `nice_to_have` because whether an explicit type conversion *is* a call is a
 // design decision this issue still has to make.
+//
+// One further instance of that same undecided question, recorded here so it is
+// attached to the decision rather than lost: `uint256(v)` still emits
+// `CALLS -> uint256`. `uint` is in `solidityKeywords`, `uint256` is not, and
+// the sized aliases are not added here on purpose — a widening cast IS a type
+// conversion, so denylisting it would settle the under-fire arm's question by
+// the back door, in the over-fire direction. Measured on this branch; not
+// asserted, in either direction.
 
 import "testing"
 
@@ -91,6 +99,18 @@ contract Probe is Base {
 
     function qualifierPrefix() public {
         abicodec.encode(6);
+    }
+
+    function concatBytes(bytes memory a, bytes memory b) public pure returns (bytes memory) {
+        return bytes.concat(a, b);
+    }
+
+    function concatString(string memory a, string memory b) public pure returns (string memory) {
+        return string.concat(a, b);
+    }
+
+    function concatUser(Packer packer) public {
+        packer.concat(total);
     }
 }
 `
@@ -177,6 +197,10 @@ func TestSolidity_6425_TransparentReceivers(t *testing.T) {
 // which is the mirror image and the one a `strings.HasSuffix` shortcut gets
 // wrong; and a root check that matched by prefix would delete
 // `token.transfer`.
+//
+// The qualifier-boundary shapes themselves (`myabi.`, `abicodec.`) are NOT
+// asserted here — they live in TestSolidity_6425_QualifierIsMatchedWholeIdentifier,
+// which needs them in members of their own.
 func TestSolidity_6425_NeighbouringIdentifiersStillCall(t *testing.T) {
 	ents := runSolidity(t, overfireFixture, "Probe.sol")
 
@@ -222,6 +246,48 @@ func TestSolidity_6425_QualifierIsMatchedWholeIdentifier(t *testing.T) {
 				t.Errorf("%s lost CALLS -> %q; the qualifier check must match a WHOLE identifier, not a prefix or suffix of one",
 					tc.caller, target)
 			}
+		}
+	}
+}
+
+// TestSolidity_6425_BuiltinNamespaceConcat pins `bytes.concat(...)` (Solidity
+// >=0.8.4) and `string.concat(...)` (>=0.8.12), which an adversarial review
+// found still over-firing after the first version of this fix.
+//
+// They are the sharpest case for why `solBuiltinNamespaces` cannot be reasoned
+// out and has to be measured. `bytes` and `string` were ALREADY in
+// `solidityKeywords`, as type names — so the dotted-root check already dropped
+// `bytes.concat` and `string.concat`. What it left behind was exactly the
+// half-state this file's `abi` rationale says must not exist: no dotted edge,
+// and a phantom bare `concat` still in the graph. A survey of "which builtin
+// receivers have callable members" reached the wrong answer by considering
+// only `msg`/`block`/`tx`; this test is what stops that being repeated.
+//
+// The two live in SEPARATE members for the same reason the qualifier cases do:
+// both yield the same bare `concat`, so one body's `seen` set would let either
+// one satisfy an assertion the other had violated.
+func TestSolidity_6425_BuiltinNamespaceConcat(t *testing.T) {
+	ents := runSolidity(t, overfireFixture, "Probe.sol")
+
+	for _, tc := range []struct{ caller, dotted string }{
+		{"Probe.concatBytes", "bytes.concat"},
+		{"Probe.concatString", "string.concat"},
+	} {
+		for _, target := range []string{tc.dotted, "concat"} {
+			if solHasRel(ents, tc.caller, "SCOPE.Operation", "CALLS", target) {
+				t.Errorf("%s has CALLS -> %q; %s is a language builtin, not an invocation of a user function",
+					tc.caller, target, tc.dotted)
+			}
+		}
+	}
+
+	// Isolation partner, leaf held constant at `concat`, receiver varied to a
+	// user type: suppression must key on the RECEIVER, never on the member
+	// name. Without this, adding `bytes`/`string` could have deleted every
+	// call to any user-defined `concat`.
+	for _, target := range []string{"packer.concat", "concat"} {
+		if !solHasRel(ents, "Probe.concatUser", "SCOPE.Operation", "CALLS", target) {
+			t.Errorf("Probe.concatUser lost CALLS -> %q; `packer` is a user receiver, not a builtin namespace", target)
 		}
 	}
 }

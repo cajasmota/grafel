@@ -192,13 +192,25 @@ var solidityKeywords = map[string]bool{
 // records the bare one sitting in the graph as a `SCOPE.External` node called
 // `encode`). Suppressing the root alone would leave that second edge behind.
 //
+// `bytes` and `string` are here for `bytes.concat(…)` (>=0.8.4) and
+// `string.concat(…)` (>=0.8.12). They were already in solidityKeywords as type
+// names, so the root check above ALREADY dropped their dotted half — which
+// left precisely the half-state this set exists to prevent: no
+// `CALLS -> bytes.concat`, but a phantom `CALLS -> concat` still in the graph.
+// Measured on the fix before they were added. A membership rule reasoned out
+// from "which receivers have callable members" missed both, which is why
+// TestSolidity_6425_BuiltinNamespaceConcat asserts them rather than a comment.
+//
 // `super` and `this` are deliberately NOT here even though they are keywords.
 // They are *transparent* receivers: `super.ping()` names no entity called
 // `super`, so the dotted target goes, but the member it reaches is a real
 // function, so the bare `ping` must stay. Adding them here would trade this
 // issue's over-fire for an under-fire.
+//
+// The test for `msg`/`block`/`tx` is the same one: they are absent because no
+// member of any of them is called with `(`, not because they are not keywords.
 var solBuiltinNamespaces = map[string]bool{
-	"abi": true,
+	"abi": true, "bytes": true, "string": true,
 }
 
 // Extract processes the Solidity source and returns entity records.
