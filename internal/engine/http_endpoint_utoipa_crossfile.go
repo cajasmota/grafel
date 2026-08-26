@@ -281,9 +281,24 @@ func rustAddUseLeaf(out map[string]rustUseBinding, dropped map[string]bool, modu
 // meant", which is true by convention and not by the language. This pass does
 // not model scopes or `cfg` evaluation, so it cannot know which binding is in
 // effect at the registration site — and #6150's rule for exactly that situation
-// is to leave the endpoint UNENRICHED rather than guess. Dropping is also what
+// is to leave the endpoint UNENRICHED rather than guess. Dropping matches what
 // every other unresolvable shape here already does (glob, nested group,
-// `self::`/`super::`), so the file has one answer to ambiguity instead of two.
+// `self::`/`super::`).
+//
+// THE LIMIT OF THAT POLICY, stated because an earlier draft of this comment
+// overstated it as "one answer to ambiguity". The poison check is consulted
+// AFTER the module-validity, `self::`/`super::` and glob/nested-group
+// rejections, so a competing declaration of one of THOSE shapes never reaches
+// the map and therefore never poisons:
+//
+//	#[cfg(a)] use crate::real::create_item;
+//	#[cfg(b)] use super::stub::create_item;   // rejected upstream, does not poison
+//
+// publishes `crate::real` — still a guess at which cfg arm is live. Competitors
+// rejected upstream do NOT poison. That is not a regression (every revision of
+// this file has behaved so) and closing it means poisoning at every rejection
+// point, which is tracked separately as #6675 rather than widened into this
+// arm.
 //
 // A group leaf that is itself a PATH — `use crate::{items::create_item,
 // admin::purge};`, the most common rustfmt grouping — IS resolved: the leading

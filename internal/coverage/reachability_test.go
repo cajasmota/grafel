@@ -240,4 +240,20 @@ func TestIsProductionEntity_UtoipaRegistrationMarker_6668(t *testing.T) {
 	if !isProductionEntity(route) {
 		t.Error("#6668: a plain SCOPE.Route is no longer production; the exclusion must key on Subtype, not Kind")
 	}
+
+	// THE SUBTYPE AXIS — the axis the guard actually keys on, and the one that
+	// matters most here: widening it silently DELETES real entities from the
+	// coverage denominator, which nothing else would notice. Without this
+	// assertion, `coverageMarkerSubtypes[e.Subtype]` → `e.Subtype != ""` scores
+	// vet 0 / exit 0 — SURVIVED.
+	for _, e := range []types.EntityRecord{
+		{ID: "f1", Name: "handleOrder", Kind: string(types.EntityKindFunction), Subtype: "async_handler"},
+		{ID: "o1", Name: "Svc.Do", Kind: string(types.EntityKindOperation), Subtype: "method"},
+		{ID: "r2", Name: "/api/orders", Kind: string(types.EntityKindRoute), Subtype: "http_route"},
+	} {
+		if !isProductionEntity(e) {
+			t.Errorf("#6668: %s (kind=%s subtype=%q) is no longer production; the exclusion must name "+
+				"marker subtypes exactly, not every entity that carries a subtype", e.Name, e.Kind, e.Subtype)
+		}
+	}
 }

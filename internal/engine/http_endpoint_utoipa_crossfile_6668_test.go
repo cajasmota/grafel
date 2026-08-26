@@ -693,6 +693,22 @@ mod more {
 mod tests {
     use crate::items::create_item;
 }`, 1},
+		// THE ITEM AXIS. Every case above varies the MODULE; these vary the
+		// ITEM under a SHARED module, which is reachable only through the alias
+		// path. Without them, dropping the `prev.name == name` conjunct from the
+		// identical-duplicate test scores vet 0 / exit 0 — SURVIVED — and turns
+		// the policy back into first-wins for exactly this shape, publishing a
+		// fabricated (module, item) pair that MIS-JOINS at #6669.
+		{"same-module-different-item", `use crate::items::create_item;
+mod tests {
+    use crate::items::list_items as create_item;
+}`, 0},
+		// The realistic spelling: one cfg pair selecting between two handler
+		// versions in one module, bound to one local name.
+		{"cfg-pair-same-module-different-item", `#[cfg(feature = "x")]
+use crate::handlers::create_item as create_item;
+#[cfg(not(feature = "x"))]
+use crate::handlers::create_item_v2 as create_item;`, 0},
 		{"single-binding-control", `use crate::items::create_item;`, 1},
 	} {
 		router := `
