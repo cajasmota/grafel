@@ -1172,7 +1172,7 @@ func TestUtoipaAxum_NestPrefixAtExactWindow(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // #6643 — the three narrower shapes the file header records (at
-// http_endpoint_utoipa_axum.go:94-99) as failing to match utoipaRoutesMacroRe.
+// http_endpoint_utoipa_axum.go:94-117) as failing to match utoipaRoutesMacroRe.
 //
 // These are DELIBERATE Arm-A/B1 boundaries, not defects. All three fail in the
 // safe direction: they mint nothing rather than minting a guess, and none is a
@@ -1316,8 +1316,91 @@ func TestUtoipaAxum_HeaderRecordedShapesMintNothing(t *testing.T) {
 			requireNotContains(t, ids, []string{"http:GET:/items", "http:POST:/items"}, label)
 			for _, h := range []string{"list_items", "create_item"} {
 				if got := countDefsForHandler(res, h); got != 0 {
-					t.Errorf("%s: want 0 definitions for %s, got %d — this shape is documented as minting nothing (http_endpoint_utoipa_axum.go:94-99); if that changed deliberately, change the header and the coverage doc with it",
+					t.Errorf("%s: want 0 definitions for %s, got %d — this shape is documented as minting nothing (http_endpoint_utoipa_axum.go:94-117); if that changed deliberately, change the header and the coverage doc with it",
 						label, h, got)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #6672 — the macro-NAME boundary: the leading `\b` of utoipaRoutesMacroRe.
+//
+// This is a FOURTH fail-to-mint shape, and the only one of the four whose loss
+// would be permissive rather than conservative. Dropping the `\b` leaves the
+// pattern matching any macro whose name merely ENDS in `routes!`, and
+// `my_routes!` / `app_routes!` / `admin_routes!` are ordinary user-defined
+// wrapper macros. Every one of them would then mint one endpoint per argument
+// for a registration this pass never saw — the phantom-endpoint direction, and
+// the one this pass is otherwise most careful about.
+//
+// The control macro `routes!(health)` plays a DIFFERENT role here than it does
+// in TestUtoipaAxum_HeaderRecordedShapesMintNothing, and carrying that
+// rationale across would be wrong. There the control exists to defeat
+// utoipaHasRoutesMacro's early return: `routes ! ( a , b )` does not contain
+// the substring "routes!", so without a control that fixture would never reach
+// the regex at all. Here the control does NOT play that role — `my_routes!`
+// does contain the substring "routes!", and utoipaHasRoutesMacro is a plain
+// strings.Contains, so the pre-filter passes and the macro-matching branch runs
+// whether or not a control is present. The control is kept for the other reason
+// only: it is the PRODUCER premise. Asserting http:GET:/health through
+// requireUtoipaDef proves the file parsed, the attribute map was built from it,
+// and framework=utoipa_axum is what minted — so "0 definitions for list_items"
+// is a decision this pass made, not the silence of a fixture that never ran.
+//
+// The rows vary the PREFIX rather than repeating one literal spelling, and they
+// vary it along the axis that matters: `my_`/`app_`/`admin_` all end in `_`, so
+// a table of only those pins nothing but the `_`-adjacent slice. Replacing the
+// `\b` with `(?:\b|[A-Za-z0-9])` — which leaks `xroutes!`, `Rroutes!` and
+// `2routes!` while every `_` row stays green — survived the whole package until
+// the letter and digit rows below were added.
+//
+// The pin is therefore on ASCII identifier characters generally, not on `_`.
+// It is NOT on the whole family a reader might assume: Go's RE2 `\b` is
+// ASCII-only, so a NON-ASCII character adjacent to `routes` is a boundary and
+// `Δroutes!(a, b)` DOES mint two phantom endpoints today. That is a real gap,
+// owned by #6677, and it is deliberately not asserted here — this test pins
+// what the pattern does, and a row asserting `Δroutes!` mints nothing would be
+// asserting a fix nobody has made.
+// ---------------------------------------------------------------------------
+func TestUtoipaAxum_PrefixedRoutesMacroMintsNothing(t *testing.T) {
+	// Underscore, lowercase letter, uppercase letter and digit — the four
+	// shapes of ASCII identifier character that can sit immediately before
+	// `routes`. Dropping any one of the last three reopens a mutant.
+	for _, prefix := range []string{"my_", "app_", "admin_", "x", "adm", "R", "api2"} {
+		t.Run(prefix+"routes", func(t *testing.T) {
+			label := "utoipa-prefixed-macro-" + prefix + "routes"
+			src := utoipaFailToMintSrc(prefix + "routes!(list_items, create_item)")
+
+			// The incidental byte the whole kill rests on is the prefix. If a
+			// later edit normalised it away the fixture would keep reporting
+			// green while observing nothing at all.
+			if want := prefix + "routes!(list_items"; !strings.Contains(src, want) {
+				t.Fatalf("%s: fixture lost the prefix its result depends on: %q missing", label, want)
+			}
+			// …and the only BARE `routes!(` in the fixture must be the
+			// control's. `.routes(` followed by a prefixed macro never spells
+			// `(routes!(`, so a count above 1 would mean the shape under test
+			// had smuggled in a genuine registration and the 0-counts below
+			// would be trivially true.
+			if n := strings.Count(src, "(routes!("); n != 1 {
+				t.Fatalf("%s: want exactly 1 bare `routes!(` in the fixture (the control), got %d", label, n)
+			}
+
+			ids, res := runDetect(t, "rust", "src/api.rs", src)
+
+			// Producer premise — see the block comment above: this is what the
+			// control is for here, and it is NOT about the early return.
+			requireUtoipaDef(t, res, "http:GET:/health", "health", label)
+
+			// Both handlers carry a same-file `#[utoipa::path]`, so the only
+			// thing keeping them unminted is the macro's NAME.
+			requireNotContains(t, ids, []string{"http:GET:/items", "http:POST:/items"}, label)
+			for _, h := range []string{"list_items", "create_item"} {
+				if got := countDefsForHandler(res, h); got != 0 {
+					t.Errorf("%s: %sroutes!(…) minted %d definition(s) for %s, want 0 — a macro whose name merely ends in `routes!` is a user-defined wrapper, not a utoipa registration; the leading word boundary in utoipaRoutesMacroRe is what says so",
+						label, prefix, got, h)
 				}
 			}
 		})
