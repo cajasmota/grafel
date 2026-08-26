@@ -17,7 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/kotlin/orms/hibernate_kotlin.yaml` | — |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
-| Schema extraction | 🟢 `partial` | `2026-06-04` | — | `internal/custom/java/hibernate.go`<br>`internal/custom/java/kotlin_port_test.go` | Parity-flip (epic #3872): ExtractHibernate gate (hibernate.go:61) accepts ctx.Language=="kotlin" for the hibernate framework — @Entity/@Table on Kotlin data classes emit SCOPE.Schema entities with the table_name property identically to Java. Live-verified by TestKotlinHibernate_SchemaTableName_Parity3872, which drives the real dispatch on a Kotlin data class and asserts table_name=="orders". Mirrors java.orm.hibernate schema_extraction=partial; partial because Kotlin-specific JPA idioms (constructor-param columns, data class shorthand) are not all captured. |
+| Schema extraction | 🟢 `partial` | `2026-06-04` | — | `internal/custom/java/hibernate.go`<br>`internal/custom/java/kotlin_port_test.go` | Parity-flip (epic #3872): the `ExtractHibernate` (internal/custom/java/hibernate.go:69) gate accepts ctx.Language=="kotlin" for the hibernate framework — @Entity/@Table on Kotlin data classes emit SCOPE.Schema entities with the table_name property identically to Java. Live-verified by TestKotlinHibernate_SchemaTableName_Parity3872, which drives the real dispatch on a Kotlin data class and asserts table_name=="orders". Mirrors java.orm.hibernate schema_extraction=partial; partial because Kotlin-specific JPA idioms (constructor-param columns, data class shorthand) are not all captured. |
 
 ### Relationships
 

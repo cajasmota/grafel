@@ -17,9 +17,77 @@ The `coverage` command maintains the grafel capabilities registry at `docs/cover
 - `validate.go` — schema invariants (referential integrity, status enum, dictionary key conformance)
 - `capability_map.go` + `capability-map.yaml` — capability → file/function mapping for traceability
 - `validate_map.go` — verifies `capability-map.yaml` references real files
+- `cite_symbol.go` — validates the `file.go:N` line citations embedded in each cell's `notes` prose **by symbol** (#6673); see "Line citations in `notes`" below
 - `generate.go` + `templates/` — markdown rendering of `docs/coverage/{summary.md,by-language/,by-category/,detail/}`
 - `discover.go` / `map_status.go` — bootstrap helpers
 - `buckets.go` / `languages.go` / `views.go` — projection helpers used by templates
+
+## Line citations in `notes` (#6673)
+
+A cell's `cites` list is validated by path. The `file.go:N` references inside the cell's `notes`
+prose used to be hand-typed text that nothing read — an audit measured **21 of 53 wrong (40%)**,
+and every failure was drift onto a *different, plausible* line: zero dead files, zero out-of-range
+lines. A "does the cited line exist?" gate would therefore have caught **0 of 21** and gone green
+on a registry that was 40% wrong. It was rejected on that measurement. `cite_symbol.go` validates
+the **symbol**, not the number.
+
+**Write every line citation in the symbol-anchored form**, with a repo-relative path:
+
+```
+`synthesizeUtoipaAxumRoutes` (internal/engine/http_endpoint_utoipa_axum.go:445)
+(`cdkAddEventSourceRe`, internal/engine/cdk_edges.go:137-142)
+```
+
+The backticked symbol must sit immediately before the citation (an optional `,` and/or `(` may
+separate them, nothing else). Bare basenames are rejected: `extractor.go` alone matches 50 files
+in this tree.
+
+**The convention is two rules, not one.** Recording only the first is what produced a wrong
+cleanup argument in #6671:
+
+1. A **single-line** citation sits on the **exact declaration line**. Citing the last line of the
+   symbol's doc comment is rot, not house style — that position carries no meaning, and doc-comment
+   blocks vary in length so it is not even consistently "the first comment line".
+2. A **range** opens on the **first doc-comment line** and closes on the declaration or in its
+   body. **Both ends are checked, and both matter.** The declaration must fall within the range;
+   the range must open exactly on the declaration's first doc-comment line (the declaration line
+   itself when there is no doc comment); and it must close no later than the last line of the
+   declaration. The two bounds catch different defects and neither stands in for the other:
+
+   - The **opening** bound rejects a range that starts anywhere but the doc comment — including
+     one starting on the declaration line and skipping the doc comment, which is the shape of
+     three of the five corrections it forced (`slsFunction`, `parseProviderBlock` and
+     `cdkPyAddEventSourceRe` each cited their own declaration line; the other two opened at doc+1). It rejects `terraform_deep.go:1-900` *for opening at line
+     1*, not for its width.
+   - The **closing** bound is the only width limit. With the opening bound alone, width was
+     unlimited: `cdk_edges.go:137-900` opened correctly and was accepted, claiming a 764-line span
+     in a 534-line file, as was `terraform_deep.go:220-9999`.
+
+   A citation whose closing line exceeds the file's length is reported separately, since that is
+   wrong regardless of which symbol it names.
+
+**If there is no symbol to anchor to — a statement block, a map-literal key, a regex body, a
+comment — do not write a line number at all.** Keep the file path and the prose. A number with
+nothing to anchor to is unverifiable prose by construction, and that is where 100% of the measured
+drift lived. The checker enforces this: an unanchored `file.go:N` anywhere in `notes` is an error.
+
+**Out of population**, both by stated reason rather than oversight:
+
+- **Bare continuation refs** (`,472-479`, `(:158-160)`, `(:587)`) that add a second location for a
+  file named earlier in the sentence. They carry no file token, so deciding which file they belong
+  to needs natural language, not a regex.
+- **Line refs into non-Go files** — the registry carries five (`aws_cdk.yaml:54-58`, four
+  `lang.rust.framework.*.md:21`). Same defect class, but the check validates a citation by
+  resolving a *symbol declaration*, and a YAML key or a Markdown table row has none. They are
+  unanchorable for the same reason as the statement-block numbers this rule strips.
+
+Both are left as prose; the anchoring rule still stops a *new* unanchored `file.go:N` from
+entering the registry.
+
+**The check recurses.** It hangs off `validateCapabilityCell`, which the flat, grouped and
+`framework_specific` tiers all route through. A flat walk of `capabilities` sees 38 of the 53
+citations and misses 15 in silence — the utoipa ones live at
+`capabilities.Routing.route_extraction.notes`.
 
 ## Extending the schema
 
