@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -748,10 +749,22 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 	sort.Strings(slugs)
 
 	// Find column widths.
+	// #6682: size this column by RUNE count, not by len()'s BYTE count.
+	// fmt's %-*s below pads by runes, so a byte-derived width overshoots by
+	// (bytes - runes) and pushes every payload right for no reason.
+	//
+	// This targets RUNE COUNT, NOT TERMINAL DISPLAY WIDTH. The two are not
+	// the same: a CJK ideograph is one rune but occupies two terminal
+	// columns, and an emoji may be one rune and two columns, or a grapheme
+	// cluster spanning several runes. So this aligns the common
+	// European-accent case ("cafe" with an acute e) exactly, and a slug
+	// containing CJK or emoji STILL renders ragged. Correcting that needs a
+	// wcwidth table or grapheme segmentation, a dependency this table does
+	// not justify; it is deliberately not done here.
 	maxSlugLen := 0
 	for _, slug := range slugs {
-		if len(slug) > maxSlugLen {
-			maxSlugLen = len(slug)
+		if n := utf8.RuneCountInString(slug); n > maxSlugLen {
+			maxSlugLen = n
 		}
 	}
 	// Minimum width for "Slug" column.
