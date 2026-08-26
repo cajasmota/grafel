@@ -410,11 +410,24 @@ func PrintRebuildSummary(w io.Writer, s *RebuildSummary) {
 //
 // #6686: size this column by rune count, not by len()'s byte count. Every
 // PrintRebuildSummary call site pads with fmt's %-*s, which counts runes, so a
-// byte-derived width overshoots by (bytes - runes). %-*s pads and never
-// truncates and a string's rune count never exceeds its byte count, so the
-// symptom is not ragged rows — every row of a table shares this one width and
-// stays in agreement. The whole column is simply oversized and every payload
-// shifts right.
+// byte-derived width overshoots by (bytes - runes).
+//
+// Two independent things decide this width, and they fail differently. Keep
+// the distinction:
+//
+//   - THE UNIT (bytes vs runes) is oversize-only. %-*s pads and never
+//     truncates, and a string's rune count never exceeds its byte count, so a
+//     byte-derived width is never smaller than any row needs. Every row of a
+//     table shares this one width and stays in agreement; the whole column is
+//     simply too wide and every payload shifts right.
+//
+//   - THE FLOOR (withOther) can genuinely ragged the rows. If withOther is
+//     wrongly false while every kind is shorter than "Other", the returned
+//     width is below 5, and the "Other" row — which is not one of rows — then
+//     overflows the column while its siblings are padded to the smaller
+//     width. That is the one case in this function where rows inside a single
+//     table disagree with each other. It is the reason withOther is a
+//     parameter and not something the caller may drop.
 //
 // This targets RUNE COUNT, NOT TERMINAL DISPLAY WIDTH. The two are not the
 // same: a CJK ideograph is one rune but occupies two terminal columns, and an
@@ -424,12 +437,13 @@ func PrintRebuildSummary(w io.Writer, s *RebuildSummary) {
 // ragged. Correcting that needs a wcwidth table or grapheme segmentation, a
 // dependency this table does not justify; it is deliberately not done here.
 //
-// Today the mismatch is inert, because every entity and relationship kind is
-// an ASCII constant — see TestKindConstantsAreASCII, which reads that set from
-// internal/types/kinds.go and fails the day a non-ASCII kind is declared. The
-// enrichment breakdown is the exception: its kinds are free-form strings read
-// out of enrichment-candidates.json, so no invariant covers them and the
-// arithmetic has to be right rather than merely lucky.
+// Today the unit mismatch is inert for the entity and relationship tables,
+// because every kind they render is an ASCII constant — see
+// TestKindConstantsAreASCII, which reads that set from internal/types/kinds.go
+// and fails the day a non-ASCII kind is declared. The enrichment breakdown is
+// the exception and is NOT inert: its kinds are free-form strings read out of
+// enrichment-candidates.json, no invariant covers them, and a non-ASCII one is
+// reachable today. The arithmetic has to be right rather than merely lucky.
 func maxKindLen(rows []kindRow, withOther bool) int {
 	w := 0
 	if withOther {

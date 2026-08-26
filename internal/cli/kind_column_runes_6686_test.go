@@ -5,26 +5,33 @@ package cli
 // Two distinct things are pinned here, and they are deliberately separate:
 //
 //  1. The Kind column's arithmetic. maxKindLen must size in RUNES because
-//     fmt's %-*s pads in runes, and every padding site must use the width
-//     maxKindLen returned rather than re-deriving one per row.
+//     fmt's %-*s pads in runes; it must apply the "Other" floor exactly when
+//     the caller says an "Other" row will be printed and not otherwise; and
+//     every padding site must use the width maxKindLen returned rather than
+//     re-deriving one per row.
 //
-//  2. The INVARIANT that makes the production path safe today: every entity
-//     and relationship kind constant is ASCII, so byte length and rune count
-//     coincide and the unit mismatch is currently inert. That is a property
-//     of the real value set, checkable against its source of truth, and it
-//     stops holding the day someone adds a non-ASCII kind — which is exactly
-//     the moment the column arithmetic starts mattering.
+//  2. The INVARIANT that makes the entity and relationship tables safe today:
+//     every kind constant declared in internal/types/kinds.go is ASCII, so
+//     byte length and rune count coincide there and the unit mismatch is inert
+//     for those two tables. That is a property of the real value set,
+//     checkable against its source of truth, and it stops holding the day
+//     someone declares a non-ASCII kind — which is exactly the moment the
+//     column arithmetic starts mattering.
 //
-// (1) is a contract test on the width helper and the printer. (2) is why no
-// end-to-end fixture injects a synthetic non-ASCII kind through
-// PrintRebuildSummary: production cannot currently produce one, so such a
-// fixture would assert behaviour for unreachable input.
+// The enrichment breakdown is NOT covered by (2): its kinds are free-form
+// strings read out of enrichment-candidates.json with no registry behind them,
+// so a non-ASCII enrichment kind is reachable in production TODAY. That is why
+// the printer fixtures below put their byte/rune divergence in the enrichment
+// table specifically, and use only ASCII kinds in the other two: it keeps
+// every fixture to input the system can actually produce.
 
 import (
 	"bytes"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -45,7 +52,7 @@ func isASCII(s string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// (1a) maxKindLen sizes in runes, not bytes.
+// (1a) maxKindLen: rune sizing, and the floor applied exactly when asked.
 // ---------------------------------------------------------------------------
 
 func TestRebuildMaxKindLenCountsRunes(t *testing.T) {
@@ -62,11 +69,23 @@ func TestRebuildMaxKindLenCountsRunes(t *testing.T) {
 			// units. Neither non-ASCII kind's byte length equals the wanted
 			// width, so a per-row len() padding mutant cannot reach the right
 			// column by luck.
-			name:      "rune-longest differs from byte-longest",
+			name:      "divergence in the rune-longest kind, floor not reached",
 			kinds:     []string{"asciixx", "日本語x", "café"},
 			withOther: false,
 			want:      7,
 			wantBytes: 10,
+		},
+		{
+			// The divergence is carried by a kind that is NOT the rune-longest
+			// (3 runes against the 4-rune maximum) yet whose byte length (5)
+			// still exceeds that maximum. A width that leaks bytes only for
+			// short or non-maximal kinds is invisible to the case above, which
+			// concentrates all the divergence in the longest string.
+			name:      "divergence in a shorter, non-maximal kind",
+			kinds:     []string{"abcd", "ééa"},
+			withOther: false,
+			want:      4,
+			wantBytes: 5,
 		},
 		{
 			// Every kind is shorter than the "Other" floor in runes but the
@@ -75,7 +94,19 @@ func TestRebuildMaxKindLenCountsRunes(t *testing.T) {
 			name:      "floor binds under rune counting but not under byte counting",
 			kinds:     []string{"é", "日本"},
 			withOther: true,
-			want:      5, // len("Other")
+			want:      5, // utf8.RuneCountInString("Other")
+			wantBytes: 6,
+		},
+		{
+			// The same kinds with withOther=false. The floor must NOT be
+			// applied when no "Other" row will be printed: a width of 5 here
+			// would pad every row three columns past the longest kind. This is
+			// the permissive direction — a floor applied unconditionally looks
+			// harmless and is invisible to the case above, which asks for it.
+			name:      "floor must not apply when no Other row is printed",
+			kinds:     []string{"é", "日本"},
+			withOther: false,
+			want:      2,
 			wantBytes: 6,
 		},
 	}
@@ -99,7 +130,7 @@ func TestRebuildMaxKindLenCountsRunes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// (1b) every padding site uses the computed width.
+// (1b) the printer: width propagation, and the floor through the real path.
 // ---------------------------------------------------------------------------
 
 // countColumn returns the rune column at which the trailing count field of a
@@ -120,141 +151,265 @@ func countColumn(line, kind string) (int, bool) {
 	return utf8.RuneCountInString(line[:i]), true
 }
 
+type kindColCase struct {
+	name    string
+	summary *RebuildSummary
+	// wantCol maps a kind to the absolute rune column its count must start at.
+	wantCol map[string]int
+	// wantOther maps an "Other" row's count text to its expected column. The
+	// three overflow totals are kept distinct per fixture so a row is
+	// identified by its count alone — no indentation heuristic, which would
+	// misroute rows under exactly the indent mutants this pins.
+	wantOther map[string]int
+}
+
 func TestRebuildKindColumnPaddingUsesTheComputedWidth(t *testing.T) {
-	s := &RebuildSummary{
-		Group:         "g",
-		TotalEntities: 220,
-		EntityByKind: map[string]int{
-			"HTTPEndpoint": 60, // 12 runes — sets the entity column width
-			"Function":     50, // 8
-			"Variable":     40, // 8
-			"Module":       30, // 6
-			"Schema":       20, // 6
-			"Class":        10, // pushed into Other
-			"Route":        5,  // pushed into Other
+	cases := []kindColCase{
+		{
+			// Wide columns: every table's longest kind is far above the
+			// 5-rune "Other" floor, so the floor never binds. This case's
+			// subject is width PROPAGATION — that each of the six %-*s sites
+			// takes the width its table computed instead of re-deriving one.
+			name: "floor far below the longest kind",
+			summary: &RebuildSummary{
+				Group:         "g",
+				TotalEntities: 220,
+				EntityByKind: map[string]int{
+					"HTTPEndpoint": 60, // 12 runes — sets the entity column width
+					"Function":     50, // 8
+					"Variable":     40, // 8
+					"Module":       30, // 6
+					"Schema":       20, // 6
+					"Class":        10, // pushed into Other
+					"Route":        5,  // pushed into Other
+				},
+				TotalRelationships: 280,
+				RelByKind: map[string]int{
+					"INHERITS_FROM": 70, // 13 runes — sets the relationship column width
+					"REFERENCES":    60, // 10
+					"DEPENDS_ON":    50, // 10
+					"IMPORTS":       40, // 7
+					"CALLS":         30, // 5
+					"TESTS":         20, // pushed into Other
+					"USES":          10, // pushed into Other
+				},
+				EnrichmentCandidates: 200,
+				EnrichmentActions:    215,
+				EnrichmentByKind: map[string]int{
+					"describe_entity": 60, // 15 runes — sets the enrichment column width
+					"describe_role":   50, // 13
+					"classify_domain": 40, // 15
+					"describe_module": 30, // 15
+					"summarise_flow":  20, // 14
+					"tag_pattern":     12, // pushed into Other
+					"link_doc":        6,  // pushed into Other
+				},
+			},
+			wantCol: map[string]int{
+				// Entities — width 12, 2-space indent, 2-space gap.
+				"HTTPEndpoint": 2 + 12 + 2,
+				"Function":     2 + 12 + 2,
+				"Variable":     2 + 12 + 2,
+				"Module":       2 + 12 + 2,
+				"Schema":       2 + 12 + 2,
+				// Relationships — width 13.
+				"INHERITS_FROM": 2 + 13 + 2,
+				"REFERENCES":    2 + 13 + 2,
+				"DEPENDS_ON":    2 + 13 + 2,
+				"IMPORTS":       2 + 13 + 2,
+				"CALLS":         2 + 13 + 2,
+				// Enrichment breakdown — width 15, 4-space indent.
+				"describe_entity": 4 + 15 + 2,
+				"describe_role":   4 + 15 + 2,
+				"classify_domain": 4 + 15 + 2,
+				"describe_module": 4 + 15 + 2,
+				"summarise_flow":  4 + 15 + 2,
+			},
+			wantOther: map[string]int{
+				"15": 2 + 12 + 2, // entities:      Class 10 + Route 5
+				"30": 2 + 13 + 2, // relationships: TESTS 20 + USES 10
+				"18": 4 + 15 + 2, // enrichment:    tag_pattern 12 + link_doc 6
+			},
 		},
-		TotalRelationships: 280,
-		RelByKind: map[string]int{
-			"INHERITS_FROM": 70, // 13 runes — sets the relationship column width
-			"REFERENCES":    60, // 10
-			"DEPENDS_ON":    50, // 10
-			"IMPORTS":       40, // 7
-			"CALLS":         30, // 5
-			"TESTS":         20, // pushed into Other
-			"USES":          10, // pushed into Other
+		{
+			// Every kind in every table is SHORTER than "Other", and every
+			// table overflows, so all three widths come from the floor rather
+			// than from any kind. This is the case where a dropped floor
+			// genuinely raggeds a table: the "Other" row is not among the rows
+			// maxKindLen sees, so it would overflow a sub-5 column while its
+			// siblings sat padded to the smaller width.
+			//
+			// The enrichment table additionally carries the byte/rune
+			// divergence, on a kind that is below the floor: "ééaa" is 4 runes
+			// and 6 bytes, so a byte-sized width escapes the floor (6) where a
+			// rune-sized one is held at it (5).
+			name: "floor binds in all three tables",
+			summary: &RebuildSummary{
+				Group:         "g",
+				TotalEntities: 280,
+				EntityByKind: map[string]int{
+					"fn":  70, // 2 runes
+					"cls": 60, // 3
+					"var": 50, // 3
+					"mod": 40, // 3
+					"sch": 30, // 3
+					"tag": 20, // pushed into Other
+					"doc": 10, // pushed into Other
+				},
+				TotalRelationships: 287,
+				RelByKind: map[string]int{
+					"USES": 71, // 4 runes
+					"HAS":  61, // 3
+					"OWNS": 51, // 4
+					"GETS": 41, // 4
+					"SETS": 31, // 4
+					"ADDS": 21, // pushed into Other
+					"DELS": 11, // pushed into Other
+				},
+				EnrichmentCandidates: 260,
+				EnrichmentActions:    296,
+				EnrichmentByKind: map[string]int{
+					"ééaa": 72, // 4 runes, 6 BYTES — the divergence, below the floor
+					"abcd": 62, // 4 runes, 4 bytes — ties it in runes, not in bytes
+					"tag":  52, // 3
+					"doc":  42, // 3
+					"fix":  32, // 3
+					"cat":  22, // pushed into Other
+					"nom":  12, // pushed into Other
+				},
+			},
+			wantCol: map[string]int{
+				// Entities — floor 5 (longest kind is 3).
+				"fn": 2 + 5 + 2, "cls": 2 + 5 + 2, "var": 2 + 5 + 2,
+				"mod": 2 + 5 + 2, "sch": 2 + 5 + 2,
+				// Relationships — floor 5 (longest kind is 4).
+				"USES": 2 + 5 + 2, "HAS": 2 + 5 + 2, "OWNS": 2 + 5 + 2,
+				"GETS": 2 + 5 + 2, "SETS": 2 + 5 + 2,
+				// Enrichment — floor 5 (longest kind is 4 runes / 6 bytes).
+				"ééaa": 4 + 5 + 2, "abcd": 4 + 5 + 2, "tag": 4 + 5 + 2,
+				"doc": 4 + 5 + 2, "fix": 4 + 5 + 2,
+			},
+			wantOther: map[string]int{
+				"30": 2 + 5 + 2, // entities:      tag 20 + doc 10
+				"32": 2 + 5 + 2, // relationships: ADDS 21 + DELS 11
+				"34": 4 + 5 + 2, // enrichment:    cat 22 + nom 12
+			},
 		},
-		EnrichmentCandidates: 200,
-		EnrichmentActions:    215,
-		EnrichmentByKind: map[string]int{
-			"describe_entity": 60, // 15 runes — sets the enrichment column width
-			"describe_role":   50, // 13
-			"classify_domain": 40, // 15
-			"describe_module": 30, // 15
-			"summarise_flow":  20, // 14
-			"tag_pattern":     12, // pushed into Other
-			"link_doc":        6,  // pushed into Other
+		{
+			// No table overflows, so no "Other" row is printed anywhere and
+			// the floor must NOT be applied — every kind is shorter than 5
+			// runes, so an unconditional floor is visible as three columns of
+			// dead space. This is the permissive direction of the floor and is
+			// invisible to the case above, which asks for the floor.
+			//
+			// The enrichment table carries the byte/rune divergence on a
+			// NON-MAXIMAL kind: "ééa" is 3 runes against the 4-rune maximum,
+			// but 5 bytes — above it. A width that leaks bytes only for short
+			// kinds is caught here and by nothing else in the print path.
+			name: "no Other row anywhere, so the floor must not apply",
+			summary: &RebuildSummary{
+				Group:         "g",
+				TotalEntities: 60,
+				EntityByKind: map[string]int{
+					"fn":  30, // 2 runes
+					"cls": 20, // 3 — the maximum
+					"var": 10, // 3
+				},
+				TotalRelationships: 30,
+				RelByKind: map[string]int{
+					"USES": 20, // 4 — the maximum
+					"HAS":  10, // 3
+				},
+				EnrichmentCandidates: 50,
+				EnrichmentActions:    60,
+				EnrichmentByKind: map[string]int{
+					"abcd": 30, // 4 runes, 4 bytes — the rune maximum
+					"ééa":  20, // 3 runes, 5 BYTES — non-maximal in runes, over it in bytes
+					"tag":  10, // 3
+				},
+			},
+			wantCol: map[string]int{
+				"fn": 2 + 3 + 2, "cls": 2 + 3 + 2, "var": 2 + 3 + 2,
+				"USES": 2 + 4 + 2, "HAS": 2 + 4 + 2,
+				"abcd": 4 + 4 + 2, "ééa": 4 + 4 + 2, "tag": 4 + 4 + 2,
+			},
+			wantOther: map[string]int{}, // none may be printed
 		},
 	}
 
-	var buf bytes.Buffer
-	PrintRebuildSummary(&buf, s)
-	lines := strings.Split(buf.String(), "\n")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			PrintRebuildSummary(&buf, tc.summary)
+			lines := strings.Split(buf.String(), "\n")
 
-	// Absolute columns, not cross-line agreement. Agreement already holds on
-	// unfixed code, and a mutant that widens the indent at every site of one
-	// table keeps every line in agreement while moving the whole column.
-	//
-	//   entities/relationships: 2-space indent + width + 2-space gap
-	//   enrichment breakdown:   4-space indent + width + 2-space gap
-	want := []struct {
-		kind string
-		col  int
-	}{
-		// Entities — width 12.
-		{"HTTPEndpoint", 2 + 12 + 2},
-		{"Function", 2 + 12 + 2},
-		{"Variable", 2 + 12 + 2},
-		{"Module", 2 + 12 + 2},
-		{"Schema", 2 + 12 + 2},
-		// Relationships — width 13.
-		{"INHERITS_FROM", 2 + 13 + 2},
-		{"REFERENCES", 2 + 13 + 2},
-		{"DEPENDS_ON", 2 + 13 + 2},
-		{"IMPORTS", 2 + 13 + 2},
-		{"CALLS", 2 + 13 + 2},
-		// Enrichment breakdown — width 15, deeper indent.
-		{"describe_entity", 4 + 15 + 2},
-		{"describe_role", 4 + 15 + 2},
-		{"classify_domain", 4 + 15 + 2},
-		{"describe_module", 4 + 15 + 2},
-		{"summarise_flow", 4 + 15 + 2},
-	}
-
-	for _, w := range want {
-		found := false
-		for _, line := range lines {
-			col, ok := countColumn(line, w.kind)
-			if !ok {
-				continue
+			// Absolute columns, not cross-line agreement. Agreement already
+			// holds on unfixed code, and a mutant that widens the indent at
+			// every site of one table keeps every line in agreement while
+			// moving the whole column.
+			for kind, want := range tc.wantCol {
+				found := false
+				for _, line := range lines {
+					col, ok := countColumn(line, kind)
+					if !ok {
+						continue
+					}
+					found = true
+					if col != want {
+						t.Errorf("row %q: count starts at rune column %d, want %d\n  line: %q",
+							kind, col, want, line)
+					}
+				}
+				if !found {
+					t.Errorf("row %q not found in output:\n%s", kind, buf.String())
+				}
 			}
-			found = true
-			if col != w.col {
-				t.Errorf("row %q: count starts at rune column %d, want %d\n  line: %q",
-					w.kind, col, w.col, line)
-			}
-		}
-		if !found {
-			t.Errorf("row %q not found in output:\n%s", w.kind, buf.String())
-		}
-	}
 
-	// All three tables emit an "Other" row sharing their table's width
-	// variable. The three overflow totals are deliberately distinct, so each
-	// row is identified by its count alone — no indentation heuristic, which
-	// would misroute rows under exactly the indent mutants this pins.
-	otherWant := map[string]int{
-		"15": 2 + 12 + 2, // entities:      Class 10 + Route 5
-		"30": 2 + 13 + 2, // relationships: TESTS 20 + USES 10
-		"18": 4 + 15 + 2, // enrichment:    tag_pattern 12 + link_doc 6
-	}
-	seenOther := map[string]bool{}
-	for _, line := range lines {
-		col, ok := countColumn(line, "Other")
-		if !ok {
-			continue
-		}
-		count := strings.Fields(line)[1]
-		wantCol, known := otherWant[count]
-		if !known {
-			t.Errorf("unexpected Other row %q — the three overflow totals must stay "+
-				"distinct for this test to tell the tables apart", line)
-			continue
-		}
-		seenOther[count] = true
-		if col != wantCol {
-			t.Errorf("Other row (count %s): count starts at rune column %d, want %d\n  line: %q",
-				count, col, wantCol, line)
-		}
-	}
-	for c := range otherWant {
-		if !seenOther[c] {
-			t.Errorf("Other row with count %s not found in output:\n%s", c, buf.String())
-		}
+			seenOther := map[string]bool{}
+			for _, line := range lines {
+				col, ok := countColumn(line, "Other")
+				if !ok {
+					continue
+				}
+				count := strings.Fields(line)[1]
+				want, known := tc.wantOther[count]
+				if !known {
+					t.Errorf("unexpected Other row %q — this fixture expects overflow "+
+						"totals %v and no others", line, tc.wantOther)
+					continue
+				}
+				seenOther[count] = true
+				if col != want {
+					t.Errorf("Other row (count %s): count starts at rune column %d, want %d\n  line: %q",
+						count, col, want, line)
+				}
+			}
+			for c := range tc.wantOther {
+				if !seenOther[c] {
+					t.Errorf("Other row with count %s not found in output:\n%s", c, buf.String())
+				}
+			}
+		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// (2) the invariant: every kind constant is ASCII.
+// (2) the invariant: every declared kind constant is ASCII.
 // ---------------------------------------------------------------------------
 
 // kindConstantsFromSource parses internal/types/kinds.go — the source of truth
-// for the kinds this table renders — and returns every string value declared
-// as an EntityKind or RelationshipKind constant, keyed by constant name.
+// for the kinds the entity and relationship tables render — and returns every
+// value declared as an EntityKind or RelationshipKind constant, keyed by
+// constant name.
 //
-// It reads the declarations rather than a hand-copied list, and asserts a
-// superset relation against the registry accessors below rather than a
-// hand-maintained count, so a newly added kind is covered the moment it is
-// declared without anyone remembering to update this test.
+// It reads the declarations rather than a hand-copied list, so a newly
+// declared kind is covered without anyone updating this test.
+//
+// It is deliberately INTOLERANT of const values it cannot evaluate. A const
+// whose value is a concatenation, a conversion or a Sprintf is not a
+// *ast.BasicLit; an earlier version of this parse silently skipped those, and
+// a kind declared in that shape was covered by nothing. Such a spec now fails
+// the test with an instruction, rather than being dropped.
 func kindConstantsFromSource(t *testing.T) map[string]string {
 	t.Helper()
 	const path = "../types/kinds.go"
@@ -277,18 +432,29 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 			if !ok {
 				continue
 			}
-			if id, ok := vs.Type.(*ast.Ident); ok {
-				lastType = id.Name
+			if vs.Type != nil {
+				lastType = ""
+				if id, ok := vs.Type.(*ast.Ident); ok {
+					lastType = id.Name
+				}
 			}
 			if lastType != "EntityKind" && lastType != "RelationshipKind" {
 				continue
 			}
 			for i, name := range vs.Names {
 				if i >= len(vs.Values) {
+					t.Errorf("%s: const %s (%s) has no value expression this test can read; "+
+						"extend kindConstantsFromSource rather than leaving the kind unchecked",
+						fset.Position(name.Pos()), name.Name, lastType)
 					continue
 				}
 				lit, ok := vs.Values[i].(*ast.BasicLit)
 				if !ok || lit.Kind != token.STRING {
+					t.Errorf("%s: const %s (%s) is not declared as a plain string literal, so "+
+						"this test cannot evaluate it and cannot confirm it is ASCII. Either "+
+						"declare it as a string literal or extend kindConstantsFromSource to "+
+						"evaluate this shape — do NOT leave the kind unchecked.",
+						fset.Position(name.Pos()), name.Name, lastType)
 					continue
 				}
 				v, err := strconv.Unquote(lit.Value)
@@ -310,9 +476,17 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 func TestKindConstantsAreASCII(t *testing.T) {
 	consts := kindConstantsFromSource(t)
 
-	// Guard the parse: every kind the registry accessors return must have been
-	// seen by the parser. If the const block is split or reshaped so the parse
-	// stops covering it, this fails instead of silently checking a subset.
+	// Guard the parse from the other direction: every kind the registry
+	// accessors return must have been seen by the parser. If the const block
+	// is split across files or reshaped so the parse stops covering it, this
+	// fails instead of silently checking a subset.
+	//
+	// This guard is NOT the coverage story on its own. types.AllEntityKinds()
+	// is a hand-maintained slice (internal/types/kinds.go) and nothing
+	// enforces that every declared const appears in it, so a const missing
+	// from the registry would not be caught here. It is caught by the parse
+	// above, which reads declarations directly and refuses shapes it cannot
+	// evaluate.
 	declared := map[string]bool{}
 	for _, v := range consts {
 		declared[v] = true
@@ -335,31 +509,163 @@ func TestKindConstantsAreASCII(t *testing.T) {
 		if !isASCII(v) {
 			t.Errorf("kind constant %s = %q is not ASCII.\n"+
 				"This is not a style complaint: PrintRebuildSummary's Kind column "+
-				"relies on kinds being ASCII for byte length and rune count to "+
-				"coincide. A non-ASCII kind is legal — but before adding one, "+
-				"confirm the column arithmetic in rebuild_summary.go, and note "+
-				"that it targets RUNE COUNT, not terminal display width (a CJK "+
+				"relies on entity and relationship kinds being ASCII for byte length "+
+				"and rune count to coincide. A non-ASCII kind is legal — but before "+
+				"adding one, confirm the column arithmetic in rebuild_summary.go, and "+
+				"note that it targets RUNE COUNT, not terminal display width (a CJK "+
 				"ideograph is one rune and two columns).", name, v)
 		}
 	}
 }
 
+// TestEngineTaxonomyKindLiteralsAreASCII covers grafel's SECOND entity-kind
+// taxonomy. internal/types/producer_kinds_test.go records that internal/engine
+// emits unprefixed kinds ("Route", "Component", "Config") that are
+// deliberately outside AllEntityKinds and therefore outside
+// TestKindConstantsAreASCII — yet they reach RebuildSummary.EntityByKind
+// through normaliseEntityKind's default branch just like any other kind.
+//
+// Bound, stated rather than implied: this reads `Kind: "..."` string literals
+// out of the engine's Go source. Kinds this taxonomy takes from YAML rule
+// files, and enrichment kinds read from enrichment-candidates.json, are NOT
+// covered by any invariant in this file — which is precisely why the column
+// arithmetic has to be correct rather than merely lucky.
+func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
+	const dir = "../engine"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+
+	fset := token.NewFileSet()
+	seen := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			t.Fatalf("parse %s: %v", path, perr)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			kv, ok := n.(*ast.KeyValueExpr)
+			if !ok {
+				return true
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok || key.Name != "Kind" {
+				return true
+			}
+			lit, ok := kv.Value.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			v, uerr := strconv.Unquote(lit.Value)
+			if uerr != nil {
+				return true
+			}
+			seen++
+			if !isASCII(v) {
+				t.Errorf("%s: engine kind literal %q is not ASCII — it reaches the Kind "+
+					"column through normaliseEntityKind's pass-through branch",
+					fset.Position(lit.Pos()), v)
+			}
+			return true
+		})
+	}
+	if seen == 0 {
+		t.Fatalf(`found no Kind: "..." literals under %s — the producer shape moved and `+
+			`this test is no longer reading anything`, dir)
+	}
+}
+
+// normaliseEntityKindLiterals returns every string literal appearing in
+// normaliseEntityKind's switch — both the raw kinds it matches on and the
+// display names it returns — read out of rebuild_summary.go's own AST.
+//
+// Read rather than hand-copied on purpose: an earlier version of this test
+// carried the raw-kind list inline, which is the defect class where the test
+// and the code drift apart silently.
+func normaliseEntityKindLiterals(t *testing.T) (cases, results []string) {
+	t.Helper()
+	const path = "rebuild_summary.go"
+
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	var fn *ast.FuncDecl
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == "normaliseEntityKind" {
+			fn = fd
+			break
+		}
+	}
+	if fn == nil {
+		t.Fatalf("normaliseEntityKind not found in %s — this test no longer reads it", path)
+	}
+
+	str := func(e ast.Expr) (string, bool) {
+		lit, ok := e.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return "", false
+		}
+		v, err := strconv.Unquote(lit.Value)
+		return v, err == nil
+	}
+
+	ast.Inspect(fn, func(n ast.Node) bool {
+		switch v := n.(type) {
+		case *ast.CaseClause:
+			for _, e := range v.List {
+				if s, ok := str(e); ok {
+					cases = append(cases, s)
+				}
+			}
+		case *ast.ReturnStmt:
+			for _, e := range v.Results {
+				if s, ok := str(e); ok {
+					results = append(results, s)
+				}
+			}
+		}
+		return true
+	})
+
+	if len(cases) == 0 || len(results) == 0 {
+		t.Fatalf("read %d case literals and %d returned literals from normaliseEntityKind — "+
+			"the switch shape changed and this test is no longer reading it",
+			len(cases), len(results))
+	}
+	return cases, results
+}
+
 // TestNormalisedEntityKindsAreASCII closes the display-name half: the Kind
-// values the table actually renders are normaliseEntityKind's output, which is
-// either one of its own display names or a pass-through of the raw kind.
+// values the entity table actually renders are normaliseEntityKind's output,
+// which is either one of its own display names or a pass-through of the raw
+// kind.
 func TestNormalisedEntityKindsAreASCII(t *testing.T) {
+	// Every registered kind, through the function.
 	for _, k := range types.AllEntityKinds() {
 		if got := normaliseEntityKind(string(k)); !isASCII(got) {
 			t.Errorf("normaliseEntityKind(%q) = %q is not ASCII", k, got)
 		}
 	}
-	// The raw HTTP-endpoint spellings are not EntityKind constants; they reach
-	// normaliseEntityKind from the extractors as free-form strings.
-	for _, k := range []string{"function", "method", "class", "struct", "interface",
-		"variable", "constant", "field", "http_endpoint",
-		"http_endpoint_definition", "http_endpoint_call"} {
+	// Every raw kind the function itself names, and every display name it can
+	// return — both read from its own source, not hand-copied here.
+	cases, results := normaliseEntityKindLiterals(t)
+	for _, k := range cases {
 		if got := normaliseEntityKind(k); !isASCII(got) {
 			t.Errorf("normaliseEntityKind(%q) = %q is not ASCII", k, got)
+		}
+	}
+	for _, r := range results {
+		if !isASCII(r) {
+			t.Errorf("normaliseEntityKind can return %q, which is not ASCII", r)
 		}
 	}
 }
