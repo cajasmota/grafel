@@ -252,7 +252,7 @@ func Render(w io.Writer, r *Report) error {
 // floor would hide exactly the rows this table exists to publish.
 func renderRelKindByLanguage(w io.Writer, r *Report) {
 	fmt.Fprintf(w, "### Relationship kinds by language\n\n")
-	if len(r.RelKindByLanguage) == 0 {
+	if len(r.RelKindByLanguage) == 0 && len(r.RelKindUnattributed) == 0 {
 		fmt.Fprintf(w, "_No language observed._\n\n")
 		return
 	}
@@ -319,6 +319,28 @@ func renderRelKindByLanguage(w io.Writer, r *Report) {
 
 		fmt.Fprintf(w, "| %s | %s | %s |\n", lang, emittedCol, missingCol)
 	}
+
+	// Edges whose source language could not be determined -- a dangling FromID
+	// or a source entity with no Language. Always rendered, including when the
+	// bucket is empty, so the reader can see that the number was measured and
+	// is zero rather than having to assume it. Dropping these silently would
+	// leave the table not summing to the relationship total, with nothing
+	// saying so -- the same shape of unnoticed relationship #6479 is about.
+	// It is not a language, so it takes no part in the peer arithmetic above.
+	unattributed := make([]string, 0, len(r.RelKindUnattributed))
+	for kind, n := range r.RelKindUnattributed {
+		if n > 0 {
+			unattributed = append(unattributed, fmt.Sprintf("%s (%s)", kind, countRangeLabel(n)))
+		}
+	}
+	sort.Strings(unattributed)
+	unattributedCol := "_none_"
+	if len(unattributed) > 0 {
+		unattributedCol = strings.Join(unattributed, ", ")
+	}
+	fmt.Fprintf(w, "| _unattributed_ | %s | — |\n", unattributedCol)
+
+	fmt.Fprintf(w, "\n_`_unattributed_` counts edges whose source entity is missing from the graph or carries no language. They are reported, not dropped: with them omitted this table would not sum to the relationship total and nothing would say so._\n")
 	fmt.Fprintf(w, "\n")
 }
 

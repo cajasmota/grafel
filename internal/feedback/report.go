@@ -98,8 +98,19 @@ type Report struct {
 	// Report-only: nothing gates on this. A gate would fire on the languages
 	// that emit no EXTENDS/IMPLEMENTS today and would immediately need a
 	// suppression list for a third of its inputs.
-	RelKindByLanguage  map[string]map[string]int
-	AnnotationCoverage struct {
+	RelKindByLanguage map[string]map[string]int
+	// RelKindUnattributed counts edges that could NOT be attributed to a
+	// language: relationship kind -> count. An edge lands here when its FromID
+	// names no entity in the graph (a dangling source) or names one whose
+	// Language is empty. Kept and rendered as its own row rather than dropped:
+	// #6479 is an issue about relationships going unnoticed, so a matrix that
+	// silently discarded the edges it cannot place would rebuild the defect
+	// inside the fix. A row rather than a prose total because WHICH kinds are
+	// unattributable is the actionable part -- a large unattributed EXTENDS
+	// bucket means the hierarchy edges exist and the attribution is broken,
+	// which reads completely differently from a large unattributed CONTAINS.
+	RelKindUnattributed map[string]int
+	AnnotationCoverage  struct {
 		TotalAnnotated int
 		Total          int
 		PctAnnotated   float64
@@ -171,6 +182,7 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		Version:              opts.Version,
 		EntitiesByLanguage:   make(map[string]int),
 		RelKindByLanguage:    make(map[string]map[string]int),
+		RelKindUnattributed:  make(map[string]int),
 		OrphanByKind:         make(map[string]KindStats),
 		OrphanTerminalByKind: make(map[string]KindStats),
 		OrphanLeafByKind:     make(map[string]KindStats),
@@ -380,6 +392,10 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 					r.RelKindByLanguage[lang] = make(map[string]int)
 				}
 				r.RelKindByLanguage[lang][rel.Kind]++
+			} else {
+				// Dangling FromID, or a source entity carrying no language. Both
+				// are counted rather than dropped -- see RelKindUnattributed.
+				r.RelKindUnattributed[rel.Kind]++
 			}
 
 			if isStructuralEdge(rel.Kind) {
