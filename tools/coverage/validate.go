@@ -256,6 +256,13 @@ func validateCapabilityCell(res *ValidationResult, capPrefix string, cap Capabil
 			res.Errors = append(res.Errors, fmt.Sprintf("%s: cite %q not found on disk", capPrefix, cite))
 		}
 	}
+	// Line citations embedded in the cell's notes prose are checked by
+	// symbol, not by line number — see cite_symbol.go for the
+	// convention and for why a line-exists check was rejected (#6673).
+	// Hanging this off validateCapabilityCell is what makes the check
+	// recurse: the flat, grouped and framework_specific tiers all route
+	// through here, and the utoipa citations live in the grouped tier.
+	validateCiteSymbols(res, capPrefix, cap, newDeclIndex(repoRoot))
 	if cap.VerifiedAt != "" {
 		t, err := time.Parse("2006-01-02", cap.VerifiedAt)
 		if err != nil {

@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Nested model extraction | 🟢 `partial` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | @ValidateNested()/@Type(() => Child) nested DTO references are recognized at the field level but not expanded into a structured nested-schema tree (validation_schema.go:458 notes @Type targets are scalar-coercion, not nesting). |
+| Nested model extraction | 🟢 `partial` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | @ValidateNested()/@Type(() => Child) nested DTO references are recognized at the field level but not expanded into a structured nested-schema tree (internal/custom/javascript/validation_schema.go notes @Type targets are scalar-coercion, not nesting). |
 | Schema extraction | ✅ `full` | `2026-06-12` | — | `internal/custom/javascript/reqresp_dto_test.go`<br>`internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go`<br>`internal/extractors/javascript/issue4845_dto_field_membership_test.go` | A class decorated with class-validator decorators is recognized as a validation schema (library=class-validator) and emitted as a SCOPE.Schema; #4845 expands each property into a SCOPE.Schema/field member. Proven by TestClassValidator_FieldsFromDecorators, TestClassValidatorDTO_FieldMembers; TestClassValidator_PlainClassSkipped guards against treating an undecorated class as a schema. |
 
 ### Constraints
