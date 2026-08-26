@@ -820,15 +820,18 @@ func TestUtoipaCrossFile_NonASCIIWrappedRoutesMacroMarksNothing_6677(t *testing.
 	// Rust-legal wrapper macro name (identifiers are UAX#31, non-ASCII ones
 	// stable since 1.53). That is FROM CONSTRUCTION, not from a compiler run:
 	// there is no rustc here, so the legality rests on the XID_Start property.
-	// U+2192 RIGHTWARDS ARROW is Sm — not an identifier character at all — so
-	// it IS a boundary and the macro after it is a bare `routes!`.
+	// U+2192 RIGHTWARDS ARROW is not an identifier character at all, so it IS a
+	// boundary and the macro after it is a bare `routes!`. Its general category
+	// (`Sm`) is NOT the reason and must not be read as one: U+2118 SCRIPT
+	// CAPITAL P is `Sm` too and IS XID_Continue, and the axum-side table pins
+	// that pair as wanting opposite results.
 	for _, tc := range []struct {
 		name       string
 		prefix     string
 		wantMarker bool
 	}{
 		{name: "greek-xid-start-U+0394", prefix: "Δ", wantMarker: false},
-		{name: "math-symbol-Sm-U+2192", prefix: "→", wantMarker: true},
+		{name: "not-xid-U+2192", prefix: "→", wantMarker: true},
 		{name: "bare-no-prefix", prefix: "", wantMarker: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

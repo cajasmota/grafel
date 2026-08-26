@@ -1659,13 +1659,26 @@ pub fn admin_router() -> OpenApiRouter {
 //     Han `日`), a combining mark (U+0301, Mn), a non-ASCII decimal digit
 //     (U+0663, Nd), a non-ASCII connector punctuation (U+203F, Pc) and a letter
 //     number (U+2177, Nl) — i.e. every Unicode general category
-//     utoipaIsIdentContinue consults, not one representative of one of them.
+//     utoipaIsIdentContinue consults, not one representative of one of them —
+//     PLUS the four codepoints that no general category can decide, from
+//     Other_ID_Start (U+2118, U+212E) and Other_ID_Continue (U+00B7, U+1369).
+//
+//     GENERAL CATEGORY IS NOT THE AXIS, and the U+2118 row is the proof. U+2118
+//     SCRIPT CAPITAL P is `Sm`, the SAME general category as the restrictive row
+//     U+2192, and the two rows want OPPOSITE results: U+2118 is XID_Continue and
+//     must mint nothing, U+2192 is not and must still mint. Reading the
+//     restrictive rows as "Sm ⇒ boundary" is therefore wrong, and reading them
+//     as "these five particular codepoints are not identifier characters" is
+//     right. `℘routes!(a, b)` minted two phantom endpoints on the first revision
+//     of this branch for exactly that misreading.
+//
 //   - The DIRECTION. Permissive rows (want 0) are the #6677 bug itself.
 //     Restrictive rows (want 2) are the direction a fix silently breaks and
 //     production never reports: a codepoint that is NOT an identifier character
 //     must still be a boundary, so a bare `routes!` after it must still mint.
 //     Those rows cover Sc, Sm, Pi, Pd and Zs — five categories the predicate
 //     must NOT claim — plus the no-prefix control.
+//
 //   - ADJACENCY. `über_` carries a non-ASCII character but not adjacent to
 //     `routes`; `über` (→ `überroutes!`) carries one non-adjacent AND an ASCII
 //     letter adjacent. Both minted nothing before #6677 and must still mint
@@ -1681,18 +1694,28 @@ pub fn admin_router() -> OpenApiRouter {
 //     confound a 0-mint caused by the name boundary with a 0-mint caused by the
 //     argument grammar — and the restrictive rows, which need a POSITIVE mint,
 //     would stop observing anything at all.
+//
 //   - The SURROUNDING SOURCE is always utoipaFailToMintSrc's router, so every
 //     row differs from every other row in exactly the probed byte(s). It carries
 //     a bare `routes!(health)` control whose GET /health is asserted on every
 //     row: that is the producer premise, proving the file parsed, the attribute
 //     map was built, and framework=utoipa_axum is what minted — so a want-0 row
 //     is a decision this pass made, not the silence of a fixture that never ran.
+//
 //   - The MACRO SPELLING is always `routes!` with no space before `!`.
-//     Justification: `routes ! (` is a different bound (utoipaHasRoutesMacro's
-//     literal-substring pre-filter returns early on it) and is pinned in
-//     TestUtoipaAxum_HeaderRecordedShapesMintNothing; a row combining it with a
-//     non-ASCII prefix would be killed by the pre-filter and would observe the
-//     boundary predicate not at all.
+//     Justification: `routes ! (` is a DIFFERENT bound of the same pattern —
+//     `routes!` must be adjacent, as the file header states — and it is pinned
+//     in TestUtoipaAxum_HeaderRecordedShapesMintNothing. A row combining it with
+//     a non-ASCII prefix would fail at that adjacency requirement, so it would
+//     report 0 without the boundary predicate having decided anything.
+//
+//     NOT because of the pre-filter. utoipaHasRoutesMacro is
+//     `strings.Contains(content, "routes!")` and every row here carries the
+//     `.routes(routes!(health))` control, so the pre-filter passes on every
+//     fixture in this file and never returns early. An earlier revision of this
+//     comment credited the pre-filter and was wrong; the conclusion held, the
+//     mechanism did not.
+//
 //   - The NEST PREFIX is absent on every row. Justification: rustNestPrefixFor
 //     runs only AFTER a match survives the boundary filter, so it cannot change
 //     a 0-vs-2 verdict; #6651 and TestUtoipaAxum_NestPrefixAtExactWindow own it.
@@ -1729,18 +1752,40 @@ func TestUtoipaAxum_NonASCIIRoutesMacroBoundary(t *testing.T) {
 		{name: "connector-punct-Pc-U+203F", prefix: "\u203f", wantDefs: 0},
 		{name: "letter-number-Nl-U+2177", prefix: "\u2177", wantDefs: 0},
 
+		// ---- permissive direction: XID_Continue members NO general category
+		// names, want 0. These are Other_ID_Start and Other_ID_Continue, and
+		// they are why utoipaIsIdentContinue cannot be a category test alone.
+		// U+2118 is `Sm` and U+212E is `So` — the categories of the restrictive
+		// rows below — so a category-only predicate gets them exactly backwards.
+		{name: "other-id-start-Sm-U+2118", prefix: "\u2118", wantDefs: 0},
+		{name: "other-id-start-So-U+212E", prefix: "\u212e", wantDefs: 0},
+		{name: "other-id-continue-Po-U+00B7", prefix: "\u00b7", wantDefs: 0},
+		// U+00B7 is Latin-1 and U+0387 is not, so the pair spans the R16
+		// table's two lookup halves. It does NOT pin the RangeTable's
+		// LatinOffset: unicode.Is never reads that field, only
+		// isExcludingLatin does, and the LatinOffset 1→2 mutant is ALIVE for
+		// that reason. The field is omitted from the literal rather than left
+		// there to be mistaken for load-bearing.
+		{name: "other-id-continue-Po-U+0387", prefix: "\u0387", wantDefs: 0},
+		{name: "other-id-continue-No-U+1369", prefix: "\u1369", wantDefs: 0},
+		{name: "other-id-continue-Po-U+30FB", prefix: "\u30fb", wantDefs: 0},
+
 		// ---- adjacency: non-ASCII present but NOT adjacent, want 0 ----
 		// `\u00fcber_routes!` — the adjacent character is an ASCII `_`.
 		{name: "non-adjacent-then-underscore", prefix: "\u00fcber_", wantDefs: 0},
 		// `\u00fcberroutes!` — the adjacent character is an ASCII letter.
 		{name: "non-adjacent-then-ascii-letter", prefix: "\u00fcber", wantDefs: 0},
 
-		// ---- restrictive direction: NOT identifier characters, want 2 ----
-		{name: "currency-symbol-Sc-U+20AC", prefix: "\u20ac", wantDefs: 2},
-		{name: "math-symbol-Sm-U+2192", prefix: "\u2192", wantDefs: 2},
-		{name: "initial-quote-Pi-U+201C", prefix: "\u201c", wantDefs: 2},
-		{name: "dash-punct-Pd-U+2014", prefix: "\u2014", wantDefs: 2},
-		{name: "non-ascii-space-Zs-U+00A0", prefix: "\u00a0", wantDefs: 2},
+		// ---- restrictive direction: NOT XID_Continue, want 2 ----
+		// The category in each name is descriptive, not the reason: U+2118
+		// above is `Sm` too and wants 0. The reason is that these five
+		// codepoints are not identifier characters, so each IS a boundary and
+		// the macro after it is a bare `routes!`.
+		{name: "not-xid-Sc-U+20AC", prefix: "\u20ac", wantDefs: 2},
+		{name: "not-xid-Sm-U+2192", prefix: "\u2192", wantDefs: 2},
+		{name: "not-xid-Pi-U+201C", prefix: "\u201c", wantDefs: 2},
+		{name: "not-xid-Pd-U+2014", prefix: "\u2014", wantDefs: 2},
+		{name: "not-xid-Zs-U+00A0", prefix: "\u00a0", wantDefs: 2},
 		// The no-prefix control. A bare `routes!(a, b)` must still mint, or
 		// every want-0 row above would be trivially true.
 		{name: "bare-no-prefix", prefix: "", wantDefs: 2},
@@ -1877,4 +1922,117 @@ pub fn router() -> OpenApiRouter {
 
 	requireUtoipaDef(t, res, "http:GET:/items", "list_items", label)
 	requireUtoipaDef(t, res, "http:POST:/items", "create_item", label)
+}
+
+// ---------------------------------------------------------------------------
+// #6677 — the RECORDED deviations between utoipaIsIdentContinue and UAX#31's
+// XID_Continue, in both directions.
+//
+// This is a KNOWN-LIMITATION test. It asserts TODAY'S output, not the ideal
+// one, and it exists because the disclosure on utoipaIsIdentContinue is prose
+// that nothing else observes — the failure mode that produced the first
+// revision of this branch, whose comment claimed Other_ID_Continue was THE
+// deviation while `℘routes!` (U+2118, Other_ID_Start) was still minting two
+// phantoms. A reader who narrows or widens the predicate should see these rows
+// change and have to decide about it, rather than discovering the drift from a
+// corpus.
+//
+// The deviation lists were measured by diffing utoipaIsIdentContinue against a
+// UAX#31 XID implementation — CPython's `("a"+ch).isidentifier()`, Unicode 16.0
+// — over all 0x110000 codepoints. If either list is re-derived on a newer
+// Unicode version the counts may move; what must NOT move is that the
+// permissive column stays empty.
+//
+// The rows below are one representative per deviation FAMILY, not the whole
+// list. Enumerating all 20 would pin nothing extra: within a family the
+// predicate reaches its answer by the identical branch, so a mutant that
+// changed one changes all of them.
+// ---------------------------------------------------------------------------
+func TestUtoipaAxum_MacroBoundaryRecordedUnicodeDeviations(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		prefix   string
+		wantDefs int
+		why      string
+	}{
+		// RESTRICTIVE over-reach (18 codepoints): Go's unicode.IsLetter admits
+		// NFKC-unstable letters that XID_Continue excludes — U+037A, U+2E2F,
+		// U+FC5E..U+FC63, U+FDFA, U+FDFB and the even codepoints of
+		// U+FE70..U+FE7E. This predicate therefore treats them as identifier
+		// characters and mints NOTHING, which is a silently lost endpoint.
+		//
+		// DISCLOSED RATHER THAN FIXED: none of them may begin or continue a
+		// Rust identifier, so none can stand at the end of a wrapper macro's
+		// name in compilable Rust, and the shape is unreachable from source
+		// rustc would accept. (From construction — there is no rustc here.)
+		{
+			name: "over-restrictive-Lm-U+037A", prefix: "ͺ", wantDefs: 0,
+			why: "GREEK YPOGEGRAMMENI is Lm, so unicode.IsLetter claims it; XID_Continue does not",
+		},
+		{
+			name: "over-restrictive-Lo-U+FDFA", prefix: "ﷺ", wantDefs: 0,
+			why: "ARABIC LIGATURE SALLALLAHOU… is Lo, so unicode.IsLetter claims it; XID_Continue does not",
+		},
+
+		// The joiners. These ARE XID_Continue under UAX#31's OPTIONAL R1a
+		// profile, which the oracle implements and Rust does not: RFC 2457
+		// excludes ZWJ/ZWNJ from Rust identifiers. They are deliberately left
+		// as boundaries, so a `routes!` after one still mints. This is the one
+		// place the predicate follows Rust rather than the oracle, and leaving
+		// it unpinned would make the choice indistinguishable from an
+		// oversight — which is precisely how U+2118 was missed.
+		{
+			name: "joiner-Cf-U+200C-zwnj", prefix: "‌", wantDefs: 2,
+			why: "ZWNJ is Cf; RFC 2457 keeps it out of Rust identifiers, so it is a boundary here",
+		},
+		{
+			name: "joiner-Cf-U+200D-zwj", prefix: "‍", wantDefs: 2,
+			why: "ZWJ is Cf; RFC 2457 keeps it out of Rust identifiers, so it is a boundary here",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			label := "utoipa-recorded-deviation-" + tc.name
+			macro := tc.prefix + "routes!(list_items, create_item)"
+			src := utoipaMacroBoundarySrc(macro)
+
+			// The incidental byte the row rests on. Every prefix here is
+			// invisible or nearly so when rendered, which is exactly the kind
+			// of byte an editor or a copy-paste silently drops.
+			if !strings.Contains(src, macro) {
+				t.Fatalf("%s: fixture lost the macro spelling its result depends on (%s)", label, tc.why)
+			}
+			if tc.prefix == "" {
+				t.Fatalf("%s: row is labelled for a prefix but carries none", label)
+			}
+			for _, r := range tc.prefix {
+				if r < utf8.RuneSelf {
+					t.Fatalf("%s: row claims a non-ASCII prefix but %q contains ASCII U+%04X", label, tc.prefix, r)
+				}
+			}
+			if n := strings.Count(src, "(routes!("); n != 1 {
+				t.Fatalf("%s: want exactly 1 bare `routes!(` in the fixture (the control), got %d", label, n)
+			}
+
+			ids, res := runDetect(t, "rust", "src/api.rs", src)
+
+			// Producer premise, as everywhere else in this family.
+			requireUtoipaDef(t, res, "http:GET:/health", "health", label)
+
+			got := 0
+			for _, h := range []string{"list_items", "create_item"} {
+				got += countDefsForHandler(res, h)
+			}
+			if got != tc.wantDefs {
+				t.Errorf("%s: %q+routes!(list_items, create_item) minted %d definition(s), want %d — %s",
+					label, tc.prefix, got, tc.wantDefs, tc.why)
+			}
+			switch tc.wantDefs {
+			case 0:
+				requireNotContains(t, ids, []string{"http:GET:/items", "http:POST:/items"}, label)
+			case 2:
+				requireUtoipaDef(t, res, "http:GET:/items", "list_items", label)
+				requireUtoipaDef(t, res, "http:POST:/items", "create_item", label)
+			}
+		})
+	}
 }
