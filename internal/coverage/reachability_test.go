@@ -211,3 +211,33 @@ func TestCrossSignal(t *testing.T) {
 		}
 	}
 }
+
+// TestIsProductionEntity_UtoipaRegistrationMarker_6668 pins the coverage cost of
+// #6668's cross-file join-key marker.
+//
+// The marker is emitted as a SCOPE.Route by deliberate design — it must stay out
+// of the http_endpoint family so the #1217 legacy-kind migration cannot turn a
+// pathless record into a phantom definition. But isProductionEntity counts every
+// SCOPE.Route, and isTestEntity filters only subtype == test_suite, so each
+// marker was counted as production-and-forever-untested: reported coverage fell
+// by one per cross-file registration on every utoipa repo.
+//
+// The exclusion keys on Subtype, so a genuine SCOPE.Route stays production. That
+// half is asserted too, or the exclusion could widen to every route unnoticed.
+func TestIsProductionEntity_UtoipaRegistrationMarker_6668(t *testing.T) {
+	marker := types.EntityRecord{
+		ID:      "utoipa:registration:src/router.rs:crate::items::create_item",
+		Name:    "utoipa:registration:src/router.rs:crate::items::create_item",
+		Kind:    string(types.EntityKindRoute),
+		Subtype: "utoipa_handler_registration",
+	}
+	if isProductionEntity(marker) {
+		t.Error("#6668: registration marker counts as production surface; no test path can reach it, " +
+			"so it is permanently untested and depresses reported coverage")
+	}
+
+	route := types.EntityRecord{ID: "r1", Name: "/api/users", Kind: string(types.EntityKindRoute)}
+	if !isProductionEntity(route) {
+		t.Error("#6668: a plain SCOPE.Route is no longer production; the exclusion must key on Subtype, not Kind")
+	}
+}

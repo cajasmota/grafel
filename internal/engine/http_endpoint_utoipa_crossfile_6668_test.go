@@ -649,3 +649,135 @@ pub fn router() -> OpenApiRouter {
 	// Asserted as-is: this is the documented house behaviour, not an endorsement.
 	requireUtoipaMarker(t, ents, "src/router.rs", "crate::items", "create_item", "", "6668-commented-macro")
 }
+
+// TestUtoipaCrossFile_AmbiguousUseBindingDropped_6668 pins the collision policy,
+// and it exists because the previous revision's justification for having NO
+// policy was false in the language.
+//
+// The claim was that two `use` declarations binding one local name is E0252 and
+// cannot compile. E0252 is per-SCOPE. Both shapes below compile, both reached
+// the binding map, and because the map was last-wins the SECOND won — so a
+// `mod tests` block, which by convention sits at the bottom of a file, silently
+// redirected the join key to `crate::mocks`. #6669 resolves on
+// (handler_module, handler_name), so that MIS-JOINS rather than missing.
+//
+// The policy is DROP, not first-wins: this pass models neither scopes nor `cfg`
+// evaluation, so it cannot know which binding is live at the registration site,
+// and #6150's answer to that is to leave the endpoint unenriched. The `crate`
+// control proves the drop is scoped to genuine ambiguity.
+func TestUtoipaCrossFile_AmbiguousUseBindingDropped_6668(t *testing.T) {
+	for _, tc := range []struct {
+		label string
+		uses  string
+		want  int
+	}{
+		{"mod-tests-scope", `use crate::items::create_item;
+
+mod tests {
+    use crate::mocks::create_item;
+}`, 0},
+		{"cfg-feature-pair", `#[cfg(feature = "x")]
+use crate::real::create_item;
+#[cfg(not(feature = "x"))]
+use crate::stub::create_item;`, 0},
+		// A third declaration must not resurrect a poisoned name.
+		{"third-declaration-after-collision", `use crate::items::create_item;
+mod tests {
+    use crate::mocks::create_item;
+}
+mod more {
+    use crate::items::create_item;
+}`, 0},
+		// The SAME binding declared twice names one item and is not ambiguous.
+		{"identical-duplicate-kept", `use crate::items::create_item;
+mod tests {
+    use crate::items::create_item;
+}`, 1},
+		{"single-binding-control", `use crate::items::create_item;`, 1},
+	} {
+		router := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+` + tc.uses + `
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(create_item))
+}
+`
+		ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+			{"src/items.rs", itemsModuleSrc},
+			{"src/router.rs", router},
+		})
+		requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-ambiguous-use/"+tc.label)
+		got := utoipaMarkers(ents)
+		if len(got) != tc.want {
+			t.Errorf("6668-ambiguous-use/%s: want %d marker(s), got %d (%v)",
+				tc.label, tc.want, len(got), utoipaMarkerIDs(ents))
+			continue
+		}
+		for _, e := range got {
+			if m := e.Properties["handler_module"]; m != "crate::items" {
+				t.Errorf("6668-ambiguous-use/%s: handler_module = %q, want crate::items",
+					tc.label, m)
+			}
+		}
+	}
+}
+
+// TestUtoipaCrossFile_MalformedUsePathRefused_6668 pins rustUsePathRe, which is
+// the ONLY defence between the `module + "::" + name[:cut]` concatenation in
+// rustAddUseLeaf and a published garbage join key. Deleting it scored vet 0 /
+// test 0 — SURVIVED — before this test existed, and it is not equivalent: each
+// input below yields a marker with a malformed module under the mutant.
+func TestUtoipaCrossFile_MalformedUsePathRefused_6668(t *testing.T) {
+	for _, tc := range []struct{ label, useDecl string }{
+		{"empty-segment", "use crate::{::create_item};"},
+		{"double-colon-run", "use crate::{a::::create_item};"},
+		{"digit-leading-segment", "use crate::{1bad::create_item};"},
+	} {
+		router := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+` + tc.useDecl + `
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(create_item))
+}
+`
+		ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+			{"src/items.rs", itemsModuleSrc},
+			{"src/router.rs", router},
+		})
+		requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-malformed-path/"+tc.label)
+		for _, e := range utoipaMarkers(ents) {
+			t.Errorf("6668-malformed-path/%s: emitted marker with handler_module=%q; a malformed path must yield no join key",
+				tc.label, e.Properties["handler_module"])
+		}
+	}
+}
+
+// TestUtoipaCrossFile_PathLeafWithAlias_6668 covers `use crate::{items::x as
+// mk};` — a path leaf AND an alias in one leaf. This resolved to NOTHING before
+// review round 2, because the alias regex accepted only a bare identifier on its
+// left, so the `::` split ran on the text `create_item as mk` and the result
+// failed identifier validation. Restrictive, therefore invisible.
+//
+// The join key must be the DECLARING module's pair (`crate::items`,
+// `create_item`); `mk` is local to the router and would match nothing there.
+func TestUtoipaCrossFile_PathLeafWithAlias_6668(t *testing.T) {
+	router := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+use crate::{items::create_item as mk};
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(mk))
+}
+`
+	ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+		{"src/items.rs", itemsModuleSrc},
+		{"src/router.rs", router},
+	})
+	requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-path-leaf-alias")
+	requireUtoipaMarker(t, ents, "src/router.rs", "crate::items", "create_item", "", "6668-path-leaf-alias")
+}

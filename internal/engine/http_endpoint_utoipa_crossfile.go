@@ -153,31 +153,47 @@ var rustUsePathRe = regexp.MustCompile(`^[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*$`)
 // becomes load-bearing — so widen the two together or not at all.
 var rustUseIdentRe = regexp.MustCompile(`^[A-Za-z_]\w*$`)
 
-// rustUseLeafAsRe splits a `name as alias` leaf.
-var rustUseLeafAsRe = regexp.MustCompile(`^([A-Za-z_]\w*)[ \t\r\n]+as[ \t\r\n]+([A-Za-z_]\w*)$`)
+// rustUseLeafAsRe splits a `<path> as <alias>` leaf. The left side is a PATH,
+// not just an identifier: `use crate::{items::create_item as mk};` is legal and
+// an identifier-only left side silently resolved it to nothing, because the
+// `::` split below then ran on the text `create_item as mk`.
+var rustUseLeafAsRe = regexp.MustCompile(`^([A-Za-z_][\w:]*)[ \t\r\n]+as[ \t\r\n]+([A-Za-z_]\w*)$`)
 
 // rustAddUseLeaf records one leaf of a `use` declaration under the LOCAL name
 // the rest of the file will spell, while the binding keeps the name the
 // DECLARING module knows it by — those differ under `as`, and the join key must
 // be the declaring module's own pair or it cannot match anything there.
 //
-// `self`, `*`, and any leaf that is not a bare identifier (or `ident as ident`)
-// are dropped: none of them names a resolvable single item.
-func rustAddUseLeaf(out map[string]rustUseBinding, module, leaf string) {
+// ORDER MATTERS. The alias is split off FIRST and its left side is allowed to be
+// a path, because `use crate::{items::create_item as mk};` is both legal and
+// real. Splitting on `::` first left the text `create_item as mk` as the item
+// name, which failed identifier validation and resolved the whole leaf to
+// nothing — restrictive, therefore invisible.
+//
+// COLLISION POLICY: DROP, not first-wins. See rustUseBindings.
+//
+// `self`, `*`, and any leaf that survives neither shape are dropped: none of
+// them names a resolvable single item.
+func rustAddUseLeaf(out map[string]rustUseBinding, dropped map[string]bool, module, leaf string) {
 	name, local := leaf, leaf
+	aliased := false
 	if m := rustUseLeafAsRe.FindStringSubmatch(leaf); m != nil {
-		name, local = m[1], m[2]
+		name, local, aliased = m[1], m[2], true
 	}
-	// A group leaf may itself be a PATH — `use crate::{items::create_item,
+	// A leaf may itself be a PATH — `use crate::{items::create_item,
 	// admin::purge};` is the most common rustfmt grouping, and rejecting it
 	// would leave the dominant real-world spelling silently unresolved. The
 	// leading segments belong to the module, the last to the item.
 	if cut := strings.LastIndex(name, "::"); cut >= 0 {
 		module, name = module+"::"+name[:cut], name[cut+2:]
-		if local == leaf {
+		if !aliased {
 			local = name
 		}
 	}
+	// rustUsePathRe is the ONLY thing standing between the concatenation above
+	// and a published garbage join key: `use crate::{::create_item};` would
+	// otherwise yield module `crate::`, and `{1bad::create_item}` would yield
+	// `crate::1bad`. Pinned by TestUtoipaCrossFile_MalformedUsePathRefused_6668.
 	if module == "" || !rustUsePathRe.MatchString(module) {
 		return
 	}
@@ -197,11 +213,21 @@ func rustAddUseLeaf(out map[string]rustUseBinding, module, leaf string) {
 		strings.HasPrefix(root, "self::") || strings.HasPrefix(root, "super::") {
 		return
 	}
-	// No first-wins guard here on purpose. Two `use` declarations binding one
-	// local name is E0252 — it does not compile — so a guard for it defends
-	// against input Rust cannot produce, and a mutant deleting it cannot be
-	// killed by any valid fixture. This file deletes unkillable guards rather
-	// than keeping them (the same disposition applied to the `emitted` map).
+	if dropped[local] {
+		return
+	}
+	if prev, exists := out[local]; exists {
+		if prev.module == module && prev.name == name {
+			// The same binding declared twice names one item; not ambiguous.
+			return
+		}
+		// AMBIGUOUS: two declarations bind one local name to DIFFERENT items.
+		// Neither can be published, so the name is poisoned for the rest of the
+		// file — a later third declaration must not resurrect it either.
+		delete(out, local)
+		dropped[local] = true
+		return
+	}
 	out[local] = rustUseBinding{module: module, name: name}
 }
 
@@ -230,6 +256,35 @@ func rustAddUseLeaf(out map[string]rustUseBinding, module, leaf string) {
 // A glob (`use crate::items::*;`) is rejected on the leaf instead: `*` is not an
 // identifier, so it names no item and no join key can be derived from it.
 //
+// COLLISION POLICY (review round 2). When two declarations bind ONE local name
+// to DIFFERENT items, BOTH are dropped and the name is poisoned for the rest of
+// the file. This is not first-wins, and the difference is deliberate.
+//
+// The previous revision had NO collision handling at all and justified that with
+// the claim that two `use` declarations binding one local name is E0252 and does
+// not compile. THAT CLAIM IS FALSE: E0252 is per-SCOPE, so both of these compile
+// and both reached the map —
+//
+//	use crate::items::create_item;
+//	mod tests { use crate::mocks::create_item; }   // different scope
+//
+//	#[cfg(feature = "x")]      use crate::real::create_item;
+//	#[cfg(not(feature = "x"))] use crate::stub::create_item;
+//
+// — and because the map was LAST-WINS, a `mod tests` block (which by convention
+// sits at the bottom of a file) always beat the top-level declaration. The
+// published join key was then `crate::mocks`, which MIS-JOINS at #6669 rather
+// than missing: the failure this arm calls worse than a phantom.
+//
+// First-wins would return the common cases to `crate::items`, but it is still a
+// guess: it encodes "the first declaration in byte order is the one the macro
+// meant", which is true by convention and not by the language. This pass does
+// not model scopes or `cfg` evaluation, so it cannot know which binding is in
+// effect at the registration site — and #6150's rule for exactly that situation
+// is to leave the endpoint UNENRICHED rather than guess. Dropping is also what
+// every other unresolvable shape here already does (glob, nested group,
+// `self::`/`super::`), so the file has one answer to ambiguity instead of two.
+//
 // A group leaf that is itself a PATH — `use crate::{items::create_item,
 // admin::purge};`, the most common rustfmt grouping — IS resolved: the leading
 // segments join the base to form the module and the last names the item. An
@@ -243,6 +298,9 @@ func rustAddUseLeaf(out map[string]rustUseBinding, module, leaf string) {
 // crate) are resolvable as identities and are kept.
 func rustUseBindings(content string) map[string]rustUseBinding {
 	out := map[string]rustUseBinding{}
+	// Local names that two declarations bound to DIFFERENT items. Poisoned for
+	// the whole file so a third declaration cannot resurrect one.
+	dropped := map[string]bool{}
 	for _, m := range rustUseDeclRe.FindAllStringSubmatch(content, -1) {
 		spec := strings.TrimSpace(m[1])
 		if spec == "" {
@@ -266,7 +324,7 @@ func rustUseBindings(content string) map[string]rustUseBinding {
 			base := strings.TrimSpace(spec[:open])
 			base = strings.TrimSpace(strings.TrimSuffix(base, "::"))
 			for _, leaf := range strings.Split(spec[open+1:end], ",") {
-				rustAddUseLeaf(out, base, strings.TrimSpace(leaf))
+				rustAddUseLeaf(out, dropped, base, strings.TrimSpace(leaf))
 			}
 			continue
 		}
@@ -274,7 +332,7 @@ func rustUseBindings(content string) map[string]rustUseBinding {
 		if idx < 0 {
 			continue
 		}
-		rustAddUseLeaf(out, strings.TrimSpace(spec[:idx]), strings.TrimSpace(spec[idx+2:]))
+		rustAddUseLeaf(out, dropped, strings.TrimSpace(spec[:idx]), strings.TrimSpace(spec[idx+2:]))
 	}
 	return out
 }
