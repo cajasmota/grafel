@@ -117,6 +117,23 @@ const readDirChunk = 512
 // this exists to be unambiguous rather than to be branched on.
 var errReadDirCancelled = errors.New("daemon: directory read cancelled")
 
+// readDirChunkHook, when non-nil, is called by cancellableReadDir once
+// per chunk it reads.
+//
+// It is an OBSERVATION POINT ONLY: no arguments, no return, no way to
+// influence what the loop does. Its sole purpose is to let a test act —
+// fire the cancel channel — at a known point INSIDE the loop, so that
+// "cancel is re-checked on every chunk, not merely before the first" is
+// pinned deterministically instead of by racing a sleep against a read.
+//
+// Deliberately NOT a tunable, and that distinction is the whole reason
+// this is acceptable here. The #6548 postmortem is about a seam that let
+// tests SUBSTITUTE the shipped predicate, which made the assertion
+// vacuous — the test proved a closure it had supplied itself. This hook
+// has nothing to substitute: the chunk size, the cancel check and the
+// loop are all still the shipped ones, and a test can only watch them.
+var readDirChunkHook func()
+
 // cancellableReadDir is the production readDirFunc: os.ReadDir's result,
 // from a read that can actually be stopped partway.
 //
@@ -170,6 +187,9 @@ func cancellableReadDir(dir string, cancel <-chan struct{}) ([]os.DirEntry, erro
 		}
 		batch, readErr := f.ReadDir(readDirChunk)
 		entries = append(entries, batch...)
+		if readDirChunkHook != nil {
+			readDirChunkHook()
+		}
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				break

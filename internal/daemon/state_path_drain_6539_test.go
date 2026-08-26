@@ -274,8 +274,16 @@ func TestReadDirBoundedDrainGraceIsBounded(t *testing.T) {
 // closed still returned all 80,000 entries. Nothing in the suite noticed.
 //
 // So: cancel a REAL cancellableReadDir over a directory of more than one
-// chunk, and require that it did not read the directory. Deterministic —
+// chunk and require the contract this can actually observe — that a
+// cancelled read yields the sentinel error and NO listing. Deterministic:
 // the channel is closed before the call, so no scheduling is involved.
+//
+// Precisely what it does NOT observe, because the first version of this
+// comment claimed it did: WHERE in the loop the cancel is noticed. A
+// variant checking cancel at the BOTTOM of the loop reads a full chunk
+// before noticing and still returns (0 entries, errReadDirCancelled), so
+// it passes here. That property is pinned separately, by
+// TestCancellableReadDirChecksCancelOnEveryChunk below.
 func TestCancellableReadDirStopsOnCancel(t *testing.T) {
 	dir := makeDirWithEntries(t, readDirChunk+3)
 
@@ -288,6 +296,37 @@ func TestCancellableReadDirStopsOnCancel(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("cancellableReadDir returned %d entries for a cancelled read, want 0: a partial listing would let canonicalizePath recover a casing it never confirmed", len(entries))
+	}
+}
+
+// TestCancellableReadDirChecksCancelOnEveryChunk pins the cancel check
+// INSIDE the loop, in the permissive direction: hoisting it above the
+// loop leaves only the first chunk guarded, so any directory larger than
+// readDirChunk becomes uncancellable after its first 512 entries — the
+// #6539 leak again, merely postponed by one chunk.
+//
+// Distinguishing that requires a cancel that lands MID-loop, which a
+// pre-closed channel cannot do. Rather than race a sleep against a read
+// (~3ms window, flaky under -race on a loaded box), the loop is observed
+// directly: readDirChunkHook fires the cancel after the first chunk, and
+// the shipped loop must notice on its next iteration. No sleeps, no
+// scheduling — the hook is called synchronously by the code under test.
+func TestCancellableReadDirChecksCancelOnEveryChunk(t *testing.T) {
+	const n = readDirChunk + 3 // two chunks: 512 then 3
+	dir := makeDirWithEntries(t, n)
+
+	cancel := make(chan struct{})
+	var once sync.Once
+	prev := readDirChunkHook
+	readDirChunkHook = func() { once.Do(func() { close(cancel) }) }
+	t.Cleanup(func() { readDirChunkHook = prev })
+
+	entries, err := cancellableReadDir(dir, cancel)
+	if !errors.Is(err, errReadDirCancelled) {
+		t.Fatalf("cancellableReadDir = (%d entries, %v), want errReadDirCancelled: cancel was fired after the first chunk and never noticed, so it is only checked before the loop rather than on every chunk (#6539)", len(entries), err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("cancellableReadDir returned %d entries for a cancelled read, want 0", len(entries))
 	}
 }
 
