@@ -43,6 +43,10 @@ func (r *ValidationResult) HasErrors() bool { return len(r.Errors) > 0 }
 // used to resolve cite paths.
 func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 	res := &ValidationResult{}
+	// One declaration index per validation pass: every cited source
+	// file is parsed at most once for the whole registry, not once per
+	// citing cell (#6673).
+	idx := newDeclIndex(repoRoot)
 	if reg.SchemaVersion != SchemaVersion {
 		res.Errors = append(res.Errors, fmt.Sprintf("schema_version %d unsupported (want %d)", reg.SchemaVersion, SchemaVersion))
 	}
@@ -85,12 +89,12 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 		}
 
 		if rec.IsGrouped() {
-			validateGroupedRecord(res, prefix, rec, repoRoot)
+			validateGroupedRecord(res, prefix, rec, repoRoot, idx)
 		} else {
-			validateFlatRecord(res, prefix, rec, repoRoot)
+			validateFlatRecord(res, prefix, rec, repoRoot, idx)
 		}
 		if rec.HasFrameworkSpecific() {
-			validateFrameworkSpecific(res, prefix, rec, repoRoot)
+			validateFrameworkSpecific(res, prefix, rec, repoRoot, idx)
 		}
 	}
 
@@ -107,7 +111,7 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 // shape so the by-language pivot tables can render group-digest
 // columns (#2758). Records with no subcategory, or with a subcategory
 // that has no group taxonomy (e.g. static_site), are unaffected.
-func validateFlatRecord(res *ValidationResult, prefix string, rec Record, repoRoot string) {
+func validateFlatRecord(res *ValidationResult, prefix string, rec Record, repoRoot string, idx *declIndex) {
 	if rec.Subcategory != "" && validSubcategory(rec.Category, rec.Subcategory) && len(knownGroupNames(rec.Subcategory)) > 0 && len(rec.Capabilities) > 0 {
 		res.Errors = append(res.Errors, fmt.Sprintf("%s: flat capability shape forbidden for subcategory %q (has group taxonomy; use nested capabilities[group][key])", prefix, rec.Subcategory))
 	}
@@ -128,7 +132,7 @@ func validateFlatRecord(res *ValidationResult, prefix string, rec Record, repoRo
 				res.Errors = append(res.Errors, fmt.Sprintf("%s: invalid capability key for category %q", capPrefix, rec.Category))
 			}
 		}
-		validateCapabilityCell(res, capPrefix, cap, repoRoot)
+		validateCapabilityCell(res, capPrefix, cap, repoRoot, idx)
 	}
 }
 
@@ -136,7 +140,7 @@ func validateFlatRecord(res *ValidationResult, prefix string, rec Record, repoRo
 // group names must be canonical for the record's subcategory; each
 // capability key appears in exactly one group within the record; each
 // capability key must be a member of its declared group's allow-list.
-func validateGroupedRecord(res *ValidationResult, prefix string, rec Record, repoRoot string) {
+func validateGroupedRecord(res *ValidationResult, prefix string, rec Record, repoRoot string, idx *declIndex) {
 	if rec.Subcategory == "" {
 		res.Errors = append(res.Errors, prefix+": grouped capabilities require a subcategory")
 		return
@@ -190,7 +194,7 @@ func validateGroupedRecord(res *ValidationResult, prefix string, rec Record, rep
 					res.Errors = append(res.Errors, fmt.Sprintf("%s: capability %q does not belong to group %q (allowed: %v)", capPrefix, k, gname, allowed))
 				}
 			}
-			validateCapabilityCell(res, capPrefix, caps[k], repoRoot)
+			validateCapabilityCell(res, capPrefix, caps[k], repoRoot, idx)
 		}
 	}
 	validateGroupedCompleteness(res, prefix, rec)
@@ -246,7 +250,7 @@ func validateGroupedCompleteness(res *ValidationResult, prefix string, rec Recor
 // validateCapabilityCell runs the per-cell checks (status enum, cite
 // paths, ISO date, freshness, tracking issue). Shared between the flat
 // and grouped paths.
-func validateCapabilityCell(res *ValidationResult, capPrefix string, cap Capability, repoRoot string) {
+func validateCapabilityCell(res *ValidationResult, capPrefix string, cap Capability, repoRoot string, idx *declIndex) {
 	if _, ok := validStatuses[cap.Status]; !ok {
 		res.Errors = append(res.Errors, fmt.Sprintf("%s: invalid status %q", capPrefix, cap.Status))
 	}
@@ -262,7 +266,7 @@ func validateCapabilityCell(res *ValidationResult, capPrefix string, cap Capabil
 	// Hanging this off validateCapabilityCell is what makes the check
 	// recurse: the flat, grouped and framework_specific tiers all route
 	// through here, and the utoipa citations live in the grouped tier.
-	validateCiteSymbols(res, capPrefix, cap, newDeclIndex(repoRoot))
+	validateCiteSymbols(res, capPrefix, cap, idx)
 	if cap.VerifiedAt != "" {
 		t, err := time.Parse("2006-01-02", cap.VerifiedAt)
 		if err != nil {
@@ -291,7 +295,7 @@ func validateCapabilityCell(res *ValidationResult, capPrefix string, cap Capabil
 // Group names are otherwise free-form. As an advisory hint we emit a
 // warning when a group name doesn't reference the record's framework
 // label (e.g. "Angular Internals" passes; "Internals" warns).
-func validateFrameworkSpecific(res *ValidationResult, prefix string, rec Record, repoRoot string) {
+func validateFrameworkSpecific(res *ValidationResult, prefix string, rec Record, repoRoot string, idx *declIndex) {
 	canonical := collectCanonicalKeys(rec)
 	seenKeys := map[string]string{}
 	groupNames := make([]string, 0, len(rec.FrameworkSpecific))
@@ -329,7 +333,7 @@ func validateFrameworkSpecific(res *ValidationResult, prefix string, rec Record,
 				continue
 			}
 			seenKeys[k] = gname
-			validateCapabilityCell(res, capPrefix, caps[k], repoRoot)
+			validateCapabilityCell(res, capPrefix, caps[k], repoRoot, idx)
 		}
 	}
 }

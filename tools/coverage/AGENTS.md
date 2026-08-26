@@ -49,18 +49,28 @@ cleanup argument in #6671:
    symbol's doc comment is rot, not house style — that position carries no meaning, and doc-comment
    blocks vary in length so it is not even consistently "the first comment line".
 2. A **range** opens on the **first doc-comment line** and closes on the declaration or in its
-   body. The checker requires the declaration to fall *within* the range. The trade is explicit: a
-   range citation tolerates drift that stays inside the range; a single-line one does not.
+   body. **Both ends are checked.** The declaration must fall within the range, *and* the range
+   must open exactly on the declaration's first doc-comment line (the declaration line itself when
+   there is no doc comment). The opening bound is the load-bearing half: without it a range has no
+   width limit at all and `terraform_deep.go:1-900` validates clean.
 
 **If there is no symbol to anchor to — a statement block, a map-literal key, a regex body, a
 comment — do not write a line number at all.** Keep the file path and the prose. A number with
 nothing to anchor to is unverifiable prose by construction, and that is where 100% of the measured
 drift lived. The checker enforces this: an unanchored `file.go:N` anywhere in `notes` is an error.
 
-**Out of population:** bare continuation refs (`,472-479`, `(:158-160)`, `(:587)`) that add a
-second location for a file named earlier in the sentence. They carry no file token, so deciding
-which file they belong to needs natural language, not a regex. They are left as prose; the
-anchoring rule still stops a *new* unanchored `file.go:N` from entering the registry.
+**Out of population**, both by stated reason rather than oversight:
+
+- **Bare continuation refs** (`,472-479`, `(:158-160)`, `(:587)`) that add a second location for a
+  file named earlier in the sentence. They carry no file token, so deciding which file they belong
+  to needs natural language, not a regex.
+- **Line refs into non-Go files** — the registry carries five (`aws_cdk.yaml:54-58`, four
+  `lang.rust.framework.*.md:21`). Same defect class, but the check validates a citation by
+  resolving a *symbol declaration*, and a YAML key or a Markdown table row has none. They are
+  unanchorable for the same reason as the statement-block numbers this rule strips.
+
+Both are left as prose; the anchoring rule still stops a *new* unanchored `file.go:N` from
+entering the registry.
 
 **The check recurses.** It hangs off `validateCapabilityCell`, which the flat, grouped and
 `framework_specific` tiers all route through. A flat walk of `capabilities` sees 38 of the 53

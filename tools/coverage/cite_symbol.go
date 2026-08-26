@@ -52,12 +52,16 @@ import (
 //
 //     `cdkAddEventSourceRe` (internal/engine/cdk_edges.go:137-142)
 //
-//     The range form is deliberately kept — it is the useful and
-//     consistently-applied "the comment through the declaration"
-//     convention — so the checker requires the declaration to fall
-//     WITHIN the range rather than at its start. The trade is stated
-//     plainly: a range citation tolerates drift that stays inside the
-//     range, where a single-line citation does not.
+//     BOTH ends are bounded, and the opening end is the load-bearing
+//     one. The declaration must fall within the range, AND the range
+//     must open exactly on the declaration's first doc-comment line
+//     (which is the declaration line itself when it carries no doc
+//     comment). Without the opening bound a range has no width limit
+//     at all: `internal/extractors/hcl/terraform_deep.go:1-900`
+//     validates clean, and three shipped citations tolerated 24-48
+//     lines of drift. Enforcing the rule as written cost five
+//     one-to-three-line corrections in the registry — every one of
+//     them opening rot of the same class this issue is about.
 //
 // # What is in the checked population, and what is not
 //
@@ -74,14 +78,28 @@ import (
 // matches 50 files in this tree and is resolvable only from the
 // surrounding prose.
 //
-// OUT: bare continuation refs — `,472-479`, `(:158-160)`, `(:587)` —
-// which prose uses to add a second location for a file already named
-// earlier in the sentence. These carry no file token, so deciding which
-// file they belong to requires reading natural language; there is no
-// mechanical resolution. They are left as prose. This is a stated
-// limitation, not an oversight: the anchoring rule below still prevents
-// a NEW `file.go:N` from entering the registry unanchored, which is the
-// vector that produced the measured drift.
+// OUT, and both exclusions are deliberate rather than overlooked:
+//
+//   - Bare continuation refs — `,472-479`, `(:158-160)`, `(:587)` —
+//     which prose uses to add a second location for a file already
+//     named earlier in the sentence. These carry no file token, so
+//     deciding which file they belong to requires reading natural
+//     language; there is no mechanical resolution.
+//
+//   - Line refs into NON-Go files. The registry carries five
+//     (`aws_cdk.yaml:54-58` and four `lang.rust.framework.*.md:21`).
+//     They are the same hand-typed-number defect class, but the check
+//     validates a citation by resolving a SYMBOL DECLARATION, and a
+//     YAML key or a Markdown table row has no declaration to resolve —
+//     they are unanchorable for the same reason as the 23 statement-
+//     block numbers this PR stripped. Owning them would mean a second,
+//     differently-shaped checker per file format; that is a separate
+//     piece of work and is not smuggled in here.
+//
+// Both are left as prose. This is a stated limitation: the anchoring
+// rule below still prevents a NEW `file.go:N` from entering the
+// registry unanchored, which is the vector that produced the measured
+// drift.
 var (
 	// citeLineRe defines the population: any file.go:N[-M] token.
 	citeLineRe = regexp.MustCompile(`([A-Za-z0-9_./-]*[A-Za-z0-9_-]\.go):(\d+)(?:-(\d+))?`)
@@ -95,15 +113,29 @@ var (
 	citeAnchorRe = regexp.MustCompile("`([A-Za-z_][A-Za-z0-9_]*)`,?[ ]*\\(?([A-Za-z0-9_./-]*[A-Za-z0-9_-]\\.go):(\\d+)(?:-(\\d+))?")
 )
 
-// declIndex caches parsed declaration positions per file so a
-// validation pass parses each cited source file at most once.
+// declSite is one package-level declaration of a symbol: the line the
+// declaration itself sits on, and the line its doc comment opens on
+// (equal to Line when the declaration carries no doc comment).
+//
+// Both are needed because the citation convention is two rules and the
+// second one constrains where a range may OPEN — see the package doc.
+type declSite struct {
+	Line     int
+	DocStart int
+}
+
+// declIndex caches parsed declaration positions per file so that one
+// validation pass parses each cited source file at most once. The index
+// is created once per validateRegistry call and threaded down to every
+// cell, so the ~20 cited source files are parsed ~20 times per run, not
+// once per citing cell.
 type declIndex struct {
 	repoRoot string
-	cache    map[string]map[string][]int
+	cache    map[string]map[string][]declSite
 }
 
 func newDeclIndex(repoRoot string) *declIndex {
-	return &declIndex{repoRoot: repoRoot, cache: map[string]map[string][]int{}}
+	return &declIndex{repoRoot: repoRoot, cache: map[string]map[string][]declSite{}}
 }
 
 // declLinesForSymbol returns every line on which name is declared at
@@ -115,7 +147,7 @@ func newDeclIndex(repoRoot string) *declIndex {
 // ok is false when the file cannot be read or parsed; the caller
 // reports that separately from "symbol not found" so a broken path is
 // never silently reported as cite drift.
-func (d *declIndex) declLinesForSymbol(rel, name string) (lines []int, ok bool) {
+func (d *declIndex) declSitesForSymbol(rel, name string) (sites []declSite, ok bool) {
 	byName, seen := d.cache[rel]
 	if !seen {
 		byName = d.indexFile(rel)
@@ -127,34 +159,53 @@ func (d *declIndex) declLinesForSymbol(rel, name string) (lines []int, ok bool) 
 	return byName[name], true
 }
 
-func (d *declIndex) indexFile(rel string) map[string][]int {
+func (d *declIndex) indexFile(rel string) map[string][]declSite {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filepath.Join(d.repoRoot, rel), nil, parser.SkipObjectResolution)
+	// ParseComments is required: the range half of the convention is
+	// anchored on where the doc comment OPENS, so the comment positions
+	// are load-bearing, not decoration.
+	f, err := parser.ParseFile(fset, filepath.Join(d.repoRoot, rel), nil, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		return nil
 	}
-	out := map[string][]int{}
-	add := func(name string, pos token.Pos) {
+	out := map[string][]declSite{}
+	add := func(name string, pos token.Pos, doc *ast.CommentGroup) {
 		if name == "" || name == "_" {
 			return
 		}
-		out[name] = append(out[name], fset.Position(pos).Line)
+		line := fset.Position(pos).Line
+		docStart := line
+		if doc != nil {
+			docStart = fset.Position(doc.Pos()).Line
+		}
+		out[name] = append(out[name], declSite{Line: line, DocStart: docStart})
 	}
 	for _, decl := range f.Decls {
 		switch dd := decl.(type) {
 		case *ast.FuncDecl:
 			// The declaration line is the `func` keyword's line,
 			// which is what the convention cites.
-			add(dd.Name.Name, dd.Pos())
+			add(dd.Name.Name, dd.Pos(), dd.Doc)
 		case *ast.GenDecl:
 			for _, spec := range dd.Specs {
 				switch s := spec.(type) {
 				case *ast.ValueSpec:
+					// A non-parenthesised `var X = …` carries its doc
+					// on the GenDecl; a member of a `var (…)` block
+					// carries its own.
+					doc := s.Doc
+					if doc == nil && dd.Lparen == token.NoPos {
+						doc = dd.Doc
+					}
 					for _, n := range s.Names {
-						add(n.Name, s.Pos())
+						add(n.Name, s.Pos(), doc)
 					}
 				case *ast.TypeSpec:
-					add(s.Name.Name, s.Pos())
+					doc := s.Doc
+					if doc == nil && dd.Lparen == token.NoPos {
+						doc = dd.Doc
+					}
+					add(s.Name.Name, s.Pos(), doc)
 				}
 			}
 		}
@@ -212,26 +263,43 @@ func validateCiteSymbols(res *ValidationResult, capPrefix string, cap Capability
 				"%s: notes cite %q refers to a file not found on disk", capPrefix, cite))
 			continue
 		}
-		lines, ok := idx.declLinesForSymbol(rel, symbol)
+		sites, ok := idx.declSitesForSymbol(rel, symbol)
 		if !ok {
 			res.Errors = append(res.Errors, fmt.Sprintf(
 				"%s: notes cite %q — %s could not be parsed as Go", capPrefix, cite, rel))
 			continue
 		}
-		if len(lines) == 0 {
+		if len(sites) == 0 {
 			res.Errors = append(res.Errors, fmt.Sprintf(
 				"%s: notes cite %q names symbol %q, which is not declared at package level in %s (#6673)",
 				capPrefix, cite, symbol, rel))
 			continue
 		}
-		hit := false
-		for _, l := range lines {
-			if l >= lo && l <= hi {
-				hit = true
+		// Rule 1 (single line) and rule 2 (range) are both applied
+		// here. inRange is the shared half — the declaration must be
+		// covered by the citation. opensRight is the range half: the
+		// range must OPEN on the declaration's first doc-comment line.
+		// Without that bound a range has no width limit at all and
+		// `file.go:1-900` validates clean.
+		inRange, opensRight := false, false
+		wantOpen := 0
+		for _, st := range sites {
+			if st.Line < lo || st.Line > hi {
+				continue
+			}
+			inRange = true
+			if hiStr == "" || lo == st.DocStart {
+				opensRight = true
 				break
 			}
+			wantOpen = st.DocStart
 		}
-		if !hit {
+		switch {
+		case !inRange:
+			lines := make([]int, 0, len(sites))
+			for _, st := range sites {
+				lines = append(lines, st.Line)
+			}
 			sort.Ints(lines)
 			got := make([]string, 0, len(lines))
 			for _, l := range lines {
@@ -240,6 +308,10 @@ func validateCiteSymbols(res *ValidationResult, capPrefix string, cap Capability
 			res.Errors = append(res.Errors, fmt.Sprintf(
 				"%s: notes cite %q is stale — %s is declared at %s:%s (#6673)",
 				capPrefix, cite, symbol, rel, strings.Join(got, ",")))
+		case !opensRight:
+			res.Errors = append(res.Errors, fmt.Sprintf(
+				"%s: notes cite %q opens at line %d, but the doc comment of %s opens at %s:%d — a range citation opens on the first doc-comment line (#6673)",
+				capPrefix, cite, lo, symbol, rel, wantOpen))
 		}
 	}
 }

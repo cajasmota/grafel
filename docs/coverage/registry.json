@@ -2134,7 +2134,7 @@
           "status": "full",
           "cites": ["internal/engine/cdk_edges.go"],
           "issue": "https://github.com/cajasmota/grafel/issues/4198",
-          "notes": "CDK Lambda event sources are attributed as DEPENDS_ON edges fn→event-source carrying reason=event_source. TS Pass 4 (`cdkAddEventSourceRe`, internal/engine/cdk_edges.go:137-142) matches `\u003cfnVar\u003e.addEventSource(new \u003cSourceType\u003e(\u003cresourceVar\u003e)` and calls emitDependsOn(fn,res,\"event_source\",\"\") (internal/engine/cdk_edges.go); the emitDependsOn closure writes props[\"reason\"]=\"event_source\" (internal/engine/cdk_edges.go). Python Pass 4 mirrors it via cdkPyAddEventSourceRe for `\u003cfn\u003e.add_event_source(SqsEventSource(\u003cres\u003e))` (`cdkPyAddEventSourceRe`, internal/engine/cdk_edges.go:203-204). Full for the addEventSource/add_event_source idiom across CDK-TS + CDK-Python (the languages CDK edges support); each edge records which event source triggers which function.",
+          "notes": "CDK Lambda event sources are attributed as DEPENDS_ON edges fn→event-source carrying reason=event_source. TS Pass 4 (`cdkAddEventSourceRe`, internal/engine/cdk_edges.go:137-142) matches `\u003cfnVar\u003e.addEventSource(new \u003cSourceType\u003e(\u003cresourceVar\u003e)` and calls emitDependsOn(fn,res,\"event_source\",\"\") (internal/engine/cdk_edges.go); the emitDependsOn closure writes props[\"reason\"]=\"event_source\" (internal/engine/cdk_edges.go). Python Pass 4 mirrors it via cdkPyAddEventSourceRe for `\u003cfn\u003e.add_event_source(SqsEventSource(\u003cres\u003e))` (`cdkPyAddEventSourceRe`, internal/engine/cdk_edges.go:201-204). Full for the addEventSource/add_event_source idiom across CDK-TS + CDK-Python (the languages CDK edges support); each edge records which event source triggers which function.",
           "verified_at": "2026-06-04"
         },
         "iac_iam_grant_attribution": {
@@ -2246,7 +2246,7 @@
         "iac_cross_stack_reference": {
           "status": "full",
           "cites": ["internal/extractors/hcl"],
-          "notes": "Full parity with Terraform: `data.terraform_remote_state.*.outputs.*` in .tofu files emits the same cross-stack DEPENDS_ON edge (cross_stack=true) via `extractRemoteStateDeps` (internal/extractors/hcl/terraform_deep.go:221-260), since entities carry Language=\"terraform\".",
+          "notes": "Full parity with Terraform: `data.terraform_remote_state.*.outputs.*` in .tofu files emits the same cross-stack DEPENDS_ON edge (cross_stack=true) via `extractRemoteStateDeps` (internal/extractors/hcl/terraform_deep.go:220-260), since entities carry Language=\"terraform\".",
           "verified_at": "2026-06-04"
         },
         "iac_environment_region_account": {
@@ -2322,11 +2322,11 @@
         },
         "iac_iam_grant_attribution": {
           "status": "not_applicable",
-          "notes": "Pulumi IAM is modelled via RolePolicyAttachment / Policy resource constructors and output-ref dependency edges (internal/engine/pulumi_edges_go_net.go); the extractor emits no grantee→target edge carrying a grant=\u003cmethod\u003e property — IAM relations are indistinguishable from any other inter-resource dependency. Honest-missing."
+          "notes": "Pulumi IAM is modelled via RolePolicyAttachment / Policy resource constructors and output-ref dependency edges (`pulumiGoOutputRefRe`, internal/engine/pulumi_edges_go_net.go:82-85); the extractor emits no grantee→target edge carrying a grant=\u003cmethod\u003e property — IAM relations are indistinguishable from any other inter-resource dependency. Honest-missing."
         },
         "iac_output_export_extraction": {
           "status": "not_applicable",
-          "notes": "The Pulumi extractor emits no stack-output/export node: `producer.Id`/`.Arn` 'output refs' are inter-resource dependency edges into another resource's args (internal/engine/pulumi_edges_go_net.go), not extraction of a stack's published outputs/exports as entities. Honest-missing."
+          "notes": "The Pulumi extractor emits no stack-output/export node: `producer.Id`/`.Arn` 'output refs' are inter-resource dependency edges into another resource's args (`pulumiGoOutputRefRe`, internal/engine/pulumi_edges_go_net.go:82-85), not extraction of a stack's published outputs/exports as entities. Honest-missing."
         },
         "iac_resource_property_extraction": {
           "status": "full",
@@ -2370,7 +2370,7 @@
           "status": "full",
           "cites": ["internal/engine/serverless_framework_edges.go","internal/engine/serverless_framework_parse.go"],
           "issue": "https://github.com/cajasmota/grafel/issues/4201",
-          "notes": "The Serverless Framework parser reads the `provider:` block's runtime and region (`parseProviderBlock`, internal/engine/serverless_framework_parse.go:128-152 → slsManifest.runtime / .region) and the edge pass stamps the deployment target onto every emitted lambda function entity's Properties: provider=\"aws-lambda\" (internal/engine/serverless_framework_edges.go), runtime=\u003cprovider.runtime\u003e (:153-155) and region=\u003cprovider.region\u003e (:156-158). Full for provider/runtime/region environment-targeting; account is not present in a serverless.yml provider block (it is resolved at deploy time), so the three targeting fields the manifest carries are all stamped.",
+          "notes": "The Serverless Framework parser reads the `provider:` block's runtime and region (`parseProviderBlock`, internal/engine/serverless_framework_parse.go:125-152 → slsManifest.runtime / .region) and the edge pass stamps the deployment target onto every emitted lambda function entity's Properties: provider=\"aws-lambda\" (internal/engine/serverless_framework_edges.go), runtime=\u003cprovider.runtime\u003e (:153-155) and region=\u003cprovider.region\u003e (:156-158). Full for provider/runtime/region environment-targeting; account is not present in a serverless.yml provider block (it is resolved at deploy time), so the three targeting fields the manifest carries are all stamped.",
           "verified_at": "2026-06-04"
         },
         "iac_event_source_wiring": {
@@ -2392,7 +2392,7 @@
           "status": "partial",
           "cites": ["internal/engine/serverless_framework_edges.go"],
           "issue": "https://github.com/cajasmota/grafel/issues/4199",
-          "notes": "Each function entity is stamped with its typed function-config properties: handler, runtime, region, service (parseProviderBlock + parseFunctionBody -\u003e fnProps, internal/engine/serverless_framework_edges.go) — genuine per-function settings on the entity. memory/timeout/environment are not parsed/stamped (`slsFunction`, internal/engine/serverless_framework_parse.go:24-28, has only name/handler/events), so partial.",
+          "notes": "Each function entity is stamped with its typed function-config properties: handler, runtime, region, service (parseProviderBlock + parseFunctionBody -\u003e fnProps, internal/engine/serverless_framework_edges.go) — genuine per-function settings on the entity. memory/timeout/environment are not parsed/stamped (`slsFunction`, internal/engine/serverless_framework_parse.go:23-28, has only name/handler/events), so partial.",
           "verified_at": "2026-06-03"
         },
         "iac_stack_app_topology": {
@@ -2422,7 +2422,7 @@
         "iac_cross_stack_reference": {
           "status": "full",
           "cites": ["internal/extractors/hcl"],
-          "notes": "`data.terraform_remote_state.\u003cname\u003e.outputs.\u003ckey\u003e` consumption is detected by `extractRemoteStateDeps` (internal/extractors/hcl/terraform_deep.go:221-269) / `remoteStateName` (internal/extractors/hcl/terraform_deep.go:264) and emits one cross-stack DEPENDS_ON edge per distinct remote-state name (cross_stack=true, remote_state=\u003cname\u003e) — deliberately NOT a generic data-source CALLS edge; it wires one stack to another stack's published outputs.",
+          "notes": "`data.terraform_remote_state.\u003cname\u003e.outputs.\u003ckey\u003e` consumption is detected by `extractRemoteStateDeps` (internal/extractors/hcl/terraform_deep.go:220-269) / `remoteStateName` (internal/extractors/hcl/terraform_deep.go:264) and emits one cross-stack DEPENDS_ON edge per distinct remote-state name (cross_stack=true, remote_state=\u003cname\u003e) — deliberately NOT a generic data-source CALLS edge; it wires one stack to another stack's published outputs.",
           "verified_at": "2026-06-04"
         },
         "iac_environment_region_account": {

@@ -26,8 +26,15 @@ func TopLevelFunc() {}
 
 type Recv struct{}
 
-// Method has the same name as nothing else in the file.
+// Method is declared TWICE in this file, on two receivers, so the
+// multi-declaration branch and the sorted line list it formats are
+// exercised rather than assumed.
 func (r *Recv) Method() {}
+
+type Other struct{}
+
+// Method on the second receiver.
+func (o *Other) Method() {}
 
 var (
 	// doc for BlockVar
@@ -46,14 +53,27 @@ var Single = 3
 
 // citeSymbolFixtureLines records where each symbol is declared in
 // citeSymbolFixtureSource.
-var citeSymbolFixtureLines = map[string]int{
-	"TopLevelFunc": 5,
-	"Method":       10,
-	"BlockVar":     14,
-	"OtherVar":     15,
-	"BlockConst":   19,
-	"BlockType":    22,
-	"Single":       24,
+var citeSymbolFixtureLines = map[string][]int{
+	"TopLevelFunc": {5},
+	"Method":       {12, 17},
+	"BlockVar":     {21},
+	"OtherVar":     {22},
+	"BlockConst":   {26},
+	"BlockType":    {29},
+	"Single":       {31},
+}
+
+// citeSymbolFixtureDocStart records where each declaration's doc
+// comment opens. The range half of the convention is anchored on this,
+// so it is data the tests must state explicitly rather than infer.
+var citeSymbolFixtureDocStart = map[string][]int{
+	"TopLevelFunc": {3},
+	"Method":       {9, 16},
+	"BlockVar":     {20},
+	"OtherVar":     {22},
+	"BlockConst":   {26},
+	"BlockType":    {29},
+	"Single":       {31},
 }
 
 // citeSymbolRepo writes the fixture source into a temp repo root and
@@ -68,8 +88,20 @@ func citeSymbolRepo(t *testing.T) (root, rel string) {
 	if err := os.WriteFile(filepath.Join(root, rel), []byte(citeSymbolFixtureSource), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
+	// A _test.go file with the SAME layout. The registry genuinely
+	// cites two test functions, and a checker that skipped _test.go
+	// would validate neither — so the test-file path is exercised
+	// explicitly rather than assumed to fall out of the .go suffix.
+	testRel := filepath.Join("internal", "fixture", "sample_test.go")
+	if err := os.WriteFile(filepath.Join(root, testRel), []byte(citeSymbolFixtureSource), 0o644); err != nil {
+		t.Fatalf("write test fixture: %v", err)
+	}
 	return root, filepath.ToSlash(rel)
 }
+
+// citeSymbolTestFileRel is the repo-relative path of the _test.go
+// fixture written alongside the ordinary one.
+const citeSymbolTestFileRel = "internal/fixture/sample_test.go"
 
 // runCiteSymbols validates one notes string and returns the errors.
 func runCiteSymbols(t *testing.T, root, notes string) []string {
@@ -87,12 +119,22 @@ func TestCiteSymbol_FixtureLineNumbersAreWhatTheTestsClaim(t *testing.T) {
 	root, rel := citeSymbolRepo(t)
 	idx := newDeclIndex(root)
 	for sym, want := range citeSymbolFixtureLines {
-		got, ok := idx.declLinesForSymbol(rel, sym)
+		got, ok := idx.declSitesForSymbol(rel, sym)
 		if !ok {
 			t.Fatalf("fixture source did not parse")
 		}
-		if len(got) != 1 || got[0] != want {
-			t.Errorf("symbol %q: fixture declares it at %v, test claims %d — update citeSymbolFixtureLines", sym, got, want)
+		if len(got) != len(want) {
+			t.Errorf("symbol %q: fixture declares it %d time(s) at %v, test claims %v — update citeSymbolFixtureLines", sym, len(got), got, want)
+			continue
+		}
+		wantDoc := citeSymbolFixtureDocStart[sym]
+		for i, st := range got {
+			if st.Line != want[i] {
+				t.Errorf("symbol %q decl %d: fixture declares it at %d, test claims %d — update citeSymbolFixtureLines", sym, i, st.Line, want[i])
+			}
+			if st.DocStart != wantDoc[i] {
+				t.Errorf("symbol %q decl %d: doc opens at %d, test claims %d — update citeSymbolFixtureDocStart", sym, i, st.DocStart, wantDoc[i])
+			}
 		}
 	}
 }
@@ -113,17 +155,26 @@ func TestCiteSymbol_AnchoredCitationsAcceptedAcrossFormsAndDeclKinds(t *testing.
 		{"func/single/backtick-paren", fmt.Sprintf("minted by `TopLevelFunc` (%s:5).", rel)},
 		// Form 2: parenthesised "(`Symbol`, path:N)".
 		{"func/single/paren-comma", fmt.Sprintf("minted by the pass (`TopLevelFunc`, %s:5).", rel)},
-		// Range opening on the first doc-comment line, closing past the
-		// declaration — convention rule (2).
+		// Range opening on the first doc-comment line (3), closing past
+		// the declaration (5) — convention rule (2).
 		{"func/range/doc-comment-open", fmt.Sprintf("matched by `TopLevelFunc` (%s:3-6).", rel)},
-		{"method/single", fmt.Sprintf("the receiver helper `Method` (%s:10) does it.", rel)},
-		{"var-block/single", fmt.Sprintf("`BlockVar` (%s:14) is the pattern.", rel)},
-		{"var-block/range", fmt.Sprintf("`BlockVar` (%s:13-14) is the pattern.", rel)},
-		{"const-block/single", fmt.Sprintf("`BlockConst` (%s:19) names the edge kind.", rel)},
-		{"type/single", fmt.Sprintf("`BlockType` (%s:22) carries the fields.", rel)},
-		{"standalone-var/single", fmt.Sprintf("`Single` (%s:24) is set once.", rel)},
+		// A range on a declaration that has NO doc comment degenerates
+		// to the declaration line at both ends.
+		{"no-doc-comment/range", fmt.Sprintf("`OtherVar` (%s:22-23) is the second one.", rel)},
+		{"method/single", fmt.Sprintf("the receiver helper `Method` (%s:12) does it.", rel)},
+		// The SECOND declaration of a name that is declared twice: the
+		// check must consider every declaration, not just the first.
+		{"method/second-declaration/single", fmt.Sprintf("the other receiver's `Method` (%s:17) does it too.", rel)},
+		{"method/second-declaration/range", fmt.Sprintf("the other receiver's `Method` (%s:16-18) does it too.", rel)},
+		{"var-block/single", fmt.Sprintf("`BlockVar` (%s:21) is the pattern.", rel)},
+		{"var-block/range", fmt.Sprintf("`BlockVar` (%s:20-21) is the pattern.", rel)},
+		{"const-block/single", fmt.Sprintf("`BlockConst` (%s:26) names the edge kind.", rel)},
+		{"type/single", fmt.Sprintf("`BlockType` (%s:29) carries the fields.", rel)},
+		{"standalone-var/single", fmt.Sprintf("`Single` (%s:31) is set once.", rel)},
 		// Two citations in one note, one at the head and one at the tail.
-		{"two-citations-one-note", fmt.Sprintf("`TopLevelFunc` (%s:5) calls into `Method` (%s:10).", rel, rel)},
+		{"two-citations-one-note", fmt.Sprintf("`TopLevelFunc` (%s:5) calls into `Method` (%s:12).", rel, rel)},
+		// A _test.go citation is checked like any other.
+		{"test-file/single", fmt.Sprintf("pinned by `TopLevelFunc` (%s:5).", citeSymbolTestFileRel)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -148,18 +199,33 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 			// The dominant class: the number drifted onto another
 			// symbol's declaration. A line-exists check cannot see this.
 			name:  "stale-single-line",
-			notes: fmt.Sprintf("`TopLevelFunc` (%s:10).", rel),
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:12).", rel),
 			want:  "is stale",
 		},
 		{
 			// Range drift far enough that the declaration falls outside.
 			name:  "stale-range",
-			notes: fmt.Sprintf("`TopLevelFunc` (%s:14-19).", rel),
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:21-26).", rel),
 			want:  "is stale",
 		},
 		{
-			// The `-1` doc-comment rot #6671 corrected six of: cited one
-			// line above the declaration.
+			// The declaration is inside the range, but the range opens
+			// BELOW the doc comment. Without this bound a range has no
+			// width limit at all.
+			name:  "range-opens-below-doc-comment",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:4-6).", rel),
+			want:  "a range citation opens on the first doc-comment line",
+		},
+		{
+			// The unbounded-width case the reviewer found: the
+			// declaration is inside, but the range is meaningless.
+			name:  "range-absurdly-wide",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:1-900).", rel),
+			want:  "a range citation opens on the first doc-comment line",
+		},
+		{
+			// The `-1` doc-comment rot #6671 corrected six of: a
+			// SINGLE-LINE citation one line above the declaration.
 			name:  "off-by-one-above-declaration",
 			notes: fmt.Sprintf("`TopLevelFunc` (%s:4).", rel),
 			want:  "is stale",
@@ -170,11 +236,40 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 			want:  "is not declared at package level",
 		},
 		{
+			// Declared twice, cited at neither: the error must name
+			// EVERY declaration line, sorted, not just the first.
+			name:  "stale-against-all-declarations",
+			notes: fmt.Sprintf("`Method` (%s:5).", rel),
+			want:  "is declared at internal/fixture/sample.go:12,17",
+		},
+		{
+			// A stale citation into a _test.go file must be reported,
+			// not skipped for being a test file.
+			name:  "stale-in-test-file",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:12).", citeSymbolTestFileRel),
+			want:  "is stale",
+		},
+		{
 			// A number with no symbol in front of it is unverifiable
 			// prose by construction — this is the rule that stops the
 			// population from growing back.
 			name:  "unanchored",
 			notes: fmt.Sprintf("the dispatch happens at %s:5.", rel),
+			want:  "is not symbol-anchored",
+		},
+		{
+			// THE regression that matters: one anchored citation must
+			// not launder every other bare number in the same note.
+			// Anchoring is per citation, not per note.
+			name:  "one-anchored-one-bare-in-the-same-note",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:5) is dispatched at %s:999.", rel, rel),
+			want:  "is not symbol-anchored",
+		},
+		{
+			// Same shape, bare citation FIRST, so the check cannot pass
+			// by only ever inspecting the tail of the note.
+			name:  "one-bare-one-anchored-in-the-same-note",
+			notes: fmt.Sprintf("dispatched at %s:999, minted by `TopLevelFunc` (%s:5).", rel, rel),
 			want:  "is not symbol-anchored",
 		},
 		{
@@ -224,9 +319,12 @@ func TestCiteSymbol_OutOfPopulationRefsAreLeftAlone(t *testing.T) {
 		// resolution is possible.
 		{"bare-continuation-comma", fmt.Sprintf("`TopLevelFunc` (%s:5), and again at :472-479.", rel)},
 		{"bare-continuation-paren", fmt.Sprintf("`TopLevelFunc` (%s:5) stamps handler_name (:174).", rel)},
-		// A non-Go file reference: the checker parses Go, and the
-		// population regex requires a .go suffix.
+		// Non-Go line refs. The registry carries five of these, and
+		// they are OUT by a stated reason, not by accident: the check
+		// resolves a symbol declaration, and a Markdown table row or a
+		// YAML key has no declaration to resolve.
 		{"markdown-line-ref", "the sibling bar is lang.rust.framework.warp.md:21."},
+		{"yaml-line-ref", "the rule body is aws_cdk.yaml:54-58."},
 		// A Go file named with no line number at all is prose, not a
 		// line citation.
 		{"file-without-line", "spring_ecosystem.go remains Java-only."},
@@ -335,11 +433,14 @@ func TestCiteSymbol_ShippedRegistryHasNoStaleCitations(t *testing.T) {
 	if len(res.Errors) != 0 {
 		t.Errorf("shipped registry has %d cite defect(s):\n%s", len(res.Errors), strings.Join(res.Errors, "\n"))
 	}
-	// Guard against the check silently observing nothing — the reason
-	// the citations went unchecked for so long is that no code read
-	// them at all.
-	if seen == 0 {
-		t.Fatal("no line citations found in the registry: the check is observing nothing")
+	// Vacuity gate. `seen != 0` is not enough: a walk that regressed to
+	// finding one citation would still be green, and the whole reason
+	// this defect survived is that nobody noticed a population going
+	// unread. Assert the EXACT count, so shrinking the observed
+	// population is a test failure and growing it is a deliberate
+	// update with a number to justify.
+	const wantCitations = 35
+	if seen != wantCitations {
+		t.Errorf("walked %d symbol-anchored line citation(s), want exactly %d — if a citation was legitimately added or removed, update wantCitations and say so in the PR body", seen, wantCitations)
 	}
-	t.Logf("validated %d symbol-anchored line citation(s)", seen)
 }
