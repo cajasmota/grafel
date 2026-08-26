@@ -38,18 +38,31 @@ import (
 //     grace anyway — an uncancellable syscall in production, a
 //     deliberately unresponsive closure here.
 //
-// The WaitGroup is still required and is NOT vestigial. readDirBounded's
-// post-cancel drain is bounded (readDirDrainGrace), so a read that does
-// not return inside it is still released rather than joined. Restoring
-// the package var while such a goroutine is executing readDirFunc would
-// be an unsynchronized data race (#5346).
+// The WaitGroup is retained rather than deleted, but its justification
+// is narrower than it looks and is worth stating exactly, because the
+// version of this comment before #6539 asserted more than was true.
+//
+// What it covers: readDirBounded's post-cancel drain is BOUNDED
+// (readDirDrainGrace), so a closure that does not return inside the
+// grace is released rather than joined, and could still be executing
+// when the cleanup below restores the package var — an unsynchronized
+// use of shared test state (#5346). Note that no closure in this file
+// currently outlives the grace: they all return on <-cancel. So today
+// the WaitGroup is a backstop against scheduling delay and against a
+// future uncooperative closure, not against anything exercised here.
+//
+// What it does NOT cover, contrary to what this comment used to claim:
+// readDirBounded's goroutine READS the readDirFunc package var before
+// the wrapper below can call wg.Add(1) — the read of the var is what
+// produces the function that then increments. So the WaitGroup can
+// never make the var read itself safe; it only bounds the closure BODY.
+// That gap is pre-existing and unchanged by #6539.
 //
 // The single cleanup registered here closes `stop` FIRST (releasing any
 // closure that parks waiting for teardown) and only THEN drains the
 // WaitGroup before restoring readDirFunc. Owning both the release signal
 // and the drain in one cleanup avoids any LIFO-ordering footgun between
-// separate cleanups: by the time readDirFunc is written, no lingering
-// goroutine can still be reading it.
+// separate cleanups.
 func withReadDirFunc(t *testing.T, f func(stop, cancel <-chan struct{}, dir string) ([]os.DirEntry, error)) {
 	t.Helper()
 	var wg sync.WaitGroup
