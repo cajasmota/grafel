@@ -1323,3 +1323,225 @@ func TestUtoipaAxum_HeaderRecordedShapesMintNothing(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #6656 — the three router-construction spellings rustRouterCtorRe's stated
+// inventory (http_endpoint_axum.go:83-96) records as DELIBERATELY NOT matched.
+//
+// The decision was prose and nothing observed it: adding `from` to the
+// alternation — or dropping the `Router` suffix requirement so an alias counts,
+// or teaching the count to see a helper call — survived the whole package. Which
+// means a later reader who reasonably decides `Api::new()` "is obviously a
+// router construction" would move a settled trade-off with nothing objecting.
+//
+// These are known-limitation tests. They assert TODAY'S output, not the ideal
+// one: for the alias and the helper shapes that output is a PREFIX REACHING
+// ACROSS two genuinely separate routers, which the header calls out as the
+// permissive miss. They are pinned anyway because the direction makes it cheap —
+// counting more constructors only makes the guard stricter, so moving any of
+// these lines costs a prefix and can never invent an endpoint. Whoever moves one
+// should do it with a review, not discover it from a vanished prefix.
+//
+// Every row is written so the SAME assertion is both the pin and the mutant
+// detector: each fixture sits exactly one construction away from the
+// `rustRouterCtorCount(between) > 1` threshold, so the shape under test flipping
+// from uncounted to counted flips the emitted ID.
+// ---------------------------------------------------------------------------
+
+// utoipaCtorWindow returns the byte span rustNestPrefixFor actually inspects for
+// this fixture — the text between the `routes!` registration and the `.nest(`
+// that may mount it — after proving the fixture is shaped the way the row
+// assumes.
+//
+// This is the premise guard the rows share. Without it a fixture that drifted
+// (the nest moving before the macro, past rustNestWindow, or the constructor
+// spelling landing OUTSIDE the inspected span) would go on passing while
+// observing the window clause rather than the construction count.
+func utoipaCtorWindow(t *testing.T, src, label string) string {
+	t.Helper()
+	route := strings.Index(src, "routes!(")
+	nest := strings.Index(src, `.nest("`)
+	if route < 0 || nest < 0 {
+		t.Fatalf("%s: malformed fixture (routes!=%d .nest=%d)", label, route, nest)
+	}
+	if nest <= route {
+		t.Fatalf("%s: fixture puts .nest( at %d before routes!( at %d — these rows are all outer-mount shaped", label, nest, route)
+	}
+	if gap := nest - route; gap > rustNestWindow {
+		t.Fatalf("%s: fixture gap %d exceeds rustNestWindow %d — the window clause, not the construction count, would decide this row", label, gap, rustNestWindow)
+	}
+	return src[route:nest]
+}
+
+func TestUtoipaAxum_UncountedRouterCtorShapes(t *testing.T) {
+	// windowLit pins one incidental byte sequence inside the inspected span,
+	// by exact count. A row's result rests entirely on WHICH constructions
+	// fall in that span, so an edit that adds or removes one must fail here
+	// rather than silently leave the row observing nothing.
+	type windowLit struct {
+		lit string
+		n   int
+	}
+	cases := []struct {
+		name string
+		src  string
+		// window pins the inspected span's contents, in source order.
+		window []windowLit
+		// srcMustContain pins bytes the row depends on that live OUTSIDE the
+		// inspected span.
+		srcMustContain []string
+		wantID         string
+		wantHandler    string
+		notWantIDs     []string
+	}{
+		{
+			// `OpenApiRouter::from(axum_router)` CONVERTS an existing router
+			// rather than starting a chain, so counting it would split a scope
+			// that is genuinely one. The span below holds exactly one counted
+			// construction, so the prefix applies; counting `from` too makes it
+			// two and /api/items becomes /items.
+			name: "from-conversion",
+			src: `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/items")]
+async fn list_items() -> &'static str { "[]" }
+
+fn items_router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(list_items))
+}
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new()
+        .merge(OpenApiRouter::from(legacy_axum_router()))
+        .nest("/api", items_router())
+}
+`,
+			window: []windowLit{
+				{"OpenApiRouter::from(", 1},
+				{"OpenApiRouter::new()", 1},
+			},
+			wantID:      "http:GET:/api/items",
+			wantHandler: "list_items",
+			notWantIDs:  []string{"http:GET:/items"},
+		},
+		{
+			// A rename-import erases the `Router` suffix, so nothing in the
+			// text identifies `Api` as a router without resolving the import.
+			// The two routers below are genuinely separate and the span holds
+			// two constructions — but zero COUNTED ones, so the /admin nest
+			// reaches back across admin_inner and replaces the real
+			// GET /health with GET /admin/health.
+			//
+			// That phantom is what is pinned here. It is a real miss, recorded
+			// deliberately: see the header note above for why it is left.
+			name: "rename-import-alias",
+			src: `
+use utoipa_axum::router::OpenApiRouter as Api;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/health")]
+async fn health() -> &'static str { "ok" }
+
+pub fn public_router() -> Api {
+    Api::new().routes(routes!(health))
+}
+
+fn admin_inner() -> Api {
+    Api::new()
+}
+
+pub fn admin_router() -> Api {
+    Api::new().nest("/admin", admin_inner())
+}
+`,
+			window: []windowLit{
+				{"Api::new()", 2},
+				// The alias is the whole point: if the fixture ever spells a
+				// counted constructor in the span the row stops observing the
+				// alias and starts observing the ordinary scope guard.
+				{"Router::new", 0},
+				{"Router::default", 0},
+				{"Router::with_openapi", 0},
+			},
+			srcMustContain: []string{"OpenApiRouter as Api"},
+			wantID:         "http:GET:/admin/health",
+			wantHandler:    "health",
+			notWantIDs:     []string{"http:GET:/health"},
+		},
+		{
+			// A constructor returned by a user helper. `base()` builds the
+			// router, but the only counted spelling in the file sits INSIDE
+			// base's body, above the registration and therefore outside the
+			// inspected span — so the span again holds zero counted
+			// constructions and the /admin nest reaches across.
+			name: "constructor-behind-user-helper",
+			src: `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[utoipa::path(get, path = "/health")]
+async fn health() -> &'static str { "ok" }
+
+fn base() -> OpenApiRouter {
+    OpenApiRouter::new()
+}
+
+pub fn public_router() -> OpenApiRouter {
+    base().routes(routes!(health))
+}
+
+fn admin_inner() -> OpenApiRouter {
+    base().merge(extras())
+}
+
+pub fn admin_router() -> OpenApiRouter {
+    base()
+        .layer(auth_layer())
+        .nest("/admin", admin_inner())
+}
+`,
+			window: []windowLit{
+				{"base()", 2},
+				// The counted construction is in base's body, ABOVE the
+				// registration — srcMustContain proves it exists, this proves
+				// it is not in the span.
+				{"OpenApiRouter::new()", 0},
+			},
+			srcMustContain: []string{"fn base() -> OpenApiRouter {\n    OpenApiRouter::new()\n}"},
+			wantID:         "http:GET:/admin/health",
+			wantHandler:    "health",
+			notWantIDs:     []string{"http:GET:/health"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			label := "utoipa-uncounted-ctor-" + tc.name
+
+			for _, want := range tc.srcMustContain {
+				if !strings.Contains(tc.src, want) {
+					t.Fatalf("%s: fixture lost %q, which its result depends on", label, want)
+				}
+			}
+			between := utoipaCtorWindow(t, tc.src, label)
+			for _, w := range tc.window {
+				if got := strings.Count(between, w.lit); got != w.n {
+					t.Fatalf("%s: inspected span contains %q %d time(s), want %d — the fixture is no longer one construction from the scope threshold",
+						label, w.lit, got, w.n)
+				}
+			}
+
+			ids, res := runDetect(t, "rust", "src/ctor_shapes.rs", tc.src)
+
+			// Premise guard: the ID below was minted by THIS pass from this
+			// file's attribute map, not by synthesizeAxumRoutes or Rocket.
+			requireUtoipaDef(t, res, tc.wantID, tc.wantHandler, label)
+			requireNotContains(t, ids, tc.notWantIDs, label)
+			if got := countDefsForHandler(res, tc.wantHandler); got != 1 {
+				t.Errorf("%s: want exactly 1 definition for %s, got %d", label, tc.wantHandler, got)
+			}
+		})
+	}
+}
