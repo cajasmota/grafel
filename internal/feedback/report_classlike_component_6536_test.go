@@ -339,10 +339,40 @@ namespace Demo { public class Widget { } }
 }
 
 // TestNonFieldBearingLanguageCarriersExempt_6536 covers the ML-family per-file
-// `module` carriers and the empty-subtype import placeholders in one shot,
-// against the real Haskell extractor. Neither is reachable by a subtype
-// exclusion: "module" is a legitimate field-bearing subtype in VB.NET, and the
-// Haskell import placeholders set no subtype at all.
+// `module` carriers and the Haskell import placeholders against the real
+// Haskell extractor.
+//
+// #6481 SPLIT THESE TWO POPULATIONS APART, and this test was rewritten to say
+// so rather than to keep asserting the shape that no longer exists.
+//
+// Originally NEITHER was reachable by a subtype exclusion: "module" is a
+// legitimate field-bearing subtype in VB.NET, and the Haskell import
+// placeholders set NO SUBTYPE AT ALL, so nonClassSubtypes could not see them.
+// Both therefore leaned on the same language-level exemption. That second
+// clause is the one #6481 removed the need for — buildImportEntities now
+// stamps Subtype "import", the marker resolve.isImportPlaceholderKind keys on,
+// and "import" has been in nonClassSubtypes since #6536 itself. The
+// placeholders are exempted one step EARLIER now, by the subtype rule, exactly
+// as C#'s cross/imports placeholders already were in
+// TestImportPlaceholdersExemptFromFieldDenominator_6536.
+//
+// The premise guard that caught this was doing its job: it detected that its
+// fixture population had emptied out instead of passing on an exemption that
+// no longer exempted anything. It is kept and RE-AIMED, not weakened — the
+// bare-subtype count is now asserted to be ZERO, so this test pins #6481's
+// haskell arm from the consumer side and fails if the stamp is ever reverted.
+//
+// The `module` half is UNCHANGED and still uniquely load-bearing: "module" is
+// deliberately absent from nonClassSubtypes, so dropping "haskell" from
+// nonFieldBearingLanguages re-admits the per-file carrier. That is asserted
+// below rule-by-rule, because the obsolete half is a standing invitation to
+// delete the whole entry.
+//
+// SCOPE NOTE: only haskell, elm, ocaml (#6481 arm A1) and fsharp (#6369) stamp
+// the marker today. The other five members of nonFieldBearingLanguages —
+// idris, reasonml, rescript, crystal, erlang — still emit bare-subtype
+// placeholders and still need the language exemption for BOTH halves, so that
+// set must not be pruned on the strength of this test.
 func TestNonFieldBearingLanguageCarriersExempt_6536(t *testing.T) {
 	const hs = `module My.Mod where
 import Data.List
@@ -361,9 +391,9 @@ f x = x
 		t.Fatalf("Extract: %v", err)
 	}
 
-	// Premise guard: the carrier and the bare-subtype placeholders must really
-	// be class-like-kinded, otherwise nothing here was ever counted.
-	var carrier, bare int
+	// Premise guard: the carrier and the import placeholders must really be
+	// class-like-kinded, otherwise nothing here was ever counted.
+	var carrier, marked, bare int
 	for i := range recs {
 		if !isClassLikeKind(recs[i].Kind) || recs[i].Subtype == "file" {
 			continue
@@ -371,13 +401,58 @@ f x = x
 		switch recs[i].Subtype {
 		case "module":
 			carrier++
+		case "import":
+			marked++
 		case "":
 			bare++
 		}
 	}
-	if carrier == 0 || bare == 0 {
-		t.Fatalf("premise gone: haskell emitted %d module carriers and %d bare-subtype "+
-			"placeholders; this test would exempt nothing", carrier, bare)
+	if carrier == 0 || marked == 0 {
+		t.Fatalf("premise gone: haskell emitted %d module carriers and %d import "+
+			"placeholders; this test would exempt nothing", carrier, marked)
+	}
+	// #6481, pinned from the consumer side: the placeholders must be MARKED,
+	// not bare. A bare one is invisible to resolve.isImportPlaceholderKind and
+	// sits in the by-name index as a declaration, flipping any colliding type
+	// name ambiguous repo-wide.
+	if bare != 0 {
+		t.Errorf("#6481 regressed: haskell emitted %d class-like entities with an EMPTY "+
+			"Subtype; buildImportEntities must stamp Subtype \"import\"", bare)
+	}
+
+	// WHICH RULE exempts WHICH population. Asserted separately because the two
+	// halves no longer share an exemption, and a reader who notices the import
+	// half is redundant must not conclude the whole entry is.
+	//
+	// (a) The per-file `module` carrier is exempted ONLY by the language rule:
+	// "module" is deliberately absent from nonClassSubtypes because a VB.NET
+	// `Module` is a genuine field-bearing container.
+	if nonClassSubtypes["module"] {
+		t.Error("\"module\" entered nonClassSubtypes; that deletes VB.NET's genuinely " +
+			"field-bearing `Public Module Util` from the denominator")
+	}
+	if isFieldExtractionCandidate("SCOPE.Component", "module", "haskell") {
+		t.Error("the haskell per-file `module` carrier is in the field-extraction " +
+			"denominator; it is a guaranteed zero-field failure")
+	}
+	if !isFieldExtractionCandidate("SCOPE.Component", "module", "vbnet") {
+		t.Error("a VB.NET `Module` is excluded from the denominator, but it really does " +
+			"own Shared and Private field children: the language exemption must stay " +
+			"keyed on the language, never on the \"module\" subtype")
+	}
+
+	// (b) The import placeholder is now exempted by the SUBTYPE rule, which is
+	// checked ahead of the language rule and so holds independently of it —
+	// including for a language that DOES bear fields.
+	if !nonClassSubtypes["import"] {
+		t.Error("\"import\" left nonClassSubtypes; every import placeholder in every " +
+			"language re-enters the field-extraction denominator")
+	}
+	for _, lang := range []string{"haskell", "vbnet", "kotlin"} {
+		if isFieldExtractionCandidate("SCOPE.Component", "import", lang) {
+			t.Errorf("a %s import placeholder is in the field-extraction denominator; "+
+				"the subtype exemption must not depend on the language", lang)
+		}
 	}
 
 	doc := recordsToDoc6536(t, recs)
