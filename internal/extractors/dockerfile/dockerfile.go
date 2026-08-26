@@ -386,10 +386,22 @@ func collectCopy(node ts.Node, file extractor.FileInput, currentStage string, d 
 		if img, ok := d.aliasToImage[stageRef]; ok {
 			target = img
 		}
+		// #6367 — FromID is left EMPTY on purpose, matching the CONTAINS edges
+		// built in buildDockerfileEntity. The record is attached to the single
+		// file-level SCOPE.Component, so graph assembly stamps that record's
+		// own entity id (cmd/grafel/index.go, relRecordToGraphRel in
+		// internal/extractors/incremental.go). The previous `FromID: file.Path`
+		// resolved only when the path WAS its own basename, because the
+		// component's Name is the basename: measured 3 of 3 DANGLING at
+		// "services/api/Dockerfile", and correct only BY ACCIDENT at a root
+		// "Dockerfile". `Dockerfile` is also absent from sourceFileExtensions
+		// (internal/resolve/refs.go), so the dangle counted as
+		// DispositionBugExtractor rather than being masked as
+		// DispositionDynamic. See TestDockerfile_UsesAndContainsAnchoredOnOwner.
+		// The FROM IMPORTS edge keeps its file-path FromID (#120).
 		d.relationships = append(d.relationships, types.RelationshipRecord{
-			FromID: file.Path,
-			ToID:   extractor.BuildOperationStructuralRef("dockerfile", file.Path, target),
-			Kind:   "USES",
+			ToID: extractor.BuildOperationStructuralRef("dockerfile", file.Path, target),
+			Kind: "USES",
 			Properties: types.Props{
 				{K: "from_stage", V: stageRef},
 			},

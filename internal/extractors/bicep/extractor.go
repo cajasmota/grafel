@@ -391,10 +391,22 @@ func dependencyEdges(body, path, self string, symbolic map[string]bool) []types.
 	}
 	var rels []types.RelationshipRecord
 	for _, dep := range deps {
+		// #6367 — FromID is left EMPTY on purpose. These records are attached
+		// to the RESOURCE record (extractResources) and to the MODULE record
+		// (extractModules), so graph assembly stamps that owning record's own
+		// entity id (cmd/grafel/index.go, relRecordToGraphRel in
+		// internal/extractors/incremental.go). The previous `FromID: path`
+		// moved the edge off its owner and resolved nowhere: bicep emits no
+		// file entity and no bicep entity carries the containing file's path
+		// as Name or QualifiedName, so it DANGLED at every path depth —
+		// measured 3 of 3 at both a nested and a root path. `.bicep` is also
+		// absent from sourceFileExtensions (internal/resolve/refs.go), so the
+		// dangle counted as DispositionBugExtractor rather than being masked
+		// as DispositionDynamic. See TestBicep_DependsOnAnchoredOnOwner.
+		// The module IMPORTS edge keeps its file-path FromID (#120).
 		rels = append(rels, types.RelationshipRecord{
-			FromID: path,
-			ToID:   extractor.BuildOperationStructuralRef(lang, path, dep),
-			Kind:   "DEPENDS_ON",
+			ToID: extractor.BuildOperationStructuralRef(lang, path, dep),
+			Kind: "DEPENDS_ON",
 		})
 	}
 	return rels

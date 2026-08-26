@@ -419,23 +419,39 @@ var allowedFileAnchored = map[string]allowEntry{
 	// Do NOT re-add an hcl entry here without a fresh measurement: the scan
 	// below fails on a STALE entry too.
 
-	// bicep — DANGLING unconditionally and misowned. Worse than the hcl pair:
-	// `.bicep` is absent from sourceFileExtensions (refs.go:2752-2767), so these
-	// do not even reach DispositionDynamic; they count as
-	// DispositionBugExtractor. The first-round allow-list was blessing a live
-	// bug-extractor figure.
-	"bicep:dependencyEdges:DEPENDS_ON": {1,
-		"KNOWN OFFENDER (#6298): dangling unconditionally, wrong owner, and `.bicep` " +
-			"is not in sourceFileExtensions, so it lands in DispositionBugExtractor " +
-			"rather than DispositionDynamic. INFERRED from the site, NOT measured."},
+	// bicep USED TO BE LISTED HERE (dependencyEdges:DEPENDS_ON {1}) and is gone:
+	// #6367 arm 2 MEASURED it through ResolveImports -> ReferencesEmbedded on a
+	// nested and a root path. Unlike hcl there was no root-path accident to
+	// resolve onto -- bicep emits no file entity and names no entity after the
+	// containing file in any spelling (resources are named by symbolic name,
+	// modules by their `source`) -- so it was 3 of 3 DEPENDS_ON DANGLING at
+	// BOTH paths. The records are attached to the resource record
+	// (extractResources) and the module record (extractModules), so clearing
+	// FromID stamps those owners rather than producing a self-loop. 0 of 3
+	// after; see TestBicep_DependsOnAnchoredOnOwner in
+	// internal/extractors/bicep. Do NOT re-add a bicep entry here without a
+	// fresh measurement: the scan below fails on a STALE entry too.
+	//
+	// IMPORTS is untouched: #120 keeps the file path there on purpose, and
+	// TestBicep_ImportsKeepsFilePathAnchor pins it at both path depths.
 
-	// dockerfile — DANGLING for any Dockerfile not at the repo root, and
-	// `Dockerfile` is likewise absent from sourceFileExtensions, so these also
-	// count as DispositionBugExtractor.
-	"dockerfile:collectCopy:USES": {1,
-		"KNOWN OFFENDER (#6298): dangling for any non-root Dockerfile, and " +
-			"`Dockerfile` is not in sourceFileExtensions, so it lands in " +
-			"DispositionBugExtractor. INFERRED from the site, NOT measured."},
+	// dockerfile USED TO BE LISTED HERE (collectCopy:USES {1}) and is gone:
+	// #6367 arm 2 MEASURED it the same way. The package emits exactly ONE
+	// entity per file and its Name is the BASENAME, so the outcome split on
+	// whether the path IS its own basename: nested "services/api/Dockerfile"
+	// was 3 of 3 USES DANGLING, while root "Dockerfile" resolved onto the file
+	// component -- the right node BY ACCIDENT. There is no MISANCHOR column
+	// here, because that single entity IS the owner. The site now matches the
+	// sibling CONTAINS edges in buildDockerfileEntity and leaves FromID empty;
+	// 0 of 3 after at both paths; see
+	// TestDockerfile_UsesAndContainsAnchoredOnOwner in
+	// internal/extractors/dockerfile. Do NOT re-add a dockerfile entry here
+	// without a fresh measurement: the scan below fails on a STALE entry too.
+	//
+	// IMPORTS is untouched: #120 keeps the file path there on purpose, and
+	// TestDockerfile_ImportsKeepsFilePathAnchor pins it at both path depths --
+	// the pre-existing TestDockerfile_Imports_FromInstruction pins only the
+	// root path, where the path and the basename Name are the same string.
 }
 
 // knownInvisibleOffenders pins the file anchors that the MAIN scan cannot see
