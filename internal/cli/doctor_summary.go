@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -426,10 +427,22 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 
 		// Per-repo stats table
 		fmt.Fprintf(w, "\n  Per-repo stats:\n")
+		// #6682: size this column by RUNE count, not by len()'s BYTE count.
+		// fmt's %-*s below pads by runes, so a byte-derived width overshoots by
+		// (bytes - runes) and pushes every payload right for no reason.
+		//
+		// This targets RUNE COUNT, NOT TERMINAL DISPLAY WIDTH. The two are not
+		// the same: a CJK ideograph is one rune but occupies two terminal
+		// columns, and an emoji may be one rune and two columns, or a grapheme
+		// cluster spanning several runes. So this aligns the common
+		// European-accent case ("cafe" with an acute e) exactly, and a slug
+		// containing CJK or emoji STILL renders ragged. Correcting that needs a
+		// wcwidth table or grapheme segmentation, a dependency this table does
+		// not justify; it is deliberately not done here.
 		maxSlugLen := 0
 		for _, r := range g.Repos {
-			if len(r.Slug) > maxSlugLen {
-				maxSlugLen = len(r.Slug)
+			if n := utf8.RuneCountInString(r.Slug); n > maxSlugLen {
+				maxSlugLen = n
 			}
 		}
 		if maxSlugLen < 4 {
