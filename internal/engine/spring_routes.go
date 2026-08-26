@@ -59,10 +59,19 @@ type composedSpringRoutes struct {
 	// drop the duplicate orphan Route entities the YAML rules emitted for
 	// the same paths inside the same controller class.
 	claimedMethodPaths map[string]bool
-	// claimedHandlerMethods is the set of handler method names whose
-	// ROUTES_TO edge this pass replaced. Used to drop the orphan YAML
+	// claimedHandlerEdges is the set of YAML ROUTES_TO edges this pass
+	// replaced, keyed by the QUALIFYING PAIR (bare annotation path, handler
+	// method name) — see springHandlerClaimKey. Used to drop the orphan YAML
 	// ROUTES_TO edges that point at uncomposed source Routes.
-	claimedHandlerMethods map[string]bool
+	//
+	// #6498 — this was keyed on the bare method name alone and scoped to the
+	// file, so two controller classes in one file sharing a handler method
+	// name collided: the first class's claim suppressed the second class's
+	// legitimate edge, silently deleting a real endpoint from the graph. The
+	// YAML edge carries no class (its ToID is `Controller:<bareMethod>`), so
+	// the class-distinguishing information available on BOTH sides is the
+	// annotation path the edge's FromID (`Route:<barePath>`) is built from.
+	claimedHandlerEdges map[string]bool
 	// claimedClassPrefixes is the set of class-level @RequestMapping
 	// prefixes consumed (e.g. "/api"). Used to drop the orphan class-level
 	// Route entity the YAML rules emit from the bare class annotation.
@@ -114,7 +123,14 @@ func applySpringRouteComposition(args DetectorPassArgs) DetectorPassResult {
 	for _, r := range rawRels {
 		if r.Kind == "ROUTES_TO" && strings.HasPrefix(r.ToID, "Controller:") {
 			method := strings.TrimPrefix(r.ToID, "Controller:")
-			if composed.claimedHandlerMethods[method] {
+			// No `HasPrefix(r.FromID, "Route:")` guard: every spring_mvc.yaml
+			// ROUTES_TO rule declares source_type Route, so the prefix is
+			// always present. On a hypothetical edge without it TrimPrefix is
+			// a no-op and the resulting key cannot match a claim (claims are
+			// keyed on an annotation path), so the guard would be an
+			// unreachable, untestable branch.
+			barePath := strings.TrimPrefix(r.FromID, "Route:")
+			if composed.claimedHandlerEdges[springHandlerClaimKey(barePath, method)] {
 				continue
 			}
 		}
@@ -123,6 +139,21 @@ func applySpringRouteComposition(args DetectorPassArgs) DetectorPassResult {
 	filteredRels = append(filteredRels, composed.relationships...)
 
 	return DetectorPassResult{Entities: filteredEntities, Relationships: filteredRels}
+}
+
+// springHandlerClaimKey builds the key for claimedHandlerEdges: the bare
+// annotation path the YAML rules matched, paired with the handler method name.
+// Both halves are required — see the claimedHandlerEdges doc comment (#6498).
+//
+// The two halves are separated rather than concatenated, because bare
+// concatenation is ambiguous: ("/ab","c") and ("/a","bc") both flatten to
+// "/abc", which would let one class's claim swallow a sibling's only edge.
+// TestDetect_SpringRoute_ConcatAmbiguousClaimKey pins exactly that. The
+// separator must be a byte that appears in neither half; NUL is one such byte
+// for the halves this pass produces, but the test observes the separation, not
+// the choice of NUL.
+func springHandlerClaimKey(barePath, methodName string) string {
+	return barePath + "\x00" + methodName
 }
 
 // bytesContainsAny is a cheap pre-filter to avoid parsing files that
@@ -142,9 +173,9 @@ func bytesContainsAny(content []byte, needles ...string) bool {
 // carries a class-level @RequestMapping prefix.
 func extractSpringComposedRoutes(ctx context.Context, path string, content []byte) (composedSpringRoutes, bool) {
 	out := composedSpringRoutes{
-		claimedMethodPaths:    map[string]bool{},
-		claimedHandlerMethods: map[string]bool{},
-		claimedClassPrefixes:  map[string]bool{},
+		claimedMethodPaths:   map[string]bool{},
+		claimedHandlerEdges:  map[string]bool{},
+		claimedClassPrefixes: map[string]bool{},
 	}
 
 	factory := treesitter.NewParserFactory(nil)
@@ -245,7 +276,30 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			composedPath := joinRoutePaths(prefix, apath)
 
 			out.claimedMethodPaths[apath] = true
-			out.claimedHandlerMethods[methodName] = true
+			// #6702/F1 — claim the literal the YAML relationship regex actually
+			// captures: the LAST one in the argument list, which is not always
+			// the one the AST picked as the path (`apath`).
+			//
+			// `apath` itself is deliberately NOT claimed. Every relationship
+			// rule in spring_mvc.yaml has the shape
+			// `@XMapping\s*\([^)]*["']([^"'\n\r]+)["'][^)]*\)`, so the edge's
+			// FromID is ALWAYS `Route:<last literal>` and the filter can only
+			// ever look up the last literal. Claiming `apath` as well is
+			// therefore either redundant (single-literal annotations, where
+			// `apath` IS the last literal) or actively wrong: on
+			// `@GetMapping(path = "/x", name = "foo")` it claims `/x`, which
+			// the regex never emitted, and suppresses a sibling controller's
+			// real `/x` edge instead — #6498 all over again. Pinned by
+			// TestDetect_SpringRoute_ApathIsNotClaimedWhenItIsNotTheLastLiteral.
+			//
+			// The claim is bound to THIS annotation's own handler method:
+			// claiming a literal against any other method in the class would
+			// let one handler's path suppress a sibling controller's edge
+			// (finding A, pinned by
+			// TestDetect_SpringRoute_LiteralClaimIsBoundToItsOwnMethod).
+			if lit, ok := annotationLastStringLiteral(a, src); ok {
+				out.claimedHandlerEdges[springHandlerClaimKey(lit, methodName)] = true
+			}
 
 			routeProps := map[string]string{
 				"framework":    "java",
@@ -371,6 +425,58 @@ func annotationNameAndPath(anno ts.Node, src []byte) (string, string) {
 		return name, byKey
 	}
 	return name, positional
+}
+
+// annotationLastStringLiteral returns the LAST string literal in the
+// annotation's argument list, which is the only literal the spring_mvc.yaml
+// relationship rules can ever capture.
+//
+// #6702/F1 — the AST side and the YAML side disagree about which literal is
+// the path: annotationNameAndPath prefers the `value=`/`path=` pair, while each
+// of the six relationship rules is `[^)]*["']([^"'\n\r]+)["'][^)]*\)` —
+// greedy, one capture per annotation, always the LAST literal. On
+// `@PostMapping(value = "/things", consumes = "application/json")` that is the
+// media type, so the YAML edge is `Route:application/json -> Controller:create`.
+// Claiming only the AST's preferred literal left that edge unsuppressed —
+// dangling on both ends, since no `Route:application/json` entity exists (the
+// entity rule anchors on the FIRST literal) and `Controller:` stubs resolve to
+// nothing (#6429).
+//
+// #6702/finding B — this returns the last literal, NOT every literal. The
+// regex emits exactly one edge per annotation, so any earlier literal is
+// claimed for something that was never emitted. For
+// `@GetMapping(value = {"/a", "/b"})` only `/b` is reachable; claiming `/a` as
+// well would swallow a sibling controller's genuine `/a` edge, which is #6498
+// re-entering through this widening. Pinned by
+// TestDetect_SpringRoute_ArrayValueClaimsOnlyTheReachableLiteral.
+//
+// The walk is generic rather than node-type-driven so it reaches literals
+// nested inside an `element_value_array_initializer` (tree-sitter-java's node
+// type for the `{...}` in `value = {"/a", "/b"}`) without naming it.
+func annotationLastStringLiteral(anno ts.Node, src []byte) (string, bool) {
+	if anno == nil {
+		return "", false
+	}
+	args := anno.ChildByFieldName("arguments")
+	if args == nil {
+		return "", false
+	}
+	last, found := "", false
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
+		if n == nil {
+			return
+		}
+		if n.Type() == "string_literal" {
+			last, found = stripStringLiteral(nodeText(n, src)), true
+			return
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			walk(n.Child(i))
+		}
+	}
+	walk(args)
+	return last, found
 }
 
 // stripStringLiteral removes the surrounding quotes from a Java string
