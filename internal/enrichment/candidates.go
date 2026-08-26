@@ -436,6 +436,16 @@ var qualifyHTTPKinds = map[string]bool{
 	"SCOPE.HTTPEndpoint":       true,
 }
 
+// enrichmentMarkerSubtypes lists the Subtypes of additive JOIN-KEY MARKERS that
+// share a kind with real API surface but describe nothing a model could
+// usefully summarise. The value is duplicated from
+// engine.utoipaCrossFileSubtype rather than imported: internal/enrichment must
+// not depend on internal/engine, and the string is pinned on both sides by
+// TestQualifies_UtoipaRegistrationMarker_NotACandidate_6668.
+var enrichmentMarkerSubtypes = map[string]bool{
+	"utoipa_handler_registration": true, // #6668
+}
+
 // qualifyHighArchKinds is the set of entity kinds that represent named
 // architectural roles (controllers, services, background tasks, etc.). These
 // are not self-describing from their name alone and benefit from an
@@ -596,7 +606,24 @@ func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) 
 	}
 
 	// --- Signal 1: HTTP endpoint / Route (public API surface) ---
+	//
+	// #6668 — EXCEPT a join-key MARKER. qualifyHTTPKinds is keyed on Kind alone
+	// and is consulted before any structural signal, so a record that merely
+	// carries "SCOPE.Route" scores base_http_endpoint:80 and lands in the
+	// critical band. The utoipa cross-file registration marker
+	// (http_endpoint_utoipa_crossfile.go) is a SCOPE.Route by deliberate choice
+	// — it must stay out of the http_endpoint family so the #1217 legacy-kind
+	// migration cannot turn it into a pathless phantom definition — but it is
+	// not public API surface: it has no verb, no path, and a name that is the
+	// join key itself ("utoipa:registration:src/router.rs:crate::items::x").
+	// Describing one spends real model budget restating an identifier.
+	//
+	// Excluded by SUBTYPE, not by Kind, so every genuine SCOPE.Route still
+	// qualifies exactly as before.
 	if qualifyHTTPKinds[e.Kind] {
+		if enrichmentMarkerSubtypes[e.Subtype] {
+			return false, nil
+		}
 		return true, []string{"http_endpoint"}
 	}
 

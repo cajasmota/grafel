@@ -1565,3 +1565,45 @@ func TestComputeScore_ScoreHintsFromDocument(t *testing.T) {
 		t.Errorf("entity b: HasCrossRepoInbound = false, want true (inbound from external-repo-entity)")
 	}
 }
+
+// TestQualifies_UtoipaRegistrationMarker_NotACandidate_6668 pins the enrichment
+// cost of #6668's cross-file join-key marker.
+//
+// The marker is a SCOPE.Route by deliberate design — it must stay OUT of the
+// http_endpoint family, because ResolveHTTPEndpointHandlers rewrites every
+// legacy `http_endpoint` record to `http_endpoint_definition` unconditionally
+// and a pathless one would become a phantom in the canonical family. But
+// qualifyHTTPKinds is keyed on Kind alone and runs before any structural
+// signal, so without an exception the marker qualifies with signal
+// `http_endpoint` and scores into the CRITICAL band — real model budget spent
+// describing a join-key stub whose name IS the join key.
+//
+// The exception is keyed on Subtype, so a genuine SCOPE.Route is unaffected;
+// that half is asserted here too, or the exclusion could widen to every route
+// without any test noticing.
+func TestQualifies_UtoipaRegistrationMarker_NotACandidate_6668(t *testing.T) {
+	marker := graph.Entity{
+		ID:      "utoipa:registration:src/router.rs:crate::items::create_item",
+		Name:    "utoipa:registration:src/router.rs:crate::items::create_item",
+		Kind:    "SCOPE.Route",
+		Subtype: "utoipa_handler_registration",
+	}
+	if q, sig := qualifiesForEnrichment(&marker); q {
+		t.Errorf("#6668: registration marker qualifies for enrichment (signals=%v); "+
+			"it has no verb, no path, and nothing to describe", sig)
+	}
+
+	// The control: an ordinary SCOPE.Route still qualifies exactly as before,
+	// so the exclusion is scoped to the marker and not to the kind.
+	route := graph.Entity{ID: "r1", Name: "/api/users", Kind: "SCOPE.Route"}
+	if q, _ := qualifiesForEnrichment(&route); !q {
+		t.Errorf("#6668: a plain SCOPE.Route no longer qualifies; the exclusion must key on Subtype, not Kind")
+	}
+
+	// And a marker-subtyped record is excluded through the full emitter path,
+	// not merely by the predicate.
+	cands := CollectCandidates(mkDoc(marker), []CandidateEmitter{&describeEntityEmitter{}}, nil)
+	if len(cands) != 0 {
+		t.Errorf("#6668: marker produced %d describe_entity candidate(s), want 0", len(cands))
+	}
+}

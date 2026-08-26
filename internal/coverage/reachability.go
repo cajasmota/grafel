@@ -113,6 +113,17 @@ func isProductionEntity(e types.EntityRecord) bool {
 	if isTestEntity(e) {
 		return false
 	}
+	// #6668 — additive JOIN-KEY MARKERS are not executable surface. The utoipa
+	// cross-file registration marker is emitted as a SCOPE.Route (it must stay
+	// out of the http_endpoint family, or the #1217 legacy-kind migration would
+	// turn a pathless record into a phantom definition), but it has no verb, no
+	// path and no body: no test path can reach it, so counting it as production
+	// makes it permanently UNTESTED and drops reported coverage by one for every
+	// cross-file registration in the repo. Excluded by SUBTYPE, so every genuine
+	// SCOPE.Route is unaffected.
+	if coverageMarkerSubtypes[e.Subtype] {
+		return false
+	}
 	switch types.EntityKind(e.Kind) {
 	case // executable / addressable surface — production
 		types.EntityKindFunction,
@@ -156,6 +167,15 @@ func isTestEntity(e types.EntityRecord) bool {
 }
 
 const subtypeTestSuite = "test_suite"
+
+// coverageMarkerSubtypes lists Subtypes of additive join-key markers that share
+// a kind with executable surface but are not reachable by any test path. The
+// value is duplicated from engine.utoipaCrossFileSubtype rather than imported —
+// internal/coverage must not depend on internal/engine — and is pinned on both
+// sides by TestIsProductionEntity_UtoipaRegistrationMarker_6668.
+var coverageMarkerSubtypes = map[string]bool{
+	"utoipa_handler_registration": true, // #6668
+}
 
 // entitiesGraph indexes a batch of entities for traversal: id→entity and the
 // adjacency list restricted to reachability edge kinds.
