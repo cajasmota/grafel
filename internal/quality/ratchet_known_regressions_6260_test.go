@@ -64,6 +64,8 @@ func newRatchetFixture(t *testing.T, entityFound int, priorKnown []map[string]an
 		"expected_entities": []map[string]any{
 			{"name": "A", "kind": "SCOPE.Component", "must_exist": true},
 		},
+		// #6490: the key must be DECLARED, even when empty.
+		"expected_relationships": []map[string]any{},
 	})
 
 	const stamp = "test-stamp-6260"

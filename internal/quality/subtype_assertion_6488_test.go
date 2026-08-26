@@ -68,7 +68,8 @@ func TestSubtypeRowRejectsAMismatchedCandidate_6488(t *testing.T) {
 	  "expected_entities": [
 	    { "name": "Role.ROLE_ADMIN", "kind": "SCOPE.Schema", "source_file": "user.proto",
 	      "subtype": "field", "must_exist": true }
-	  ]
+	  ],
+	  "expected_relationships": []
 	}`)
 	rep := Evaluate(fix, subtypeDoc())
 	if rep.EntityExpected != 1 {
@@ -90,7 +91,8 @@ func TestSubtypeRowAcceptsAMatchingCandidate_6488(t *testing.T) {
 	  "expected_entities": [
 	    { "name": "Role.ROLE_ADMIN", "kind": "SCOPE.Schema", "source_file": "user.proto",
 	      "subtype": "enum_value", "must_exist": true }
-	  ]
+	  ],
+	  "expected_relationships": []
 	}`)
 	rep := Evaluate(fix, subtypeDoc())
 	if rep.EntityFound != 1 {
@@ -111,7 +113,8 @@ func TestBlankSubtypeRowMatchesAnySubtype_6488(t *testing.T) {
 	  "expected_entities": [
 	    { "name": "Role.ROLE_ADMIN", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true },
 	    { "name": "User.email", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true }
-	  ]
+	  ],
+	  "expected_relationships": []
 	}`)
 	rep := Evaluate(fix, subtypeDoc())
 	if rep.EntityFound != 2 || rep.EntityExpected != 2 {
@@ -136,7 +139,8 @@ func TestSubtypeRowRejectsAnEntityCarryingNoSubtype_6488(t *testing.T) {
 	  "expected_entities": [
 	    { "name": "Widget", "kind": "SCOPE.Component", "source_file": "a.ts",
 	      "subtype": "import", "must_exist": true }
-	  ]
+	  ],
+	  "expected_relationships": []
 	}`)
 	rep := Evaluate(fix, doc)
 	if rep.EntityFound != 0 {
@@ -165,7 +169,8 @@ func TestSubtypeRowPicksTheRightOneOfTwoCollidingCandidates_6488(t *testing.T) {
 	  "expected_entities": [
 	    { "name": "Thing", "kind": "SCOPE.Schema", "source_file": "a.proto",
 	      "subtype": "enum_value", "must_exist": true }
-	  ]
+	  ],
+	  "expected_relationships": []
 	}`)
 	rep := Evaluate(fix, doc)
 	if rep.EntityFound != 1 {
@@ -187,7 +192,8 @@ func TestSubtypeAppliesOnTheQualifiedNamePath_6488(t *testing.T) {
 	  "expected_entities": [
 	    { "name": "Role", "qualified_name": "proto.Role", "kind": "SCOPE.Schema",
 	      "match_by": "qualified_name", "subtype": %q, "must_exist": true }
-	  ]
+	  ],
+	  "expected_relationships": []
 	}`
 	if rep := Evaluate(loadFixtureJSON(t, strings.Replace(base, "%q", `"enum"`, 1)), subtypeDoc()); rep.EntityFound != 1 {
 		t.Fatalf("matching subtype on the qualified_name path: EntityFound=%d want 1", rep.EntityFound)
@@ -211,7 +217,8 @@ func TestSubtypeMissIsDiagnosedAsAMismatchNotAnAbsence_6488(t *testing.T) {
 	      "subtype": "field", "must_exist": true },
 	    { "name": "Nowhere", "kind": "SCOPE.Schema", "source_file": "user.proto",
 	      "subtype": "field", "must_exist": true }
-	  ]
+	  ],
+	  "expected_relationships": []
 	}`)
 	rep := Evaluate(fix, subtypeDoc())
 	mismatch := rep.EntityResults[0]

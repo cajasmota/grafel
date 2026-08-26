@@ -237,7 +237,7 @@ func loadTmpFixture(t *testing.T, body string) error {
 func TestQualifiedNameRowWithSourceFileIsRejectedAtLoad_6464(t *testing.T) {
 	err := loadTmpFixture(t, `{"fixture_name":"x","expected_entities":[
 		{"name":"init","kind":"SCOPE.Operation","qualified_name":"m.init",
-		 "match_by":"qualified_name","source_file":"cache_sup.erl","must_exist":true}]}`)
+		 "match_by":"qualified_name","source_file":"cache_sup.erl","must_exist":true}],"expected_relationships":[]}`)
 	if err == nil {
 		t.Fatal("match_by=qualified_name + source_file states two intents and honours " +
 			"only one; it must not load silently")
@@ -255,12 +255,12 @@ func TestQualifiedNameOrSourceFileAloneStillLoads_6464(t *testing.T) {
 	for name, body := range map[string]string{
 		"qualified_name only": `{"fixture_name":"x","expected_entities":[
 			{"name":"init","kind":"K","qualified_name":"m.init","match_by":"qualified_name",
-			 "must_exist":true}]}`,
+			 "must_exist":true}],"expected_relationships":[]}`,
 		"source_file only": `{"fixture_name":"x","expected_entities":[
-			{"name":"init","kind":"K","source_file":"cache_sup.erl","must_exist":true}]}`,
+			{"name":"init","kind":"K","source_file":"cache_sup.erl","must_exist":true}],"expected_relationships":[]}`,
 		"match_by source_file with source_file": `{"fixture_name":"x","expected_entities":[
 			{"name":"init","kind":"K","match_by":"source_file","source_file":"cache_sup.erl",
-			 "must_exist":true}]}`,
+			 "must_exist":true}],"expected_relationships":[]}`,
 	} {
 		if err := loadTmpFixture(t, body); err != nil {
 			t.Fatalf("%s: unexpected load error: %v", name, err)

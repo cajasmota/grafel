@@ -8,5 +8,6 @@
     { "name": "EmailService.SendConfirmation", "kind": "SCOPE.Operation", "source_file": "api/OrderController.cs", "must_exist": true, "note": "Producer: BackgroundJob.Enqueue()." },
     { "name": "daily-cleanup", "kind": "SCOPE.Pattern", "source_file": "api/OrderController.cs", "must_exist": true, "note": "Producer: RecurringJob.AddOrUpdate." },
     { "name": "IEmailService.SendNewsletter", "kind": "SCOPE.Operation", "source_file": "api/OrderController.cs", "must_exist": true, "note": "Producer: BackgroundJob.Enqueue<T>()." }
-  ]
+  ],
+  "expected_relationships": []
 }

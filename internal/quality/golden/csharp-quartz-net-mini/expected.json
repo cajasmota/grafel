@@ -8,5 +8,6 @@
     { "name": "JobBuilder.Create<ReportJob>", "kind": "SCOPE.Operation", "source_file": "Startup.cs", "must_exist": true, "note": "Producer: JobBuilder.Create<T>()." },
     { "name": "JobBuilder.Create<EmailJob>", "kind": "SCOPE.Operation", "source_file": "Startup.cs", "must_exist": true, "note": "Producer: JobBuilder.Create<T>()." },
     { "name": "scheduler.ScheduleJob", "kind": "SCOPE.Operation", "source_file": "Startup.cs", "must_exist": true, "note": "Producer: scheduler.ScheduleJob()." }
-  ]
+  ],
+  "expected_relationships": []
 }

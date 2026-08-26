@@ -38,5 +38,6 @@
       "must_exist": true,
       "note": "IUserService implementation."
     }
-  ]
+  ],
+  "expected_relationships": []
 }
