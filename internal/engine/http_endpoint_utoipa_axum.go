@@ -91,12 +91,22 @@
 //     file and nested from another one still yields the unprefixed path. Only
 //     the same-file nest is composed (Arm B2a, below).
 //
-// Three narrower shapes also fail to match, all in the safe direction and none a
-// regression from Arm A, recorded so the next reader does not rediscover them:
+// Four narrower shapes also fail to match, recorded so the next reader does not
+// rediscover them:
 // a comment between arguments (`routes!(a, /* x */ b)`) kills the WHOLE macro;
 // a raw identifier (`routes!(r#type)`) never matches, since `#` is outside the
-// identifier class; and `routes ! ( a , b )` — whitespace before `!` is
-// Rust-legal — never matches, because the pattern requires `routes!` adjacent.
+// identifier class; `routes ! ( a , b )` — whitespace before `!` is
+// Rust-legal — never matches, because the pattern requires `routes!` adjacent;
+// and a macro whose NAME merely ENDS in `routes!` (`my_routes!(a)`,
+// `app_routes!(a, b)`) never matches, because the pattern's leading `\b`
+// requires a word boundary before `routes`.
+//
+// The first three are misses in the safe direction and none is a regression
+// from Arm A. The fourth is the opposite: losing that word boundary would be
+// PERMISSIVE — an ordinary user-defined wrapper macro would mint one phantom
+// endpoint per argument for a registration this pass never saw. All four are
+// pinned (TestUtoipaAxum_HeaderRecordedShapesMintNothing,
+// TestUtoipaAxum_PrefixedRoutesMacroMintsNothing).
 //
 // Known house behaviour, not new here: a `routes!(...)` occurrence inside a
 // block comment or a string literal is still read as a registration, exactly as
