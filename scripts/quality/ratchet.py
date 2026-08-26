@@ -275,6 +275,21 @@ def _cross_check_override(sha, ref):
     an `origin/main` on an orphan root, "a different project's main" — and
     demanding ancestry of it would refuse every durable sha, which is the
     regression #6627 and #6633 pinned.
+
+    Two things this function does NOT cover, recorded rather than rediscovered:
+
+      * `override != ref` is unreachable-false today — `ref` is always
+        `default_branch_ref()`, which returns the override whenever one
+        resolves. Replacing it with `False` is EQUIVALENT under the current
+        suite. It is defensive, not discriminating; do not read it as a
+        condition that ever fires, and do not file it as a killable mutant.
+      * `discovered is None` is a door this guard structurally cannot close. On
+        a checkout with no `origin/HEAD` and no `main`/`master` — a default
+        branch called `trunk` or `develop` — there is no second opinion to take
+        and the override still vouches for itself exactly as before #6570. That
+        is deliberate: it is the same "degrade, do not guess" policy as
+        `default_branch_ref()` returning None, and inventing a ref to check
+        against would be the guess that policy exists to avoid.
     """
     override = base_ref_override()
     if override is None or override != ref:

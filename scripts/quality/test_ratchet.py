@@ -1547,6 +1547,64 @@ class AnOverrideCannotVouchForItself(unittest.TestCase):
             ):
                 ratchet.ensure_durable_measured_on(head)
 
+    def test_it_refuses_a_REMOTE_namespace_override_just_the_same(self):
+        """The same refusal when the override lives under `refs/remotes/`.
+
+        VARIED: the override's ref NAMESPACE (`refs/remotes/origin/feature`
+        rather than `refs/heads/feature`).
+        HELD CONSTANT: everything else — the same history, the same commit
+        stamped, the same `origin/main` that cannot reach it, the same expected
+        refusal.
+
+        Measured, not assumed: without this test the two lines
+
+            if override.startswith("refs/remotes/"):
+                return
+
+        at the top of `_cross_check_override` survive the entire suite —
+        `Ran 32 tests ... OK`, exit 0 — because every REFUSING fixture here used
+        a `refs/heads/` override while the only remote-namespace overrides
+        (`refs/remotes/origin/release`) appeared in ACCEPTING tests. One axis
+        pinned, its neighbour wide open.
+
+        The neighbour is not hypothetical. `QUALITY_BASE_REF=$(git symbolic-ref
+        refs/remotes/origin/HEAD)` — the shape the docstring itself suggests —
+        is a remote ref, so a narrowing in exactly this direction would have
+        passed CI while disabling the guard for the commonest spelling of the
+        override.
+        """
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            _base, head, _tip = make_repo(root)
+            git(root, "update-ref", "refs/remotes/origin/feature",
+                "refs/heads/feature")
+            set_base_ref(self, "refs/remotes/origin/feature")
+
+            self.assertTrue(has_ref(root, "refs/remotes/origin/feature"))
+            self.assertTrue(
+                has_ref(root, "refs/remotes/origin/main"),
+                "DEGENERATE FIXTURE: nothing for the cross-check to consult")
+            # The gate must NOT skip: these two remote refs share history, so a
+            # refusal here is about the override, not about disjointness.
+            self.assertEqual(
+                subprocess.call(
+                    ["git", "merge-base", "refs/remotes/origin/feature",
+                     "refs/remotes/origin/main"], cwd=root,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), 0,
+                "DEGENERATE FIXTURE: the two refs are disjoint, so the "
+                "disjointness gate carries this test and the namespace is "
+                "never reached")
+            self.assertFalse(
+                is_ancestor(root, head, "refs/remotes/origin/main"))
+            self.assertEqual(ratchet.git_sha(), head)
+
+            with self.assertRaises(
+                SystemExit,
+                msg=(f"the writer ACCEPTED {head!r} because the override was "
+                     f"spelled under refs/remotes/. A remote-tracking ref is "
+                     f"not evidence of durability: this one points at the very "
+                     f"feature branch whose HEAD squash will orphan")):
+                ratchet.ensure_durable_measured_on(head)
+
     def test_it_refuses_on_a_checkout_with_no_origin_HEAD_symref(self):
         """The same refusal on a checkout that has `refs/remotes/origin/main`
         but NO `refs/remotes/origin/HEAD`.
@@ -1594,7 +1652,16 @@ class AnOverrideCannotVouchForItself(unittest.TestCase):
 
             try:
                 doc = ratchet.build(golden, reports, baseline)
-            except SystemExit:
+            except SystemExit as exc:
+                # ANY SystemExit is not enough: build() has other exits, and a
+                # test that accepts them all goes green on a refusal that had
+                # nothing to do with durability. The sha is the one part of the
+                # message that is not the code reading back its own ref choice
+                # (#6630), so it is what this asserts.
+                self.assertIn(
+                    head, str(exc),
+                    f"--update-baseline exited, but not over {head!r} — this "
+                    f"test would pass on an unrelated refusal")
                 return
             self.fail(
                 f"--update-baseline wrote measured_on {doc['measured_on']!r} "
