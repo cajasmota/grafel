@@ -401,3 +401,194 @@ func TestGenerate_RelKindMatrix_AttributesEdgesToTheirSourceLanguage(t *testing.
 		t.Errorf("control: RelKindUnattributed[USES] = %d, want 2", got)
 	}
 }
+
+// TestRelKindMatrix_UnattributedRowRendersWhenEmpty pins the guarantee the
+// _unattributed_ row was chosen FOR. A prose total was rejected in favour of a
+// row on the grounds that the row is rendered on every table that renders,
+// including when the bucket is empty — so a reader can tell MEASURED-AND-ZERO
+// from NEVER-MEASURED. Every other fixture in this file populates the bucket,
+// so guarding the row on `len(...) > 0` was invisible: the row vanished exactly
+// in the case it exists to cover, and an absent key read identically to an
+// explicit empty one.
+//
+// Axes varied: unattributable-edge count (zero here, non-zero elsewhere in this
+// file) and the two shapes zero takes — a nil map (a Report literal that never
+// set the field) and an allocated-but-empty map (Generate over a graph with
+// nothing unattributable).
+// Held constant: the table renders at all — i.e. at least one language is
+// observed. With NO language and NO unattributable edge the section is a single
+// "_No language observed._" line and there is no table to carry a row; that is
+// the documented scope of "always", and TestRender_RelKindMatrix_EmptyMatrix
+// below pins it so the two claims cannot drift apart.
+func TestRelKindMatrix_UnattributedRowRendersWhenEmpty(t *testing.T) {
+	t.Run("nil map from a Report literal", func(t *testing.T) {
+		r := &Report{
+			TotalEntities:     500,
+			RelKindByLanguage: map[string]map[string]int{"java": {"CALLS": 30}},
+			// RelKindUnattributed deliberately left nil.
+		}
+		var buf bytes.Buffer
+		if err := Render(&buf, r); err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		out := buf.String()
+		row := relRow(t, out, "_unattributed_")
+		if row == "" {
+			t.Fatalf("no _unattributed_ row when nothing is unattributable — a reader cannot tell measured-and-zero from never-measured, which is the whole reason this is a row and not a prose total.\n%s", out)
+		}
+		if got, want := relEmittedCol(t, row), "_none_"; got != want {
+			t.Errorf("_unattributed_ emitted column = %q, want %q", got, want)
+		}
+		if got := relMissingCol(t, row); got != "—" {
+			t.Errorf("_unattributed_ must carry no peer verdict, got %q", got)
+		}
+	})
+
+	t.Run("empty map from Generate", func(t *testing.T) {
+		var ents []graph.Entity
+		var rels []graph.Relationship
+		for i := 0; i < 12; i++ {
+			ents = append(ents, makeEntity("jv"+string(rune('a'+i)), "J", "SCOPE.Class", "java", "J.java", 1+i))
+		}
+		for i := 0; i < 11; i++ {
+			rels = append(rels, rel6346("jx"+string(rune('a'+i)), "jv"+string(rune('a'+i)), "jv"+string(rune('a'+i+1)), "EXTENDS"))
+		}
+		pe, pr := pad6346()
+		ents = append(ents, pe...)
+		rels = append(rels, pr...)
+
+		r, err := Generate(context.Background(), []*graph.Document{makeDoc(ents, rels)}, Opts{GroupName: "g", Version: "t"})
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		// Control: this fixture really has nothing unattributable, so the
+		// assertion below is about the empty case and not about a stray edge.
+		if len(r.RelKindUnattributed) != 0 {
+			t.Fatalf("control broken: fixture produced unattributable edges %+v — it no longer exercises the empty case", r.RelKindUnattributed)
+		}
+
+		var buf bytes.Buffer
+		if err := Render(&buf, r); err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		out := buf.String()
+		row := relRow(t, out, "_unattributed_")
+		if row == "" {
+			t.Fatalf("no _unattributed_ row on a graph with nothing unattributable — measured-and-zero is indistinguishable from never-measured.\n%s", out)
+		}
+		if got, want := relEmittedCol(t, row), "_none_"; got != want {
+			t.Errorf("_unattributed_ emitted column = %q, want %q", got, want)
+		}
+	})
+}
+
+// TestRender_RelKindMatrix_EmptyMatrix pins the SCOPE of "always rendered":
+// with no language observed and nothing unattributable there is no table, so
+// there is no row either — the section says so in one line instead. Without
+// this, "the row always renders" and "an empty matrix renders one line" are two
+// prose claims that can silently contradict each other.
+func TestRender_RelKindMatrix_EmptyMatrix(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Render(&buf, &Report{TotalEntities: 500}); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "_No language observed._") {
+		t.Errorf("an empty matrix must say so explicitly:\n%s", out)
+	}
+	if row := relRow(t, out, "_unattributed_"); row != "" {
+		t.Errorf("no table renders, so no row should: %q", row)
+	}
+}
+
+// TestRelKindMatrix_IsReportOnly pins the claim made in the field comment, the
+// render comment and the PR body: NOTHING gates on this matrix. Two reports
+// differing ONLY in the matrix — one with a language emitting no hierarchy edge
+// at all, one with a fully populated matrix — must produce byte-identical
+// sanity results and the same confidence. The moment a check starts reading it,
+// this fails and the "report-only" wording has to be revisited deliberately
+// rather than quietly becoming false.
+func TestRelKindMatrix_IsReportOnly(t *testing.T) {
+	base := func() *Report {
+		return &Report{
+			TotalEntities:      500,
+			EntitiesByLanguage: map[string]int{"java": 400, "nim": 100},
+			OrphanByKind:       map[string]KindStats{"SCOPE.Class": {Total: 100, OrphanCount: 3, OrphanPct: 3}},
+			FrameworkHits:      map[string]int{"spring": 40},
+			ResolutionTotal:    100,
+		}
+	}
+
+	empty := base()
+	empty.RelKindByLanguage = map[string]map[string]int{}
+
+	populated := base()
+	populated.RelKindByLanguage = map[string]map[string]int{
+		"java": {"EXTENDS": 40, "CALLS": 300},
+		"nim":  {"CALLS": 3},
+	}
+	populated.RelKindUnattributed = map[string]int{"USES": 99}
+
+	gotResults, gotConf := runSanityChecks(empty)
+	wantResults, wantConf := runSanityChecks(populated)
+
+	if gotConf != wantConf {
+		t.Errorf("confidence moved with the matrix: %d vs %d — the matrix is report-only and must not feed any gate", gotConf, wantConf)
+	}
+	if len(gotResults) != len(wantResults) {
+		t.Fatalf("sanity check COUNT moved with the matrix: %d vs %d", len(gotResults), len(wantResults))
+	}
+	// Compared BY NAME, not by slice position: runSanityChecks emits the
+	// per-language results in map-iteration order, so an index-wise comparison
+	// fails on run-to-run shuffling that has nothing to do with the matrix. A
+	// kill resting on that premise would be scheduling luck, not evidence.
+	index := func(rs []SanityResult) map[string]SanityResult {
+		m := make(map[string]SanityResult, len(rs))
+		for _, x := range rs {
+			m[x.Name] = x
+		}
+		return m
+	}
+	gotByName, wantByName := index(gotResults), index(wantResults)
+	for name, want := range wantByName {
+		got, ok := gotByName[name]
+		if !ok {
+			t.Errorf("sanity check %q exists only when the matrix is populated — the matrix is feeding a gate", name)
+			continue
+		}
+		if got != want {
+			t.Errorf("sanity result %q moved with the matrix:\n  empty:     %+v\n  populated: %+v", name, got, want)
+		}
+	}
+	for name := range gotByName {
+		if _, ok := wantByName[name]; !ok {
+			t.Errorf("sanity check %q exists only when the matrix is EMPTY — the matrix is feeding a gate", name)
+		}
+	}
+}
+
+// TestRender_RelKindMatrix_UnattributedOnlyGraphStillRenders covers the other
+// half of the empty-table guard: NO language is observed, but edges exist that
+// could not be attributed to one — the shape a graph takes when every entity
+// carries an empty Language. Narrowing the guard to `len(RelKindByLanguage) ==
+// 0` would print "_No language observed._" over the top of them and drop every
+// edge in the graph from the report without a word, which is the silent-drop
+// this issue is about, arrived at from the opposite direction.
+func TestRender_RelKindMatrix_UnattributedOnlyGraphStillRenders(t *testing.T) {
+	r := &Report{
+		TotalEntities:       500,
+		RelKindUnattributed: map[string]int{"USES": 3},
+	}
+	var buf bytes.Buffer
+	if err := Render(&buf, r); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	out := buf.String()
+	row := relRow(t, out, "_unattributed_")
+	if row == "" {
+		t.Fatalf("a graph whose every edge is unattributable renders no row at all — every edge it has is dropped from the report silently.\n%s", out)
+	}
+	if got, want := relEmittedCol(t, row), "USES (1-5)"; got != want {
+		t.Errorf("_unattributed_ emitted column = %q, want %q", got, want)
+	}
+}

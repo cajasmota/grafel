@@ -321,9 +321,11 @@ func renderRelKindByLanguage(w io.Writer, r *Report) {
 	}
 
 	// Edges whose source language could not be determined -- a dangling FromID
-	// or a source entity with no Language. Always rendered, including when the
-	// bucket is empty, so the reader can see that the number was measured and
-	// is zero rather than having to assume it. Dropping these silently would
+	// or a source entity with no Language. Rendered on every table that renders,
+	// including when the bucket is EMPTY, so a reader can tell measured-and-zero
+	// from never-measured rather than having to assume. (When no language is
+	// observed AND nothing is unattributable there is no table at all -- the
+	// guard above says so in one line; that is the whole scope of "every".) Dropping these silently would
 	// leave the table not summing to the relationship total, with nothing
 	// saying so -- the same shape of unnoticed relationship #6479 is about.
 	// It is not a language, so it takes no part in the peer arithmetic above.
