@@ -404,3 +404,57 @@ public class OtherController {
 		"Route:/a -> Controller:multi",
 	})
 }
+
+// TestDetect_SpringRoute_ApathIsNotClaimedWhenItIsNotTheLastLiteral pins the
+// DELETION of the `apath` claim (review round 4 on #6702).
+//
+// The claim used to register both `apath` (the AST's chosen path) and the
+// annotation's last string literal. Every spring_mvc.yaml relationship rule is
+// `@XMapping\s*\([^)]*["']([^"'\n\r]+)["'][^)]*\)`, so the emitted edge is
+// always `Route:<last literal>` and the filter can only ever look up the last
+// literal. That made the `apath` claim redundant on single-literal annotations
+// — and harmful whenever the two differ.
+//
+// `@GetMapping(path = "/x", name = "foo")` is the case where they differ:
+// `name` is a real @RequestMapping attribute, so `foo` is the last literal and
+// `/x` is the AST's path. Claiming `/x` claims an edge the regex never emitted,
+// and destroys a sibling controller's genuine `/x` edge instead.
+//
+// Axis VARIED: whether the literal is the AST's path (`path=`) or the regex's
+// capture (`name=`).
+// Axis HELD CONSTANT: the handler method name (`m` in both classes) and the
+// path string `/x`.
+func TestDetect_SpringRoute_ApathIsNotClaimedWhenItIsNotTheLastLiteral(t *testing.T) {
+	src := `package com.example.api;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api")
+public class NamedController {
+
+    @GetMapping(path = "/x", name = "foo")
+    public String m() {
+        return "1";
+    }
+}
+
+@RestController
+public class SiblingController {
+
+    @GetMapping("/x")
+    public String m() {
+        return "s";
+    }
+}
+`
+	got := collectRoutesTo(t, src, "src/main/java/com/example/api/Named.java")
+	assertEdgeSet(t, got, []string{
+		"Route:/api/x -> SCOPE.Operation:NamedController.m",
+		// NamedController's own YAML twin is `Route:foo -> Controller:m` (the
+		// LAST literal), and it is correctly claimed and suppressed — absent
+		// from this set. `/x` was never emitted for NamedController, so
+		// claiming it could only ever delete this sibling's only edge.
+		"Route:/x -> Controller:m",
+	})
+}

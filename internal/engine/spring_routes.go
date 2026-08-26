@@ -276,16 +276,27 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			composedPath := joinRoutePaths(prefix, apath)
 
 			out.claimedMethodPaths[apath] = true
-			// #6702/F1 — also claim the literal the YAML relationship regex
-			// actually captures (the LAST one in the argument list), which is
-			// not always the one the AST picked as the path. Both claims are
-			// bound to THIS annotation's own handler method: claiming a
-			// literal against any other method in the class would let one
-			// handler's path suppress a sibling controller's edge (finding A,
-			// pinned by TestDetect_SpringRoute_LiteralClaimIsBoundToItsOwnMethod).
-			// `apath` is claimed explicitly so the `apath == ""` (bare
-			// `@GetMapping`) case still registers.
-			out.claimedHandlerEdges[springHandlerClaimKey(apath, methodName)] = true
+			// #6702/F1 — claim the literal the YAML relationship regex actually
+			// captures: the LAST one in the argument list, which is not always
+			// the one the AST picked as the path (`apath`).
+			//
+			// `apath` itself is deliberately NOT claimed. Every relationship
+			// rule in spring_mvc.yaml has the shape
+			// `@XMapping\s*\([^)]*["']([^"'\n\r]+)["'][^)]*\)`, so the edge's
+			// FromID is ALWAYS `Route:<last literal>` and the filter can only
+			// ever look up the last literal. Claiming `apath` as well is
+			// therefore either redundant (single-literal annotations, where
+			// `apath` IS the last literal) or actively wrong: on
+			// `@GetMapping(path = "/x", name = "foo")` it claims `/x`, which
+			// the regex never emitted, and suppresses a sibling controller's
+			// real `/x` edge instead — #6498 all over again. Pinned by
+			// TestDetect_SpringRoute_ApathIsNotClaimedWhenItIsNotTheLastLiteral.
+			//
+			// The claim is bound to THIS annotation's own handler method:
+			// claiming a literal against any other method in the class would
+			// let one handler's path suppress a sibling controller's edge
+			// (finding A, pinned by
+			// TestDetect_SpringRoute_LiteralClaimIsBoundToItsOwnMethod).
 			if lit, ok := annotationLastStringLiteral(a, src); ok {
 				out.claimedHandlerEdges[springHandlerClaimKey(lit, methodName)] = true
 			}
