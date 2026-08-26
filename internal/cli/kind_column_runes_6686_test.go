@@ -402,14 +402,26 @@ func TestRebuildKindColumnPaddingUsesTheComputedWidth(t *testing.T) {
 // value declared as an EntityKind or RelationshipKind constant, keyed by
 // constant name.
 //
-// It reads the declarations rather than a hand-copied list, so a newly
-// declared kind is covered without anyone updating this test.
+// It reads the declarations rather than a hand-copied list. The bound is
+// exactly this, and no wider: EVERY const spec in that ONE FILE is either
+// evaluated and checked, or fails the test naming itself. Nothing is dropped
+// in silence. Kinds declared in some other file, kinds that come from YAML
+// rule files, and enrichment kinds read from JSON are outside it — see
+// TestEngineTaxonomyKindLiteralsAreASCII and the note on maxKindLen.
 //
-// It is deliberately INTOLERANT of const values it cannot evaluate. A const
-// whose value is a concatenation, a conversion or a Sprintf is not a
-// *ast.BasicLit; an earlier version of this parse silently skipped those, and
-// a kind declared in that shape was covered by nothing. Such a spec now fails
-// the test with an instruction, rather than being dropped.
+// Two filters had to become intolerant to make that true, and both were found
+// by review rather than by design:
+//
+//   - THE VALUE. A const whose value is a concatenation, a conversion or a
+//     Sprintf is not an *ast.BasicLit. Those used to be skipped silently, so
+//     a kind declared in that shape was covered by nothing.
+//
+//   - THE TYPE. A const with no explicit EntityKind/RelationshipKind type
+//     used to be skipped silently too, so an untyped `EntityKindFoo =
+//     "SCOPE.Foo"` was covered by nothing either — a narrower hole than the
+//     first, but the same hole. Only a spec that is PROVABLY not a string
+//     (an int, float, rune or imaginary literal) may now be skipped without
+//     an explicit type; anything else must say what it is.
 func kindConstantsFromSource(t *testing.T) map[string]string {
 	t.Helper()
 	const path = "../types/kinds.go"
@@ -420,41 +432,95 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 
+	// nonStringLiteral reports whether every value in a spec is a literal that
+	// is provably NOT a string (an int, float, rune or imaginary). Only such a
+	// spec may be skipped without an explicit type: it cannot be a kind.
+	nonStringLiteral := func(values []ast.Expr) bool {
+		for _, e := range values {
+			lit, ok := e.(*ast.BasicLit)
+			if !ok || lit.Kind == token.STRING {
+				return false
+			}
+		}
+		return len(values) > 0
+	}
+
 	out := map[string]string{}
 	for _, decl := range f.Decls {
 		gd, ok := decl.(*ast.GenDecl)
 		if !ok || gd.Tok != token.CONST {
 			continue
 		}
-		lastType := ""
+		// Implicit repetition: a spec with neither a type nor values repeats
+		// the previous spec's type AND value list. A spec that HAS values does
+		// not inherit anything, whether or not it declares a type — carrying
+		// the type across such a spec is what made a plain `n = 64` in this
+		// block get reported as an EntityKind.
+		var lastType string
+		var lastValues []ast.Expr
 		for _, spec := range gd.Specs {
 			vs, ok := spec.(*ast.ValueSpec)
 			if !ok {
 				continue
 			}
-			if vs.Type != nil {
-				lastType = ""
+
+			typeName := ""
+			values := vs.Values
+			switch {
+			case vs.Type != nil:
 				if id, ok := vs.Type.(*ast.Ident); ok {
-					lastType = id.Name
+					typeName = id.Name
+				} else {
+					typeName = "<non-ident type>"
 				}
+				lastType, lastValues = typeName, values
+			case len(values) == 0:
+				typeName, values = lastType, lastValues
+			default:
+				typeName = "" // untyped, or typed by its own expression
+				lastType, lastValues = "", values
 			}
-			if lastType != "EntityKind" && lastType != "RelationshipKind" {
+
+			switch {
+			case typeName == "EntityKind" || typeName == "RelationshipKind":
+				// fall through to the value check below
+			case typeName != "":
+				// Explicitly some other type. Not a kind; skipping is safe
+				// because the declaration says so.
+				continue
+			case nonStringLiteral(values):
+				// Untyped, but provably not a string. Cannot be a kind.
+				continue
+			default:
+				// Untyped and not provably non-string. This is the shape that
+				// used to be dropped in silence: an untyped string const such
+				// as `EntityKindFoo = "SCOPE.Foo"` is a kind for every
+				// practical purpose, reaches the graph like any other, and was
+				// covered by nothing. Refuse to guess.
+				for _, name := range vs.Names {
+					t.Errorf("%s: const %s in %s has no explicit EntityKind/RelationshipKind "+
+						"type and is not provably a non-string literal, so this test cannot "+
+						"tell whether it is a kind. Declare its type explicitly (every const "+
+						"in this file does today) — do NOT leave a possible kind unchecked.",
+						fset.Position(name.Pos()), name.Name, path)
+				}
 				continue
 			}
+
 			for i, name := range vs.Names {
-				if i >= len(vs.Values) {
+				if i >= len(values) {
 					t.Errorf("%s: const %s (%s) has no value expression this test can read; "+
 						"extend kindConstantsFromSource rather than leaving the kind unchecked",
-						fset.Position(name.Pos()), name.Name, lastType)
+						fset.Position(name.Pos()), name.Name, typeName)
 					continue
 				}
-				lit, ok := vs.Values[i].(*ast.BasicLit)
+				lit, ok := values[i].(*ast.BasicLit)
 				if !ok || lit.Kind != token.STRING {
 					t.Errorf("%s: const %s (%s) is not declared as a plain string literal, so "+
 						"this test cannot evaluate it and cannot confirm it is ASCII. Either "+
 						"declare it as a string literal or extend kindConstantsFromSource to "+
 						"evaluate this shape — do NOT leave the kind unchecked.",
-						fset.Position(name.Pos()), name.Name, lastType)
+						fset.Position(name.Pos()), name.Name, typeName)
 					continue
 				}
 				v, err := strconv.Unquote(lit.Value)
@@ -465,10 +531,16 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 			}
 		}
 	}
-	if len(out) == 0 {
-		t.Fatalf("parsed no EntityKind/RelationshipKind constants from %s — "+
-			"the declaration shape changed and this test is no longer reading "+
-			"the source of truth", path)
+
+	// Vacuity floor, derived rather than hand-maintained: the registry
+	// accessors enumerate the kinds this parse must at minimum have found.
+	// A parse that narrows to a subset of the const blocks fails here, not
+	// merely a parse that finds nothing at all.
+	minKinds := len(types.AllEntityKinds()) + len(types.AllRelationshipKinds())
+	if len(out) < minKinds {
+		t.Fatalf("parsed %d EntityKind/RelationshipKind constants from %s, but the registry "+
+			"accessors alone list %d — the declaration shape changed and this test is no "+
+			"longer reading the source of truth", len(out), path, minKinds)
 	}
 	return out
 }
@@ -537,18 +609,43 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 		t.Fatalf("read %s: %v", dir, err)
 	}
 
-	fset := token.NewFileSet()
-	seen := 0
+	// Pass 1 — establish the POPULATION this test claims to cover, before any
+	// parsing. A test whose purpose is to enumerate a population must fail
+	// when the enumeration narrows, not only when it collapses to nothing: a
+	// bare `seen == 0` guard let a walk restricted to a single file stay green
+	// with 202 of 203 files silently out of coverage.
+	var eligible []string
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		path := filepath.Join(dir, name)
+		eligible = append(eligible, filepath.Join(dir, name))
+	}
+
+	// Loose floor on the population itself. internal/engine holds ~204
+	// non-test files; the exact count churns every week, so it is deliberately
+	// not pinned. This catches the directory being emptied, moved, or filtered
+	// down to a handful.
+	const minEngineFiles = 100
+	if len(eligible) < minEngineFiles {
+		t.Fatalf("found %d non-test .go files under %s, want at least %d — the engine "+
+			"package moved or this walk is no longer enumerating it",
+			len(eligible), dir, minEngineFiles)
+	}
+
+	// Pass 2 — every eligible file must actually be parsed. This is the
+	// derived guard: the denominator comes from pass 1, so a narrowed walk
+	// fails without anyone maintaining a count.
+	fset := token.NewFileSet()
+	parsed := 0
+	seen := 0
+	for _, path := range eligible {
 		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 		if perr != nil {
 			t.Fatalf("parse %s: %v", path, perr)
 		}
+		parsed++
 		ast.Inspect(f, func(n ast.Node) bool {
 			kv, ok := n.(*ast.KeyValueExpr)
 			if !ok {
@@ -575,9 +672,24 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 			return true
 		})
 	}
-	if seen == 0 {
-		t.Fatalf(`found no Kind: "..." literals under %s — the producer shape moved and `+
-			`this test is no longer reading anything`, dir)
+
+	if parsed != len(eligible) {
+		t.Errorf("parsed %d of %d eligible files under %s — the walk skipped files and "+
+			"those are silently outside this invariant", parsed, len(eligible), dir)
+	}
+
+	// Loose floor on the literals, for the same reason as the file floor: 53
+	// today, measured, not guessed — most engine producers reference a
+	// types.EntityKind* constant rather than writing a bare string, which is
+	// why the count is far below the file count. A walk that parses every file
+	// but stops collecting would pass the check above; this catches it. The
+	// exact number is deliberately not pinned, since converting a literal to a
+	// typed constant is an improvement and must not fail this test.
+	const minKindLiterals = 25
+	if seen < minKindLiterals {
+		t.Fatalf(`collected %d Kind: "..." literals from %d files under %s, want at least %d — `+
+			`the producer shape moved and this test is no longer reading it`,
+			seen, parsed, dir, minKindLiterals)
 	}
 }
 
@@ -618,28 +730,63 @@ func normaliseEntityKindLiterals(t *testing.T) (cases, results []string) {
 		return v, err == nil
 	}
 
+	// Per-clause accounting, not a global non-empty check. A bare
+	// `len(cases) == 0` guard would stay green if the reader started skipping
+	// all but one clause — the same vacuity shape as a narrowed file walk.
+	clauses := 0
 	ast.Inspect(fn, func(n ast.Node) bool {
-		switch v := n.(type) {
-		case *ast.CaseClause:
-			for _, e := range v.List {
-				if s, ok := str(e); ok {
-					cases = append(cases, s)
-				}
+		cc, ok := n.(*ast.CaseClause)
+		if !ok {
+			return true
+		}
+		if cc.List == nil { // the default clause: `return kind`, no literals
+			return true
+		}
+		clauses++
+		gotCase, gotResult := 0, 0
+		for _, e := range cc.List {
+			if s, ok := str(e); ok {
+				cases = append(cases, s)
+				gotCase++
 			}
-		case *ast.ReturnStmt:
-			for _, e := range v.Results {
+		}
+		for _, stmt := range cc.Body {
+			ret, ok := stmt.(*ast.ReturnStmt)
+			if !ok {
+				continue
+			}
+			for _, e := range ret.Results {
 				if s, ok := str(e); ok {
 					results = append(results, s)
+					gotResult++
 				}
 			}
+		}
+		if gotCase == 0 || gotResult == 0 {
+			t.Errorf("%s: normaliseEntityKind clause at this position yielded %d case "+
+				"literals and %d returned literals; this reader no longer covers it",
+				fset.Position(cc.Pos()), gotCase, gotResult)
 		}
 		return true
 	})
 
-	if len(cases) == 0 || len(results) == 0 {
-		t.Fatalf("read %d case literals and %d returned literals from normaliseEntityKind — "+
+	// Derived floor: every non-default clause must have contributed. A reader
+	// that finds fewer clauses than the switch has is not reading the switch.
+	wantClauses := 0
+	ast.Inspect(fn, func(n ast.Node) bool {
+		if cc, ok := n.(*ast.CaseClause); ok && cc.List != nil {
+			wantClauses++
+		}
+		return true
+	})
+	if clauses != wantClauses || wantClauses == 0 {
+		t.Fatalf("read %d of %d non-default clauses in normaliseEntityKind — "+
 			"the switch shape changed and this test is no longer reading it",
-			len(cases), len(results))
+			clauses, wantClauses)
+	}
+	if len(cases) < wantClauses || len(results) < wantClauses {
+		t.Fatalf("read %d case literals and %d returned literals across %d clauses — "+
+			"expected at least one of each per clause", len(cases), len(results), wantClauses)
 	}
 	return cases, results
 }

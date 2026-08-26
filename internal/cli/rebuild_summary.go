@@ -421,8 +421,8 @@ func PrintRebuildSummary(w io.Writer, s *RebuildSummary) {
 //     table shares this one width and stays in agreement; the whole column is
 //     simply too wide and every payload shifts right.
 //
-//   - THE FLOOR (withOther) can genuinely ragged the rows. If withOther is
-//     wrongly false while every kind is shorter than "Other", the returned
+//   - THE FLOOR (withOther) can genuinely make the rows ragged. If withOther
+//     is wrongly false while every kind is shorter than "Other", the returned
 //     width is below 5, and the "Other" row — which is not one of rows — then
 //     overflows the column while its siblings are padded to the smaller
 //     width. That is the one case in this function where rows inside a single
