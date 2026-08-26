@@ -276,13 +276,17 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			composedPath := joinRoutePaths(prefix, apath)
 
 			out.claimedMethodPaths[apath] = true
-			// #6702/F1 — claim every literal the YAML relationship regex could
-			// have captured, not just the one the AST picked as the path.
-			// `apath` itself is among them for every annotation that has a
-			// path argument; it is claimed explicitly so the `apath == ""`
-			// (bare `@GetMapping`) case still registers.
+			// #6702/F1 — also claim the literal the YAML relationship regex
+			// actually captures (the LAST one in the argument list), which is
+			// not always the one the AST picked as the path. Both claims are
+			// bound to THIS annotation's own handler method: claiming a
+			// literal against any other method in the class would let one
+			// handler's path suppress a sibling controller's edge (finding A,
+			// pinned by TestDetect_SpringRoute_LiteralClaimIsBoundToItsOwnMethod).
+			// `apath` is claimed explicitly so the `apath == ""` (bare
+			// `@GetMapping`) case still registers.
 			out.claimedHandlerEdges[springHandlerClaimKey(apath, methodName)] = true
-			for _, lit := range annotationStringLiterals(a, src) {
+			if lit, ok := annotationLastStringLiteral(a, src); ok {
 				out.claimedHandlerEdges[springHandlerClaimKey(lit, methodName)] = true
 			}
 
@@ -412,37 +416,48 @@ func annotationNameAndPath(anno ts.Node, src []byte) (string, string) {
 	return name, positional
 }
 
-// annotationStringLiterals returns EVERY string literal in the annotation's
-// argument list, in source order, including ones nested inside an
-// array_initializer (`value = {"/a", "/b"}`).
+// annotationLastStringLiteral returns the LAST string literal in the
+// annotation's argument list, which is the only literal the spring_mvc.yaml
+// relationship rules can ever capture.
 //
 // #6702/F1 — the AST side and the YAML side disagree about which literal is
-// the path: annotationNameAndPath prefers the `value=`/`path=` pair, while the
-// spring_mvc.yaml relationship regex (`[^)]*["']([^"'\n\r]+)["'][^)]*\)`) is
-// greedy and captures the LAST literal in the argument list. On
+// the path: annotationNameAndPath prefers the `value=`/`path=` pair, while each
+// of the six relationship rules is `[^)]*["']([^"'\n\r]+)["'][^)]*\)` —
+// greedy, one capture per annotation, always the LAST literal. On
 // `@PostMapping(value = "/things", consumes = "application/json")` that is the
 // media type, so the YAML edge is `Route:application/json -> Controller:create`.
-// Claiming only the AST's preferred literal would leave that edge unsuppressed
-// — dangling on both ends, since no `Route:application/json` entity exists (the
+// Claiming only the AST's preferred literal left that edge unsuppressed —
+// dangling on both ends, since no `Route:application/json` entity exists (the
 // entity rule anchors on the FIRST literal) and `Controller:` stubs resolve to
-// nothing (#6429). Claiming every literal the regex could land on restores
-// suppression without giving up the pair key that #6498 needs.
-func annotationStringLiterals(anno ts.Node, src []byte) []string {
+// nothing (#6429).
+//
+// #6702/finding B — this returns the last literal, NOT every literal. The
+// regex emits exactly one edge per annotation, so any earlier literal is
+// claimed for something that was never emitted. For
+// `@GetMapping(value = {"/a", "/b"})` only `/b` is reachable; claiming `/a` as
+// well would swallow a sibling controller's genuine `/a` edge, which is #6498
+// re-entering through this widening. Pinned by
+// TestDetect_SpringRoute_ArrayValueClaimsOnlyTheReachableLiteral.
+//
+// The walk is generic rather than node-type-driven so it reaches literals
+// nested inside an `element_value_array_initializer` (tree-sitter-java's node
+// type for the `{...}` in `value = {"/a", "/b"}`) without naming it.
+func annotationLastStringLiteral(anno ts.Node, src []byte) (string, bool) {
 	if anno == nil {
-		return nil
+		return "", false
 	}
 	args := anno.ChildByFieldName("arguments")
 	if args == nil {
-		return nil
+		return "", false
 	}
-	var out []string
+	last, found := "", false
 	var walk func(n ts.Node)
 	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
 		if n.Type() == "string_literal" {
-			out = append(out, stripStringLiteral(nodeText(n, src)))
+			last, found = stripStringLiteral(nodeText(n, src)), true
 			return
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
@@ -450,7 +465,7 @@ func annotationStringLiterals(anno ts.Node, src []byte) []string {
 		}
 	}
 	walk(args)
-	return out
+	return last, found
 }
 
 // stripStringLiteral removes the surrounding quotes from a Java string

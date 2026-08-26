@@ -300,3 +300,107 @@ public class ProbeSiblingController {
 		"Route:/probe -> Controller:check",
 	})
 }
+
+// TestDetect_SpringRoute_LiteralClaimIsBoundToItsOwnMethod pins the
+// enclosing-method bound on the F1 literal claim (review finding A on #6702).
+//
+// The extra literals a verb annotation contributes are claimed against THAT
+// annotation's own handler and no other. Claiming them against every method in
+// the class would let `/alpha` (MappedController.one's path) suppress a sibling
+// controller's `/alpha` edge purely because the sibling's handler happens to
+// share a name with MappedController.two — #6498 again, re-entering through the
+// F1 widening.
+//
+// Axis VARIED: which method inside the mapped class owns the literal
+// (`one` owns `/alpha`, `two` owns `/beta`).
+// Axis HELD CONSTANT: the literal `/alpha` and the method name `two`, which are
+// deliberately split across different methods so only an unbounded claim joins them.
+func TestDetect_SpringRoute_LiteralClaimIsBoundToItsOwnMethod(t *testing.T) {
+	src := `package com.example.api;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api")
+public class MappedController {
+
+    @GetMapping("/alpha")
+    public String one() {
+        return "1";
+    }
+
+    @GetMapping("/beta")
+    public String two() {
+        return "2";
+    }
+}
+
+@RestController
+public class SiblingController {
+
+    @GetMapping("/alpha")
+    public String two() {
+        return "s";
+    }
+}
+`
+	got := collectRoutesTo(t, src, "src/main/java/com/example/api/Alpha.java")
+	assertEdgeSet(t, got, []string{
+		"Route:/api/alpha -> SCOPE.Operation:MappedController.one",
+		"Route:/api/beta -> SCOPE.Operation:MappedController.two",
+		// SiblingController.two's only edge. `/alpha` is claimed by
+		// MappedController.ONE, not by anything named `two`.
+		"Route:/alpha -> Controller:two",
+	})
+}
+
+// TestDetect_SpringRoute_ArrayValueClaimsOnlyTheReachableLiteral pins the
+// UPPER bound of the F1 widening (review finding B on #6702).
+//
+// Each of the six spring_mvc.yaml relationship rules is
+// `...[^)]*["']([^"'\n\r]+)["'][^)]*\)` — greedy, one capture per annotation,
+// always the LAST literal. So for `@GetMapping(value = {"/a", "/b"})` the only
+// YAML edge the regex can ever emit is `Route:/b -> Controller:multi`. Claiming
+// `/a` as well claims something that was never emitted, and swallows a sibling
+// controller's genuine `/a` edge instead.
+//
+// Axis VARIED: position within the array initializer (first vs last literal).
+// Axis HELD CONSTANT: the handler method name (`multi` in both classes).
+func TestDetect_SpringRoute_ArrayValueClaimsOnlyTheReachableLiteral(t *testing.T) {
+	src := `package com.example.api;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api")
+public class ArrController {
+
+    @GetMapping(value = {"/a", "/b"})
+    public String multi() {
+        return "m";
+    }
+}
+
+@RestController
+public class OtherController {
+
+    @GetMapping("/a")
+    public String multi() {
+        return "o";
+    }
+}
+`
+	got := collectRoutesTo(t, src, "src/main/java/com/example/api/Arr.java")
+	assertEdgeSet(t, got, []string{
+		// The composed route. Array-valued `value = {...}` yields no path from
+		// annotationNameAndPath, so this composes to the bare class prefix —
+		// that is #6706, pre-existing and out of scope here.
+		"Route:/api -> SCOPE.Operation:ArrController.multi",
+		// `/b` IS the literal the regex lands on, so its YAML twin is claimed
+		// and correctly suppressed — it is absent from this set.
+		//
+		// `/a` is not reachable by the regex, so claiming it would only ever
+		// destroy someone else's edge. OtherController's sole edge survives.
+		"Route:/a -> Controller:multi",
+	})
+}
