@@ -417,33 +417,45 @@ func TestRebuildKindColumnPaddingUsesTheComputedWidth(t *testing.T) {
 // value declared as an EntityKind or RelationshipKind constant, keyed by
 // constant name.
 //
-// WHAT THIS ACTUALLY PINS, stated as the mechanism rather than as a slogan.
-// Three rounds of review have falsified a stronger-sounding sentence here, so
-// this one describes the branches:
+// WHAT THIS ACTUALLY PINS. Written by reading the switch arms below and
+// describing each one, because the previous four attempts at this comment were
+// each falsified by a probe within a round.
 //
-// For each const spec in that ONE file, exactly one of these happens:
-//  1. its type resolves — through parentheses and file-local aliases — to
-//     EntityKind or RelationshipKind: the value is evaluated and checked, or
-//     the test fails naming the const if the value is not a string literal;
-//  2. its type resolves to some other NAME *and* every value is a literal
-//     that is provably not a string (int, float, rune, imaginary): skipped,
-//     on two independent grounds;
-//  3. anything else — no explicit type, a type expression that does not
-//     reduce to an identifier, or another named type with a string-ish
-//     value: the test FAILS naming the const.
+// Each const spec is classified by a four-arm switch. In order:
 //
-// So a spec is skipped in silence only in case 2. Everything else is either
-// checked or loud. Coverage does not depend on the kind reaching
+//  1. `resolved && (typeName == "EntityKind" || typeName == "RelationshipKind")`
+//     — the type resolved, through parentheses and file-local aliases and
+//     definitions, to a kind type. The value is evaluated and checked for
+//     ASCII, or the test FAILS naming the const if the value is not a plain
+//     string literal.
+//
+//  2. `resolved && typeName != "" && nonStringLiteral(values)` — some other
+//     NAMED type, and every value is a literal provably not a string.
+//     SKIPPED SILENTLY, on two independent grounds.
+//
+//  3. `nonStringLiteral(values)` — no usable type name (untyped, or a type
+//     expression that did not reduce to an identifier), but every value is
+//     provably not a string. SKIPPED SILENTLY, on that one ground. This is
+//     the arm that lets a plain `maxEntityKindNameLen = 64` sit in the
+//     EntityKind block without complaint.
+//
+//  4. default — everything else: no explicit type with a string-ish value, an
+//     unresolvable type expression with a string-ish value, or another named
+//     type with a string-ish value. The test FAILS naming the const.
+//
+// So TWO arms skip in silence, 2 and 3, and both require the value to be
+// provably a non-string literal. No spec with a string or string-ish value is
+// ever skipped in silence. Coverage does not depend on the kind reaching
 // types.AllEntityKinds().
 //
 // OUTSIDE this bound, and covered by nothing here: kinds declared in any other
 // file, kinds that come from YAML rule files, and enrichment kinds read from
 // JSON. See TestEngineTaxonomyKindLiteralsAreASCII and the note on maxKindLen.
 //
-// Each branch above closed a hole a probe found, not a hole anyone predicted:
-// the value check (round 2) after a Sprintf-valued const passed; the untyped
-// check (round 3) after `EntityKindFoo = "SCOPE.Foo"` passed; the parenthesis
-// and alias resolution (round 4) after `(EntityKind)` and a `= EntityKind`
+// Each arm was added after a probe found the hole it closes, not by design:
+// the value check in arm 1 after a Sprintf-valued const passed; arm 4's
+// untyped case after `EntityKindFoo = "SCOPE.Foo"` passed; the parenthesis and
+// alias resolution feeding arm 1 after `(EntityKind)` and a `= EntityKind`
 // alias both passed.
 func kindConstantsFromSource(t *testing.T) map[string]string {
 	t.Helper()
@@ -556,11 +568,12 @@ func kindConstantsFromSource(t *testing.T) map[string]string {
 				// Untyped, but provably not a string. Cannot be a kind.
 				continue
 			default:
-				// Untyped and not provably non-string. This is the shape that
-				// used to be dropped in silence: an untyped string const such
-				// as `EntityKindFoo = "SCOPE.Foo"` is a kind for every
-				// practical purpose, reaches the graph like any other, and was
-				// covered by nothing. Refuse to guess.
+				// Reached three ways, all with a string-ish value: no explicit
+				// type, a type expression that did not reduce to a name, or
+				// some other named type. An untyped string const such as
+				// `EntityKindFoo = "SCOPE.Foo"` is a kind for every practical
+				// purpose, reaches the graph like any other, and was covered by
+				// nothing until this arm existed. Refuse to guess.
 				shown := typeName
 				if !resolved {
 					shown = "<a type expression this test cannot resolve to a name>"
@@ -684,6 +697,16 @@ func TestKindConstantsAreASCII(t *testing.T) {
 // numerator and the denominator together and the test stays green. Measured —
 // adding `if name > "n" { continue }` to that filter dropped 65 of 204 files
 // (32%) and 7 of 53 literals with the suite still passing.
+//
+// An independent denominator is necessary but not sufficient: it only pins
+// what the numerator actually counts. While the numerator was recorded on
+// file OPEN, a skip placed between the record and ast.Inspect bypassed the
+// census entirely without either traversal moving. The record now sits after
+// inspection for that reason.
+//
+// The literal floor below is a backstop, not the guard — it cannot be the
+// guard on the file axis, because 53 literals sit in only 21 of 204 files, so
+// dropping most of the population costs almost no literals.
 func engineCensus(t *testing.T, dir string) map[string]bool {
 	t.Helper()
 	out := map[string]bool{}
@@ -747,7 +770,6 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 		if perr != nil {
 			t.Fatalf("parse %s: %v", path, perr)
 		}
-		parsed[filepath.Base(path)] = true
 		ast.Inspect(f, func(n ast.Node) bool {
 			kv, ok := n.(*ast.KeyValueExpr)
 			if !ok {
@@ -773,11 +795,21 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 			}
 			return true
 		})
+		// Recorded AFTER ast.Inspect, not after ParseFile. Recording it on
+		// open pins which files were OPENED, and a narrowing placed one line
+		// below the record — `if strings.Contains(path, "_edges") { continue }`
+		// — then moves the numerator alone, invisibly to the census. Measured:
+		// that mutant dropped 46 of 204 files (22.5%) with every guard here
+		// green. This line marks a file covered only once it has actually been
+		// inspected.
+		parsed[filepath.Base(path)] = true
 	}
 
 	// The real guard: every file the INDEPENDENT census found must have been
-	// parsed. Narrowing either the eligibility filter or the parse loop leaves
-	// the census untouched, so the two cannot move together.
+	// inspected. The census re-walks the directory with a different API, so a
+	// narrowing of the eligibility filter or of the parse loop moves only the
+	// numerator and is caught here. What this does NOT protect against is a
+	// bypass placed after the record above — hence the record sits last.
 	census := engineCensus(t, dir)
 	var missing []string
 	for name := range census {
@@ -791,7 +823,7 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 		if len(show) > 10 {
 			show = show[:10]
 		}
-		t.Errorf("%d of %d non-test files under %s were never parsed, so they are silently "+
+		t.Errorf("%d of %d non-test files under %s were never INSPECTED, so they are silently "+
 			"outside this invariant: %v%s", len(missing), len(census), dir, show,
 			map[bool]string{true: " …", false: ""}[len(missing) > len(show)])
 	}
@@ -799,7 +831,7 @@ func TestEngineTaxonomyKindLiteralsAreASCII(t *testing.T) {
 	// two enumerations are pinned to each other in both directions.
 	for name := range parsed {
 		if !census[name] {
-			t.Errorf("parsed %s under %s, which the independent census did not find — "+
+			t.Errorf("inspected %s under %s, which the independent census did not find — "+
 				"the two enumerations disagree", name, dir)
 		}
 	}
