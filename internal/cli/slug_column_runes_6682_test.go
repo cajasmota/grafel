@@ -126,13 +126,18 @@ func TestDoctorSlugColumnIsSizedInRunesNotBytes(t *testing.T) {
 	// Whichever unit the code uses, exactly one of those two is the source of
 	// the number, which is what separates the implementations by 3 columns.
 	//
-	// No slug's own byte length equals the 7-rune column, and every warning
-	// below hangs off a repo whose byte length differs from it. That is
-	// deliberate: it is what makes a HALF-fix scoreable — a mutant that sizes
-	// in runes but leaves ONE padding site writing len(r.Slug) survives
-	// otherwise, because a 5-byte slug in a 5-wide column lands on the right
-	// column by luck. Measured: exactly that mutant survived until the slugs
-	// were rebalanced.
+	// No NON-ASCII slug's byte length equals the 7-rune column, and every
+	// warning below hangs off such a repo. That is deliberate: it is what
+	// makes a HALF-fix scoreable — a mutant that sizes in runes but leaves ONE
+	// padding site writing len(r.Slug) survives otherwise, because a 5-byte
+	// slug in a 5-wide column lands on the right column by luck. Measured:
+	// exactly that mutant survived until the slugs were rebalanced.
+	//
+	// "asciixx" IS 7 bytes in the 7-wide column, and that is fine rather than
+	// an oversight: len == runes on ASCII, so a len() mutant is invisible on
+	// its lines under either implementation and it carries no warning. The
+	// premise guard below is correspondingly weaker than the sentence above —
+	// it fires only for a slug where the two units actually differ.
 	slugs := []string{"asciixx", "café", "日本語x"}
 	wantWidth := slugWidthPremise6682(t, slugs, []string{"é", "日"})
 	if wantWidth != 7 {
@@ -314,6 +319,69 @@ func TestStatusSlugColumnIsSizedInRunesNotBytes(t *testing.T) {
 		if got := runeColumn6682(t, c.what, line, c.anchor); got != wantCol {
 			t.Errorf("%s: payload starts at rune column %d, want %d "+
 				"(%d indent + %d-rune slug column + %d gap)\nline: %q",
+				c.what, got, wantCol, statusIndent6682, wantWidth, columnGap6682, line)
+		}
+	}
+}
+
+// TestStatusSlugColumnFloorIsCountedInRunes is TestDoctorSlugColumnFloor…'s
+// missing neighbour, and the axis every other test in this file holds constant:
+// WHICH PRINTER.
+//
+// Both printers carry their own `if maxSlugLen < 4 { maxSlugLen = 4 }`. Every
+// status fixture above uses a 7-rune slug, so the status floor never binds
+// anywhere in the package and nothing observed it. Measured on the branch
+// before this test existed: flattening status_stats.go's floor to
+// `if maxSlugLen < 0 { maxSlugLen = 0 }` passed the FULL package suite (exit
+// 0) while doctor's identical mutant died four times over.
+//
+// The slugs are the floor fixture's: "é" is 2 bytes / 1 rune and "日本" is 6
+// bytes / 2 runes, so the column is the 4-column floor under rune counting, 6
+// under byte counting, and neither slug's own byte length is 4 — a per-row
+// len() padding mutant cannot reach the right column by luck either.
+func TestStatusSlugColumnFloorIsCountedInRunes(t *testing.T) {
+	slugs := []string{"é", "日本"}
+	wantWidth := slugWidthPremise6682(t, slugs, []string{"é", "日"})
+	if wantWidth != 4 {
+		t.Fatalf("premise: want the 4-column floor from %q, got %d", slugs, wantWidth)
+	}
+	for _, sl := range slugs {
+		if len(sl) == wantWidth {
+			t.Fatalf("fixture slug %q has byte length == the floor width", sl)
+		}
+	}
+
+	s := &StatusSummary{
+		GroupName: "g6682d",
+		RepoStats: map[string]*RepoStatus{
+			// Files is 6 digits so it overflows the "%5s" field: no
+			// right-alignment padding is emitted and the literal below marks
+			// the payload's first column exactly. See the sibling status test.
+			"é": {
+				Files: 123456, Entities: 1, Relationships: 1, LastIndexedAge: "1h ago",
+				GraphLoadError: "E-GRAPHERR-6682",
+			},
+			"日本": {
+				Files: 234567, Entities: 2, Relationships: 2, LastIndexedAge: "2h ago",
+				RebuildFailure: &statusfile.RebuildFailure{Reason: "CJK-FLOOR-6682"},
+			},
+		},
+	}
+	var sb strings.Builder
+	PrintStatusSummary(&sb, s)
+	out := sb.String()
+
+	wantCol := statusIndent6682 + wantWidth + columnGap6682
+	for _, c := range []struct{ what, needle, anchor string }{
+		{"status row (é)", "123,456", "123,456"},
+		{"status row (日本)", "234,567", "234,567"},
+		{"#6013 graph-load-error warning (é)", "E-GRAPHERR-6682", "⚠"},
+		{"#5822 rebuild-failure warning (日本)", "CJK-FLOOR-6682", "⚠"},
+	} {
+		line := lineContaining6682(t, out, c.needle)
+		if got := runeColumn6682(t, c.what, line, c.anchor); got != wantCol {
+			t.Errorf("%s: payload starts at rune column %d, want %d "+
+				"(%d indent + the %d-column floor + %d gap)\nline: %q",
 				c.what, got, wantCol, statusIndent6682, wantWidth, columnGap6682, line)
 		}
 	}
