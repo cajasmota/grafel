@@ -61,10 +61,18 @@ func survivorSkewDocs(surv, del, add int, survKind, churnKind string) (prev, nex
 // TestDetectRenamesBounded_CandidateSetsExcludeSurvivors_6509 pins the size of
 // both candidate sets through RenameStats.Candidates == len(deleted)*len(added).
 //
-// Each row is chosen so that the correct product, the product with the newIDs
-// guard dropped ((surv+del)*add), and the product with the prevIDs guard
-// dropped (del*(surv+add)) are three DISTINCT numbers — so a row cannot pass
-// by accident under either mutant.
+// On every row except the negative control, the correct product differs from
+// BOTH mutant products — (surv+del)*add with the newIDs guard dropped, and
+// del*(surv+add) with the prevIDs guard dropped — so no such row can pass by
+// accident under either mutant.
+//
+// The two mutant products are distinct from each other on only three rows
+// (many_survivors_del_lt_add, many_survivors_del_gt_add, one_survivor). On
+// single_churn_pair_in_large_graph (1 vs 26 vs 26) and survivors_of_other_kind
+// (4 vs 64 vs 64) they coincide: those rows prove a guard is missing but not
+// WHICH one. Attributing the failure to a specific arm is the job of
+// TestDetectRenamesBounded_SurvivorIsNeverRenameCandidate_6509 below, whose two
+// traps fire independently.
 func TestDetectRenamesBounded_CandidateSetsExcludeSurvivors_6509(t *testing.T) {
 	t.Parallel()
 
@@ -84,11 +92,15 @@ func TestDetectRenamesBounded_CandidateSetsExcludeSurvivors_6509(t *testing.T) {
 		{name: "many_survivors_del_lt_add", surv: 40, del: 2, add: 3, survKind: "Function", churnKind: "Function", wantCandidates: 6},
 		// Survivor-heavy, del > add — the product must not be symmetric-blind.
 		{name: "many_survivors_del_gt_add", surv: 10, del: 5, add: 2, survKind: "Function", churnKind: "Function", wantCandidates: 10},
-		// A single survivor is already enough to separate the three products.
+		// A single survivor is already enough to separate all three products
+		// (15 correct, 20 with newIDs dropped, 18 with prevIDs dropped).
 		{name: "one_survivor", surv: 1, del: 3, add: 5, survKind: "Function", churnKind: "Function", wantCandidates: 15},
 		// Minimal churn against a large stable graph — the bound the function
-		// is named for: work stays proportional to K, not to N.
-		{name: "single_rename_in_large_graph", surv: 25, del: 1, add: 1, survKind: "Function", churnKind: "Function", wantCandidates: 1},
+		// is named for: work stays proportional to K, not to N. The one
+		// disappeared and one new entity are UNRELATED (survivorSkewDocs builds
+		// name families that match nothing), so this row emits no RENAMED_FROM
+		// edge; it is a churn pair, not a rename.
+		{name: "single_churn_pair_in_large_graph", surv: 25, del: 1, add: 1, survKind: "Function", churnKind: "Function", wantCandidates: 1},
 		// Survivors of a DIFFERENT kind from the churn: membership is decided
 		// by entity ID, not by kind bucketing, so kind must not rescue a
 		// missing guard.
