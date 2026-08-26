@@ -77,7 +77,40 @@ type Report struct {
 	EntitiesByLanguage map[string]int    // lang → count (suppressed when < 10)
 	EntityKindDist     []EntityKindLang  // kind × lang rows (suppressed when < 10)
 	SourceWindow       SourceWindowStats // source-window completeness
-	AnnotationCoverage struct {
+	// RelKindByLanguage is the (language × relationship kind) matrix (#6479):
+	// source-entity language → relationship kind → edge count. Every other
+	// field on this struct is keyed on language OR on kind and never on the
+	// pair, so a language emitting entities but no hierarchy edges passed
+	// every sanity check green.
+	//
+	// DELIBERATELY NOT SUPPRESSED at `< 10`, unlike its four neighbours in
+	// this file — EntitiesByLanguage, EntityKindDist, OrphanByKind and
+	// FrameworkHits all drop small entries. A language that emits zero of a
+	// relationship kind is by construction small on that axis, so inheriting
+	// the floor would make this matrix unable to show the one thing it exists
+	// to show. Counts are rendered as ranges, so the un-suppressed map does
+	// not widen the fingerprinting surface beyond the existing tables.
+	//
+	// A language appears here as soon as it contributes ONE entity, even if it
+	// sources no relationship at all — absence of a row means "language not
+	// observed", never "language observed and fine".
+	//
+	// Report-only: nothing gates on this. A gate would fire on the languages
+	// that emit no EXTENDS/IMPLEMENTS today and would immediately need a
+	// suppression list for a third of its inputs.
+	RelKindByLanguage map[string]map[string]int
+	// RelKindUnattributed counts edges that could NOT be attributed to a
+	// language: relationship kind -> count. An edge lands here when its FromID
+	// names no entity in the graph (a dangling source) or names one whose
+	// Language is empty. Kept and rendered as its own row rather than dropped:
+	// #6479 is an issue about relationships going unnoticed, so a matrix that
+	// silently discarded the edges it cannot place would rebuild the defect
+	// inside the fix. A row rather than a prose total because WHICH kinds are
+	// unattributable is the actionable part -- a large unattributed EXTENDS
+	// bucket means the hierarchy edges exist and the attribution is broken,
+	// which reads completely differently from a large unattributed CONTAINS.
+	RelKindUnattributed map[string]int
+	AnnotationCoverage  struct {
 		TotalAnnotated int
 		Total          int
 		PctAnnotated   float64
@@ -148,6 +181,8 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		GroupName:            opts.GroupName,
 		Version:              opts.Version,
 		EntitiesByLanguage:   make(map[string]int),
+		RelKindByLanguage:    make(map[string]map[string]int),
+		RelKindUnattributed:  make(map[string]int),
 		OrphanByKind:         make(map[string]KindStats),
 		OrphanTerminalByKind: make(map[string]KindStats),
 		OrphanLeafByKind:     make(map[string]KindStats),
@@ -229,6 +264,13 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 
 			if lang != "" {
 				r.EntitiesByLanguage[lang]++
+				// Seed the (language × relationship kind) matrix from the
+				// ENTITY pass (#6479), not from the edge pass: a language that
+				// sources no relationship of any kind must still get a row, so
+				// the report can say "emits none" instead of omitting it.
+				if r.RelKindByLanguage[lang] == nil {
+					r.RelKindByLanguage[lang] = make(map[string]int)
+				}
 			}
 			// NOTE (#6378): kindTotals is deliberately NOT incremented here.
 			// This loop runs once per entity OCCURRENCE per document, while
@@ -336,6 +378,25 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		}
 		for i := range doc.Relationships {
 			rel := &doc.Relationships[i]
+
+			// (language × relationship kind) matrix (#6479). Attributed to the
+			// language of the SOURCE entity — the extractor that emitted the
+			// edge — and counted for EVERY kind, structural ones included:
+			// isStructuralEdge's CONTAINS/DECLARES split is the classification
+			// this issue is complaining about (it makes CALLS "semantic" and so
+			// lets a language with no hierarchy edges look connected), so the
+			// matrix does not reuse it. entityLang is complete here: pass 1
+			// runs over every document before this loop starts.
+			if lang := entityLang[rel.FromID]; lang != "" {
+				if r.RelKindByLanguage[lang] == nil {
+					r.RelKindByLanguage[lang] = make(map[string]int)
+				}
+				r.RelKindByLanguage[lang][rel.Kind]++
+			} else {
+				// Dangling FromID, or a source entity carrying no language. Both
+				// are counted rather than dropped -- see RelKindUnattributed.
+				r.RelKindUnattributed[rel.Kind]++
+			}
 
 			if isStructuralEdge(rel.Kind) {
 				// Fields are extracted as CHILD entities (Kind tail "schema",

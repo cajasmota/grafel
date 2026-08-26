@@ -77,6 +77,8 @@ func Render(w io.Writer, r *Report) error {
 		fmt.Fprintf(w, "\n")
 	}
 
+	renderRelKindByLanguage(w, r)
+
 	fmt.Fprintf(w, "### Source-window completeness\n\n")
 	fmt.Fprintf(w, "Entities with valid start/end line: **%.1f%%** (%d of %d)\n\n",
 		r.SourceWindow.PctComplete,
@@ -239,6 +241,111 @@ func Render(w io.Writer, r *Report) error {
 }
 
 // countPassed counts how many sanity results passed.
+// renderRelKindByLanguage renders the (language × relationship kind) matrix
+// (#6479). It is REPORT-ONLY: no sanity check reads it and nothing fails on it.
+// A gate here would fire on every language that emits no hierarchy edge today
+// and would need a suppression list for a third of its inputs on day one; the
+// gate is a separate decision, to be taken once this table has been read.
+//
+// Unlike the four tables around it, no row is dropped for being small. A
+// language that emits zero of a kind is small by construction, so a `< 10`
+// floor would hide exactly the rows this table exists to publish.
+func renderRelKindByLanguage(w io.Writer, r *Report) {
+	fmt.Fprintf(w, "### Relationship kinds by language\n\n")
+	if len(r.RelKindByLanguage) == 0 && len(r.RelKindUnattributed) == 0 {
+		fmt.Fprintf(w, "_No language observed._\n\n")
+		return
+	}
+
+	fmt.Fprintf(w, "Edge counts keyed on (source-entity language, relationship kind) — the language of the entity the edge is emitted FROM. Every kind is counted, structural ones included. No row or kind is suppressed for being small: a language emitting zero of a kind is what this table is for. **Report-only** — no sanity check reads it and nothing fails on it. The last column names kinds that OTHER observed languages emit and this one does not, with how many of them do; it is a prompt to look, not a verdict, since plenty of languages legitimately have no inheritance.\n\n")
+	fmt.Fprintf(w, "| Language | Relationship kinds emitted | Kinds emitted by peer languages but not this one |\n|---|---|---|\n")
+
+	langs := make([]string, 0, len(r.RelKindByLanguage))
+	for lang := range r.RelKindByLanguage {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+
+	// Languages that emit each kind, so "missing" can carry a peer count
+	// instead of nagging on a kind exactly one outlier emits (#6377).
+	emittersOf := make(map[string]map[string]bool)
+	for lang, kinds := range r.RelKindByLanguage {
+		for kind, n := range kinds {
+			if n <= 0 {
+				continue
+			}
+			if emittersOf[kind] == nil {
+				emittersOf[kind] = make(map[string]bool)
+			}
+			emittersOf[kind][lang] = true
+		}
+	}
+
+	peerTotal := len(langs) - 1
+	for _, lang := range langs {
+		kinds := r.RelKindByLanguage[lang]
+
+		emitted := make([]string, 0, len(kinds))
+		for kind, n := range kinds {
+			if n > 0 {
+				emitted = append(emitted, fmt.Sprintf("%s (%s)", kind, countRangeLabel(n)))
+			}
+		}
+		sort.Strings(emitted)
+		emittedCol := "_none_"
+		if len(emitted) > 0 {
+			emittedCol = strings.Join(emitted, ", ")
+		}
+
+		var missing []string
+		for kind, emitters := range emittersOf {
+			if emitters[lang] {
+				continue
+			}
+			// One peer is enough to report. Requiring a majority would
+			// silently drop the weakest signals, which are the ones a reader
+			// most needs to see.
+			peers := len(emitters)
+			if peers == 0 {
+				continue
+			}
+			missing = append(missing, fmt.Sprintf("%s (%d/%d peers)", kind, peers, peerTotal))
+		}
+		sort.Strings(missing)
+		missingCol := "—"
+		if len(missing) > 0 {
+			missingCol = strings.Join(missing, ", ")
+		}
+
+		fmt.Fprintf(w, "| %s | %s | %s |\n", lang, emittedCol, missingCol)
+	}
+
+	// Edges whose source language could not be determined -- a dangling FromID
+	// or a source entity with no Language. Rendered on every table that renders,
+	// including when the bucket is EMPTY, so a reader can tell measured-and-zero
+	// from never-measured rather than having to assume. (When no language is
+	// observed AND nothing is unattributable there is no table at all -- the
+	// guard above says so in one line; that is the whole scope of "every".) Dropping these silently would
+	// leave the table not summing to the relationship total, with nothing
+	// saying so -- the same shape of unnoticed relationship #6479 is about.
+	// It is not a language, so it takes no part in the peer arithmetic above.
+	unattributed := make([]string, 0, len(r.RelKindUnattributed))
+	for kind, n := range r.RelKindUnattributed {
+		if n > 0 {
+			unattributed = append(unattributed, fmt.Sprintf("%s (%s)", kind, countRangeLabel(n)))
+		}
+	}
+	sort.Strings(unattributed)
+	unattributedCol := "_none_"
+	if len(unattributed) > 0 {
+		unattributedCol = strings.Join(unattributed, ", ")
+	}
+	fmt.Fprintf(w, "| _unattributed_ | %s | — |\n", unattributedCol)
+
+	fmt.Fprintf(w, "\n_`_unattributed_` counts edges whose source entity is missing from the graph or carries no language. They are reported, not dropped: with them omitted this table would not sum to the relationship total and nothing would say so._\n")
+	fmt.Fprintf(w, "\n")
+}
+
 func countPassed(results []SanityResult) int {
 	n := 0
 	for _, r := range results {
