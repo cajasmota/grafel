@@ -144,7 +144,36 @@ func extractManifestAt(t *testing.T, src, path string) []types.EntityRecord {
 
 // TestSwiftPackage_DependsOnAnchoredOnOwningTarget is the fix's behavioural
 // test: on BOTH a root and a nested path, every DEPENDS_ON edge must land on the
-// swiftpm_target record that carries it, which requires FromID to be empty.
+// swiftpm_target record that carries it.
+//
+// WHAT IS ACTUALLY OBSERVED, stated precisely because an earlier version of this
+// comment claimed more than the assertion enforces. The check is that the FROM
+// endpoint RESOLVES TO THE OWNING RECORD'S ID. An empty FromID is how the
+// extractor guarantees that — graph assembly stamps the owner when FromID is
+// empty — and it is the fix this test exists to pin. It is NOT, however, the
+// only spelling the assertion accepts.
+//
+// THE MEASURED BOUNDARY (probed 2026-08-27, both directions run):
+//
+//	FromID: ""             -> PASSES. Assembly stamps the owner. The fix.
+//	FromID: filePath+"::"+name -> FAILS, DANGLING. Names no node. The defect.
+//	FromID: "ZZNotAName"   -> FAILS, DANGLING. Any UNRESOLVABLE id is caught.
+//	FromID: d.name         -> PASSES. NOT caught, and it is not the fix.
+//
+// The last line is the guard's edge. extractManifestAt runs the production
+// resolver (ResolveImports, ReferencesEmbedded), whose by-name index rewrites a
+// bare "App" into the owning record's real id before the assertion ever sees it.
+// So resolution REPAIRS a resolvable bare name, and this test cannot distinguish
+// it from the fix. That mutant is EQUIVALENT UNDER THIS SUITE — recorded as
+// equivalent, with the reason, rather than dressed up as dead; production runs
+// the same resolution, so it is likely equivalent there too.
+//
+// Why write it down instead of forcing a kill: bare-name resolution is the
+// FRAGILE path. If two entities ever shared a target name, a bare-name FromID
+// would silently misanchor onto whichever the index happened to return, and
+// this guard would not see it — the #6122 / #6124 name-collision family.
+// Deliberately NOT fixed here; this note marks where the edge is so the next
+// person meets a known limit rather than a surprise.
 func TestSwiftPackage_DependsOnAnchoredOnOwningTarget(t *testing.T) {
 	// BOTH paths are load-bearing and neither may be dropped "to simplify".
 	// "Package.swift" is the shape the golden fixture ships and the shape a
@@ -198,7 +227,7 @@ func TestSwiftPackage_DependsOnAnchoredOnOwningTarget(t *testing.T) {
 						}
 						t.Errorf("DEPENDS_ON owned by %s (id %q) -> %s is %s: "+
 							"FROM = %q, want the owning record's own id "+
-							"(FromID=%q must be empty so assembly stamps the owner)",
+							"(FromID=%q; empty it so assembly stamps the owner)",
 							owner.Kind+":"+owner.Name, owner.ID, label(r.ToID),
 							what, from, r.FromID)
 					}
