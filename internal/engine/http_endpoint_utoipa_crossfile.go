@@ -82,9 +82,11 @@
 //     file names it, and this pass models neither scopes nor `cfg` evaluation
 //     so it cannot tell which is live. This holds whether or not the competing
 //     declarations were themselves publishable — a competitor rejected for its
-//     own reasons (`super::`-rooted, malformed path) still contests the name
-//     (#6675). The exception is a competitor that names NO local at all (a
-//     glob), which contests nothing;
+//     own reasons (a MULTI-segment `super::`/`self::` path, a malformed path)
+//     still contests the name (#6675). Two shapes do NOT contest: one that
+//     names no local at all (a glob), and a SINGLE-segment relative path
+//     (`mod tests { use super::create_item; }`), which re-exports the parent
+//     scope's own binding rather than rivalling it;
 //   - the same handler is named twice, in one macro or across several. The
 //     marker is emitted once, deduped on its ID by emitAdditiveSynthetic in
 //     applyHTTPEndpointSynthesis — the same one-line contract the FastAPI mount
@@ -263,9 +265,34 @@ func rustAddUseLeaf(out map[string]rustUseBinding, dropped map[string]bool, modu
 	// does not know. Stamping it verbatim would publish a join key that cannot
 	// match anything by identity — a guess wearing the shape of an answer, which
 	// is what #6150 forbids. `crate::…` and an absolute crate path are both
-	// resolvable and are kept. The leaf names `local` either way: contested.
+	// resolvable and are kept. The leaf names `local`, so it is a candidate for
+	// contesting — with ONE exception, ruled below.
 	if root := module; root == "self" || root == "super" ||
 		strings.HasPrefix(root, "self::") || strings.HasPrefix(root, "super::") {
+		// SEGMENT COUNT DECIDES, and it is a semantic rule rather than a
+		// convenience carve-out. A relative path with EXACTLY ONE segment after
+		// the root — `use super::create_item;`, i.e. module == "super" — names
+		// whatever `create_item` ALREADY IS in the parent scope. That is a
+		// re-export of the binding under consideration, not a rival to it, so
+		// it cannot be a competitor and must not contest anything. This is the
+		// archetypal unit-test prelude:
+		//
+		//	use crate::real::create_item;
+		//	mod tests { use super::create_item; }
+		//
+		// present in essentially every Rust file that has tests. Poisoning
+		// there would drop a legitimate marker silently — no error, just a
+		// missing enrichment — and would also make the pass disagree with
+		// itself between two spellings of one idiom, since `use super::*;`
+		// names no local and never contested. `self::create_item` is the same
+		// shape rooted at the current module.
+		//
+		// A MULTI-segment relative path — `use super::stub::create_item;` —
+		// reaches into a SIBLING module and genuinely can name a different
+		// item, which is #6675's first witness. It contests.
+		if module == "self" || module == "super" {
+			return
+		}
 		rustPoisonLocal(out, dropped, local)
 		return
 	}
@@ -391,17 +418,22 @@ func rustUseBindings(content string) map[string]rustUseBinding {
 			// leaves each individually unkillable, so this file keeps exactly
 			// one and pins it.
 			//
-			// #6675 — THIS REJECTION DOES NOT POISON, and that is a ruling, not
-			// an omission. Every other rejection marks its local name contested
-			// so a competing declaration cannot be published as unambiguous
-			// (see the contested-name boundary in rustAddUseLeaf). Here the
-			// leaves are BY DEFINITION not reliably parseable — the whole point
-			// of the guard is that a comma split of this body yields fragments
-			// like `items::{create_item` and `purge}`. Deriving a local name
-			// from one of those to poison it would be the same fabrication the
-			// guard exists to prevent, one rejection later. So no name is
-			// derived and none is poisoned; a legitimate competitor of a nested
-			// group therefore still publishes.
+			// #6675 — THIS REJECTION DOES NOT POISON, and unlike the glob and
+			// bare-`self` carve-outs that is a KNOWN-OPEN HOLE rather than a
+			// rule. Tracked as #6688; the fixture that records it is
+			// `nested-group-competitor-follows`, which asserts `want 1` and
+			// must be flipped to 0 when #6688 closes.
+			//
+			// The reason it is open, stated without overstating it: deriving a
+			// BINDING from a nested group is unsafe, and that is this guard's
+			// whole point — a naive cut at the first `}` attributes a bare
+			// `purge` to the OUTER base and fabricates `crate::purge`. But
+			// poisoning needs only the set of names MENTIONED, which is an
+			// identifier scan, and `create_item` does occur literally in
+			// `crate::{items::{create_item, purge}, admin}`. So this is a
+			// deferred derivation, not an impossible one; the hazard to price
+			// first is over-poisoning a module SEGMENT (`items`, `admin`),
+			// which would drop a legitimate marker silently.
 			if strings.ContainsAny(spec[open+1:end], "{") {
 				continue
 			}
