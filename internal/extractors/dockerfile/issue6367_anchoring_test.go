@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/types"
@@ -77,6 +78,13 @@ type anchorEdge struct {
 	resolved  bool
 	rawFromID string
 	toID      string
+	// fromStage is the RAW `--from=` argument, read off the edge's own
+	// from_stage property. It is the spelling the fixture is meant to vary,
+	// and it is asserted directly rather than recovered from a substring of
+	// toID: a suffix match for the stage index "0" is also satisfied by the
+	// "node:20" target's trailing character, so a substring check silently
+	// blesses a fixture that has stopped covering the stage-index branch.
+	fromStage string
 }
 
 // measureDockerfileAnchoring extracts the fixture at path, replays graph
@@ -134,6 +142,7 @@ func measureDockerfileAnchoring(t *testing.T, path string) []anchorEdge {
 				resolved:  ok,
 				rawFromID: r.FromID,
 				toID:      r.ToID,
+				fromStage: r.Properties.Get("from_stage"),
 			})
 		}
 	}
@@ -164,11 +173,14 @@ func TestDockerfile_UsesAndContainsAnchoredOnOwner(t *testing.T) {
 			dangling := map[string]int{}
 			misanchored := map[string]int{}
 			total := map[string]int{}
-			targets := map[string]bool{}
+			// gotUses maps each USES edge's raw --from argument to its full
+			// ToID, so the coverage assertion below can compare exact
+			// identities instead of substrings.
+			gotUses := map[string]string{}
 			for _, e := range edges {
 				total[e.kind]++
 				if e.kind == "USES" {
-					targets[e.toID] = true
+					gotUses[e.fromStage] = e.toID
 				}
 				if e.fromID == e.wantID {
 					continue
@@ -191,21 +203,42 @@ func TestDockerfile_UsesAndContainsAnchoredOnOwner(t *testing.T) {
 						kind, path, dangling[kind], misanchored[kind], total[kind])
 				}
 			}
-			// Both --from spellings must be present, or a fix confined to one
-			// branch of collectCopy would pass. The alias rows rewrite to the
-			// base image; the stage-index row stays verbatim.
-			if total["USES"] != 3 {
-				t.Errorf("USES count = %d, want 3 (two aliased --from, one stage-index --from)", total["USES"])
+			// FIXTURE-DRIFT GUARD. Both --from spellings must still be
+			// present, or a fix confined to one branch of collectCopy would
+			// pass unnoticed: the aliased rows are rewritten to the base image
+			// through aliasToImage, the stage-index row is kept verbatim.
+			//
+			// The check is keyed on the RAW --from argument and compares the
+			// FULL ToID for exact equality. An earlier version matched a
+			// suffix of ToID instead, which was vacuous: the wanted stage
+			// index "0" is also a suffix of the "node:20" target, so swapping
+			// the `COPY --from=0` line for a third alias left the USES count
+			// at 3, left every coverage row satisfied, and let a mutant that
+			// applies the fix only inside the alias branch survive. A suffix
+			// match on "0" against a set containing "node:20" is a
+			// coincidence, not a check.
+			wantUses := map[string]string{
+				"builder": "golang:1.22", // alias -> rewritten to its base image
+				"assets":  "node:20",     // alias -> rewritten to its base image
+				"0":       "0",           // stage index -> kept verbatim
 			}
-			for _, want := range []string{"golang:1.22", "node:20", "0"} {
-				found := false
-				for to := range targets {
-					if len(to) >= len(want) && to[len(to)-len(want):] == want {
-						found = true
-					}
+			if len(gotUses) != len(wantUses) {
+				t.Errorf("USES edges keyed by --from = %d (%v), want %d (%v)",
+					len(gotUses), gotUses, len(wantUses), wantUses)
+			}
+			if total["USES"] != len(wantUses) {
+				t.Errorf("USES count = %d, want %d (two aliased --from, one stage-index --from)",
+					total["USES"], len(wantUses))
+			}
+			for stage, target := range wantUses {
+				wantToID := extractor.BuildOperationStructuralRef("dockerfile", path, target)
+				got, ok := gotUses[stage]
+				if !ok {
+					t.Errorf("no USES edge for --from=%q — the fixture no longer covers that spelling", stage)
+					continue
 				}
-				if !found {
-					t.Errorf("no USES edge targeting %q — the fixture no longer covers that --from spelling", want)
+				if got != wantToID {
+					t.Errorf("USES for --from=%q: ToID = %q, want %q", stage, got, wantToID)
 				}
 			}
 		})
