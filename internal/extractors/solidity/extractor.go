@@ -207,8 +207,15 @@ var solidityKeywords = map[string]bool{
 // function, so the bare `ping` must stay. Adding them here would trade this
 // issue's over-fire for an under-fire.
 //
-// The test for `msg`/`block`/`tx` is the same one: they are absent because no
-// member of any of them is called with `(`, not because they are not keywords.
+// `msg`/`block`/`tx` are absent under the same rule, applied narrowly: in
+// Solidity >= 0.5 their members are properties (`msg.sender`,
+// `block.timestamp`), so nothing of theirs reaches callBareRE. That is scoped
+// to >= 0.5 on purpose, because the universal form of the claim is false:
+// pre-0.5 `block.blockhash(n)` IS a call. It is already suppressed, but by the
+// leaf check above (`blockhash` is in solidityKeywords) rather than by
+// membership here — measured at this commit, `block.blockhash(uint256(n))`
+// yields `uint256` alone. Do not read this paragraph as "no member of any of
+// them is ever called".
 var solBuiltinNamespaces = map[string]bool{
 	"abi": true, "bytes": true, "string": true,
 }
