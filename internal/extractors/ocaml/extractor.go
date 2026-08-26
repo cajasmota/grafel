@@ -344,6 +344,7 @@ func buildImportEntities(filePath string, imports []string) []types.EntityRecord
 		out = append(out, types.EntityRecord{
 			Name:       displayName,
 			Kind:       "SCOPE.Component",
+			Subtype:    "import",
 			SourceFile: filePath,
 			Language:   "ocaml",
 			Relationships: []types.RelationshipRecord{
