@@ -25,29 +25,40 @@ import (
 // withReadDirFunc swaps readDirFunc for the duration of a test and
 // restores it afterwards.
 //
-// The injected function f is given a `stop` channel and is wrapped so
-// every in-flight invocation is tracked by a WaitGroup. On a timeout the
-// production readDirBounded abandons the goroutine running readDirFunc,
-// so that goroutine can outlive the test body. Restoring the package var
-// (or letting the test mutate shared state) while such an abandoned
-// goroutine is still executing readDirFunc is an unsynchronized data
-// race (#5346).
+// The injected function f is given TWO release channels, and the
+// difference between them is the whole point of #6539:
+//
+//   - `cancel` is the PRODUCTION signal. readDirBounded closes it when
+//     its timeout fires and then waits, briefly, for the read to return.
+//     A readDirFunc that honours it is what keeps a timed-out read from
+//     pinning a directory handle. Every closure below honours it, because
+//     that is the contract the shipped cancellableReadDir obeys.
+//   - `stop` is the TEST-TEARDOWN signal, closed by the cleanup here. It
+//     is the backstop for a closure that outlives readDirBounded's drain
+//     grace anyway — an uncancellable syscall in production, a
+//     deliberately unresponsive closure here.
+//
+// The WaitGroup is still required and is NOT vestigial. readDirBounded's
+// post-cancel drain is bounded (readDirDrainGrace), so a read that does
+// not return inside it is still released rather than joined. Restoring
+// the package var while such a goroutine is executing readDirFunc would
+// be an unsynchronized data race (#5346).
 //
 // The single cleanup registered here closes `stop` FIRST (releasing any
 // closure that parks waiting for teardown) and only THEN drains the
 // WaitGroup before restoring readDirFunc. Owning both the release signal
 // and the drain in one cleanup avoids any LIFO-ordering footgun between
-// separate cleanups: by the time readDirFunc is written, no abandoned
+// separate cleanups: by the time readDirFunc is written, no lingering
 // goroutine can still be reading it.
-func withReadDirFunc(t *testing.T, f func(stop <-chan struct{}, dir string) ([]os.DirEntry, error)) {
+func withReadDirFunc(t *testing.T, f func(stop, cancel <-chan struct{}, dir string) ([]os.DirEntry, error)) {
 	t.Helper()
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 	prev := readDirFunc
-	readDirFunc = func(dir string) ([]os.DirEntry, error) {
+	readDirFunc = func(dir string, cancel <-chan struct{}) ([]os.DirEntry, error) {
 		wg.Add(1)
 		defer wg.Done()
-		return f(stop, dir)
+		return f(stop, cancel, dir)
 	}
 	t.Cleanup(func() {
 		close(stop) // release any closure parked until teardown
@@ -66,14 +77,16 @@ func TestCanonicalizePathTimesOutAndDegrades(t *testing.T) {
 	// returns in ~20ms, not 10s.
 	t.Setenv("GRAFEL_CANONICALIZE_TIMEOUT_MS", "20")
 	blockStarted := make(chan struct{}, 1)
-	withReadDirFunc(t, func(stop <-chan struct{}, _ string) ([]os.DirEntry, error) {
+	withReadDirFunc(t, func(stop, cancel <-chan struct{}, _ string) ([]os.DirEntry, error) {
 		select {
 		case blockStarted <- struct{}{}:
 		default:
 		}
-		// Block far longer than the 20ms timeout so the guard fires, but
-		// wake promptly at teardown via stop.
+		// Block far longer than the 20ms timeout so the guard fires, then
+		// return as soon as readDirBounded cancels us (the #6539 contract),
+		// or at teardown via stop.
 		select {
+		case <-cancel:
 		case <-stop:
 		case <-time.After(10 * time.Second):
 		}
@@ -115,9 +128,10 @@ func TestCanonicalizePathTimesOutAndDegrades(t *testing.T) {
 // the segment's casing.
 func TestCanonicalizePathFastReadDirCanonicalizes(t *testing.T) {
 	clearCanonicalCache()
-	withReadDirFunc(t, func(_ <-chan struct{}, dir string) ([]os.DirEntry, error) {
-		// Defer to the real ReadDir; this is fast and well under any timeout.
-		return os.ReadDir(dir)
+	withReadDirFunc(t, func(_, cancel <-chan struct{}, dir string) ([]os.DirEntry, error) {
+		// Defer to the real read primitive; this is fast and well under
+		// any timeout.
+		return cancellableReadDir(dir, cancel)
 	})
 
 	dir := t.TempDir()
@@ -142,12 +156,17 @@ func TestCanonicalizePathTimeoutResultIsCached(t *testing.T) {
 	clearCanonicalCache()
 	t.Setenv("GRAFEL_CANONICALIZE_TIMEOUT_MS", "20")
 
-	// calls is read by the test body while abandoned timeout goroutines
-	// may still be incrementing it, so it must be atomic (#5346).
+	// calls is read by the test body while a cancelled-but-not-yet-returned
+	// timeout goroutine may still be incrementing it, so it must be
+	// atomic (#5346).
 	var calls atomic.Int64
-	withReadDirFunc(t, func(stop <-chan struct{}, _ string) ([]os.DirEntry, error) {
+	withReadDirFunc(t, func(stop, cancel <-chan struct{}, _ string) ([]os.DirEntry, error) {
 		calls.Add(1)
-		<-stop // block until teardown releases us
+		// Block past the timeout, then honour whichever release fires first.
+		select {
+		case <-cancel:
+		case <-stop:
+		}
 		return nil, nil
 	})
 

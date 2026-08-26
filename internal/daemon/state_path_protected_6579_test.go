@@ -34,12 +34,12 @@ func recordReads(t *testing.T, deny string) *[]string {
 	t.Helper()
 	var read []string
 	orig := readDirFunc
-	readDirFunc = func(dir string) ([]os.DirEntry, error) {
+	readDirFunc = func(dir string, cancel <-chan struct{}) ([]os.DirEntry, error) {
 		read = append(read, dir)
 		if deny != "" && filepath.Clean(dir) == filepath.Clean(deny) {
 			return nil, errors.New("simulated permission stall (#5330)")
 		}
-		return os.ReadDir(dir)
+		return cancellableReadDir(dir, cancel)
 	}
 	t.Cleanup(func() { readDirFunc = orig })
 	return &read
