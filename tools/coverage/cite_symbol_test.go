@@ -63,6 +63,20 @@ var citeSymbolFixtureLines = map[string][]int{
 	"Single":       {31},
 }
 
+// citeSymbolFixtureEnd records the last line of each declaration —
+// the upper bound of the range half of the convention. Stated
+// explicitly for the same reason as the doc-start table: the rule is
+// anchored on it, so a test must not infer it.
+var citeSymbolFixtureEnd = map[string][]int{
+	"TopLevelFunc": {5},
+	"Method":       {12, 17},
+	"BlockVar":     {21},
+	"OtherVar":     {22},
+	"BlockConst":   {26},
+	"BlockType":    {29},
+	"Single":       {31},
+}
+
 // citeSymbolFixtureDocStart records where each declaration's doc
 // comment opens. The range half of the convention is anchored on this,
 // so it is data the tests must state explicitly rather than infer.
@@ -135,9 +149,30 @@ func TestCiteSymbol_FixtureLineNumbersAreWhatTheTestsClaim(t *testing.T) {
 			if st.DocStart != wantDoc[i] {
 				t.Errorf("symbol %q decl %d: doc opens at %d, test claims %d — update citeSymbolFixtureDocStart", sym, i, st.DocStart, wantDoc[i])
 			}
+			if wantEnd := citeSymbolFixtureEnd[sym]; st.End != wantEnd[i] {
+				t.Errorf("symbol %q decl %d: declaration ends at %d, test claims %d — update citeSymbolFixtureEnd", sym, i, st.End, wantEnd[i])
+			}
 		}
 	}
 }
+
+// TestCiteSymbol_FixtureFileLengthIsWhatTheTestsClaim is the positive
+// control for the EOF bound: the past-EOF fixtures below cite a line
+// beyond the fixture's length, and that only means anything if the
+// length is what the tests assume.
+func TestCiteSymbol_FixtureFileLengthIsWhatTheTestsClaim(t *testing.T) {
+	root, rel := citeSymbolRepo(t)
+	got, ok := newDeclIndex(root).fileLineCount(rel)
+	if !ok {
+		t.Fatalf("fixture source did not parse")
+	}
+	if got != citeSymbolFixtureLineCount {
+		t.Errorf("fixture is %d lines, test claims %d — update citeSymbolFixtureLineCount", got, citeSymbolFixtureLineCount)
+	}
+}
+
+// citeSymbolFixtureLineCount is the length of citeSymbolFixtureSource.
+const citeSymbolFixtureLineCount = 31
 
 // TestCiteSymbol_AnchoredCitationsAcceptedAcrossFormsAndDeclKinds
 // varies the anchor punctuation form, the single-line vs range shape,
@@ -157,15 +192,19 @@ func TestCiteSymbol_AnchoredCitationsAcceptedAcrossFormsAndDeclKinds(t *testing.
 		{"func/single/paren-comma", fmt.Sprintf("minted by the pass (`TopLevelFunc`, %s:5).", rel)},
 		// Range opening on the first doc-comment line (3), closing past
 		// the declaration (5) — convention rule (2).
-		{"func/range/doc-comment-open", fmt.Sprintf("matched by `TopLevelFunc` (%s:3-6).", rel)},
+		{"func/range/doc-comment-open", fmt.Sprintf("matched by `TopLevelFunc` (%s:3-5).", rel)},
 		// A range on a declaration that has NO doc comment degenerates
 		// to the declaration line at both ends.
-		{"no-doc-comment/range", fmt.Sprintf("`OtherVar` (%s:22-23) is the second one.", rel)},
+		{"no-doc-comment/range", fmt.Sprintf("`OtherVar` (%s:22-22) is the second one.", rel)},
+		// A range closing EXACTLY on the last line of the declaration
+		// is the boundary case of the upper bound, and must be accepted
+		// — five shipped citations sit exactly here.
+		{"range/closes-on-declaration-end", fmt.Sprintf("`BlockVar` (%s:20-21) is the pattern.", rel)},
 		{"method/single", fmt.Sprintf("the receiver helper `Method` (%s:12) does it.", rel)},
 		// The SECOND declaration of a name that is declared twice: the
 		// check must consider every declaration, not just the first.
 		{"method/second-declaration/single", fmt.Sprintf("the other receiver's `Method` (%s:17) does it too.", rel)},
-		{"method/second-declaration/range", fmt.Sprintf("the other receiver's `Method` (%s:16-18) does it too.", rel)},
+		{"method/second-declaration/range", fmt.Sprintf("the other receiver's `Method` (%s:16-17) does it too.", rel)},
 		{"var-block/single", fmt.Sprintf("`BlockVar` (%s:21) is the pattern.", rel)},
 		{"var-block/range", fmt.Sprintf("`BlockVar` (%s:20-21) is the pattern.", rel)},
 		{"const-block/single", fmt.Sprintf("`BlockConst` (%s:26) names the edge kind.", rel)},
@@ -217,10 +256,12 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 			want:  "a range citation opens on the first doc-comment line",
 		},
 		{
-			// The unbounded-width case the reviewer found: the
-			// declaration is inside, but the range is meaningless.
+			// The unbounded-width case, kept inside the file so it
+			// isolates the OPENING bound rather than tripping the EOF
+			// rule: the declaration is inside, but the range is
+			// meaningless in both directions.
 			name:  "range-absurdly-wide",
-			notes: fmt.Sprintf("`TopLevelFunc` (%s:1-900).", rel),
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:1-31).", rel),
 			want:  "a range citation opens on the first doc-comment line",
 		},
 		{
@@ -248,6 +289,51 @@ func TestCiteSymbol_RejectsEveryDefectClass(t *testing.T) {
 			name:  "stale-in-test-file",
 			notes: fmt.Sprintf("`TopLevelFunc` (%s:12).", citeSymbolTestFileRel),
 			want:  "is stale",
+		},
+		{
+			// The upper bound. The range opens on the correct
+			// doc-comment line, so the lower bound is satisfied — only
+			// the closing end is wrong. Without this rule a citation
+			// can claim an arbitrary span by entering through the top.
+			name:  "range-closes-past-declaration-body",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:3-20).", rel),
+			want:  "a range citation closes on the declaration or in its body",
+		},
+		{
+			// Same defect, one line past the end: the bound is exact,
+			// not a tolerance.
+			name:  "range-closes-one-line-past-body",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:3-6).", rel),
+			want:  "a range citation closes on the declaration or in its body",
+		},
+		{
+			// Running past EOF is its own defect with its own message,
+			// because it is wrong independently of the symbol named.
+			name:  "range-runs-past-eof",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:3-900).", rel),
+			want:  "runs past the end of internal/fixture/sample.go, which has 31 lines",
+		},
+		{
+			// A single-line citation past EOF is caught by the same
+			// rule — the bound is on the citation, not on the range
+			// form.
+			name:  "single-line-past-eof",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:900).", rel),
+			want:  "runs past the end of internal/fixture/sample.go, which has 31 lines",
+		},
+		{
+			// Upper bound applied per citation, not per note: a note
+			// whose FIRST citation is impeccable must not launder an
+			// over-wide second one.
+			name:  "one-good-range-one-overwide-in-the-same-note",
+			notes: fmt.Sprintf("`BlockVar` (%s:20-21) is set by `TopLevelFunc` (%s:3-20).", rel, rel),
+			want:  "a range citation closes on the declaration or in its body",
+		},
+		{
+			// Same shape, over-wide citation FIRST.
+			name:  "one-overwide-range-one-good-in-the-same-note",
+			notes: fmt.Sprintf("`TopLevelFunc` (%s:3-20) sets `BlockVar` (%s:20-21).", rel, rel),
+			want:  "a range citation closes on the declaration or in its body",
 		},
 		{
 			// A number with no symbol in front of it is unverifiable

@@ -2422,7 +2422,7 @@
         "iac_cross_stack_reference": {
           "status": "full",
           "cites": ["internal/extractors/hcl"],
-          "notes": "`data.terraform_remote_state.\u003cname\u003e.outputs.\u003ckey\u003e` consumption is detected by `extractRemoteStateDeps` (internal/extractors/hcl/terraform_deep.go:220-269) / `remoteStateName` (internal/extractors/hcl/terraform_deep.go:264) and emits one cross-stack DEPENDS_ON edge per distinct remote-state name (cross_stack=true, remote_state=\u003cname\u003e) — deliberately NOT a generic data-source CALLS edge; it wires one stack to another stack's published outputs.",
+          "notes": "`data.terraform_remote_state.\u003cname\u003e.outputs.\u003ckey\u003e` consumption is detected by `extractRemoteStateDeps` (internal/extractors/hcl/terraform_deep.go:220-260) / `remoteStateName` (internal/extractors/hcl/terraform_deep.go:264) and emits one cross-stack DEPENDS_ON edge per distinct remote-state name (cross_stack=true, remote_state=\u003cname\u003e) — deliberately NOT a generic data-source CALLS edge; it wires one stack to another stack's published outputs.",
           "verified_at": "2026-06-04"
         },
         "iac_environment_region_account": {

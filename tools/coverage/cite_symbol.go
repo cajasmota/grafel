@@ -52,16 +52,27 @@ import (
 //
 //     `cdkAddEventSourceRe` (internal/engine/cdk_edges.go:137-142)
 //
-//     BOTH ends are bounded, and the opening end is the load-bearing
-//     one. The declaration must fall within the range, AND the range
-//     must open exactly on the declaration's first doc-comment line
-//     (which is the declaration line itself when it carries no doc
-//     comment). Without the opening bound a range has no width limit
-//     at all: `internal/extractors/hcl/terraform_deep.go:1-900`
-//     validates clean, and three shipped citations tolerated 24-48
-//     lines of drift. Enforcing the rule as written cost five
-//     one-to-three-line corrections in the registry — every one of
-//     them opening rot of the same class this issue is about.
+//     BOTH ends are bounded, and both bounds are load-bearing. The
+//     declaration must fall within the range; the range must OPEN
+//     exactly on the declaration's first doc-comment line (the
+//     declaration line itself when it carries no doc comment); and it
+//     must CLOSE no later than the last line of the declaration —
+//     `ast.Node.End()`, i.e. the closing paren of a multi-line
+//     `regexp.MustCompile(…)` or the closing brace of a func body.
+//
+//     Bounding only one end leaves the other one open, and the drift
+//     just enters through it. Before the opening bound,
+//     `terraform_deep.go:1-900` validated clean; with only the opening
+//     bound, `cdk_edges.go:137-900` still did — opening on the correct
+//     doc-comment line while claiming a 764-line span running 366
+//     lines past the end of a 534-line file. Both were measured, not
+//     imagined.
+//
+//     Enforcing both cost six registry corrections in total (five at
+//     the opening, one at the closing), every one of them rot of the
+//     same class this issue is about. A citation whose hi exceeds the
+//     file's line count is reported separately, because that is wrong
+//     independently of the symbol it names.
 //
 // # What is in the checked population, and what is not
 //
@@ -122,6 +133,11 @@ var (
 type declSite struct {
 	Line     int
 	DocStart int
+	// End is the last line of the declaration itself — the closing
+	// paren of a multi-line `regexp.MustCompile(…)`, the closing brace
+	// of a func body. It is the upper bound of the range half of the
+	// convention ("closes on the declaration or body").
+	End int
 }
 
 // declIndex caches parsed declaration positions per file so that one
@@ -131,11 +147,39 @@ type declSite struct {
 // once per citing cell.
 type declIndex struct {
 	repoRoot string
-	cache    map[string]map[string][]declSite
+	cache    map[string]*fileDecls
+}
+
+// fileDecls is one parsed source file: its package-level declarations
+// by name, and its length. The length is carried because a citation
+// running past EOF is its own defect and gets its own message — a
+// range can otherwise claim a span the file does not have.
+type fileDecls struct {
+	byName map[string][]declSite
+	lines  int
 }
 
 func newDeclIndex(repoRoot string) *declIndex {
-	return &declIndex{repoRoot: repoRoot, cache: map[string]map[string][]declSite{}}
+	return &declIndex{repoRoot: repoRoot, cache: map[string]*fileDecls{}}
+}
+
+// fileLineCount returns the number of lines in rel. ok is false when
+// the file could not be parsed.
+func (d *declIndex) fileLineCount(rel string) (n int, ok bool) {
+	fd := d.load(rel)
+	if fd == nil {
+		return 0, false
+	}
+	return fd.lines, true
+}
+
+func (d *declIndex) load(rel string) *fileDecls {
+	fd, seen := d.cache[rel]
+	if !seen {
+		fd = d.indexFile(rel)
+		d.cache[rel] = fd
+	}
+	return fd
 }
 
 // declLinesForSymbol returns every line on which name is declared at
@@ -148,18 +192,14 @@ func newDeclIndex(repoRoot string) *declIndex {
 // reports that separately from "symbol not found" so a broken path is
 // never silently reported as cite drift.
 func (d *declIndex) declSitesForSymbol(rel, name string) (sites []declSite, ok bool) {
-	byName, seen := d.cache[rel]
-	if !seen {
-		byName = d.indexFile(rel)
-		d.cache[rel] = byName
-	}
-	if byName == nil {
+	fd := d.load(rel)
+	if fd == nil {
 		return nil, false
 	}
-	return byName[name], true
+	return fd.byName[name], true
 }
 
-func (d *declIndex) indexFile(rel string) map[string][]declSite {
+func (d *declIndex) indexFile(rel string) *fileDecls {
 	fset := token.NewFileSet()
 	// ParseComments is required: the range half of the convention is
 	// anchored on where the doc comment OPENS, so the comment positions
@@ -169,7 +209,7 @@ func (d *declIndex) indexFile(rel string) map[string][]declSite {
 		return nil
 	}
 	out := map[string][]declSite{}
-	add := func(name string, pos token.Pos, doc *ast.CommentGroup) {
+	add := func(name string, pos, end token.Pos, doc *ast.CommentGroup) {
 		if name == "" || name == "_" {
 			return
 		}
@@ -178,14 +218,14 @@ func (d *declIndex) indexFile(rel string) map[string][]declSite {
 		if doc != nil {
 			docStart = fset.Position(doc.Pos()).Line
 		}
-		out[name] = append(out[name], declSite{Line: line, DocStart: docStart})
+		out[name] = append(out[name], declSite{Line: line, DocStart: docStart, End: fset.Position(end).Line})
 	}
 	for _, decl := range f.Decls {
 		switch dd := decl.(type) {
 		case *ast.FuncDecl:
 			// The declaration line is the `func` keyword's line,
 			// which is what the convention cites.
-			add(dd.Name.Name, dd.Pos(), dd.Doc)
+			add(dd.Name.Name, dd.Pos(), dd.End(), dd.Doc)
 		case *ast.GenDecl:
 			for _, spec := range dd.Specs {
 				switch s := spec.(type) {
@@ -198,19 +238,19 @@ func (d *declIndex) indexFile(rel string) map[string][]declSite {
 						doc = dd.Doc
 					}
 					for _, n := range s.Names {
-						add(n.Name, s.Pos(), doc)
+						add(n.Name, s.Pos(), s.End(), doc)
 					}
 				case *ast.TypeSpec:
 					doc := s.Doc
 					if doc == nil && dd.Lparen == token.NoPos {
 						doc = dd.Doc
 					}
-					add(s.Name.Name, s.Pos(), doc)
+					add(s.Name.Name, s.Pos(), s.End(), doc)
 				}
 			}
 		}
 	}
-	return out
+	return &fileDecls{byName: out, lines: fset.File(f.Pos()).LineCount()}
 }
 
 // validateCiteSymbols enforces the citation convention documented above
@@ -269,6 +309,16 @@ func validateCiteSymbols(res *ValidationResult, capPrefix string, cap Capability
 				"%s: notes cite %q — %s could not be parsed as Go", capPrefix, cite, rel))
 			continue
 		}
+		// A citation running past EOF is its own defect and gets its
+		// own message: it is wrong independently of which symbol it
+		// names, so reporting it as symbol drift would misdirect the
+		// reader. Checked before the symbol for that reason.
+		if n, okLines := idx.fileLineCount(rel); okLines && hi > n {
+			res.Errors = append(res.Errors, fmt.Sprintf(
+				"%s: notes cite %q runs past the end of %s, which has %d lines (#6673)",
+				capPrefix, cite, rel, n))
+			continue
+		}
 		if len(sites) == 0 {
 			res.Errors = append(res.Errors, fmt.Sprintf(
 				"%s: notes cite %q names symbol %q, which is not declared at package level in %s (#6673)",
@@ -281,18 +331,23 @@ func validateCiteSymbols(res *ValidationResult, capPrefix string, cap Capability
 		// range must OPEN on the declaration's first doc-comment line.
 		// Without that bound a range has no width limit at all and
 		// `file.go:1-900` validates clean.
-		inRange, opensRight := false, false
-		wantOpen := 0
+		inRange, opensRight, closesRight := false, false, false
+		wantOpen, wantClose := 0, 0
 		for _, st := range sites {
 			if st.Line < lo || st.Line > hi {
 				continue
 			}
 			inRange = true
-			if hiStr == "" || lo == st.DocStart {
-				opensRight = true
+			if hiStr != "" && lo != st.DocStart {
+				wantOpen = st.DocStart
+				continue
+			}
+			opensRight = true
+			if hiStr == "" || hi <= st.End {
+				closesRight = true
 				break
 			}
-			wantOpen = st.DocStart
+			wantClose = st.End
 		}
 		switch {
 		case !inRange:
@@ -312,6 +367,10 @@ func validateCiteSymbols(res *ValidationResult, capPrefix string, cap Capability
 			res.Errors = append(res.Errors, fmt.Sprintf(
 				"%s: notes cite %q opens at line %d, but the doc comment of %s opens at %s:%d — a range citation opens on the first doc-comment line (#6673)",
 				capPrefix, cite, lo, symbol, rel, wantOpen))
+		case !closesRight:
+			res.Errors = append(res.Errors, fmt.Sprintf(
+				"%s: notes cite %q closes at line %d, past the end of %s, whose declaration ends at %s:%d — a range citation closes on the declaration or in its body (#6673)",
+				capPrefix, cite, hi, symbol, rel, wantClose))
 		}
 	}
 }

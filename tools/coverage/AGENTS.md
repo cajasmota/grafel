@@ -49,10 +49,14 @@ cleanup argument in #6671:
    symbol's doc comment is rot, not house style — that position carries no meaning, and doc-comment
    blocks vary in length so it is not even consistently "the first comment line".
 2. A **range** opens on the **first doc-comment line** and closes on the declaration or in its
-   body. **Both ends are checked.** The declaration must fall within the range, *and* the range
-   must open exactly on the declaration's first doc-comment line (the declaration line itself when
-   there is no doc comment). The opening bound is the load-bearing half: without it a range has no
-   width limit at all and `terraform_deep.go:1-900` validates clean.
+   body. **Both ends are checked, and both matter.** The declaration must fall within the range;
+   the range must open exactly on the declaration's first doc-comment line (the declaration line
+   itself when there is no doc comment); and it must close no later than the last line of the
+   declaration. Bounding one end alone leaves the other open and the drift simply enters through
+   it — `terraform_deep.go:1-900` was accepted before the opening bound, and `cdk_edges.go:137-900`
+   (a 764-line span in a 534-line file) was still accepted with only the opening bound. A citation
+   whose closing line exceeds the file's length is reported separately, since that is wrong
+   regardless of which symbol it names.
 
 **If there is no symbol to anchor to — a statement block, a map-literal key, a regex body, a
 comment — do not write a line number at all.** Keep the file path and the prose. A number with
