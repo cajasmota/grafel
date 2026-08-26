@@ -48,14 +48,18 @@ package daemon
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -72,7 +76,136 @@ var canonicalCache sync.Map // map[string]string
 // readDirFunc is the directory-read primitive used by canonicalizePath.
 // It is a package var so tests can inject a slow/blocking implementation
 // to exercise the timeout guard without a real stuck filesystem.
-var readDirFunc = os.ReadDir
+//
+// The cancel channel is closed by readDirBounded when its timeout fires.
+// An implementation MUST treat that as "stop and return now, dropping any
+// OS handle you hold" — the whole point of #6539 is that a timed-out read
+// must not keep a directory open after readDirBounded has returned. The
+// shipped implementation honours it between chunks; see cancellableReadDir
+// for why closing the handle from outside cannot work.
+var readDirFunc = cancellableReadDir
+
+// outstandingReads counts the reads readDirBounded has launched that have
+// not yet returned.
+//
+// It exists because the leak this counter guards is INVISIBLE on the
+// platforms grafel is developed on. On Windows an open directory handle
+// blocks deletion, so an abandoned read surfaces as RemoveAll failing;
+// on Linux and macOS unlinking an open directory is permitted, so the
+// same leak leaves no trace at all. A counter checked after the call
+// returns fails identically on every platform, which is the only kind of
+// guard that can hold this fix in place (#6539).
+var outstandingReads atomic.Int64
+
+// outstandingReadCount reports how many readDirBounded reads are still
+// running. It is zero whenever no readDirBounded call is in flight.
+func outstandingReadCount() int64 { return outstandingReads.Load() }
+
+// readDirChunk is how many entries cancellableReadDir asks for per
+// f.ReadDir call. It is the granularity of cancellation: the cancel
+// channel is checked once per chunk, so this trades syscall count
+// against how long a cancelled read can keep its directory open.
+//
+// Measured on darwin over an 80,000-entry directory, chunked reads cost
+// nothing against the unchunked f.ReadDir(-1) they replace (53.5ms vs
+// 57.1ms), while a cancel lands within a single chunk instead of never.
+const readDirChunk = 512
+
+// errReadDirCancelled is returned by cancellableReadDir when its cancel
+// channel closed before the read finished. readDirBounded discards the
+// value either way — it has already decided to report a timeout — so
+// this exists to be unambiguous rather than to be branched on.
+var errReadDirCancelled = errors.New("daemon: directory read cancelled")
+
+// readDirChunkHook, when non-nil, is called by cancellableReadDir once
+// per chunk it reads.
+//
+// It is an OBSERVATION POINT ONLY: no arguments, no return, no way to
+// influence what the loop does. Its sole purpose is to let a test act —
+// fire the cancel channel — at a known point INSIDE the loop, so that
+// "cancel is re-checked on every chunk, not merely before the first" is
+// pinned deterministically instead of by racing a sleep against a read.
+//
+// Deliberately NOT a tunable, and that distinction is the whole reason
+// this is acceptable here. The #6548 postmortem is about a seam that let
+// tests SUBSTITUTE the shipped predicate, which made the assertion
+// vacuous — the test proved a closure it had supplied itself. This hook
+// has nothing to substitute: the chunk size, the cancel check and the
+// loop are all still the shipped ones, and a test can only watch them.
+var readDirChunkHook func()
+
+// cancellableReadDir is the production readDirFunc: os.ReadDir's result,
+// from a read that can actually be stopped partway.
+//
+// os.ReadDir reads the whole directory in one uninterruptible call, and
+// holds an open directory handle for all of it. That is the #6539
+// defect: readDirBounded's timeout fired, the caller moved on, and the
+// handle stayed open for an unbounded time — which on Windows blocks a
+// RemoveAll over that directory.
+//
+// The obvious fix does NOT work, and was measured rather than assumed.
+// Closing the *os.File from a watchdog goroutine does not interrupt an
+// in-flight ReadDir and does not release the handle: on darwin
+// os.File.ReadDir goes through Fdopendir + readdir_r, which takes
+// ownership of the fd, so closing the *os.File never touches the DIR*.
+// Where Go uses getdents instead (Linux), internal/poll.FD.Close only
+// decrefs — the real close(2) is deferred to destroy() until the
+// in-flight operation drops its reference, and pd.evict() cannot unblock
+// a non-pollable directory fd. Measured on darwin over an 80,000-entry
+// directory, a read with cancel ALREADY CLOSED still returned all 80,000
+// entries in 52ms, i.e. the watchdog was a no-op.
+//
+// So we read in chunks and check cancel between them. This is
+// interruptible on every platform because it relies on nothing but the
+// loop. The defer below then closes the handle on the way out.
+//
+// The honest bound: cancellation is granular to ONE chunk. A read wedged
+// inside a single f.ReadDir(readDirChunk) call still holds its handle
+// until that call returns. That is a chunk-sized getdents rather than
+// the entire directory, and the handle is released the moment it
+// returns — but it is not instantaneous, and readDirBounded's drain
+// grace is bounded precisely because this residue exists.
+//
+// Entries are sorted by name so this is a drop-in for os.ReadDir, whose
+// documented contract is sorted output; f.ReadDir(n) is not sorted.
+func cancellableReadDir(dir string, cancel <-chan struct{}) ([]os.DirEntry, error) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var entries []os.DirEntry
+	for {
+		select {
+		case <-cancel:
+			// Drop the partial listing: a cancelled read is a read that
+			// did not happen, and returning half a directory would let
+			// canonicalizePath "recover" a casing it never confirmed.
+			return nil, errReadDirCancelled
+		default:
+		}
+		batch, readErr := f.ReadDir(readDirChunk)
+		entries = append(entries, batch...)
+		if readDirChunkHook != nil {
+			readDirChunkHook()
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			sortDirEntries(entries)
+			return entries, readErr
+		}
+	}
+	sortDirEntries(entries)
+	return entries, nil
+}
+
+// sortDirEntries orders entries by filename, matching os.ReadDir.
+func sortDirEntries(entries []os.DirEntry) {
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+}
 
 // traversalHome and traversalGOOS are the ONLY injectable part of the
 // protected-path gate: tests point them at a t.TempDir() fixture home (and at
@@ -116,6 +249,18 @@ func caseInsensitiveFS(goos string) bool {
 // the daemon's startup forever (#5330).
 const defaultCanonicalizeTimeout = 3 * time.Second
 
+// readDirDrainGrace bounds how long readDirBounded waits, AFTER its
+// timeout has fired and it has cancelled the read, for that read to
+// actually return and release its directory handle (#6539).
+//
+// It is short because it is paid per timed-out ancestor in
+// canonicalizePath's walk, and it is bounded at all because a read stuck
+// in an uninterruptible syscall must not be joined — that is the #5330
+// deadlock the surrounding timeout exists to prevent. A cooperating read
+// (the shipped cancellableReadDir) returns far inside this window; the
+// grace only ever costs anything on a genuinely wedged filesystem.
+const readDirDrainGrace = 100 * time.Millisecond
+
 // canonicalizeTimeout returns the per-segment ReadDir timeout, honouring
 // the GRAFEL_CANONICALIZE_TIMEOUT_MS override. A zero, negative, or
 // unparseable value falls back to defaultCanonicalizeTimeout.
@@ -133,19 +278,29 @@ func canonicalizeTimeout() time.Duration {
 // return of false when the read did not finish before the deadline.
 //
 // The read runs in its own goroutine writing to a 1-deep buffered
-// channel, so on a genuinely wedged filesystem that goroutine is simply
-// abandoned: it holds no lock, blocks nothing else, and its eventual
-// (or never) send cannot leak memory beyond the single buffered slot.
-// This is what lets daemon startup proceed instead of deadlocking on a
-// slow FS (#5330).
+// channel, so daemon startup proceeds instead of deadlocking on a slow
+// FS (#5330).
 func readDirBounded(dir string, timeout time.Duration) (entries []os.DirEntry, err error, ok bool) {
 	type result struct {
 		entries []os.DirEntry
 		err     error
 	}
 	ch := make(chan result, 1)
+	cancel := make(chan struct{})
+	outstandingReads.Add(1)
 	go func() {
-		e, rdErr := readDirFunc(dir)
+		e, rdErr := readDirFunc(dir, cancel)
+		// Decremented BEFORE the send so that receiving from ch
+		// happens-after the decrement: anyone who has taken a result
+		// (or seen this read drained) observes it as no longer
+		// outstanding.
+		//
+		// Honestly labelled: NO TEST PINS THIS ORDER. Moving the
+		// decrement after the send only widens a window no test can
+		// force open, so that mutant survives the suite. The ordering
+		// is kept because it is free and correct under the memory
+		// model, not because it is guarded.
+		outstandingReads.Add(-1)
 		ch <- result{e, rdErr}
 	}()
 	timer := time.NewTimer(timeout)
@@ -154,8 +309,31 @@ func readDirBounded(dir string, timeout time.Duration) (entries []os.DirEntry, e
 	case r := <-ch:
 		return r.entries, r.err, true
 	case <-timer.C:
-		return nil, nil, false
 	}
+
+	// Timed out. Cancel the read so it drops its directory handle, then
+	// wait for it to actually return before reporting the timeout.
+	//
+	// This is the #6539 fix. Returning here without cancelling left the
+	// read running with a directory open for an unbounded time, which on
+	// Windows blocks a RemoveAll over that directory; and because
+	// canonicalizePath reads EVERY ancestor of a path, the pinned
+	// directory is whichever ancestor the walk happened to reach, not one
+	// the caller chose.
+	//
+	// The wait is bounded rather than unconditional on purpose: a read
+	// wedged inside an uninterruptible syscall may not return at all, and
+	// joining it would restore the #5330 startup deadlock this timeout
+	// exists to prevent. Such a read stays counted in outstandingReads —
+	// it is released, not forgotten.
+	close(cancel)
+	grace := time.NewTimer(readDirDrainGrace)
+	defer grace.Stop()
+	select {
+	case <-ch:
+	case <-grace.C:
+	}
+	return nil, nil, false
 }
 
 // canonicalizePath returns the path with the actual on-disk casing of

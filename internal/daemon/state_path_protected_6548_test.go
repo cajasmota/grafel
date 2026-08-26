@@ -40,9 +40,9 @@ func TestCanonicalizePath_SkipsProtectedDir(t *testing.T) {
 
 	var read []string
 	origRead := readDirFunc
-	readDirFunc = func(dir string) ([]os.DirEntry, error) {
+	readDirFunc = func(dir string, cancel <-chan struct{}) ([]os.DirEntry, error) {
 		read = append(read, dir)
-		return os.ReadDir(dir)
+		return cancellableReadDir(dir, cancel)
 	}
 	t.Cleanup(func() { readDirFunc = origRead })
 
