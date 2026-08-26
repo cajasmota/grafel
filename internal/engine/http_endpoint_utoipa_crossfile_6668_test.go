@@ -2,6 +2,7 @@ package engine
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -796,4 +797,71 @@ pub fn router() -> OpenApiRouter {
 	})
 	requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-path-leaf-alias")
 	requireUtoipaMarker(t, ents, "src/router.rs", "crate::items", "create_item", "", "6668-path-leaf-alias")
+}
+
+// TestUtoipaCrossFile_NonASCIIWrappedRoutesMacroMarksNothing_6677 is the
+// cross-file half of #6677's macro-NAME boundary.
+//
+// utoipaCrossFileRegistrations walks the SAME utoipaRoutesMacroRe matches the
+// mint walks, so it inherited the same defect: before #6677 the pattern's
+// leading `\b` was RE2's ASCII-only one, `Δroutes!(create_item)` matched, and
+// this pass emitted a cross-file registration marker for a handler an ordinary
+// user-defined wrapper macro had named — a phantom the consumer would later
+// redeem into a phantom endpoint. Both call sites now filter every match through
+// utoipaMacroNameIsBare, and a guard applied at only ONE of them is exactly the
+// half-fix this test exists to catch: removing the crossfile guard leaves the
+// whole axum table green.
+//
+// The two subtests vary the DIRECTION and hold everything else constant — same
+// module file, same `use` binding, same single-argument macro — so the only
+// difference between them is the one rune before `routes`.
+func TestUtoipaCrossFile_NonASCIIWrappedRoutesMacroMarksNothing_6677(t *testing.T) {
+	// U+0394 GREEK CAPITAL LETTER DELTA is XID_Start, so `Δroutes!` is a
+	// Rust-legal wrapper macro name (identifiers are UAX#31, non-ASCII ones
+	// stable since 1.53). That is FROM CONSTRUCTION, not from a compiler run:
+	// there is no rustc here, so the legality rests on the XID_Start property.
+	// U+2192 RIGHTWARDS ARROW is Sm — not an identifier character at all — so
+	// it IS a boundary and the macro after it is a bare `routes!`.
+	for _, tc := range []struct {
+		name       string
+		prefix     string
+		wantMarker bool
+	}{
+		{name: "greek-xid-start-U+0394", prefix: "Δ", wantMarker: false},
+		{name: "math-symbol-Sm-U+2192", prefix: "→", wantMarker: true},
+		{name: "bare-no-prefix", prefix: "", wantMarker: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			label := "6677-crossfile-" + tc.name
+			router := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+use crate::items::create_item;
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(` + tc.prefix + `routes!(create_item))
+}
+`
+			// The incidental byte the whole result rests on.
+			if !strings.Contains(router, tc.prefix+"routes!(create_item)") {
+				t.Fatalf("%s: fixture lost the macro spelling its result depends on", label)
+			}
+
+			ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+				{"src/items.rs", itemsModuleSrc},
+				{"src/router.rs", router},
+			})
+
+			// PREMISE: the pass ran on this pair and this producer minted.
+			// Without it a want-none row would pass on a fixture that never
+			// reached utoipaCrossFileRegistrations at all.
+			requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", label)
+
+			if tc.wantMarker {
+				requireUtoipaMarker(t, ents, "src/router.rs", "crate::items", "create_item", "", label)
+			} else {
+				requireNoUtoipaMarkerFor(t, ents, "create_item", label)
+			}
+		})
+	}
 }
