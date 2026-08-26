@@ -141,6 +141,45 @@ def _git(*args):
         return ""
 
 
+def _resolves(ref):
+    """True if `ref` names a commit in this checkout."""
+    return bool(_git("rev-parse", "--verify", "--quiet", ref + "^{commit}"))
+
+
+def base_ref_override():
+    """The resolvable ref QUALITY_BASE_REF names, or None.
+
+    Kept separate from the search below so callers can tell an OVERRIDE-supplied
+    answer from a DISCOVERED one. `ensure_durable_measured_on` needs that
+    distinction: until #6570 it re-derived the ref the sha had been computed
+    from and asked whether the sha was reachable from it, which an override can
+    never fail (Refs #6564, #6568).
+
+    The value is stripped: its ordinary sources — `$(git symbolic-ref ...)` in a
+    shell, a YAML block scalar, a hand-indented `env:` line, a CRLF checkout —
+    all pad it (Refs #6633).
+    """
+    override = os.environ.get("QUALITY_BASE_REF", "").strip()
+    if override and _resolves(override):
+        return override
+    return None
+
+
+def discovered_branch_ref():
+    """The default-branch ref this checkout can work out for ITSELF, ignoring
+    QUALITY_BASE_REF entirely. None if nothing resolves.
+    """
+    candidates = []
+    head = _git("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+    if head:
+        candidates.append(head)
+    candidates.extend(DEFAULT_BRANCH_REFS)
+    for ref in candidates:
+        if _resolves(ref):
+            return ref
+    return None
+
+
 def default_branch_ref():
     """The ref measured_on is anchored to, or None if this checkout has none.
 
@@ -152,18 +191,7 @@ def default_branch_ref():
     QUALITY_BASE_REF overrides the search for a checkout that knows its own
     base and cannot be discovered from refs.
     """
-    candidates = []
-    override = os.environ.get("QUALITY_BASE_REF", "").strip()
-    if override:
-        candidates.append(override)
-    head = _git("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
-    if head:
-        candidates.append(head)
-    candidates.extend(DEFAULT_BRANCH_REFS)
-    for ref in candidates:
-        if _git("rev-parse", "--verify", "--quiet", ref + "^{commit}"):
-            return ref
-    return None
+    return base_ref_override() or discovered_branch_ref()
 
 
 def git_sha():
@@ -225,6 +253,66 @@ def ensure_durable_measured_on(sha):
             f"orphans it on merge and internal/quality goes red on main for "
             f"everyone. measured_on must be the merge-base with the default "
             f"branch (Refs #6564)."
+        )
+    _cross_check_override(sha, ref)
+
+
+def _cross_check_override(sha, ref):
+    """Second opinion when `ref` came from QUALITY_BASE_REF (Refs #6570).
+
+    The check above asks whether `sha` is reachable from the ref `git_sha()`
+    computed it from. With an override set, those are the same ref, so the
+    question answers itself and the guard cannot object — pointing the override
+    at a local feature branch re-enters #6564 with the writer stamping that
+    branch's HEAD and this function accepting it.
+
+    So when the ref was supplied by the operator rather than discovered, ask the
+    ref the checkout found for itself as well.
+
+    That second ref is only consulted when it shares history with the override.
+    A discovered ref with NO merge-base against the operator's declared base is
+    not describing this checkout at all — #6627's fixture is exactly that shape,
+    an `origin/main` on an orphan root, "a different project's main" — and
+    demanding ancestry of it would refuse every durable sha, which is the
+    regression #6627 and #6633 pinned.
+
+    Two things this function does NOT cover, recorded rather than rediscovered:
+
+      * `override != ref` is unreachable-false today — `ref` is always
+        `default_branch_ref()`, which returns the override whenever one
+        resolves. Replacing it with `False` is EQUIVALENT under the current
+        suite. It is defensive, not discriminating; do not read it as a
+        condition that ever fires, and do not file it as a killable mutant.
+      * `discovered is None` is a door this guard structurally cannot close. On
+        a checkout with no `origin/HEAD` and no `main`/`master` — a default
+        branch called `trunk` or `develop` — there is no second opinion to take
+        and the override still vouches for itself exactly as before #6570. That
+        is deliberate: it is the same "degrade, do not guess" policy as
+        `default_branch_ref()` returning None, and inventing a ref to check
+        against would be the guess that policy exists to avoid.
+    """
+    override = base_ref_override()
+    if override is None or override != ref:
+        return
+    discovered = discovered_branch_ref()
+    if discovered is None or discovered == override:
+        return
+    if not _git("merge-base", override, discovered):
+        return
+    ok = subprocess.call(
+        ["git", "merge-base", "--is-ancestor", sha, discovered],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    if ok != 0:
+        raise SystemExit(
+            f"ratchet: refusing to write measured_on {sha!r} — QUALITY_BASE_REF "
+            f"named {override}, and while {sha!r} is reachable from there it is "
+            f"NOT an ancestor of {discovered}, the default branch this checkout "
+            f"discovered for itself. An override cannot vouch for itself: point "
+            f"it at a feature branch and the writer stamps a commit squash "
+            f"orphans on merge, which is #6564 with the guard agreeing. Unset "
+            f"QUALITY_BASE_REF, or point it at a ref {discovered} can reach "
+            f"(Refs #6564, #6570)."
         )
 
 
