@@ -1,6 +1,9 @@
 package engine
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // #6500 (arm A) — jsFuncSpan carried only (offset, name), so enclosingJSFuncAt
 // was a nearest-PRECEDING walk with no end bound: a call site attributed to the
@@ -85,6 +88,30 @@ func TestJSSpanEnd_ClosedSiblingDoesNotCapture_6500(t *testing.T) {
 				"}\n",
 			endpoint: "http:GET:/api/orders",
 			want:     "Function:loadOrders",
+		},
+		{
+			// BOUNDARY, observed at the artefact: the call-site offset the walk
+			// receives is EXACTLY helper.end.
+			//
+			// The pass that emits a TS `fetch()` synthetic is the AST one
+			// (http_endpoint_client_ast.go:114, `extraction_method="ast"`), which
+			// hands the walk `int(call.StartByte())` — the `f` of `fetch` itself.
+			// The regex pass (fetchCallRe) also runs, but its match begins on the
+			// `[^\w$.]` byte BEFORE `fetch` (here the `}`, one lower) and its emit
+			// is deduped away by the AST one. Measured on this fixture: AST offset
+			// 70, regex offset 69, helper span [37,70). So abutting the call to the
+			// sibling's `}` lands the AST offset on the end byte precisely.
+			//
+			// An end bound one byte too generous (`pos <= end`, or `end+1`) puts
+			// this call back inside `helper`. Verified discriminating: clean emits
+			// Function:outerLoad, `pos <= end` emits Function:helper.
+			name: "call match begins exactly at the closed sibling's end offset",
+			src: "export async function outerLoad() {\n" +
+				"  function helper(x) { return x; }fetch(\"/api/boundary\");\n" +
+				"  return 1;\n" +
+				"}\n",
+			endpoint: "http:GET:/api/boundary",
+			want:     "Function:outerLoad",
 		},
 		{
 			// Two closed siblings, deeper nesting: a naive scan that stops at
@@ -240,22 +267,35 @@ func TestSpanEnd_NoEnclosingSpanBehaviourIsPreserved_6500(t *testing.T) {
 }
 
 // TestSpanEnd_IntervalIsHalfOpen_6500 pins the ONE byte that separates a
-// correct end bound from a bound that is one too generous.
+// correct end bound from a bound that is one too generous, on both sides
+// (`end-1` inside, `end` outside), so the bound cannot be moved in either
+// direction.
 //
-// This is the only assertion in this file that is not on the emitted artefact,
-// and it is deliberate. The boundary state is `pos == end` — a call site
-// beginning on the very byte a sibling's body ended. Every emitted-artefact
-// fixture attempted for it missed by a byte: the call-site offsets the
-// synthesis passes hand to the walk are the offsets of their own call-pattern
-// matches, and none of them can be made to coincide exactly with a span end in
-// source that is still valid JS/Python. Manufacturing one would have been
-// forcing a kill rather than observing a behaviour.
+// An earlier revision of this file claimed the JS boundary was unreachable
+// through an emitted artefact. Review disproved the conclusion, and chasing it
+// down disproved the stated reason too, so both are recorded here.
 //
-// So the boundary is pinned where it lives: on the walk itself, which all 43
-// consumers call directly with no intervening logic. The artefact-level tests
-// above prove the walk's answer reaches `source_caller`; this proves the walk's
-// answer is right at the boundary. Both sides are asserted, so a mutant cannot
-// pass by moving the bound in EITHER direction.
+// The old reason — "the offset the pipeline hands the walk is not the
+// call-pattern match offset" — was half right and useless. A stack probe shows
+// TWO passes see this call: the AST pass (http_endpoint_client_ast.go:114)
+// with the `fetch` identifier's own start byte, and the fetchCallRe pass with
+// the byte before it. The AST pass emits first and the regex emit is deduped
+// away, so the offset that decides the artefact is the AST one. That is not an
+// unreachable offset, it is just a different one — abut the call to the
+// sibling's `}` and it lands exactly on the span end. The fixture is now the
+// artefact-level row `call match begins exactly at the closed sibling's end
+// offset` in TestJSSpanEnd_ClosedSiblingDoesNotCapture_6500 above, and it is
+// what actually kills a `pos <= end` mutant on the JS side.
+//
+// What survives here is the PYTHON half plus a JS unit-level companion. The
+// Python boundary genuinely is not reachable through an artefact: pySpanEnd
+// ends a body at the START of the dedented line, indentation included, while
+// any call still inside the enclosing body must be indented — so the call
+// offset is always the span end plus that indentation, never equal to it. A
+// call at column zero would have dedented out of the enclosing def too, which
+// answers the same either way. Rather than manufacture a fixture to force the
+// kill, the Python boundary is pinned on the walk, which all 43 consumers call
+// directly with no intervening logic.
 func TestSpanEnd_IntervalIsHalfOpen_6500(t *testing.T) {
 	t.Run("js", func(t *testing.T) {
 		src := "export async function outerLoad() {\n" +
@@ -350,5 +390,110 @@ func TestSpanEnd_UnestablishableEndClaimsNothing_6500(t *testing.T) {
 		if f.name == "ghost" && f.end != f.offset {
 			t.Errorf("premise gone: ghost span is now bounded %+v — this test no longer exercises the degenerate path", f)
 		}
+	}
+}
+
+// TestJSSpanEnd_UnmaskedBraceOverExtends_6500 pins the failure mode #6500's
+// first revision wrongly claimed could not happen.
+//
+// That revision asserted, in the PR body and in three code comments, that
+// "every failure mode of jsSpanEnd and pySpanEnd produces a span that is too
+// small", so a mis-computed end "degrades to the status quo and never invents a
+// new wrong caller". A `{` inside an ordinary string falsifies it. The brace
+// scan is blind to quoted text, so the `"{"` below leaves it one level down and
+// the closing `}` of `a` is consumed as if it balanced the string's brace. `a`
+// then runs to the `}` in the trailing `"}"` string — 115 bytes, swallowing the
+// whole of `b` and the module-level call after it.
+//
+// This is the direction that actually costs something:
+//
+//   - too SMALL: the call falls out of the span onto the preserved fallback,
+//     which is the pre-#6500 answer. No regression.
+//   - too LARGE: the span CONTAINS call sites outside the real body and
+//     out-ranks the fallback, so the answer differs from what pre-#6500 code
+//     produced. Here the nearest-preceding walk answered `b`; the bounded walk
+//     answers `a`. And because sse_edges.go builds a Stream entity's ID as
+//     `"/" + caller`, that difference renames a node rather than mis-labelling
+//     a property.
+//
+// The row asserts `a` — today's wrong answer — deliberately, in the same spirit
+// as TestSpanEnd_NoEnclosingSpanBehaviourIsPreserved_6500. The fix is to mask
+// string, template and comment bytes before the brace scan, which is owed from
+// #6447 and is a whole-pattern change, not an arm A change. When that lands
+// this row should answer `b` (or better, `""`); update it deliberately then.
+func TestJSSpanEnd_UnmaskedBraceOverExtends_6500(t *testing.T) {
+	src := "function a() {\n" +
+		"  const s = \"{\";\n" +
+		"  return 1;\n" +
+		"}\n" +
+		"function b() { return 2; }\n" +
+		"const warm = fetch(\"/api/overextend\");\n" +
+		"const t = \"}\";\n"
+
+	// The behavioural claim first: an over-extended span really does reach the
+	// artefact and really does differ from the nearest-preceding answer.
+	got := callerFor(t, "typescript", "overextend.ts", src, "http:GET:/api/overextend")
+	if got != "Function:a" {
+		t.Errorf("source_caller = %q, want %q — the over-extension this test exists to record has changed; "+
+			"if string masking landed, the honest answer is now %q and this row should be updated, not deleted",
+			got, "Function:a", "Function:b")
+	}
+
+	// And the mechanism, so a future reader can see WHY without re-deriving it:
+	// `a` must genuinely span past `b`, not merely happen to win the walk.
+	var spanA, spanB jsFuncSpan
+	for _, f := range indexJSEnclosingFunctions(src) {
+		switch f.name {
+		case "a":
+			spanA = f
+		case "b":
+			spanB = f
+		}
+	}
+	if !(spanA.end > spanB.offset) {
+		t.Errorf("premise gone: a=%+v no longer swallows b=%+v — the brace scan stopped over-extending", spanA, spanB)
+	}
+}
+
+// TestJSSpanEnd_HeaderBudgetCosts_6500 observes what jsSpanHeaderBudget does,
+// rather than what its comment used to claim it prevented.
+//
+// The old comment said the budget stopped a runaway scan from "minting an
+// overlapping span, which is worse than no span at all". Nothing observed that,
+// and a review mutant raising the budget to 1<<30 survived the whole
+// internal/engine suite. What the budget demonstrably DOES is give up on a
+// header longer than 512 bytes between `)` and `{`, leaving that declaration
+// with no end at all — so it claims none of its own body, and a call site
+// inside it falls through to the preceding declaration.
+//
+// The 652-byte generic return annotation below is ordinary, if ugly,
+// TypeScript. `big` gets no span, so the call in its body attributes to the
+// closed nested `helper` — the exact pre-#6500 mis-attribution, reintroduced by
+// the budget rather than prevented by it.
+//
+// This row pins a LIMITATION, not a desired answer. Raising the budget makes
+// this case answer "Function:big", which is CORRECT and an improvement; if you
+// do that, update this expectation deliberately rather than deleting the row.
+// It exists so that changing the constant is a visible diff.
+func TestJSSpanEnd_HeaderBudgetCosts_6500(t *testing.T) {
+	long := "Record<string, " + strings.Repeat("Array<", 90) + "string" + strings.Repeat(">", 90) + ">"
+	src := "export function big(x: string): " + long + " {\n" +
+		"  function helper() { return 1; }\n" +
+		"  return fetch(\"/api/big\");\n" +
+		"}\n"
+
+	// Behaviour first, so that a change to the budget is caught by the emitted
+	// artefact rather than by the premise diagnostic below it.
+	got := callerFor(t, "typescript", "big.ts", src, "http:GET:/api/big")
+	if got != "Function:helper" {
+		t.Errorf("source_caller = %q, want %q (the budget's cost). If the budget was raised, "+
+			"the answer becomes %q, which is better — update this row deliberately",
+			got, "Function:helper", "Function:big")
+	}
+
+	// Premise diagnostic, reported after the fact, never instead of it.
+	if len(long) <= jsSpanHeaderBudget {
+		t.Errorf("premise gone: annotation is %d bytes, budget is %d — this fixture no longer exceeds it",
+			len(long), jsSpanHeaderBudget)
 	}
 }

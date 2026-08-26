@@ -2499,21 +2499,43 @@ type jsFuncSpan struct {
 	// begins on the newline that IS the sibling's end offset.
 	//
 	// end == offset means "no end could be established" (an unterminated body,
-	// a TS overload signature with no body, a `}` hidden in a string literal
-	// that unbalanced the scan). Such a span contains nothing, so the walk
-	// falls back to its pre-#6500 answer rather than inventing a new one:
-	// every way jsSpanEnd can be wrong degrades to the status quo.
+	// a TS overload signature with no body, a header longer than
+	// jsSpanHeaderBudget). Such a span contains nothing, and the walk falls
+	// back to its pre-#6500 answer.
+	//
+	// That is the BENIGN failure mode, and it is not the only one. The brace
+	// scan is blind to strings, template literals and comments, so a stray
+	// `{` in dead or quoted text can leave the scan unbalanced and carry the
+	// end PAST the real body — over-extending the span across later
+	// declarations. An over-long span does not degrade to the status quo: it
+	// contains call sites it should not, out-ranks the fallback, and yields a
+	// caller that differs from the pre-#6500 answer. Both directions are
+	// pinned in TestJSSpanEnd_UnmaskedBraceOverExtends_6500. Masking dead and
+	// quoted text is the fix, is owed from #6447, and is not attempted here.
 	end  int
 	name string
 }
 
 // jsSpanHeaderBudget bounds the scan between a declaration's `)` and its body
-// `{`. A return-type annotation can be long; a runaway scan that walks into the
-// NEXT function's brace would mint an overlapping span, which is worse than no
-// span at all.
+// `{` — the region a return-type annotation occupies.
+//
+// Its EFFECT is pinned, not its rationale. A header longer than this yields no
+// end at all, so the declaration claims nothing and its own call sites fall
+// through to the preceding declaration: a mis-attribution the budget causes
+// rather than prevents. TestJSSpanEnd_HeaderBudgetCosts_6500 records that cost
+// on a 652-byte generic return annotation. Raising the budget IMPROVES that
+// case; the test says so and tells you to update it deliberately.
+//
+// The value is a defensive bound on an otherwise unbounded forward scan. No
+// test observes it preventing anything, and the earlier claim here that it
+// stopped a runaway scan from minting an overlapping span was never
+// demonstrated, so it has been removed rather than left standing.
 const jsSpanHeaderBudget = 512
 
-// jsSpanBodyBudget bounds the statement scan for an expression-bodied arrow.
+// jsSpanBodyBudget bounds the two forward scans that have no natural stopping
+// point: closing a declaration's parameter list (findMatchingParenAfter, in
+// both jsSpanEnd and pySpanEnd) and walking an expression-bodied arrow to the
+// end of its statement (jsStatementEnd).
 const jsSpanBodyBudget = 4096
 
 // jsSpanEnd computes the exclusive end offset of the function body for a
@@ -2524,10 +2546,16 @@ const jsSpanBodyBudget = 4096
 // Alternatives 1-3 end just past the parameter list's opening `(`, so we close
 // the parens first and then look for the body.
 //
-// Returns -1 when no end can be established. The scan is deliberately blind to
-// string literals, template literals and comments, exactly as jsFuncDeclRe
-// itself already is; a `}` inside a string ends the span early, which drops
-// call sites out of it and back onto the fallback walk.
+// Returns -1 when no end can be established.
+//
+// The scan is blind to string literals, template literals and comments,
+// exactly as jsFuncDeclRe itself already is. That cuts BOTH ways and the
+// permissive direction is the one that matters: a `}` in quoted text ends the
+// span early (harmless — the call site falls out and lands on the fallback),
+// but a `{` in quoted text leaves the scan a level down and carries the end
+// past the real body, swallowing later declarations and their call sites.
+// TestJSSpanEnd_UnmaskedBraceOverExtends_6500 pins a two-line example of the
+// second. Masking is the fix and is owed from #6447.
 func jsSpanEnd(content string, matchEnd int, bodyBraceKnown bool) int {
 	open := -1
 	if bodyBraceKnown {
@@ -2690,9 +2718,14 @@ func indexJSEnclosingFunctions(content string) []jsFuncSpan {
 // there would rename graph nodes rather than blank a property. The fallback is
 // pinned in TestSpanEnd_NoEnclosingSpanBehaviourIsPreserved_6500.
 //
-// It is also what makes a mis-computed end safe: every failure mode of
-// jsSpanEnd / the Python indentation scan yields a span that is too small, so
-// the call site falls out of it and lands back on the old answer.
+// The fallback absorbs one class of mis-computed end and not the other. A span
+// that comes out too SMALL loses its call sites to the fallback, which is the
+// pre-#6500 answer — no worse than before. A span that comes out too LARGE
+// (an unbalanced brace scan; see jsSpanEnd) claims call sites outside the real
+// body and out-ranks the fallback, producing a caller that pre-#6500 code would
+// not have produced. Because sse_edges.go folds the caller into a Stream
+// entity's ID, that direction renames a node rather than mis-labelling a
+// property. Pinned in TestJSSpanEnd_UnmaskedBraceOverExtends_6500.
 func enclosingJSFuncAt(funcs []jsFuncSpan, pos int) string {
 	contained := ""
 	found := false
