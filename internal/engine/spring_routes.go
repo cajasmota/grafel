@@ -59,10 +59,19 @@ type composedSpringRoutes struct {
 	// drop the duplicate orphan Route entities the YAML rules emitted for
 	// the same paths inside the same controller class.
 	claimedMethodPaths map[string]bool
-	// claimedHandlerMethods is the set of handler method names whose
-	// ROUTES_TO edge this pass replaced. Used to drop the orphan YAML
+	// claimedHandlerEdges is the set of YAML ROUTES_TO edges this pass
+	// replaced, keyed by the QUALIFYING PAIR (bare annotation path, handler
+	// method name) — see springHandlerClaimKey. Used to drop the orphan YAML
 	// ROUTES_TO edges that point at uncomposed source Routes.
-	claimedHandlerMethods map[string]bool
+	//
+	// #6498 — this was keyed on the bare method name alone and scoped to the
+	// file, so two controller classes in one file sharing a handler method
+	// name collided: the first class's claim suppressed the second class's
+	// legitimate edge, silently deleting a real endpoint from the graph. The
+	// YAML edge carries no class (its ToID is `Controller:<bareMethod>`), so
+	// the class-distinguishing information available on BOTH sides is the
+	// annotation path the edge's FromID (`Route:<barePath>`) is built from.
+	claimedHandlerEdges map[string]bool
 	// claimedClassPrefixes is the set of class-level @RequestMapping
 	// prefixes consumed (e.g. "/api"). Used to drop the orphan class-level
 	// Route entity the YAML rules emit from the bare class annotation.
@@ -114,7 +123,14 @@ func applySpringRouteComposition(args DetectorPassArgs) DetectorPassResult {
 	for _, r := range rawRels {
 		if r.Kind == "ROUTES_TO" && strings.HasPrefix(r.ToID, "Controller:") {
 			method := strings.TrimPrefix(r.ToID, "Controller:")
-			if composed.claimedHandlerMethods[method] {
+			// No `HasPrefix(r.FromID, "Route:")` guard: every spring_mvc.yaml
+			// ROUTES_TO rule declares source_type Route, so the prefix is
+			// always present. On a hypothetical edge without it TrimPrefix is
+			// a no-op and the resulting key cannot match a claim (claims are
+			// keyed on an annotation path), so the guard would be an
+			// unreachable, untestable branch.
+			barePath := strings.TrimPrefix(r.FromID, "Route:")
+			if composed.claimedHandlerEdges[springHandlerClaimKey(barePath, method)] {
 				continue
 			}
 		}
@@ -123,6 +139,16 @@ func applySpringRouteComposition(args DetectorPassArgs) DetectorPassResult {
 	filteredRels = append(filteredRels, composed.relationships...)
 
 	return DetectorPassResult{Entities: filteredEntities, Relationships: filteredRels}
+}
+
+// springHandlerClaimKey builds the key for claimedHandlerEdges: the bare
+// annotation path the YAML rules matched, paired with the handler method name.
+// Both halves are required — see the claimedHandlerEdges doc comment (#6498).
+// The separator is a NUL byte, which cannot occur in a Java identifier or in a
+// route path captured by the spring_mvc.yaml regexes, so the pair cannot be
+// forged by a path/method combination that concatenates ambiguously.
+func springHandlerClaimKey(barePath, methodName string) string {
+	return barePath + "\x00" + methodName
 }
 
 // bytesContainsAny is a cheap pre-filter to avoid parsing files that
@@ -142,9 +168,9 @@ func bytesContainsAny(content []byte, needles ...string) bool {
 // carries a class-level @RequestMapping prefix.
 func extractSpringComposedRoutes(ctx context.Context, path string, content []byte) (composedSpringRoutes, bool) {
 	out := composedSpringRoutes{
-		claimedMethodPaths:    map[string]bool{},
-		claimedHandlerMethods: map[string]bool{},
-		claimedClassPrefixes:  map[string]bool{},
+		claimedMethodPaths:   map[string]bool{},
+		claimedHandlerEdges:  map[string]bool{},
+		claimedClassPrefixes: map[string]bool{},
 	}
 
 	factory := treesitter.NewParserFactory(nil)
@@ -245,7 +271,7 @@ func processSpringClass(class ts.Node, src []byte, path string, out *composedSpr
 			composedPath := joinRoutePaths(prefix, apath)
 
 			out.claimedMethodPaths[apath] = true
-			out.claimedHandlerMethods[methodName] = true
+			out.claimedHandlerEdges[springHandlerClaimKey(apath, methodName)] = true
 
 			routeProps := map[string]string{
 				"framework":    "java",
