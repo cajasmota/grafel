@@ -309,9 +309,10 @@ func TestUtoipaCrossFile_UnimportedHandlerGetsNoMarker_6668(t *testing.T) {
 	}{
 		{"no-binding", "use utoipa_axum::routes;"},
 		{"glob", "use utoipa_axum::routes;\nuse crate::items::*;"},
-		// A NESTED brace group is rejected whole: splitting its body on commas
-		// would tear the braces apart and bind fragments that are not items.
-		{"nested-group", "use utoipa_axum::routes;\nuse crate::{items::create_item, admin::purge};"},
+		// A flat group that does not name this handler at all. (The flat group
+		// that DOES name it resolves — see
+		// TestUtoipaCrossFile_FlatGroupLeafPaths_6668.)
+		{"flat-group-other-handlers", "use utoipa_axum::routes;\nuse crate::{list_items, admin::purge};"},
 	} {
 		router := `
 use utoipa_axum::router::OpenApiRouter;
@@ -327,6 +328,52 @@ pub fn router() -> OpenApiRouter {
 		})
 		requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-unimported/"+tc.label)
 		requireNoUtoipaMarkerFor(t, ents, "create_item", "6668-unimported/"+tc.label)
+		// TOTAL-COUNT BACKSTOP. requireNoUtoipaMarkerFor filters on
+		// handler_name, so a marker with an EMPTY join key is invisible to it —
+		// and an empty join key is exactly what dropping the `bound` guard
+		// produces. Without this line the whole table passes while the #6150
+		// "never guess a module" clause is deleted (scored: that mutant
+		// SURVIVED before this assertion existed, and dies with it).
+		if n := len(utoipaMarkers(ents)); n != 0 {
+			t.Errorf("6668-unimported/%s: want 0 markers, got %d (%v)",
+				tc.label, n, utoipaMarkerIDs(ents))
+		}
+	}
+}
+
+// TestUtoipaCrossFile_NestedUseGroupFabricatesNothing_6668 is the case that
+// makes the nested-group rejection load-bearing rather than decorative.
+//
+// `use crate::{items::{create_item, purge}, admin};` — a real rustfmt output —
+// contains a group INSIDE a group. A comma split of the outer body yields
+// `items::{create_item`, `purge}`, `admin`; the naive scan that cuts the group
+// at the FIRST `}` instead yields a bare `purge`, which passes leaf validation
+// and is attributed to the OUTER base. The join key would then read
+// `crate::purge` for a handler that really lives at `crate::items::purge` — an
+// INVENTED key, and worse than a miss: #6669 resolves on
+// (handler_module, handler_name), so a fabricated module MIS-JOINS rather than
+// failing to join.
+//
+// The correct answer is zero markers: this file states no binding this pass can
+// read, so the registration is left unenriched (#6150).
+func TestUtoipaCrossFile_NestedUseGroupFabricatesNothing_6668(t *testing.T) {
+	router := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+use crate::{items::{create_item, purge}, admin};
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(purge))
+}
+`
+	ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+		{"src/items.rs", itemsModuleSrc},
+		{"src/router.rs", router},
+	})
+	requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-nested-use-group")
+	for _, e := range utoipaMarkers(ents) {
+		t.Errorf("6668-nested-use-group: marker %s fabricated join key %s::%s from a nested `use` group; want no marker at all",
+			e.ID, e.Properties["handler_module"], e.Properties["handler_name"])
 	}
 }
 
@@ -493,4 +540,112 @@ pub fn router() -> OpenApiRouter {
 	})
 	requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-commented-use")
 	requireNoUtoipaMarkerFor(t, ents, "create_item", "6668-commented-use")
+}
+
+// TestUtoipaCrossFile_FlatGroupLeafPaths_6668 pins the most common rustfmt
+// grouping, `use crate::{items::create_item, admin::purge};`. An earlier
+// revision resolved NEITHER leaf — restrictive rather than wrong, but it left
+// the dominant real-world spelling silently unhandled, so the feature would have
+// shipped near-inert on real routers.
+func TestUtoipaCrossFile_FlatGroupLeafPaths_6668(t *testing.T) {
+	router := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+use crate::{items::create_item, api::v1::admin::purge};
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new()
+        .routes(routes!(create_item))
+        .routes(routes!(purge))
+}
+`
+	admin := `
+#[utoipa::path(delete, path = "/admin/purge")]
+pub async fn purge() -> &'static str { "" }
+`
+	ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+		{"src/items.rs", itemsModuleSrc},
+		{"src/api/v1/admin.rs", admin},
+		{"src/router.rs", router},
+	})
+	requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-flat-group-paths")
+	requireUtoipaMarker(t, ents, "src/router.rs", "crate::items", "create_item", "", "6668-flat-group-paths")
+	// A MULTI-segment leaf: every leading segment belongs to the module and only
+	// the last names the item. Taking the first segment instead would yield
+	// `crate::api` + `v1::admin::purge`, which is an invented key.
+	requireUtoipaMarker(t, ents, "src/router.rs", "crate::api::v1::admin", "purge", "", "6668-flat-group-paths")
+	if n := len(utoipaMarkers(ents)); n != 2 {
+		t.Errorf("6668-flat-group-paths: want 2 markers, got %d (%v)", n, utoipaMarkerIDs(ents))
+	}
+}
+
+// TestUtoipaCrossFile_RelativeUseRootRefused_6668 pins the ruling on `self::`
+// and `super::`: both resolve only against the declaring file's own position in
+// the module tree, which a per-file pass cannot know, so no marker is emitted
+// rather than one carrying a key that can never match by identity (#6150).
+// `crate::` is the control — it IS resolvable and must still be kept.
+func TestUtoipaCrossFile_RelativeUseRootRefused_6668(t *testing.T) {
+	mk := func(useDecl string) string {
+		return `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+` + useDecl + `
+
+pub fn router() -> OpenApiRouter {
+    OpenApiRouter::new().routes(routes!(create_item))
+}
+`
+	}
+	for _, tc := range []struct {
+		label   string
+		useDecl string
+		want    int
+	}{
+		{"self", "use self::items::create_item;", 0},
+		{"super", "use super::items::create_item;", 0},
+		{"super-in-group", "use super::{items::create_item};", 0},
+		{"crate-control", "use crate::items::create_item;", 1},
+	} {
+		ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+			{"src/items.rs", itemsModuleSrc},
+			{"src/router.rs", mk(tc.useDecl)},
+		})
+		requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-relative-use/"+tc.label)
+		if n := len(utoipaMarkers(ents)); n != tc.want {
+			t.Errorf("6668-relative-use/%s: want %d marker(s), got %d (%v)",
+				tc.label, tc.want, n, utoipaMarkerIDs(ents))
+		}
+	}
+}
+
+// TestUtoipaCrossFile_CommentedRoutesMacroStillMarks_6668 documents an
+// ASYMMETRY rather than leaving it implied: a `//`-commented `use` binds
+// nothing, but a `//`-commented `routes!(...)` IS still read as a registration.
+//
+// THE RULING: keep the asymmetry, and pin it. `utoipaAttrIsLineCommented` exists
+// in this package and could suppress the marker — but synthesizeUtoipaAxumRoutes
+// and synthesizeAxumRoutes both read a commented-out registration as real, by
+// long-standing house behaviour. Making the MARKER stricter than the MINT that
+// shares its regex would mean one `routes!` occurrence is a registration for one
+// pass and not for the other, which is a worse defect than the false positive it
+// removes. If this is fixed it must be fixed for the whole Rust route family at
+// once, not here.
+func TestUtoipaCrossFile_CommentedRoutesMacroStillMarks_6668(t *testing.T) {
+	router := `
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+use crate::items::create_item;
+
+pub fn router() -> OpenApiRouter {
+    // OpenApiRouter::new().routes(routes!(create_item))
+    OpenApiRouter::new()
+}
+`
+	ents := runUtoipaCrossFile(t, []utoipaCrossFileFile{
+		{"src/items.rs", itemsModuleSrc},
+		{"src/router.rs", router},
+	})
+	requireUtoipaDefIn(t, ents, "http:GET:/items", "list_items", "6668-commented-macro")
+	// Asserted as-is: this is the documented house behaviour, not an endorsement.
+	requireUtoipaMarker(t, ents, "src/router.rs", "crate::items", "create_item", "", "6668-commented-macro")
 }

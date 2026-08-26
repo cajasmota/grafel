@@ -144,6 +144,13 @@ var rustUseDeclRe = regexp.MustCompile(`(?m)^[ \t]*(?:pub(?:\s*\([^)]*\))?[ \t]+
 var rustUsePathRe = regexp.MustCompile(`^[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*$`)
 
 // rustUseIdentRe validates a leaf name.
+//
+// Widening it to admit `*` is EQUIVALENT under the CURRENT mint recognition
+// rule and only that rule: a `*` binding is unreachable because
+// utoipaRoutesMacroRe admits only `[A-Za-z_]\w*` as a macro argument. If that
+// rule is ever widened to path-qualified arguments (`routes!(crate::items::x)`,
+// listed as future work on #6669), the equivalence LAPSES and this validation
+// becomes load-bearing — so widen the two together or not at all.
 var rustUseIdentRe = regexp.MustCompile(`^[A-Za-z_]\w*$`)
 
 // rustUseLeafAsRe splits a `name as alias` leaf.
@@ -157,12 +164,22 @@ var rustUseLeafAsRe = regexp.MustCompile(`^([A-Za-z_]\w*)[ \t\r\n]+as[ \t\r\n]+(
 // `self`, `*`, and any leaf that is not a bare identifier (or `ident as ident`)
 // are dropped: none of them names a resolvable single item.
 func rustAddUseLeaf(out map[string]rustUseBinding, module, leaf string) {
-	if module == "" || !rustUsePathRe.MatchString(module) {
-		return
-	}
 	name, local := leaf, leaf
 	if m := rustUseLeafAsRe.FindStringSubmatch(leaf); m != nil {
 		name, local = m[1], m[2]
+	}
+	// A group leaf may itself be a PATH — `use crate::{items::create_item,
+	// admin::purge};` is the most common rustfmt grouping, and rejecting it
+	// would leave the dominant real-world spelling silently unresolved. The
+	// leading segments belong to the module, the last to the item.
+	if cut := strings.LastIndex(name, "::"); cut >= 0 {
+		module, name = module+"::"+name[:cut], name[cut+2:]
+		if local == leaf {
+			local = name
+		}
+	}
+	if module == "" || !rustUsePathRe.MatchString(module) {
+		return
 	}
 	if !rustUseIdentRe.MatchString(name) || !rustUseIdentRe.MatchString(local) {
 		return
@@ -170,11 +187,21 @@ func rustAddUseLeaf(out map[string]rustUseBinding, module, leaf string) {
 	if name == "self" || local == "self" {
 		return
 	}
-	if _, dup := out[local]; dup {
-		// Two declarations bind one local name. Rust would not compile this;
-		// keep the first rather than guess which one the macro meant.
+	// A `self::`- or `super::`-rooted module is resolvable only against the
+	// declaring file's own position in the module tree, which this per-file pass
+	// does not know. Stamping it verbatim would publish a join key that cannot
+	// match anything by identity — a guess wearing the shape of an answer, which
+	// is what #6150 forbids. `crate::…` and an absolute crate path are both
+	// resolvable and are kept.
+	if root := module; root == "self" || root == "super" ||
+		strings.HasPrefix(root, "self::") || strings.HasPrefix(root, "super::") {
 		return
 	}
+	// No first-wins guard here on purpose. Two `use` declarations binding one
+	// local name is E0252 — it does not compile — so a guard for it defends
+	// against input Rust cannot produce, and a mutant deleting it cannot be
+	// killed by any valid fixture. This file deletes unkillable guards rather
+	// than keeping them (the same disposition applied to the `emitted` map).
 	out[local] = rustUseBinding{module: module, name: name}
 }
 
@@ -183,14 +210,37 @@ func rustAddUseLeaf(out map[string]rustUseBinding, module, leaf string) {
 //
 // Both the plain form (`use crate::items::list_items;`) and the single-level
 // brace group (`use crate::items::{list_items, create_item};`) are read. A
-// A NESTED group (`use crate::{items::{a}, other};`) binds nothing useful: the
-// comma split tears the inner braces apart and every resulting fragment
-// (`items::{a`, `b}`) fails the leaf validation in rustAddUseLeaf. An explicit
-// brace-count guard was written for that case and then DELETED — it was dead
-// code, verified by mutation (removing it changes no result, because the leaf
-// validation already rejects every fragment). A glob (`use crate::items::*;`)
-// is rejected for the same reason: `*` is not an identifier, so it names no
-// item and no join key can be derived from it.
+// A NESTED group (`use crate::{items::{create_item, purge}, admin};`) is
+// rejected WHOLE, and that guard is load-bearing rather than defensive. The
+// argument that leaf validation subsumes it is FALSE, and the counter-example is
+// pinned by TestUtoipaCrossFile_NestedUseGroupFabricatesNothing_6668: a scan
+// that cuts the group at the first `}` splits out a bare `purge`, which passes
+// leaf validation and is then attributed to the OUTER base — a join key of
+// `crate::purge` for a handler that lives at `crate::items::purge`. Since #6669
+// resolves on (handler_module, handler_name), an invented module MIS-JOINS
+// rather than merely missing, which is the worse failure and exactly what #6150
+// forbids. So: the group runs to the LAST `}`, and any `{`/`}` inside it kills
+// the declaration.
+//
+// (An earlier revision deleted this guard on the strength of the subsumption
+// argument, after a mutant that removed it survived. The mutant survived because
+// the fixture labelled `nested-group` contained no nested braces. Deleting an
+// unkillable guard is right only when the subsumption is DEMONSTRATED.)
+//
+// A glob (`use crate::items::*;`) is rejected on the leaf instead: `*` is not an
+// identifier, so it names no item and no join key can be derived from it.
+//
+// A group leaf that is itself a PATH — `use crate::{items::create_item,
+// admin::purge};`, the most common rustfmt grouping — IS resolved: the leading
+// segments join the base to form the module and the last names the item. An
+// earlier revision rejected this shape, which left the dominant real-world
+// spelling silently unresolved.
+//
+// A `self::`- or `super::`-rooted module is REFUSED. Both are resolvable only
+// against the declaring file's own position in the module tree, which a per-file
+// pass does not know, so the join key would be a guess in the shape of an
+// answer. `crate::…` and an absolute crate path (`items::list`, naming another
+// crate) are resolvable as identities and are kept.
 func rustUseBindings(content string) map[string]rustUseBinding {
 	out := map[string]rustUseBinding{}
 	for _, m := range rustUseDeclRe.FindAllStringSubmatch(content, -1) {
@@ -201,6 +251,16 @@ func rustUseBindings(content string) map[string]rustUseBinding {
 		if open := strings.IndexByte(spec, '{'); open >= 0 {
 			end := strings.IndexByte(spec, '}')
 			if end < open {
+				continue
+			}
+			// A NESTED group makes the whole declaration unreadable to a comma
+			// split, and readable-looking in the worst way: see the header, and
+			// TestUtoipaCrossFile_NestedUseGroupFabricatesNothing_6668. Rejecting
+			// on the body's braces is the ONE guard for that — scanning to the
+			// last '}' instead would also work, but two guards for one case
+			// leaves each individually unkillable, so this file keeps exactly
+			// one and pins it.
+			if strings.ContainsAny(spec[open+1:end], "{") {
 				continue
 			}
 			base := strings.TrimSpace(spec[:open])
