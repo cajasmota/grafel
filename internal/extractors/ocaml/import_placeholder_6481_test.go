@@ -46,6 +46,12 @@ const mlProbeFile6481 = "lib/core.ml"
 // `Base.Map.Tree` is a 3-segment open, the shape that actually occurs, and
 // `Stdio` is single-segment so importDisplayName's no-dot branch is covered
 // too.
+//
+// EVERY real-declaration path the OCaml extractor has is represented — module,
+// let-binding, type. That is not padding: the marker DEMOTES whatever carries
+// it, so a construct absent from this fixture is a construct on which a
+// Subtype:"import" mutant survives unobserved (measured on the sibling Haskell
+// arm, where the type-synonym site lived through the whole package suite).
 const mlProbeSrc6481 = `module Animal = struct
   let noise = "roar"
 end
@@ -63,7 +69,8 @@ let speak x = x
 // points at, and whether the record carries such an edge at all. Carrying an
 // IMPORTS edge is what makes a record an import placeholder independently of
 // the marker under test — so the sweep below cannot be satisfied by the very
-// field it is asserting.
+// field it is asserting. Enumerated against the extractor's full output: no
+// real declaration emits an IMPORTS edge, so the discriminator is sound.
 func mlImportsTarget6481(e types.EntityRecord) (string, bool) {
 	for _, r := range e.Relationships {
 		if r.Kind == "IMPORTS" {
@@ -77,7 +84,7 @@ func TestOCamlOpenEmitsMarkedImportPlaceholder_6481(t *testing.T) {
 	ents := runOCaml(t, mlProbeSrc6481, mlProbeFile6481)
 
 	// display name (the LAST SEGMENT — the collision-prone shape that is the
-	// premise of the whole issue) -> the full module the IMPORTS edge targets.
+	// premise of the whole issue) -> the FULL dotted module.
 	want := map[string]string{
 		"Animal": "Acme.Animal",
 		"Tree":   "Base.Map.Tree",
@@ -96,10 +103,41 @@ func TestOCamlOpenEmitsMarkedImportPlaceholder_6481(t *testing.T) {
 				"stays in the by-name index as a declaration and flips %q ambiguous)",
 				e.Name, e.Kind, e.Subtype, e.Name)
 		}
+
+		// THE SPECIFIER CHANNEL (#6156). Now that the marker is stamped,
+		// resolve.PruneImportPlaceholders recognises this record and
+		// buildPlaceholderModuleRestores (imports.go:3502) rewrites incoming
+		// edges to whatever placeholderModuleSpecifier reads. Its precedence is
+		// import_module > module > QualifiedName > Name, so with none of the
+		// first three set it would fall back to the bare last segment and
+		// rename the external node from "Acme.Animal" to "Animal".
+		spec := e.Properties["import_module"]
+		if spec != target {
+			t.Errorf("import placeholder %q: Properties[\"import_module\"]=%q, want the "+
+				"full dotted module %q — the #6156 restore will otherwise record the "+
+				"bare display Name", e.Name, spec, target)
+		}
+		// The specifier must NOT travel on Properties["module"]: that key is
+		// the module-rollup label, and BOTH module.EnsureModule and
+		// stampModuleOnEntities treat an extractor-supplied value as
+		// authoritative, so a dotted specifier there fabricates a Module node
+		// on the never-pruning incremental path.
+		if got, ok := e.Properties["module"]; ok {
+			t.Errorf("import placeholder %q pre-stamps Properties[\"module\"]=%q; that key "+
+				"is the path-derived module-rollup label, not an import specifier", e.Name, got)
+		}
+		// Nor on QualifiedName: byQualifiedName is probed BEFORE byName and
+		// never received #6427's placeholder precedence, so the placeholder
+		// would shadow the very module it points at.
+		if e.QualifiedName != "" {
+			t.Errorf("import placeholder %q sets QualifiedName=%q; byQualifiedName is probed "+
+				"ahead of byName and has no placeholder precedence", e.Name, e.QualifiedName)
+		}
+
 		if _, dup := got[e.Name]; dup {
 			t.Errorf("duplicate import placeholder for %q", e.Name)
 		}
-		got[e.Name] = target
+		got[e.Name] = spec
 	}
 
 	// NON-VACUITY. Exact equality, not a subset and not a count floor: an
@@ -110,7 +148,7 @@ func TestOCamlOpenEmitsMarkedImportPlaceholder_6481(t *testing.T) {
 	}
 	for name, mod := range want {
 		if got[name] != mod {
-			t.Errorf("import placeholder %q: IMPORTS target = %q, want %q", name, got[name], mod)
+			t.Errorf("import placeholder %q: specifier = %q, want %q", name, got[name], mod)
 		}
 	}
 }
@@ -139,18 +177,24 @@ func mlFindBySubtype6481(ents []types.EntityRecord, name, subtype string) *types
 func TestOCamlRealDeclarationsDoNotAcquireImportMarker_6481(t *testing.T) {
 	ents := runOCaml(t, mlProbeSrc6481, mlProbeFile6481)
 
-	// The exclusivity sweep: nothing may carry the marker except a record that
-	// actually stands in for an import.
+	// The exclusivity sweep: nothing may carry the marker, or the specifier
+	// key, except a record that actually stands in for an import.
 	sawMarked := 0
 	for _, e := range ents {
-		if e.Subtype != "import" {
-			continue
+		_, isImport := mlImportsTarget6481(e)
+		if e.Subtype == "import" {
+			sawMarked++
+			if !isImport {
+				t.Errorf("entity %q (Kind=%q) is marked Subtype=\"import\" but carries no "+
+					"IMPORTS edge — the placeholder marker landed on a real declaration, "+
+					"demoting it out of the by-name index", e.Name, e.Kind)
+			}
 		}
-		sawMarked++
-		if _, isImport := mlImportsTarget6481(e); !isImport {
-			t.Errorf("entity %q (Kind=%q) is marked Subtype=\"import\" but carries no "+
-				"IMPORTS edge — the placeholder marker landed on a real declaration, "+
-				"demoting it out of the by-name index", e.Name, e.Kind)
+		if spec, ok := e.Properties["import_module"]; ok && !isImport {
+			t.Errorf("entity %q (Kind=%q subtype=%q) carries Properties[\"import_module\"]=%q "+
+				"but is not an import placeholder; no layer filters unknown property keys, so "+
+				"that false provenance claim is persisted into the graph, rendered into docgen "+
+				"output and served in MCP payloads", e.Name, e.Kind, e.Subtype, spec)
 		}
 	}
 	if sawMarked == 0 {
