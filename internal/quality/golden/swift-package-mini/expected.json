@@ -11,12 +11,12 @@
     { "name": "FluentSQLiteDriver", "kind": "SCOPE.External", "source_file": "Package.swift", "must_exist": true }
   ],
   "expected_relationships": [
-    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Vapor",              "must_exist": true },
-    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Fluent",             "must_exist": true },
-    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "FluentSQLiteDriver", "must_exist": true },
-    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Models",             "must_exist": true, "note": "target-to-target string dep" },
-    { "from_name": "Models",   "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Fluent",             "must_exist": true },
-    { "from_name": "AppTests", "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "App",                "must_exist": true },
-    { "from_name": "AppTests", "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Vapor",              "must_exist": true }
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_name": "Vapor", "to_kind": "SCOPE.External",              "must_exist": true },
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_name": "Fluent", "to_kind": "SCOPE.External",             "must_exist": true },
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_name": "FluentSQLiteDriver", "to_kind": "SCOPE.External", "must_exist": true },
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_name": "Models", "to_kind": "SCOPE.Component",             "must_exist": true, "note": "target-to-target string dep" },
+    { "from_name": "Models",   "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_name": "Fluent", "to_kind": "SCOPE.External",             "must_exist": true },
+    { "from_name": "AppTests", "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_name": "App", "to_kind": "SCOPE.Component",                "must_exist": true },
+    { "from_name": "AppTests", "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_name": "Vapor", "to_kind": "SCOPE.External",              "must_exist": true }
   ]
 }

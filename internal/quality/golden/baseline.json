@@ -140,7 +140,7 @@
     "swift-package-mini": {
       "entity_found": 6,
       "entity_expected": 6,
-      "relationship_found": 0,
+      "relationship_found": 7,
       "relationship_expected": 7
     },
     "swift-swiftui-mini": {

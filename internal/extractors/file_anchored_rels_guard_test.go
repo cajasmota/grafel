@@ -231,8 +231,12 @@
 //     svelte:extractReactiveStatements:USES {2},
 //     hcl:emitFileLevelRelationships:CONTAINS {2}, and
 //     knownInvisibleOffenders["swift:extractTargets:DEPENDS_ON"] {2}. The two
-//     svelte entries went away with the #6366 fix and the hcl one with #6367;
-//     the only remaining count>=2 entry is swift (RE-MEASURED 2026-08-21).
+//     svelte entries went away with the #6366 fix, the hcl one with #6367, and
+//     the swift one with the #6367 swift arm, which anchored both DEPENDS_ON
+//     sites on the owning swiftpm target and emptied knownInvisibleOffenders.
+//     RE-MEASURED 2026-08-27: NO count>=2 entry remains in either map, so the
+//     same-kind swap described here has no live site today. It is still the
+//     shape to watch: the next entry added with count >= 2 reopens it.
 //     What a "?" key ADDS on top of that is collapsing ACROSS FORMS: a form-A
 //     site and a form-I site key identically, so one can be replaced by the
 //     other. The only "?" entry today (yaml:extractHelmHelpers:?) has count 1,
@@ -487,32 +491,7 @@ var allowedFileAnchored = map[string]allowEntry{
 // mechanism", which is what the first two rounds asserted about it.
 //
 // Keyed and counted exactly like allowedFileAnchored.
-var knownInvisibleOffenders = map[string]allowEntry{
-	// swift/package.go:189 (product deps) and :242 (bare target deps) — the
-	// failure message reports 188 and 241, the lines the enclosing composite
-	// literals open on. Both are
-	// `FromID: filePath + "::" + d.name` — path FIRST, then a literal, then a
-	// non-literal ident, so isFilePathExpr's BinaryExpr case rejects them at the
-	// trailing operand. Not a structural ref:
-	//   - the owning record (swift/package.go:164-177) sets Name: d.name and NO
-	//     QualifiedName at all; the only two "::" occurrences in the package are
-	//     these two FromIDs;
-	//   - nothing in internal/resolve knows the swift_package / swiftpm "::"
-	//     spelling (grep for swiftpm|swift_package under internal/resolve is
-	//     empty), so there is no byQualifiedName scheme to land on;
-	//   - both edges are appended to rec.Relationships — the target component
-	//     itself — so FromID should simply be EMPTY.
-	// DANGLING and MISOWNED: the astro failure mode.
-	"swift:extractTargets:DEPENDS_ON": {2,
-		"KNOWN OFFENDER (#6298): dangling AND misowned. `filePath + \"::\" + d.name` on a " +
-			"record whose owner is the swiftpm target component; no node carries that " +
-			"string and internal/resolve has no swiftpm \"::\" scheme, so the raw value " +
-			"reaches the graph. INFERRED from the site + the record emission + an empty " +
-			"grep of internal/resolve, NOT measured. Invisible to the main scan (form F " +
-			"trailing-literal bound). Not fixed here for the same reason as the other six: " +
-			"each language needs its own measurement, and astro proved that assuming a " +
-			"shared shape is how this goes wrong."},
-}
+var knownInvisibleOffenders = map[string]allowEntry{}
 
 type fileAnchoredSite struct {
 	pkg, fn, kind, key, file string
@@ -1074,10 +1053,7 @@ func TestKnownInvisibleFileAnchoredOffenders(t *testing.T) {
 		observed[s.key] = append(observed[s.key], s)
 	}
 
-	// Stale-entry check FIRST. swift is currently the only site of this shape in
-	// the tree, so fixing it empties the matcher; if the vacuity guard ran first
-	// it would report "the matcher has broken" for what is actually a fix. Both
-	// fire, but the accurate diagnosis leads.
+	// Stale-entry check FIRST, so the accurate diagnosis leads.
 	for key := range knownInvisibleOffenders {
 		if len(observed[key]) == 0 {
 			t.Errorf("knownInvisibleOffenders[%q] matches no site any more — either the code "+
@@ -1085,11 +1061,35 @@ func TestKnownInvisibleFileAnchoredOffenders(t *testing.T) {
 		}
 	}
 
-	// Vacuity guard: the matcher must still match the shape it was written for.
+	// Vacuity guard, via a POSITIVE CONTROL rather than via production code.
+	//
+	// This check used to be `len(sites) == 0 → fail`: the matcher proved itself
+	// by pointing at a real offender, and swift was the last one. That made the
+	// guard green only while the defect still existed — fixing swift (#6367)
+	// reported "the walk / AST match has broken" for what was actually the fix.
+	// PRODUCTION REACHING ZERO SITES IS THE GOAL, not a failure, so the proof
+	// moved to testdata/pathfirstconcat, which both walks SkipDir past.
+	//
+	// The control pins the matcher in BOTH directions: it must still match the
+	// path-first-concat shape, and it must still skip IMPORTS (#120).
+	control := scanPathFirstConcatFromIDs(t, filepath.Join("testdata", "pathfirstconcat"))
+	var controlKeys []string
+	for _, c := range control {
+		controlKeys = append(controlKeys, c.key+" ["+c.form+"]")
+	}
+	sort.Strings(controlKeys)
+	wantControl := []string{"extractors:emitPathFirstConcatDependsOn:DEPENDS_ON [F-hidden:keyed]"}
+	if !slices.Equal(controlKeys, wantControl) {
+		t.Errorf("path-first-concat matcher failed its positive control:\n got: %v\nwant: %v\n"+
+			"The matcher can no longer see the shape it exists to catch (or it stopped "+
+			"skipping IMPORTS), so a green run over production code proves nothing. "+
+			"Fix the matcher — do NOT edit testdata/pathfirstconcat to suit it.",
+			controlKeys, wantControl)
+	}
+
+	// With the control passing, zero production sites means every offender was
+	// genuinely fixed. That is success, and there is nothing further to check.
 	if len(sites) == 0 {
-		t.Error("path-first-concat matcher found no sites at all — either every listed " +
-			"offender above was genuinely fixed, or the walk / AST match has broken and " +
-			"a guard that matches nothing passes for free")
 		return
 	}
 	keys := make([]string, 0, len(observed))
