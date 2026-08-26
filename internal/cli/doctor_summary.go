@@ -43,6 +43,22 @@ type DoctorRepoHealth struct {
 	// graph-stats.json sidecar; nil when the sidecar is absent, predates the
 	// field, or the repo has full extractor coverage.
 	UnsupportedExt map[string]int
+
+	// RenameTruncated reports that this repo's last index hit the
+	// rename-detection work budget, so its RENAMED_FROM edges are a PARTIAL
+	// result (#6087, wired by #6640). Read straight from the graph-stats.json
+	// sidecar — the indexer's stderr warning is invisible here, and until this
+	// field existed the sidecar flag was written by the indexer and read by
+	// nothing, which is the whole of #6640.
+	//
+	// A truncated rename pass is exactly what DEGRADED already means: the
+	// index is usable but incomplete. It is surfaced additively, alongside
+	// (never replacing) the OK/STALE/MISSING status above, because the graph
+	// itself is fresh and fine — only the rename edges are partial.
+	RenameTruncated bool
+	// RenameAddedSkipped is how many added entities that truncated pass never
+	// examined. Only meaningful when RenameTruncated is true.
+	RenameAddedSkipped int
 }
 
 // loadGraphFromDir is an indirection over graph.LoadGraphFromDir so tests can
@@ -148,6 +164,17 @@ func ComputeDoctorHealth(groups []registry.GroupRef, deep bool) []*DoctorGroupHe
 				health.IssuesFound = append(health.IssuesFound,
 					fmt.Sprintf("repo %s last rebuild FAILED: %s%s", rh.Slug, rf.Reason, formatRebuildFailureRef(rf)))
 			}
+
+			// #6640 — a truncated rename pass makes the group DEGRADED. Same
+			// additive shape as the rebuild failure above: the graph is fresh,
+			// but its RENAMED_FROM edges are partial, and a consumer reporting
+			// "no renames" off it would be stating a confident wrong answer.
+			if rh.RenameTruncated {
+				health.Healthy = false
+				health.IssuesFound = append(health.IssuesFound,
+					fmt.Sprintf("repo %s rename detection was TRUNCATED: RENAMED_FROM edges are INCOMPLETE (%s added entities never examined) — reindex to complete the scan",
+						rh.Slug, fmtInt(rh.RenameAddedSkipped)))
+			}
 		}
 
 		// Sort repos by slug for consistent output
@@ -213,6 +240,12 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 			// and no error, so nothing in the graph itself records that it was
 			// ever seen.
 			rh.UnsupportedExt = side.UnsupportedExtensions
+			// #6640 — the ONLY source for this, same as UnsupportedExt above:
+			// a rename pass that stopped early leaves no trace in the graph,
+			// only an absence of RENAMED_FROM edges that is indistinguishable
+			// from "nothing was renamed".
+			rh.RenameTruncated = side.RenameDetectTruncated
+			rh.RenameAddedSkipped = side.RenameDetectAddedSkipped
 			if !side.ComputedAt.IsZero() {
 				rh.LastIndexed = side.ComputedAt
 				rh.LastIndexedAge = formatTimeSince(side.ComputedAt)
@@ -417,6 +450,12 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 			if rf := r.RebuildFailure; rf != nil {
 				fmt.Fprintf(w, "    %-*s  ⚠ last rebuild FAILED: %s%s — see daemon.err; raise GRAFEL_REBUILD_REPO_TIMEOUT (or `grafel rebuild --timeout <dur>`) or rebuild again\n",
 					maxSlugLen, "", rf.Reason, formatRebuildFailureRef(rf))
+			}
+			// #6640 — additive to the status line above, same as the rebuild
+			// warning: the index is usable, the rename edges are not complete.
+			if r.RenameTruncated {
+				fmt.Fprintf(w, "    %-*s  ⚠ rename detection TRUNCATED: RENAMED_FROM edges are INCOMPLETE (%s added entities never examined) — reindex to complete the scan\n",
+					maxSlugLen, "", fmtInt(r.RenameAddedSkipped))
 			}
 		}
 
