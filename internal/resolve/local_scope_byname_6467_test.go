@@ -283,18 +283,21 @@ func TestManifestDeclarationStillOutranksImportPlaceholder_6467(t *testing.T) {
 // CLASS, not just the reported instance.
 //
 // #6427's failure was treating one PROPERTY as sufficient; repeating that with
-// one SHAPE would be the same mistake. `local_scope` is stamped only by the
-// JavaScript/TypeScript extractor, and even there it does not cover every
-// non-addressable binding: a plain `function Rows(toolkit) {…}` parameter is
-// emitted as SCOPE.Operation / Subtype "component_prop" with NO local_scope
-// stamp (measured against the extractor), and it took the repository-wide slot
-// for exactly the same reason the const did.
+// one SHAPE would be the same mistake. A formal parameter is scoped to its
+// callable, so it can never legitimately own a repository-wide name, and this
+// test pins that for the `function Rows(toolkit) {…}` shape as well as the
+// destructured const above.
 //
-// A formal parameter is scoped to its callable, so it can never legitimately
-// own a repository-wide name — which is why the second signal exists at all
-// rather than keying on `local_scope` alone. It matches "component_prop" only
-// when the record also carries Properties["framework"]=="react"; see the round-3
-// block at the end of this file for the measurement that forced that gate.
+// #6472 UPDATED THE FIXTURE BELOW. Historically this record carried NO
+// local_scope stamp — the dataflow pass emitted outside tagLocalScope's reach —
+// and locality was inferred in the resolver from `subtype == "component_prop"
+// && framework == "react"`. That framework-NAME check could not tell this
+// record apart from angular's @Input() or vue's defineProps, which are a
+// component's public surface. dataflow_react.go now stamps local_scope on the
+// props it emits (pinned against the real extractor by
+// TestReactPropsCarryLocalScopeStamp_6472 in internal/extractors/javascript),
+// the arm is deleted, and the Properties map here is re-derived from the
+// post-change emitter.
 func TestFormalParameterDoesNotCaptureImportedPackageName_6467(t *testing.T) {
 	recs := []types.EntityRecord{
 		{
@@ -310,14 +313,15 @@ func TestFormalParameterDoesNotCaptureImportedPackageName_6467(t *testing.T) {
 		},
 		{
 			// `export function Rows(toolkit) { … }` — a formal parameter, as
-			// javascript/dataflow_react.go:77 actually emits it (Properties
-			// verbatim from that emitter). No local_scope stamp: the dataflow
-			// pass runs outside tagLocalScope's reach.
+			// javascript/dataflow_react.go's prop emitter actually emits it
+			// (Properties verbatim from that emitter, local_scope included
+			// since #6472).
 			ID: rowsLocalConstID6467, Kind: "SCOPE.Operation", Name: "toolkit",
 			Subtype: "component_prop", SourceFile: rowsFile6467, Language: "typescript",
 			Properties: map[string]string{
 				"kind": "SCOPE.Operation", "subtype": "component_prop",
 				"component": "Rows", "prop": "toolkit", "framework": "react",
+				"local_scope": "true",
 			},
 		},
 	}
@@ -335,8 +339,7 @@ func TestFormalParameterDoesNotCaptureImportedPackageName_6467(t *testing.T) {
 	const wantImport = "ext:toolkit"
 	if imp.ToID != wantImport {
 		t.Errorf("%s -IMPORTS-> %q, want %q: a formal parameter captured the "+
-			"repository-wide slot for an imported package name (#6467). `local_scope` does "+
-			"not cover this shape, so a tier keyed on it alone is half a fix",
+			"repository-wide slot for an imported package name (#6467)",
 			consumerFile6467, imp.ToID, wantImport)
 	}
 }
@@ -637,11 +640,21 @@ func TestVueDefinePropsIsNotALocalBinding_6467(t *testing.T) {
 		})
 }
 
-// TestReactPropsParameterIsALocalBinding_6467 pins the OTHER side of the gate:
-// narrowing to framework=="react" must not have narrowed the arm out of
-// existence. A React props parameter carries no local_scope stamp (the
-// dataflow pass emits outside tagLocalScope's reach), so this arm is the only
-// thing that stops it owning the repository-wide slot.
+// TestReactPropsParameterIsALocalBinding_6467 pins the OTHER side: a React
+// props parameter must NOT own the repository-wide slot.
+//
+// #6472 UPDATED THIS FIXTURE, AND THE UPDATE IS THE WHOLE POINT. The Properties
+// map is re-derived from the POST-CHANGE emitter
+// (internal/extractors/javascript/dataflow_react.go — the map literal built for
+// each prop), which now stamps "local_scope":"true". Copying the pre-#6472
+// fixture forward would have left this test passing on a property the emitter
+// no longer relies on, making the change vacuous in exactly the direction it
+// was filed to avoid.
+//
+// That the stamp REACHES the record is not observed here — this is a hand-built
+// fixture, so mutating the emitter cannot make it fail. The emitter is observed
+// by TestReactPropsCarryLocalScopeStamp_6472 in internal/extractors/javascript,
+// which runs the real extractor.
 func TestReactPropsParameterIsALocalBinding_6467(t *testing.T) {
 	assertDeclarationLosesSlot6467(t, "react props parameter",
 		types.EntityRecord{
@@ -651,6 +664,7 @@ func TestReactPropsParameterIsALocalBinding_6467(t *testing.T) {
 			Properties: map[string]string{
 				"kind": "SCOPE.Operation", "subtype": "component_prop",
 				"component": "Chart", "prop": "Data", "framework": "react",
+				"local_scope": "true",
 			},
 		})
 }
@@ -709,20 +723,26 @@ func assertDeclarationLosesSlot6467(t *testing.T, label string, decl types.Entit
 	}
 }
 
-// TestReactComponentDeclarationIsNotALocalBinding_6467 pins the SUBTYPE half of
-// the react arm, which the framework gate left unpinned.
+// TestReactComponentDeclarationIsNotALocalBinding_6467 pins that a React
+// COMPONENT DECLARATION keeps the repository-wide slot.
 //
-// Surviving mutant (found in review): with the gate in place,
+// HISTORICALLY this test pinned the SUBTYPE half of the react arm: with the
+// framework gate in place, `return subtype != "" && props["framework"] ==
+// "react"` passed `go vet` and the whole ./internal/resolve/... suite, so the
+// framework check alone was carrying the arm.
 //
-//	return subtype != "" && props["framework"] == "react"
+// #6472 DELETED THAT ARM, so this test no longer discriminates against that
+// mutant — the predicate has no framework term left to relax. The subtype-half
+// pin moved to where the react+subtype rule now lives, the backward-compat
+// shim: see the "react-stamped entity that is not a component_prop" row of
+// TestLegacyLocalScopeStampRule_6472 (cmd/grafel).
 //
-// passed `go vet` and the whole ./internal/resolve/... suite. Nothing
-// distinguished a react `component_prop` from ANY other react-stamped subtype,
-// so the framework check alone was carrying the arm — and a later relaxation of
-// the subtype side, trusting `framework == "react"` to hold the line, would have
-// drawn no objection from any test.
+// It is kept rather than deleted because its fixture is a REAL emitter's
+// record, not a hand-built one, and the invariant it states is independently
+// worth holding: the most addressable record in a React codebase must never be
+// classified as a callable-local, whatever future signal this predicate grows.
 //
-// The killer is a record that is react-stamped and NOT a props parameter:
+// The record is react-stamped and NOT a props parameter:
 // cross/react_props/extractor.go:816 `buildComponentEntity` emits the COMPONENT
 // ITSELF as SCOPE.Operation / Subtype "react_component" with
 // Properties["framework"]="react" (map copied verbatim from that emitter,

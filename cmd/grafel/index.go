@@ -1699,6 +1699,14 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 					// no signal, where a full rebuild binds a different one.
 					// Pinned end-to-end in
 					// incremental_carry_qualifiedname_6119_test.go.
+					// #6472 — a record written by a pre-#6472 binary carries no
+					// Properties["local_scope"] on a React props parameter, and
+					// isLocalBindingKind no longer infers locality from the
+					// framework name. Without this the #6467 slot-capture
+					// regression returns for every unchanged file until a full
+					// reindex. See incremental_local_scope_compat.go for why the
+					// compatibility rule lives at this seam rather than in the
+					// resolver's predicate.
 					cf = append(cf, types.EntityRecord{
 						ID:            pe.ID,
 						Name:          pe.Name,
@@ -1706,7 +1714,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 						Subtype:       pe.Subtype,
 						QualifiedName: pe.QualifiedName,
 						SourceFile:    pe.SourceFile,
-						Properties:    pe.PropsSnapshot(),
+						Properties:    applyLegacyLocalScopeStamp(pe.Subtype, pe.PropsSnapshot()),
 					})
 					return true
 				})

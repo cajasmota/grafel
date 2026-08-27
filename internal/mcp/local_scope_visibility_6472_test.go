@@ -12,8 +12,7 @@ import (
 // Before these tests, the ONLY thing observing Properties["local_scope"]=="true"
 // was classifyNoise itself (denoise_test.go:131,144,157). Nothing asserted that
 // the classification actually WITHHELD anything from grafel_find, and nothing
-// asserted that a React `component_prop` — which carries no local_scope and is
-// therefore visible today — stayed reachable. Both are user-facing capabilities
+// asserted that a React `component_prop` stayed reachable. Both are user-facing capabilities
 // that a "tidy up the resolver" change could have deleted with a green suite.
 //
 // Every test here asserts a POSITIVE CONTROL before any absence claim: these
@@ -37,9 +36,17 @@ func localScopeEntity(id, name, file string, line int) graph.Entity {
 	})
 }
 
-// componentPropEntity mirrors internal/extractors/javascript/dataflow_react.go:70-91:
-// Kind "SCOPE.Operation", Subtype "component_prop", and deliberately NO
-// local_scope property — so it must remain visible by default.
+// componentPropEntity mirrors the record built by
+// internal/extractors/javascript/dataflow_react.go's prop emitter, Properties
+// map included.
+//
+// #6472 RE-DERIVED THIS FROM THE POST-CHANGE EMITTER: the prop now carries
+// "local_scope":"true", stamped so internal/resolve's isLocalBindingKind can
+// key on that property alone instead of a framework-name check. Every test
+// below that asserts a prop is still returned by grafel_find is therefore
+// observing classifyNoise's component_prop carve-out — remove the carve-out and
+// they go red. Before this change the map had no local_scope and those
+// assertions were free.
 func componentPropEntity(id, prop, component, file string, line int) graph.Entity {
 	return graph.Entity{
 		ID: id, Name: prop,
@@ -47,11 +54,12 @@ func componentPropEntity(id, prop, component, file string, line int) graph.Entit
 		SourceFile: file, StartLine: line,
 		QualifiedName: component + "." + prop,
 	}.WithProperties(map[string]string{
-		"kind":      "SCOPE.Operation",
-		"subtype":   "component_prop",
-		"component": component,
-		"prop":      prop,
-		"framework": "react",
+		"kind":        "SCOPE.Operation",
+		"subtype":     "component_prop",
+		"component":   component,
+		"prop":        prop,
+		"framework":   "react",
+		"local_scope": "true",
 	})
 }
 
@@ -174,10 +182,11 @@ func TestFind_KindFilter_LocalScopeEntityIsWithheld(t *testing.T) {
 	}
 }
 
-// TestFind_ComponentPropIsVisibleByDefault pins the capability the later
+// TestFind_ComponentPropIsVisibleByDefault pins the capability the
 // local_scope-stamping arm must not delete: a React `component_prop`
-// (SCOPE.Operation / Subtype component_prop, no local_scope property) is
-// returned by grafel_find with DEFAULT options.
+// (SCOPE.Operation / Subtype component_prop) is returned by grafel_find with
+// DEFAULT options — now WHILE carrying local_scope="true", i.e. this is the
+// direct observation of classifyNoise's component_prop carve-out (#6472).
 //
 // Note grafel_find has no subtype filter — its parameter set is pinned at
 // schema_trim_5386_test.go:135 and only kind_filter exists — so both paths are

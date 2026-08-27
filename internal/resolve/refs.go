@@ -1618,61 +1618,75 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 // (reported measurement: src/consumer.tsx -IMPORTS-> ext:toolkit became
 // src/consumer.tsx -IMPORTS-> 8dc7162e164ff6ea).
 //
-// The same records are ALREADY treated as non-addressable when serving:
-// internal/mcp/denoise.go:168 hides local_scope entities from grafel_find
-// because the name cannot be used to reach them. They stay in the graph so
+// Most of the same records are ALREADY treated as non-addressable when
+// serving: internal/mcp/denoise.go's classifyNoise hides local_scope entities
+// from grafel_find because the name cannot be used to reach them. The one
+// exception is the React props parameter, which IS reachable by name and is
+// carved out there — see "THE OTHER READER OF THIS PROPERTY" below, because
+// the two readers are asking different questions. They stay in the graph so
 // SAME-FILE REFERENCES/CALLS edges can bind (#1748), and that keeps working —
 // the locality tiers run on statusAmbiguous, which is precisely what
 // withholding the repo-wide slot restores.
 //
-// TWO SIGNALS, BOTH RECORD-LOCAL. The predicate is a pure function of one
-// record so the flat BuildIndex path and the module-partitioned
-// insertModuleEntry path cannot compute it differently:
+// ONE SIGNAL, RECORD-LOCAL. The predicate is a pure function of one record so
+// the flat BuildIndex path and the module-partitioned insertModuleEntry path
+// cannot compute it differently. That signal is Properties["local_scope"] ==
+// "true", stamped at emit time by the JavaScript/TypeScript extractor and by
+// no other extractor in the tree:
 //
-//   - Properties["local_scope"]=="true" — stamped by tagLocalScope
-//     (internal/extractors/javascript/extractor.go:781) on entities emitted
-//     with funcDepth > 0. THIS IS THE ONLY EXTRACTOR THAT STAMPS IT (measured:
-//     the string appears in internal/types, internal/mcp and
-//     internal/extractors/javascript, and in no other extractor).
-//   - Subtype "component_prop" WITH Properties["framework"]=="react" — the
-//     destructured or whole-object props PARAMETER of a React component
-//     (javascript/dataflow_react.go:77). A plain `function Rows(toolkit)`
-//     parameter arrives as SCOPE.Operation / "component_prop" with NO
-//     local_scope stamp, which is why signal 1 alone is half a fix even inside
-//     JS/TS.
+//   - tagLocalScope (internal/extractors/javascript/extractor.go) stamps
+//     entities emitted with funcDepth > 0 — function-body locals such as
+//     `const { counts } = someData`.
+//   - the prop emitter in internal/extractors/javascript/dataflow_react.go
+//     stamps a React component's props PARAMETER, destructured or whole-object
+//     (#6472). It is emitted by the dataflow pass, outside tagLocalScope's
+//     reach, so it carries the stamp directly from its own Properties literal.
 //
-// WHY THE FRAMEWORK GATE, AND WHY IT IS A LAST RESORT. There are exactly three
-// emitters of "component_prop" (grep of internal/extractors, non-test):
-// dataflow_react.go:77, javascript/angular.go:665, vue/extractor.go:854. Only
-// the first is a callable-local. Angular's is an `@Input()` CLASS FIELD and
-// Vue's is a `defineProps` entry — both are the component's PUBLIC surface,
-// addressable from a parent template as `<chart [Data]="…">` /
-// `<Chart :Data="…">`, i.e. structurally the same record as razor's
-// `[Parameter]` that was already removed above. Measured with a probe that
-// reproduces each emitter's real record against a same-named import
-// placeholder, in both extraction orders, against main@640ea7784:
+// HISTORY — THE FRAMEWORK GATE (removed in #6472). Until #6472 the props
+// parameter carried no stamp, and this predicate compensated with a second arm:
+// `subtype == "component_prop" && props["framework"] == "react"`. That is a
+// framework-NAME check, the weakest usable signal, and it existed only because
+// nothing record-local separated the three component_prop emitters. #6472
+// stamped the emitter instead and deleted the arm, so the verdict for every
+// record is unchanged while the framework name is no longer consulted at all.
 //
-//	shape                    main byName / ambig   unguarded arm   with gate
-//	react props parameter    dddd…101 / false      "" / true       "" / true
-//	angular @Input() field   dddd…102 / false      "" / true       dddd…102 / false
-//	vue defineProps          dddd…103 / false      "" / true       dddd…103 / false
+// WHAT MUST NOT COME BACK. There are exactly three emitters of
+// "component_prop": react (dataflow_react.go), angular's `@Input()` CLASS
+// FIELD (javascript/angular.go) and vue's `defineProps` entry
+// (vue/extractor.go). Only react's is a callable-local. The other two are the
+// component's PUBLIC surface, addressable from a parent template as
+// `<chart [Data]="…">` / `<Chart :Data="…">` — structurally the same record as
+// razor's `[Parameter]`, removed below for the same reason. So an arm matching
+// `subtype == "component_prop"` UNGUARDED regresses two public component APIs
+// (#6470), and because byName is repo-wide AND cross-language it does so
+// against any same-named import placeholder in any language.
 //
-// So the unguarded arm regressed both public shapes exactly as razor did. NO
-// RECORD-LOCAL PROPERTY OTHER THAN `framework` SEPARATES THEM: all three carry
-// Kind "SCOPE.Operation", a bare Name, QualifiedName "Comp.Prop" and no
-// local_scope stamp, and react's and angular's also share Language
-// "typescript". A framework-name check is the weakest kind of signal and is
-// used here only because nothing structural distinguishes the shapes; closing
-// that properly means stamping local_scope in dataflow_react.go, which is an
-// extractor-side change (#6472; see the closing paragraph below).
-// TestAngularInputIsNotALocalBinding_6467 and TestVueDefinePropsIsNotALocalBinding_6467
-// pin the two public shapes; TestReactPropsParameterIsALocalBinding_6467 pins
-// that the react arm still fires, so the gate cannot be widened back silently.
-// TestReactComponentDeclarationIsNotALocalBinding_6467 pins the SUBTYPE half:
-// without it `subtype != "" && framework == "react"` passed the whole suite,
-// i.e. the framework name alone was carrying the arm.
+// That is pinned, not asserted: widening this predicate to
+// `|| subtype == "component_prop"` fails TestAngularInputIsNotALocalBinding_6467,
+// TestVueDefinePropsIsNotALocalBinding_6467 and the angular/vue rows of
+// TestComponentPropLocalityKeysOnStampNotFramework_6472 (mutant scored, #6472).
 //
-// SCOPE, STATED HONESTLY: BOTH SIGNALS ARE JS/TS-FAMILY-ONLY IN PRACTICE.
+// The react/angular distinction is no longer argued from a framework name
+// either — it is asserted against the REAL extractors by
+// TestReactPropsCarryLocalScopeStamp_6472 and
+// TestAngularInputIsNotStampedLocalScope_6472 in internal/extractors/javascript,
+// which is where the two emitters live.
+//
+// BACKWARD COMPATIBILITY — WHERE THE OLD RULE STILL LIVES. A graph written
+// before #6472 holds React props with no stamp, and this predicate reads
+// nothing else. Path B's incremental reindex carries previous-graph entities
+// for unchanged files straight into the resolver index, so immediately after an
+// upgrade those records would take the repo-wide slot again and #6467 would
+// return until the next full reindex. The compatibility rule — byte-identical
+// to the deleted arm — lives at that seam, in
+// cmd/grafel/incremental_local_scope_compat.go, NOT here: there is exactly one
+// production construction of the resolver index and the carry-forward slice is
+// the only way a pre-#6472 record can reach it, so the seam is provably
+// complete while this predicate stays a clean contract read. Pinned end-to-end
+// through the real indexer by
+// TestPathBIncremental_LegacyComponentPropKeepsLocality_6472.
+//
+// SCOPE, STATED HONESTLY: THE SIGNAL IS JS/TS-FAMILY-ONLY IN PRACTICE.
 // An earlier draft of this predicate also matched the subtypes "parameter" and
 // "param", justified as "the spellings csharp, rust, kotlin, scala, groovy,
 // razor and verilog use". That justification was FALSE for six of the seven:
@@ -1683,35 +1697,40 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 // `[Parameter]` PUBLIC COMPONENT PROPERTY (SCOPE.Component, bare Name,
 // QualifiedName "Comp.Prop"), addressable as an attribute from every other
 // .razor file — and bicep/extractor.go:315's template `param` (SCOPE.Schema).
-// Neither is a callable-local, and because byName is repo-wide AND
-// cross-language, matching them collided those declarations into ambiguity
-// against any import placeholder anywhere carrying the same name. They were
-// dropped; TestRazorParameterIsNotALocalBinding_6467 and
+// Neither is a callable-local, and matching them collided those declarations
+// into ambiguity against any import placeholder anywhere carrying the same
+// name. They were dropped; TestRazorParameterIsNotALocalBinding_6467 and
 // TestBicepParamIsNotALocalBinding_6467 pin that they stay out.
 //
-// So this tier narrows the slot only for JS/TS-family records. Every other
-// language is unchanged by it, and even inside JS/TS two shapes still take the
-// slot: a nested `function` declaration and a `class` declared in a function
-// body carry no locality marker at all. Also NOT matched, deliberately:
-// svelte's `prop` (svelte/extractor.go:377,460,475) and astro's `prop` /
-// `props_binding` (astro/extractor.go:371,395). Those are a component's
-// PUBLIC surface — `export let name` is reachable from a parent as
-// `<Comp name={…}>` — i.e. the same class of record as razor's `[Parameter]`,
-// so matching them would repeat the mistake just removed. Closing the two
-// genuine gaps is an extractor-side change (stamp local_scope centrally, the
-// way types.EntityGeneratedProperty is stamped in extractors.safeExtract) and
-// is deliberately NOT done here. Tracked as #6472, together with the react
-// props parameter above — doing it collapses this predicate to the
-// local_scope check alone and deletes the framework gate. NOT a one-line
-// edit: internal/mcp/denoise.go:168 HIDES local_scope entities from
-// grafel_find and internal/types/entity.go:111 documents the contract, so
-// widening who carries the property changes agent-facing search output and
-// has to be measured there too.
-func isLocalBindingKind(subtype string, props map[string]string) bool {
-	if props["local_scope"] == "true" {
-		return true
-	}
-	return subtype == "component_prop" && props["framework"] == "react"
+// So this tier narrows the slot only for JS/TS-family records, and every other
+// language is unchanged by it.
+//
+// TWO GAPS REMAIN INSIDE JS/TS. A nested `function` declaration and a `class`
+// declared in a function body carry no locality marker at all, so both still
+// take the repo-wide slot. Closing THOSE TWO — and nothing else — means
+// stamping local_scope at their emit sites, which is an extractor-side change
+// and is deliberately NOT done here. Tracked on #6720.
+//
+// THAT IS NOT AN INVITATION TO WIDEN THIS PREDICATE. Explicitly NOT matched,
+// deliberately: svelte's `prop` (svelte/extractor.go:377,460,475) and astro's
+// `prop` / `props_binding` (astro/extractor.go:371,395). Those are a
+// component's PUBLIC surface — `export let name` is reachable from a parent as
+// `<Comp name={…}>` — i.e. the same class of record as razor's `[Parameter]`
+// removed above, and matching them repeats that mistake. The two gaps named in
+// the previous paragraph are callable-locals; these are not.
+//
+// THE OTHER READER OF THIS PROPERTY. local_scope is not resolver-private.
+// internal/mcp/denoise.go's classifyNoise reads it to decide what to HIDE from
+// grafel_find, which is a different question from the one asked here: "is this
+// independently inspectable?" versus "may this take the repository-wide byName
+// slot?". A React props parameter answers YES to the first and NO to the
+// second — it has a real QualifiedName, span and ID, but exists only inside its
+// component. denoise.go therefore carves component_prop out of its
+// noiseLocalScope bucket. Stamping the emitter without that carve-out would
+// delete every React component's prop surface from agent-facing search; the
+// stamp, the carve-out and the deletion of the framework arm are one change.
+func isLocalBindingKind(_ string, props map[string]string) bool {
+	return props["local_scope"] == "true"
 }
 
 // indexByName is the sole writer of byName / ambigName. Both production index
