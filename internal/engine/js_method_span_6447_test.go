@@ -618,6 +618,15 @@ func TestJSKnownMisattributionShapes_6447(t *testing.T) {
 // not. Fixing it needs a comment/string mask over the whole pattern, which is
 // a different change from this one; it is accepted here and recorded so that
 // nobody rediscovers it as a surprise.
+//
+// #6500 arm A NARROWED this without closing it, and the rows below were
+// retargeted rather than deleted to say exactly how far the narrowing goes.
+// A dead-text span is still MINTED - the pattern is as blind to comments and
+// template literals as it ever was - but a span now carries an end, so a ghost
+// whose braces happen to balance inside the dead region stops claiming call
+// sites that follow it. Poisoning now requires the ghost's brace scan to
+// ESCAPE the dead text, which is what the third row demonstrates. The masking
+// fix is still owed; deleting these rows would hide that.
 func TestJSMethodShorthandInDeadTextPoisons_6447(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, marker, caller string
@@ -634,7 +643,10 @@ func TestJSMethodShorthandInDeadTextPoisons_6447(t *testing.T) {
 				"    fetch('/api/x');\n" +
 				"  }\n}\n",
 			marker: "fetch('/api/x')",
-			caller: "ghost",
+			// #6500: was "ghost". The commented-out body's braces balance
+			// INSIDE the comment, so the ghost span now ends at the `}` on
+			// the line above `*/` and the live call falls back into `load`.
+			caller: "load",
 		},
 		{
 			name: "method shorthand inside a template literal",
@@ -645,6 +657,26 @@ func TestJSMethodShorthandInDeadTextPoisons_6447(t *testing.T) {
 				"      return 0;\n" +
 				"    }\n" +
 				"    `;\n" +
+				"    fetch('/api/x');\n" +
+				"  }\n}\n",
+			marker: "fetch('/api/x')",
+			// #6500: was "ghost", for the same reason as the comment case -
+			// the template literal's dead braces balance within it.
+			caller: "load",
+		},
+		{
+			// STILL POISONED, and this is the row that keeps the hazard
+			// graded. The dead text opens a brace it never closes, so the
+			// ghost span's balanced scan escapes the comment and closes on
+			// the LIVE method's `}` - swallowing the real call site. An end
+			// bound cannot help here: the span it computes is wrong, not
+			// absent.
+			name: "dead text opens a brace it never closes",
+			src: "class A {\n" +
+				"  load() {\n" +
+				"    /*\n" +
+				"    ghost(id) {\n" +
+				"    */\n" +
 				"    fetch('/api/x');\n" +
 				"  }\n}\n",
 			marker: "fetch('/api/x')",

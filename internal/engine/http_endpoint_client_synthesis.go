@@ -190,21 +190,25 @@ var axiosClientRe = regexp.MustCompile(
 //     stripping it would dangle. It also keeps a class that declares both
 //     `#load` and `load` distinguishable.
 //
-// NOTE: a span still carries only (offset, name) — see jsFuncSpan. What makes
-// the attribution correct here is that a method declaration sits NEARER to its
-// call sites than a module-level helper does; the span is still unbounded, so
-// a call site trailing the last declaration in a file still attributes to it.
-// Bounding spans is a separate change and is filed as #6500; its blast radius
-// is why it is separate. pyFuncSpan aliases jsFuncSpan, indexJSEnclosingFunctions
-// has 13 non-test call sites, and enclosingJSFuncAt has 43 — including the C#,
-// Kotlin, Swift, Rust, Ruby, Scala, Go, Java, Dart and PHP client passes, which
-// reuse the walk over their own span lists.
+// NOTE: #6500 arm A gave a span an `end` (jsFuncSpan.end, computed by
+// jsSpanEnd; pyFuncSpan was split off the alias and gets an indentation-derived
+// end from pySpanEnd), and enclosingJSFuncAt now prefers the innermost span
+// CONTAINING a call site. What is NOT fixed, deliberately, is what happens when
+// no span contains it: the walk still falls back to the nearest preceding name.
+// That fallback is arm B of #6500 and is blocked on a per-consumer policy
+// decision, because sse_edges.go and websocket_edges.go fold the caller into an
+// entity IDENTITY rather than a property. enclosingJSFuncAt has 43 non-test
+// call sites — including the C#, Kotlin, Swift, Rust, Ruby, Scala, Go, Java,
+// Dart and PHP client passes, which reuse the walk over their own span lists —
+// and indexJSEnclosingFunctions has 13.
 //
-// Because spans are unbounded, DECLINING to match a shape is not a safe
-// no-op. A call site with no span above it in its own method attributes to the
-// PRECEDING declaration, so every shape this alternative turns away yields a
-// wrong caller, not an empty one — that being the exact defect #6447 fixes, so
-// these are places the fix does not reach rather than places it is careful.
+// So DECLINING to match a shape is still not a safe no-op. A call site with no
+// span containing it lands on the preceding declaration, so every shape this
+// alternative turns away yields a wrong caller, not an empty one — that being
+// the exact defect #6447 fixes, so these are places the fix does not reach
+// rather than places it is careful. What #6500 changed is the SOURCE of the
+// wrong caller: a declaration that is merely nearer no longer wins over the one
+// the call site is actually inside.
 // The known set is pinned in TestJSKnownMisattributionShapes_6447: column-0
 // shorthand, computed keys (`['load']() {`), Allman braces, one-line class
 // bodies, methods named after a rejected reserved word (`catch`, `return`),
@@ -237,9 +241,11 @@ var jsFuncDeclRe = regexp.MustCompile(
 // RE2 without a negative lookahead, so the discrimination happens here.
 //
 // Being permissive here is the dangerous direction, not the strict one: a
-// missing entry mints a span named `if`, and because spans are unbounded
-// enclosingJSFuncAt would then attribute every call site below that block to
-// it — a WRONG caller, which is worse than the empty one #6447 started from.
+// missing entry mints a span named `if`, and enclosingJSFuncAt would then
+// attribute call sites to it — a WRONG caller, which is worse than the empty
+// one #6447 started from. #6500's end bound narrows the reach of such a span to
+// the block's own braces; it does not stop the span being minted, and inside
+// that block the mis-attribution is unchanged.
 //
 // The reject is by NAME, so it also rejects a method legitimately called after
 // one of these words. That is a cost, not a free win, and for the same reason
@@ -2485,7 +2491,171 @@ func findMatchingParenAfter(content string, start, budget int) int {
 // attribute downstream call sites to a `source_caller`.
 type jsFuncSpan struct {
 	offset int
-	name   string
+	// end is the EXCLUSIVE byte offset just past the function body's closing
+	// `}` (or, for an expression-bodied arrow, just past the terminating `;`).
+	// The interval is half-open: a call site at `pos` is inside the span iff
+	// `offset <= pos && pos < end`. The half-open-ness is load-bearing — see
+	// the boundary case in js_py_span_end_6500_test.go, where a call match
+	// begins on the newline that IS the sibling's end offset.
+	//
+	// end == offset means "no end could be established" (an unterminated body,
+	// a TS overload signature with no body, a header longer than
+	// jsSpanHeaderBudget). Such a span contains nothing, and the walk falls
+	// back to its pre-#6500 answer.
+	//
+	// That is the BENIGN failure mode, and it is not the only one. The brace
+	// scan is blind to strings, template literals and comments, so a stray
+	// `{` in dead or quoted text can leave the scan unbalanced and carry the
+	// end PAST the real body — over-extending the span across later
+	// declarations. An over-long span does not degrade to the status quo: it
+	// contains call sites it should not, out-ranks the fallback, and yields a
+	// caller that differs from the pre-#6500 answer. Both directions are
+	// pinned in TestJSSpanEnd_UnmaskedBraceOverExtends_6500. Masking dead and
+	// quoted text is the fix, is owed from #6447, and is not attempted here.
+	end  int
+	name string
+}
+
+// jsSpanHeaderBudget bounds the scan between a declaration's `)` and its body
+// `{` — the region a return-type annotation occupies.
+//
+// Its EFFECT is pinned, not its rationale. A header longer than this yields no
+// end at all, so the declaration claims nothing and its own call sites fall
+// through to the preceding declaration: a mis-attribution the budget causes
+// rather than prevents. TestJSSpanEnd_HeaderBudgetCosts_6500 records that cost
+// on a 652-byte generic return annotation. Raising the budget IMPROVES that
+// case; the test says so and tells you to update it deliberately.
+//
+// The value is a defensive bound on an otherwise unbounded forward scan. No
+// test observes it preventing anything, and the earlier claim here that it
+// stopped a runaway scan from minting an overlapping span was never
+// demonstrated, so it has been removed rather than left standing.
+const jsSpanHeaderBudget = 512
+
+// jsSpanBodyBudget bounds the two forward scans that have no natural stopping
+// point: closing a declaration's parameter list (findMatchingParenAfter, in
+// both jsSpanEnd and pySpanEnd) and walking an expression-bodied arrow to the
+// end of its statement (jsStatementEnd).
+const jsSpanBodyBudget = 4096
+
+// jsSpanEnd computes the exclusive end offset of the function body for a
+// jsFuncDeclRe match that ends at `matchEnd`.
+//
+// Alternative 4 of jsFuncDeclRe (method shorthand) ends ON the body `{`, so its
+// caller passes bodyBraceKnown=true and the brace is at matchEnd-1.
+// Alternatives 1-3 end just past the parameter list's opening `(`, so we close
+// the parens first and then look for the body.
+//
+// Returns -1 when no end can be established.
+//
+// The scan is blind to string literals, template literals and comments,
+// exactly as jsFuncDeclRe itself already is. That cuts BOTH ways and the
+// permissive direction is the one that matters: a `}` in quoted text ends the
+// span early (harmless — the call site falls out and lands on the fallback),
+// but a `{` in quoted text leaves the scan a level down and carries the end
+// past the real body, swallowing later declarations and their call sites.
+// TestJSSpanEnd_UnmaskedBraceOverExtends_6500 pins a two-line example of the
+// second. Masking is the fix and is owed from #6447.
+func jsSpanEnd(content string, matchEnd int, bodyBraceKnown bool) int {
+	open := -1
+	if bodyBraceKnown {
+		if matchEnd-1 < 0 || matchEnd-1 >= len(content) || content[matchEnd-1] != '{' {
+			return -1
+		}
+		open = matchEnd - 1
+	} else {
+		closeParen := findMatchingParenAfter(content, matchEnd, jsSpanBodyBudget)
+		if closeParen < 0 {
+			return -1
+		}
+		i := skipJSSpace(content, closeParen+1)
+		// An arrow function: `) => { ... }` or `) => expr;`.
+		if i+1 < len(content) && content[i] == '=' && content[i+1] == '>' {
+			i = skipJSSpace(content, i+2)
+			if i < len(content) && content[i] == '{' {
+				open = i
+			} else {
+				return jsStatementEnd(content, i)
+			}
+		} else {
+			// A `function`/method header: whitespace and an optional return
+			// annotation stand between `)` and `{`. Stop at `;` — that is a TS
+			// overload or ambient declaration with no body at all.
+			limit := i + jsSpanHeaderBudget
+			if limit > len(content) {
+				limit = len(content)
+			}
+			for ; i < limit; i++ {
+				if content[i] == '{' {
+					open = i
+					break
+				}
+				if content[i] == ';' {
+					return -1
+				}
+			}
+			if open < 0 {
+				return -1
+			}
+		}
+	}
+	depth := 0
+	for i := open; i < len(content); i++ {
+		switch content[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
+}
+
+func skipJSSpace(content string, i int) int {
+	for i < len(content) {
+		switch content[i] {
+		case ' ', '\t', '\n', '\r':
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+// jsStatementEnd returns the exclusive end of the expression starting at `i`:
+// the first `;` or newline seen at bracket depth zero. Used for an
+// expression-bodied arrow (`const base = (c) => BASE + c;`), whose "body" is
+// the rest of the statement.
+func jsStatementEnd(content string, i int) int {
+	depth := 0
+	limit := i + jsSpanBodyBudget
+	if limit > len(content) {
+		limit = len(content)
+	}
+	for ; i < limit; i++ {
+		switch content[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+			if depth < 0 {
+				return i
+			}
+		case ';':
+			if depth == 0 {
+				return i + 1
+			}
+		case '\n':
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 func indexJSEnclosingFunctions(content string) []jsFuncSpan {
@@ -2519,22 +2689,61 @@ func indexJSEnclosingFunctions(content string) []jsFuncSpan {
 		if name == "" {
 			continue
 		}
-		out = append(out, jsFuncSpan{offset: m[0], name: name})
+		// Alternative 4 is the only one whose match ends on the body `{`.
+		bodyBraceKnown := len(m) >= 10 && m[8] >= 0
+		end := jsSpanEnd(content, m[1], bodyBraceKnown)
+		if end < m[0] {
+			end = m[0] // degenerate: contains nothing, falls back to the old walk
+		}
+		out = append(out, jsFuncSpan{offset: m[0], end: end, name: name})
 	}
 	return out
 }
 
-// enclosingJSFuncAt returns the name of the nearest preceding function
-// definition for a call site at `pos`. Returns "" if none found.
+// enclosingJSFuncAt returns the name of the function CONTAINING the call site
+// at `pos` — the innermost such, when spans nest.
+//
+// #6500 arm A. Spans previously carried no end, so this was a nearest-PRECEDING
+// walk: a call site attributed to the last declaration that STARTED before it,
+// even one whose body had already closed. Now a span with a real end only
+// claims a call site it actually contains, and since `funcs` is in ascending
+// offset order the LAST containing span is the innermost one.
+//
+// Deliberately preserved: when NO span contains `pos`, this still returns the
+// nearest preceding name — the pre-#6500 answer, wrong shapes included. Arm A
+// does not change what any of the 43 consumers do for an unenclosed call site.
+// That is arm B, and it is blocked on a policy decision rather than pending
+// work: sse_edges.go builds a Stream entity's ID as `"/" + caller` and
+// websocket_edges.go uses the caller as a WS_CONNECTS `FromID`, so returning ""
+// there would rename graph nodes rather than blank a property. The fallback is
+// pinned in TestSpanEnd_NoEnclosingSpanBehaviourIsPreserved_6500.
+//
+// The fallback absorbs one class of mis-computed end and not the other. A span
+// that comes out too SMALL loses its call sites to the fallback, which is the
+// pre-#6500 answer — no worse than before. A span that comes out too LARGE
+// (an unbalanced brace scan; see jsSpanEnd) claims call sites outside the real
+// body and out-ranks the fallback, producing a caller that pre-#6500 code would
+// not have produced. Because sse_edges.go folds the caller into a Stream
+// entity's ID, that direction renames a node rather than mis-labelling a
+// property. Pinned in TestJSSpanEnd_UnmaskedBraceOverExtends_6500.
 func enclosingJSFuncAt(funcs []jsFuncSpan, pos int) string {
-	name := ""
+	contained := ""
+	found := false
+	fallback := ""
 	for _, f := range funcs {
 		if f.offset > pos {
 			break
 		}
-		name = f.name
+		fallback = f.name
+		if pos < f.end {
+			contained = f.name
+			found = true
+		}
 	}
-	return name
+	if found {
+		return contained
+	}
+	return fallback
 }
 
 // ---------------------------------------------------------------------------
@@ -2545,10 +2754,71 @@ func enclosingJSFuncAt(funcs []jsFuncSpan, pos int) string {
 // (#721). The span types and index helpers are retained here because they
 // are part of the shared engine package used by tests and other passes.
 
-// pyFuncSpan is an alias for jsFuncSpan. Python function spans carry the
-// same (offset, name) structure as JS/TS spans; we alias to avoid
-// proliferating near-identical types.
-type pyFuncSpan = jsFuncSpan
+// pyFuncSpan was a type ALIAS of jsFuncSpan until #6500. The alias was
+// tenable only while a span carried nothing but (offset, name). Once a span
+// carries an `end`, the two types stop being the same thing: a JS body is
+// delimited by balanced braces and a Python body is delimited by INDENTATION,
+// so sharing jsSpanEnd would compute a Python end from braces the language
+// does not have. The types are split for that reason and not for tidiness —
+// see TestPySpanEnd_ClosedSiblingDoesNotCapture_6500, which goes red if the
+// brace logic is applied to the Python path.
+type pyFuncSpan struct {
+	offset int
+	// end is exclusive, with the same half-open convention as jsFuncSpan.end,
+	// and the same degenerate case: end == offset means no end was
+	// established and the span contains nothing.
+	end  int
+	name string
+}
+
+// pySpanEnd returns the exclusive end of the `def` whose match starts at
+// `defStart` (the first byte of the line's indentation, because
+// pyEnclosingFuncRe anchors on `^[ \t]*`) and whose parameter list opens at
+// `afterParen`.
+//
+// The body of a Python function runs to the first subsequent NON-BLANK line
+// whose indentation is no deeper than the `def` line's own. Blank and
+// whitespace-only lines carry no indentation to compare and are skipped; a
+// comment line does not get that exemption, so a column-0 comment inside a
+// body ends the span early — which drops call sites onto the preserved
+// fallback rather than mis-attributing them.
+//
+// Indentation is counted in CHARACTERS, treating a tab as one. Python itself
+// forbids mixing tabs and spaces for indentation in a single block, so within
+// one body the comparison is consistent.
+func pySpanEnd(content string, defStart, afterParen int) int {
+	defIndent := 0
+	for i := defStart; i < len(content) && (content[i] == ' ' || content[i] == '\t'); i++ {
+		defIndent++
+	}
+	// The header may wrap across lines, so find the parameter list's `)`
+	// before looking for the newline that ends the header.
+	closeParen := findMatchingParenAfter(content, afterParen, jsSpanBodyBudget)
+	if closeParen < 0 {
+		return -1
+	}
+	nl := strings.IndexByte(content[closeParen:], '\n')
+	if nl < 0 {
+		return len(content)
+	}
+	i := closeParen + nl + 1
+	for i < len(content) {
+		lineEnd := len(content)
+		if nl := strings.IndexByte(content[i:], '\n'); nl >= 0 {
+			lineEnd = i + nl + 1
+		}
+		indent := 0
+		for j := i; j < lineEnd && (content[j] == ' ' || content[j] == '\t'); j++ {
+			indent++
+		}
+		blank := strings.TrimSpace(content[i:lineEnd]) == ""
+		if !blank && indent <= defIndent {
+			return i
+		}
+		i = lineEnd
+	}
+	return len(content)
+}
 
 // indexPyEnclosingFunctions builds a sorted (offset, name) list for every
 // Python function definition recognisable by pyEnclosingFuncRe. Used by
@@ -2560,13 +2830,38 @@ func indexPyEnclosingFunctions(content string) []pyFuncSpan {
 		if len(m) < 4 {
 			continue
 		}
-		out = append(out, pyFuncSpan{offset: m[0], name: content[m[2]:m[3]]})
+		end := pySpanEnd(content, m[0], m[1])
+		if end < m[0] {
+			end = m[0]
+		}
+		out = append(out, pyFuncSpan{offset: m[0], end: end, name: content[m[2]:m[3]]})
 	}
 	return out
 }
 
+// enclosingPyFuncAt mirrors enclosingJSFuncAt over Python spans: innermost
+// CONTAINING span wins, and when none contains `pos` the pre-#6500
+// nearest-preceding answer is preserved unchanged (see enclosingJSFuncAt for
+// why that fallback is deliberate). It is a separate body rather than a
+// delegation because pyFuncSpan is no longer an alias of jsFuncSpan.
 func enclosingPyFuncAt(funcs []pyFuncSpan, pos int) string {
-	return enclosingJSFuncAt(funcs, pos)
+	contained := ""
+	found := false
+	fallback := ""
+	for _, f := range funcs {
+		if f.offset > pos {
+			break
+		}
+		fallback = f.name
+		if pos < f.end {
+			contained = f.name
+			found = true
+		}
+	}
+	if found {
+		return contained
+	}
+	return fallback
 }
 
 // ---------------------------------------------------------------------------
