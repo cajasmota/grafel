@@ -165,7 +165,25 @@ func classifyNoise(e *graph.Entity) noiseKind {
 	// Non-addressable function-body locals (#1748): emitted at extraction
 	// time for resolver use but not independently inspectable. The extractor
 	// stamps Properties["local_scope"]="true" on these entities.
-	if e.PropGet("local_scope") == "true" {
+	//
+	// #6472 — component_prop is excluded, and this is the bucket's own rule
+	// applied correctly, NOT an exception to it. Membership in noiseLocalScope
+	// is justified above by "not independently inspectable": a const_destructure
+	// binding has no name you can address, so returning it from a search is
+	// noise. A React component_prop fails that test — the emitter
+	// (internal/extractors/javascript/dataflow_react.go) gives it a real
+	// QualifiedName ("Component.prop"), a real StartLine/EndLine span, and a
+	// ComputeID()-derived ID that grafel_inspect accepts. It is addressable, so
+	// it is not in the bucket.
+	//
+	// The property is nonetheless stamped on props, because internal/resolve's
+	// isLocalBindingKind needs a different fact from the same key: "must not
+	// compete for the repository-wide byName slot". A props parameter is
+	// addressable (denoise's question) AND callable-local (the resolver's
+	// question); those two answers differ, and this carve-out is where they are
+	// kept apart. Removing it would delete a component's whole prop surface
+	// from grafel_find's default and kind_filter paths.
+	if e.PropGet("local_scope") == "true" && e.Subtype != "component_prop" {
 		return noiseLocalScope
 	}
 

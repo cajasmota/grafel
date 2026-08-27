@@ -1698,20 +1698,38 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 // PUBLIC surface — `export let name` is reachable from a parent as
 // `<Comp name={…}>` — i.e. the same class of record as razor's `[Parameter]`,
 // so matching them would repeat the mistake just removed. Closing the two
-// genuine gaps is an extractor-side change (stamp local_scope centrally, the
-// way types.EntityGeneratedProperty is stamped in extractors.safeExtract) and
-// is deliberately NOT done here. Tracked as #6472, together with the react
-// props parameter above — doing it collapses this predicate to the
-// local_scope check alone and deletes the framework gate. NOT a one-line
-// edit: internal/mcp/denoise.go:168 HIDES local_scope entities from
-// grafel_find and internal/types/entity.go:111 documents the contract, so
-// widening who carries the property changes agent-facing search output and
-// has to be measured there too.
-func isLocalBindingKind(subtype string, props map[string]string) bool {
-	if props["local_scope"] == "true" {
-		return true
-	}
-	return subtype == "component_prop" && props["framework"] == "react"
+// genuine gaps is an extractor-side change and is deliberately NOT done here;
+// it is tracked on #6472.
+//
+// #6472 — THE FRAMEWORK GATE IS GONE. Everything above describes why the
+// `subtype == "component_prop" && framework == "react"` arm existed; it no
+// longer does, and this predicate now reads Properties["local_scope"] and
+// nothing else. What changed is upstream: dataflow_react.go's prop emitter now
+// stamps local_scope="true" on the React props parameter, so signal 1 fires
+// exactly where signal 2 used to and the verdict for every record described
+// above is unchanged (angular's @Input() and vue's defineProps carry no stamp
+// and keep the slot; the react props parameter carries one and loses it).
+//
+// The framework NAME is no longer consulted, which is the point: it was the
+// weakest usable signal, chosen only because nothing record-local separated the
+// three component_prop emitters. Now something does.
+//
+// This was not free, and the cost was paid in internal/mcp/denoise.go rather
+// than here. That file's classifyNoise HIDES local_scope entities from
+// grafel_find's default and kind_filter paths, so stamping props would have
+// deleted a component's entire prop surface from agent-facing search. The two
+// readers want different facts from one key — denoise asks "is this
+// independently inspectable?", this predicate asks "may this take the
+// repository-wide byName slot?" — and a props parameter answers yes and no
+// respectively. denoise.go carries a component_prop carve-out that keeps the
+// two apart. All three edits are one change; any two without the third is a
+// regression.
+//
+// TestComponentPropLocalityKeysOnStampNotFramework_6472 pins the deletion: a
+// react-stamped component_prop with NO local_scope must keep the slot, which is
+// false the moment the arm is restored.
+func isLocalBindingKind(_ string, props map[string]string) bool {
+	return props["local_scope"] == "true"
 }
 
 // indexByName is the sole writer of byName / ambigName. Both production index

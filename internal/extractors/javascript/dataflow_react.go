@@ -20,9 +20,13 @@
 //
 // Each prop becomes a SCOPE.Operation entity subtype="component_prop" and the
 // component entity gains a CONTAINS edge to it (reusing existing Kinds — no new
-// entity/edge Kind, so internal/types/ stays green). grafel_find can then
-// filter `subtype:component_prop` to enumerate a component's prop surface, and
-// the Data-Flow/prop_extraction cell is honestly backed by AST extraction
+// entity/edge Kind, so internal/types/ stays green). Note: an earlier version of
+// this comment claimed grafel_find could "filter `subtype:component_prop` to
+// enumerate a component's prop surface". It cannot — grafel_find has no subtype
+// filter; its parameter set is pinned at internal/mcp/schema_trim_5386_test.go
+// and only `kind_filter` exists, while every component_prop is SCOPE.Operation.
+// The props ARE returned by grafel_find, just not selectable by subtype.
+// The Data-Flow/prop_extraction cell is honestly backed by AST extraction
 // rather than the navigation-only special case.
 package javascript
 
@@ -82,6 +86,22 @@ func (x *extractor) extractComponentProps(params ts.Node, componentName string) 
 				"component": componentName,
 				"prop":      propName,
 				"framework": "react",
+				// #6472 — a React props parameter is a formal parameter of the
+				// component function: it exists only inside that callable and
+				// must never take the repository-wide byName slot against a
+				// same-named import placeholder (the #6467 regression class).
+				// Stamping it here is what lets internal/resolve's
+				// isLocalBindingKind key on this property alone, instead of the
+				// framework-NAME check it used to carry — a check that could not
+				// tell this record apart from angular's @Input() or vue's
+				// defineProps, which ARE a component's public surface.
+				//
+				// This does NOT hide the prop from grafel_find: internal/mcp's
+				// classifyNoise carves component_prop out of the noiseLocalScope
+				// bucket, because the prop is independently inspectable (real
+				// QualifiedName, real line span, resolvable ID) — see the
+				// comment there.
+				"local_scope": "true",
 			},
 			EnrichmentStatus: types.StatusPending,
 			QualityScore:     1.0,
