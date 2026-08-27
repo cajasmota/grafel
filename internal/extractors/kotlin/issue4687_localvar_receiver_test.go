@@ -56,7 +56,7 @@ func TestIssue4687_LocalVarCtorReceiver(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/test/XControllerTest.kt", "getCountsWorks", "getCounts")
+	_, props, ok := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.getCountsWorks", "getCounts")
 	if !ok {
 		t.Fatal("CALLS edge to getCounts not found")
 	}
@@ -64,8 +64,8 @@ func TestIssue4687_LocalVarCtorReceiver(t *testing.T) {
 		t.Fatalf("expected typed receiver XController, got type=%q", props["kotlin_call_type"])
 	}
 	runKotlinResolve(merged)
-	toID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "getCountsWorks", "getCounts")
-	want := ktEntID(merged, "src/web/XController.kt", "getCounts")
+	toID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.getCountsWorks", "getCounts")
+	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
 	if toID != want || !ktIs16Hex(toID) {
 		t.Fatalf("CALLS did not bind to web XController.getCounts: got %q want %q", toID, want)
 	}
@@ -85,8 +85,8 @@ func TestIssue4687_LocalVarTypeAnnotationReceiver(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 	runKotlinResolve(merged)
-	toID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "getCountsWorks", "getCounts")
-	want := ktEntID(merged, "src/web/XController.kt", "getCounts")
+	toID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.getCountsWorks", "getCounts")
+	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
 	if toID != want {
 		t.Fatalf("type-annotation receiver did not bind: got %q want %q", toID, want)
 	}
@@ -111,13 +111,13 @@ func TestIssue4687_MockKReceiverTyping(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 	runKotlinResolve(merged)
-	want := ktEntID(merged, "src/web/XController.kt", "getCounts")
+	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
 
-	fieldID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "fieldReceiver", "getCounts")
+	fieldID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.fieldReceiver", "getCounts")
 	if fieldID != want {
 		t.Fatalf("@InjectMockKs field receiver did not bind: got %q want %q", fieldID, want)
 	}
-	mockID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "mockkLocal", "getCounts")
+	mockID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.mockkLocal", "getCounts")
 	if mockID != want {
 		t.Fatalf("mockk<XController>() local receiver did not bind: got %q want %q", mockID, want)
 	}
@@ -153,7 +153,7 @@ func TestIssue4687_KotestScopeOwner(t *testing.T) {
 	}
 	runKotlinResolve(merged)
 	toID, _, _ := ktCallEdge(merged, "src/test/CountSpec.kt", "CountSpec", "getCounts")
-	want := ktEntID(merged, "src/web/XController.kt", "getCounts")
+	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
 	if toID != want {
 		t.Fatalf("Kotest scope CALLS did not bind to web XController.getCounts: got %q want %q", toID, want)
 	}
@@ -174,7 +174,7 @@ func TestIssue4687_FactoryReceiverStaysBare(t *testing.T) {
 		"    }\n" +
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
-	_, props, ok := ktCallEdge(merged, "src/test/XControllerTest.kt", "viaFactory", "getCounts")
+	_, props, ok := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.viaFactory", "getCounts")
 	if !ok {
 		t.Fatal("CALLS edge to getCounts not found")
 	}
@@ -196,7 +196,7 @@ func TestIssue4687_UntypedMockkStaysBare(t *testing.T) {
 		"    }\n" +
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
-	_, props, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "viaUntypedMock", "getCounts")
+	_, props, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.viaUntypedMock", "getCounts")
 	if props["kotlin_call_type"] != "" {
 		t.Fatalf("untyped mockk() receiver must NOT be typed, got type=%q", props["kotlin_call_type"])
 	}

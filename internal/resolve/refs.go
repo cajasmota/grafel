@@ -1400,18 +1400,22 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			}
 		}
 
-		// Kotlin package-scoped indexes (issue #4375). Kotlin function
-		// entities carry a BARE Name (not `Type.method`), so the dotted-Name
-		// block above never populates a Kotlin member; index from the
-		// kotlin_package / kotlin_enclosing_type properties instead. A member
+		// Kotlin package-scoped indexes (issue #4375), keyed from the
+		// kotlin_package / kotlin_enclosing_type properties. A member
 		// (kotlin_enclosing_type present) lands in byKotlinPkgMember
 		// [package][Type][bareName]; a top-level function lands in
 		// byKotlinPkgFunc[package][bareName]. Blank-string sentinel marks
 		// collisions. Components (classes/objects) are not indexed here — the
 		// resolver binds calls to functions, not to type declarations.
+		//
+		// #6499 — a Kotlin member's Name is now `Type.method`, but the lookup
+		// key is the CALL SITE's bare leaf (`call_leaf`), so the member bucket
+		// must be keyed by the leaf. A top-level function's Name is already
+		// bare and is indexed verbatim.
 		if e.Properties != nil && isOperationKind(e.Kind) {
 			if pkg := e.Properties["kotlin_package"]; pkg != "" && e.Name != "" {
 				if typ := e.Properties["kotlin_enclosing_type"]; typ != "" {
+					name := kotlinMemberLeaf(e.Name)
 					pkgBucket := idx.byKotlinPkgMember[pkg]
 					if pkgBucket == nil {
 						pkgBucket = make(map[string]map[string]string)
@@ -1422,10 +1426,10 @@ func BuildIndex(entities []types.EntityRecord) Index {
 						typeBucket = make(map[string]string)
 						pkgBucket[typ] = typeBucket
 					}
-					if existing, ok := typeBucket[e.Name]; ok && existing != e.ID {
-						typeBucket[e.Name] = "" // ambiguous within (pkg, type, member)
+					if existing, ok := typeBucket[name]; ok && existing != e.ID {
+						typeBucket[name] = "" // ambiguous within (pkg, type, member)
 					} else {
-						typeBucket[e.Name] = e.ID
+						typeBucket[name] = e.ID
 					}
 				} else {
 					funcBucket := idx.byKotlinPkgFunc[pkg]
@@ -1914,6 +1918,18 @@ func (idx *Index) setAliasAnchor(key, anchor string) {
 // byPackageOperation.
 func isOperationKind(k string) bool {
 	return k == "SCOPE.Operation" || k == "Operation"
+}
+
+// kotlinMemberLeaf strips the enclosing-type qualifier from a Kotlin member
+// operation Name (#6499): "OrderService.place" → "place". A bare top-level
+// function name is returned unchanged. Both byKotlinPkgMember builders use it
+// so the member bucket is keyed the way the call site spells the callee — the
+// extractor's `call_leaf` property is always the bare trailing identifier.
+func kotlinMemberLeaf(name string) string {
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		return name[i+1:]
+	}
+	return name
 }
 
 // isComponentKind reports whether the kind string is one of the Component

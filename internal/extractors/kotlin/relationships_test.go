@@ -71,7 +71,7 @@ func TestKotlin_ContainsClassMethods(t *testing.T) {
 	}
 	// Issue #144 — CONTAINS targets are structural-ref stubs (Format A)
 	// keyed on the source file.
-	for _, m := range []string{"a", "b", "c"} {
+	for _, m := range []string{"Foo.a", "Foo.b", "Foo.c"} {
 		want := "scope:operation:method:kotlin:Test.kt:" + m
 		if !ktHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", want) {
 			t.Errorf("expected CONTAINS Foo→%s", want)
@@ -91,10 +91,10 @@ func TestKotlin_CallsBareName(t *testing.T) {
 }
 `
 	ents := runKotlin(t, src)
-	if !ktHasRel(ents, "caller", "SCOPE.Operation", "CALLS", "helper") {
+	if !ktHasRel(ents, "A.caller", "SCOPE.Operation", "CALLS", "helper") {
 		t.Errorf("expected CALLS caller→helper")
 	}
-	caller := ktFind(ents, "caller", "SCOPE.Operation")
+	caller := ktFind(ents, "A.caller", "SCOPE.Operation")
 	n := 0
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "helper" {
@@ -122,7 +122,7 @@ func TestKotlin_CallsKeywordsFiltered(t *testing.T) {
 }
 `
 	ents := runKotlin(t, src)
-	caller := ktFind(ents, "caller", "SCOPE.Operation")
+	caller := ktFind(ents, "A.caller", "SCOPE.Operation")
 	if caller == nil {
 		t.Fatal("expected caller operation")
 	}
@@ -158,7 +158,7 @@ func TestKotlin_NoCallsForBareFieldAccess(t *testing.T) {
 }
 `
 	ents := runKotlin(t, src)
-	caller := ktFind(ents, "caller", "SCOPE.Operation")
+	caller := ktFind(ents, "ChatService.caller", "SCOPE.Operation")
 	if caller == nil {
 		t.Fatal("expected caller operation")
 	}
@@ -175,7 +175,7 @@ func TestKotlin_NoCallsForBareFieldAccess(t *testing.T) {
 			t.Errorf("bare field/property reference %q must not be emitted as CALLS target", r.ToID)
 		}
 	}
-	if !ktHasRel(ents, "caller", "SCOPE.Operation", "CALLS", "helper") {
+	if !ktHasRel(ents, "ChatService.caller", "SCOPE.Operation", "CALLS", "helper") {
 		t.Error("real method call helper() must still produce CALLS caller→helper")
 	}
 }
@@ -198,7 +198,7 @@ func TestKotlin_NavigationCallTrailingIdentifier(t *testing.T) {
 }
 `
 	ents := runKotlin(t, src)
-	caller := ktFind(ents, "caller", "SCOPE.Operation")
+	caller := ktFind(ents, "S.caller", "SCOPE.Operation")
 	if caller == nil {
 		t.Fatal("expected caller operation")
 	}
@@ -341,10 +341,10 @@ func TestKotlin_PropertyContains_BareDeclaration(t *testing.T) {
 	}
 	// CONTAINS edges via structural-ref stubs.
 	wantContains := map[string]bool{
-		"scope:schema:field:kotlin:Test.kt:UserService.name":  false,
-		"scope:schema:field:kotlin:Test.kt:UserService.count": false,
-		"scope:schema:field:kotlin:Test.kt:UserService.repo":  false,
-		"scope:operation:method:kotlin:Test.kt:find":          false,
+		"scope:schema:field:kotlin:Test.kt:UserService.name":     false,
+		"scope:schema:field:kotlin:Test.kt:UserService.count":    false,
+		"scope:schema:field:kotlin:Test.kt:UserService.repo":     false,
+		"scope:operation:method:kotlin:Test.kt:UserService.find": false,
 	}
 	for _, r := range svc.Relationships {
 		if r.Kind == "CONTAINS" {

@@ -45,12 +45,13 @@ import (
 // @ExceptionHandler / Ktor StatusPages shapes and appends exception-type
 // entities + THROWS / CATCHES edges.
 //
-// entities[0] MUST be the file entity. The enclosing-function Name used as
-// each edge's FromName matches the bare function Name emitted by
-// buildOperation, so edges attach to the function entity; throws/catches at
-// file scope (or in a function whose entity was not emitted) fall back to the
-// file entity inside EmitExceptionEdges. Mutates *entities in place. Safe with
-// nil / empty input.
+// entities[0] MUST be the file entity. The enclosing-function Name used as each
+// edge's FromName is produced by kotlinFunctionName, which shares
+// kotlinQualifiedFuncName with buildOperation — so it is class-qualified for a
+// member and bare for a top-level function, and matches the emitted entity Name
+// exactly (#6499). Throws/catches at file scope carry FromName "" and land on
+// entities[0], the file entity, inside EmitExceptionEdges. Mutates *entities in
+// place. Safe with nil / empty input.
 func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
@@ -59,14 +60,28 @@ func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]
 
 	var edges []extractor.ExceptionEdge
 
-	var walk func(n ts.Node, enclosingFn string)
-	walk = func(n ts.Node, enclosingFn string) {
+	var walk func(n ts.Node, enclosingFn, parentType string)
+	walk = func(n ts.Node, enclosingFn, parentType string) {
 		if n == nil {
 			return
 		}
 		switch n.Type() {
+		case "class_declaration", "object_declaration":
+			// #6499 — a member's emitted Name is qualified by its enclosing
+			// type, so this pass must track the same nesting the primary walk
+			// does. Note there is deliberately NO companion_object case here
+			// either: companion members inherit the OUTER class name, exactly
+			// as in kotlin.go's walk.
+			if cls := kotlinDeclName(n, src); cls != "" {
+				parentType = cls
+			}
+			for i := 0; i < int(n.ChildCount()); i++ {
+				walk(n.Child(i), enclosingFn, parentType)
+			}
+			return
+
 		case "function_declaration":
-			fn := kotlinFunctionName(n, src)
+			fn := kotlinFunctionName(n, src, parentType)
 			// A Spring @ExceptionHandler(X::class) method is itself the handler
 			// for X — emit CATCHES on the method entity, mirroring a typed catch.
 			for _, t := range kotlinExceptionHandlerTypes(n, src) {
@@ -75,7 +90,7 @@ func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]
 				})
 			}
 			for i := 0; i < int(n.ChildCount()); i++ {
-				walk(n.Child(i), fn)
+				walk(n.Child(i), fn, parentType)
 			}
 			return
 		case "jump_expression":
@@ -101,22 +116,29 @@ func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]
 			}
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i), enclosingFn)
+			walk(n.Child(i), enclosingFn, parentType)
 		}
 	}
-	walk(root, "")
+	walk(root, "", "")
 
 	extractor.EmitExceptionEdges(entities, "kotlin", edges)
 }
 
-// kotlinFunctionName returns the bare declared name of a function_declaration,
-// matching the Name buildOperation emits (Kotlin function entities are not
-// class-qualified), or "" so the edge falls back to the file entity.
-func kotlinFunctionName(fn ts.Node, src []byte) string {
-	if name := strings.TrimSpace(childFieldText(fn, "name", src)); name != "" {
-		return name
+// kotlinFunctionName returns the emitted entity Name for a function_declaration
+// — class-qualified `<EnclosingType>.<leaf>` for a member, bare for a top-level
+// function — or "" when the declaration has no name.
+//
+// It MUST agree byte-for-byte with the Name buildOperation emits, which is why
+// both route through kotlinQualifiedFuncName (#6499). A disagreement is silent:
+// extractor.EmitExceptionEdges looks FromName up in hostByName and, on a miss,
+// leaves hostIdx at 0 — so the edge re-attaches to entities[0], whatever that
+// happens to be, rather than erroring.
+func kotlinFunctionName(fn ts.Node, src []byte, parentType string) string {
+	leaf := strings.TrimSpace(childFieldText(fn, "name", src))
+	if leaf == "" {
+		leaf = strings.TrimSpace(firstChildOfType(fn, src, "simple_identifier"))
 	}
-	return strings.TrimSpace(firstChildOfType(fn, src, "simple_identifier"))
+	return kotlinQualifiedFuncName(parentType, leaf)
 }
 
 // kotlinThrowType returns the constructed exception class for a
