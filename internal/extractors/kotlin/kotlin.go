@@ -448,6 +448,12 @@ var kotlinKeywordStop = map[string]bool{
 // buildDocument substitutes the caller's entity ID at emit time. Self-recursion
 // is dropped to match Python/Go extractor dedup semantics.
 //
+// callerName MUST be the caller's BARE leaf name, never its emitted entity Name
+// (#6499). It is used only for the self-recursion drop, which compares it
+// against raw call-site text — and a call site spells the leaf. Passing the
+// class-qualified Name compiles fine and silently stops the comparison ever
+// matching, minting a self-CALLS edge on every recursive method.
+//
 // When ctx is non-nil (issue #4375), each call is additionally probed for a
 // statically-qualified cross-package shape — a fully-qualified
 // `com.app.services.OrderService.place()`, an imported top-level function, an
