@@ -48,6 +48,21 @@ const (
 // bag — here `toolkit`, colliding with the package imported by the changed
 // file below. That collision is the #6467 shape.
 //
+// `datakit` is the OVER-STAMP control, and it is load-bearing. The
+// compatibility shim's job is to stamp carried React props and NOTHING ELSE; a
+// shim that stamped every unstamped carried record would strip real
+// declarations of their repo-wide byName slot and hide them from grafel_find —
+// the #6481 trap, which has no loud symptom. With only the prop in this file,
+// `needsLegacyLocalScopeStamp` mutated to `return true` is killed only by the
+// helper's own unit test and this integration test SURVIVES.
+//
+// It is the exact MIRROR of the prop case: a declaration whose name collides
+// with a package the changed file imports. The prop must LOSE that collision
+// (it is callable-local); `datakit` must WIN it (it is a real, addressable
+// module-scope declaration). One fixture, both directions, and the shim has to
+// get both right at once. Deliberately camelCase so the React prop emitter,
+// which only fires on PascalCase names, does not treat it as a component.
+//
 // Basenames across the corpus are unique: diff.Filter cross-invalidates
 // same-basename files, which would drag the "unchanged" file into the changed
 // set and make the case vacuous.
@@ -56,17 +71,25 @@ func lsWriteUnchanged6472(t *testing.T, repo string) {
 	dvWriteFile(t, repo, lsUnchangedFile6472, `export function WidgetU(toolkit) {
   return toolkit.render();
 }
+
+export function datakit(v) {
+  return v + 1;
+}
 `)
 }
 
-// lsWriteChanged6472 writes the file edited between passes. It imports the
-// package whose name collides with the carried prop.
+// lsWriteChanged6472 writes the file edited between passes. It imports two
+// packages whose names collide with entities in the unchanged file: `toolkit`,
+// which collides with the React props parameter and must NOT bind to it, and
+// `datakit`, which collides with a real module-scope declaration and MUST bind
+// to it. Stamp the prop, leave the declaration alone.
 func lsWriteChanged6472(t *testing.T, repo string, pass int) {
 	t.Helper()
 	dvWriteFile(t, repo, lsChangedFile6472, `import toolkit from 'toolkit';
+import datakit from 'datakit';
 
 export function renderC(x) {
-  return toolkit.run(x) + `+strconv.Itoa(pass)+`;
+  return toolkit.run(x) + datakit(x) + `+strconv.Itoa(pass)+`;
 }
 `)
 }
@@ -121,6 +144,37 @@ func lsPropEntityIDs6472(doc *graph.Document) map[string]string {
 		}
 	}
 	return out
+}
+
+// lsImportsBoundToProps6472 returns the component_prop entities that an IMPORTS
+// edge out of the changed file actually resolved to, as "name(id)" strings.
+//
+// This is the identity check the load-bearing assertion needs: a resolved edge
+// has had its ToID rewritten to the target's ID, so membership in the prop-ID
+// set is exactly "this import bound to a props parameter" — not a proxy such as
+// "this import bound to something in that file", which a correct binding also
+// satisfies.
+func lsImportsBoundToProps6472(doc *graph.Document) []string {
+	props := lsPropEntityIDs6472(doc)
+	if len(props) == 0 {
+		return nil
+	}
+	fromIDs := make(map[string]bool)
+	for _, e := range doc.Entities {
+		if filepath.ToSlash(e.SourceFile) == lsChangedFile6472 && e.Kind == "SCOPE.Component" {
+			fromIDs[e.ID] = true
+		}
+	}
+	var hits []string
+	for _, r := range doc.Relationships {
+		if r.Kind != "IMPORTS" || !fromIDs[r.FromID] {
+			continue
+		}
+		if name, ok := props[r.ToID]; ok {
+			hits = append(hits, name+"("+r.ToID+")")
+		}
+	}
+	return hits
 }
 
 // TestPathBIncremental_LegacyComponentPropKeepsLocality_6472 is the regression
@@ -200,18 +254,39 @@ func TestPathBIncremental_LegacyComponentPropKeepsLocality_6472(t *testing.T) {
 			lsChangedFile6472)
 	}
 
-	// The load-bearing assertion. A carried, unstamped props parameter must not
-	// hold the repository-wide byName slot, so the import must not resolve into
-	// the unchanged component file.
-	for _, tgt := range gotT {
+	// (5) Non-vacuity for the OVER-STAMP direction: the full rebuild must
+	// actually bind an import INTO the unchanged file. That binding is what a
+	// too-wide shim would destroy, so if it never existed the parity oracle
+	// below could not observe over-stamping at all.
+	boundIntoUnchanged := false
+	for _, tgt := range wantT {
 		if tgt.Resolved && filepath.ToSlash(tgt.SourceFile) == lsUnchangedFile6472 {
-			t.Errorf("%s -IMPORTS-> %s: the import bound to the React props parameter carried "+
-				"forward from the unchanged file. A binding that exists only inside the "+
-				"component callable must never take the repository-wide byName slot — a graph "+
-				"written before the #6472 stamp has to keep resolving the way it did on the "+
-				"old binary (#6467). full-rebuild targets=%v",
-				lsChangedFile6472, tgt, wantT)
+			boundIntoUnchanged = true
 		}
+	}
+	if !boundIntoUnchanged {
+		t.Fatalf("fixture is inert for the over-stamp direction: the full rebuild binds no "+
+			"IMPORTS edge into %s, so a shim that stamped every carried record would not be "+
+			"visible here. targets=%v", lsUnchangedFile6472, wantT)
+	}
+
+	// The load-bearing assertion, keyed on the PROP'S IDENTITY rather than on
+	// its source file.
+	//
+	// An earlier version flagged any resolved target whose SourceFile was the
+	// unchanged file while its message diagnosed "bound to the React props
+	// parameter". With one bindable entity in that file those coincided; with
+	// sharedHelperU present a CORRECT binding trips the file-level check and is
+	// reported with a false diagnosis. The assertion must observe the artefact
+	// it names, so it now matches IMPORTS edges whose ToID is a component_prop
+	// entity ID.
+	if hits := lsImportsBoundToProps6472(inc); len(hits) > 0 {
+		t.Errorf("%s -IMPORTS-> %v: the import bound to a React props parameter carried "+
+			"forward from the unchanged file. A binding that exists only inside the "+
+			"component callable must never take the repository-wide byName slot — a graph "+
+			"written before the #6472 stamp has to keep resolving the way it did on the "+
+			"old binary (#6467). full-rebuild targets=%v",
+			lsChangedFile6472, hits, wantT)
 	}
 
 	// And the incremental answer matches the full rebuild's, which is the
@@ -359,5 +434,96 @@ func TestLegacyLocalScopeStampIsAppliedAtTheCarrySeam_6472(t *testing.T) {
 			"applyLegacyLocalScopeStamp. The compatibility rule is only reachable from that one "+
 			"seam — bypassing it re-opens the #6467 regression for every graph written before "+
 			"#6472. Wanted to find: %q", want)
+	}
+}
+
+// TestResolverIndexHasExactlyOneProductionSeam_6472 guards the PREMISE the
+// compatibility shim's completeness rests on.
+//
+// The argument for putting the #6472 backward-compatibility rule at the
+// carry-forward seam, rather than as a clause inside isLocalBindingKind, is
+// that the seam is the ONLY route by which a pre-#6472 record can reach the
+// resolver's predicate:
+//
+//   - there is exactly one production construction of the resolver index, the
+//     GRAFEL_RESOLVE_MODULE_INDEX two-branch switch below;
+//   - both branches consume the same `indexEntities` slice;
+//   - `indexEntities` is this run's freshly extracted `merged` (already stamped
+//     by the emitter) plus `incrementalCarryForwardEntities` (stamped by the
+//     shim on the way in).
+//
+// That premise is true today and was verified in review. It is also exactly the
+// kind of premise that decays silently: a second index construction added
+// anywhere in production would bypass the shim and re-open #6467 for upgraded
+// users, with no test going red — the seam tripwire above cannot notice a seam
+// it does not know about.
+//
+// So this counts them. If the count changes, the new site must either consume
+// `indexEntities` or apply applyLegacyLocalScopeStamp itself, and this test's
+// expectation must be updated deliberately rather than by accident.
+func TestResolverIndexHasExactlyOneProductionSeam_6472(t *testing.T) {
+	b, err := os.ReadFile("index.go")
+	if err != nil {
+		t.Fatalf("read index.go: %v", err)
+	}
+	// Comments mention these names freely; only real call expressions count.
+	constructions := map[string]int{
+		"resolve.BuildIndex(":                   0,
+		"resolve.BuildIndexFromModulesOrdered(": 0,
+		"resolve.BuildIndexFromModules(":        0,
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		code := line
+		if i := strings.Index(code, "//"); i >= 0 {
+			code = code[:i]
+		}
+		for probe := range constructions {
+			// BuildIndex( is a prefix of BuildIndexFromModules*( — count the
+			// most specific match only, so the totals do not double-count.
+			if probe == "resolve.BuildIndex(" &&
+				(strings.Contains(code, "resolve.BuildIndexFromModules")) {
+				continue
+			}
+			if strings.Contains(code, probe) {
+				constructions[probe]++
+			}
+		}
+	}
+
+	total := 0
+	for _, n := range constructions {
+		total += n
+	}
+	// Non-vacuity: if the probes matched nothing at all the test would "pass"
+	// any expectation, so require the two known sites to be found.
+	if total == 0 {
+		t.Fatalf("probe is broken: found no resolver-index construction in index.go at all; "+
+			"counts=%v", constructions)
+	}
+
+	const wantTotal = 2 // the two branches of the GRAFEL_RESOLVE_MODULE_INDEX switch
+	if total != wantTotal {
+		t.Errorf("index.go constructs the resolver index at %d site(s), want %d (counts=%v).\n\n"+
+			"The #6472 backward-compatibility shim is applied where previous-graph entities "+
+			"enter the index (the incrementalCarryForwardEntities slice). That placement is "+
+			"only complete while every construction consumes `indexEntities`. A new site that "+
+			"builds an index from previous-graph records some other way bypasses the shim and "+
+			"silently re-opens the #6467 slot-capture regression for every user who has "+
+			"upgraded but not yet done a full reindex.\n\n"+
+			"If the new site is legitimate: make it consume `indexEntities`, or apply "+
+			"applyLegacyLocalScopeStamp to its inputs, then update wantTotal here.",
+			total, wantTotal, constructions)
+	}
+
+	// Both known branches must feed from the stamped slice.
+	for _, probe := range []string{
+		"resolve.BuildIndexFromModulesOrdered(indexEntities,",
+		"resolve.BuildIndex(indexEntities)",
+	} {
+		if !strings.Contains(string(b), probe) {
+			t.Errorf("expected a resolver-index construction fed by the stamped `indexEntities` "+
+				"slice: %q not found. If the argument was renamed, confirm it still carries the "+
+				"carry-forward records that applyLegacyLocalScopeStamp wrote.", probe)
+		}
 	}
 }

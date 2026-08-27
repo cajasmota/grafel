@@ -1702,15 +1702,22 @@ func isImportPlaceholderKind(kind, subtype string) bool {
 // name. They were dropped; TestRazorParameterIsNotALocalBinding_6467 and
 // TestBicepParamIsNotALocalBinding_6467 pin that they stay out.
 //
-// So this tier narrows the slot only for JS/TS-family records. Every other
-// language is unchanged by it, and even inside JS/TS two shapes still take the
-// slot: a nested `function` declaration and a `class` declared in a function
-// body carry no locality marker at all. Also NOT matched, deliberately:
-// svelte's `prop` (svelte/extractor.go:377,460,475) and astro's `prop` /
-// `props_binding` (astro/extractor.go:371,395) — a component's PUBLIC surface,
-// the same class of record as razor's `[Parameter]`. Closing the two genuine
-// gaps means stamping local_scope at those two emit sites, which is an
-// extractor-side change and is deliberately NOT done here; tracked on #6472.
+// So this tier narrows the slot only for JS/TS-family records, and every other
+// language is unchanged by it.
+//
+// TWO GAPS REMAIN INSIDE JS/TS. A nested `function` declaration and a `class`
+// declared in a function body carry no locality marker at all, so both still
+// take the repo-wide slot. Closing THOSE TWO — and nothing else — means
+// stamping local_scope at their emit sites, which is an extractor-side change
+// and is deliberately NOT done here. Tracked on #6720.
+//
+// THAT IS NOT AN INVITATION TO WIDEN THIS PREDICATE. Explicitly NOT matched,
+// deliberately: svelte's `prop` (svelte/extractor.go:377,460,475) and astro's
+// `prop` / `props_binding` (astro/extractor.go:371,395). Those are a
+// component's PUBLIC surface — `export let name` is reachable from a parent as
+// `<Comp name={…}>` — i.e. the same class of record as razor's `[Parameter]`
+// removed above, and matching them repeats that mistake. The two gaps named in
+// the previous paragraph are callable-locals; these are not.
 //
 // THE OTHER READER OF THIS PROPERTY. local_scope is not resolver-private.
 // internal/mcp/denoise.go's classifyNoise reads it to decide what to HIDE from
