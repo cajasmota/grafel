@@ -254,10 +254,19 @@ func buildImportEntities(filePath string, imports []string) []types.EntityRecord
 		}
 		seen[mod] = true
 		out = append(out, types.EntityRecord{
-			Name:       importTopSegment(mod),
-			Kind:       "SCOPE.Component",
+			Name: importTopSegment(mod),
+			Kind: "SCOPE.Component",
+			// #6481: resolve/refs.go keys the import-placeholder marker on
+			// kind=="SCOPE.Component" && subtype=="import". Without it this stub
+			// stays in the by-name index as a real declaration of its BASENAME
+			// WITHOUT EXTENSION and flips every colliding name AMBIGUOUS.
+			Subtype:    "import",
 			SourceFile: filePath,
 			Language:   "zig",
+			// The FULL @import target, not the display name:
+			// resolve.placeholderModuleSpecifier reads import_module first, and
+			// the #6156 restore would otherwise record the bare basename.
+			Properties: map[string]string{"import_module": mod},
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: filePath,
