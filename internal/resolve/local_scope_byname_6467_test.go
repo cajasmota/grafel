@@ -723,20 +723,26 @@ func assertDeclarationLosesSlot6467(t *testing.T, label string, decl types.Entit
 	}
 }
 
-// TestReactComponentDeclarationIsNotALocalBinding_6467 pins the SUBTYPE half of
-// the react arm, which the framework gate left unpinned.
+// TestReactComponentDeclarationIsNotALocalBinding_6467 pins that a React
+// COMPONENT DECLARATION keeps the repository-wide slot.
 //
-// Surviving mutant (found in review): with the gate in place,
+// HISTORICALLY this test pinned the SUBTYPE half of the react arm: with the
+// framework gate in place, `return subtype != "" && props["framework"] ==
+// "react"` passed `go vet` and the whole ./internal/resolve/... suite, so the
+// framework check alone was carrying the arm.
 //
-//	return subtype != "" && props["framework"] == "react"
+// #6472 DELETED THAT ARM, so this test no longer discriminates against that
+// mutant — the predicate has no framework term left to relax. The subtype-half
+// pin moved to where the react+subtype rule now lives, the backward-compat
+// shim: see the "react-stamped entity that is not a component_prop" row of
+// TestLegacyLocalScopeStampRule_6472 (cmd/grafel).
 //
-// passed `go vet` and the whole ./internal/resolve/... suite. Nothing
-// distinguished a react `component_prop` from ANY other react-stamped subtype,
-// so the framework check alone was carrying the arm — and a later relaxation of
-// the subtype side, trusting `framework == "react"` to hold the line, would have
-// drawn no objection from any test.
+// It is kept rather than deleted because its fixture is a REAL emitter's
+// record, not a hand-built one, and the invariant it states is independently
+// worth holding: the most addressable record in a React codebase must never be
+// classified as a callable-local, whatever future signal this predicate grows.
 //
-// The killer is a record that is react-stamped and NOT a props parameter:
+// The record is react-stamped and NOT a props parameter:
 // cross/react_props/extractor.go:816 `buildComponentEntity` emits the COMPONENT
 // ITSELF as SCOPE.Operation / Subtype "react_component" with
 // Properties["framework"]="react" (map copied verbatim from that emitter,

@@ -69,7 +69,15 @@ const (
 	// are never independently inspectable via grafel_inspect (the name
 	// is not addressable as "Component.counts") so surfacing them in
 	// grafel_find wastes tokens and violates "everything you see is
-	// queryable". Identified by Properties["local_scope"]=="true".
+	// queryable".
+	//
+	// Identified by Properties["local_scope"]=="true" AND a subtype other than
+	// "component_prop" (#6472). The property has two readers wanting different
+	// facts: internal/resolve/refs.go reads it as "may not take the
+	// repository-wide byName slot", which is true of a React props parameter,
+	// while this bucket reads it as "not independently inspectable", which is
+	// NOT — a prop has a real QualifiedName, span and ID. See the membership
+	// test in classifyNoise for the full argument.
 	noiseLocalScope
 )
 
@@ -183,7 +191,16 @@ func classifyNoise(e *graph.Entity) noiseKind {
 	// question); those two answers differ, and this carve-out is where they are
 	// kept apart. Removing it would delete a component's whole prop surface
 	// from grafel_find's default and kind_filter paths.
-	if e.PropGet("local_scope") == "true" && e.Subtype != "component_prop" {
+	//
+	// The test uses the `subtype` local computed above, NOT e.Subtype, for the
+	// #2015 reason documented there: the extractor writes the subtype into both
+	// EntityRecord.Subtype and Properties["subtype"], but some load/conversion
+	// paths repopulate only one of the two. Reading e.Subtype directly here
+	// would hide every prop that arrived with its subtype riding in Properties
+	// alone — i.e. exactly the capability deletion this carve-out exists to
+	// prevent, on a path no fixture that hand-sets graph.Entity.Subtype can
+	// reach. TestComponentProp_SubtypeInPropertiesOnly_6472 pins it.
+	if e.PropGet("local_scope") == "true" && subtype != "component_prop" {
 		return noiseLocalScope
 	}
 

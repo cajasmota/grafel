@@ -10,6 +10,7 @@
 package javascript_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -77,16 +78,45 @@ export function formatTitle(s: string) { return s.trim(); }
 		}
 		// The record must stay independently inspectable — that is the reason
 		// internal/mcp's classifyNoise carves component_prop out of the
-		// noiseLocalScope bucket instead of hiding it from grafel_find. If the
-		// emitter ever drops the qualified name or the line span, the carve-out
-		// loses its justification and the prop SHOULD be hidden.
-		if e.QualifiedName == "" {
-			t.Errorf("component_prop %q has no QualifiedName; internal/mcp/denoise.go's "+
-				"component_prop carve-out is justified by the prop being addressable", name)
+		// noiseLocalScope bucket instead of hiding it from grafel_find. The
+		// carve-out's comment names THREE facts as load-bearing: an addressable
+		// "Component.prop" QualifiedName, a real StartLine/EndLine span, and a
+		// ComputeID()-derived ID that grafel_inspect accepts. All three are
+		// asserted here, so the justification cannot quietly stop being true.
+		component := e.Properties["component"]
+		if component == "" {
+			t.Errorf("component_prop %q carries no \"component\" property; the addressable "+
+				"name it is checked against below is derived from it", name)
+		}
+		wantSuffix := component + "." + name
+		if !strings.HasSuffix(e.QualifiedName, wantSuffix) {
+			t.Errorf("component_prop %q: QualifiedName = %q, want it to end in %q. "+
+				"internal/mcp/denoise.go's carve-out is justified by the prop being "+
+				"addressable AS \"Component.prop\" — a merely non-empty qualified name does "+
+				"not carry that claim", name, e.QualifiedName, wantSuffix)
 		}
 		if e.StartLine == 0 {
 			t.Errorf("component_prop %q has StartLine 0; the denoise carve-out is justified by "+
 				"the prop having a real source span", name)
+		}
+		if e.EndLine == 0 {
+			t.Errorf("component_prop %q has EndLine 0; the denoise carve-out cites a real "+
+				"StartLine/EndLine span, so both ends have to exist", name)
+		}
+		if e.EndLine < e.StartLine {
+			t.Errorf("component_prop %q has EndLine %d < StartLine %d — not a usable span",
+				name, e.EndLine, e.StartLine)
+		}
+		// The ID half of the claim: grafel_inspect addresses the prop by an ID
+		// the record computes from its own identity. Assert it is present AND
+		// that it is genuinely that computed value, not an arbitrary string.
+		if e.ID == "" {
+			t.Errorf("component_prop %q has an empty ID; grafel_inspect addresses it by ID, "+
+				"which is the third fact the denoise carve-out rests on", name)
+		}
+		if want := e.ComputeID(); e.ID != want {
+			t.Errorf("component_prop %q: ID = %q, want the record's own ComputeID() %q — "+
+				"the carve-out cites a ComputeID()-derived ID specifically", name, e.ID, want)
 		}
 	}
 
@@ -109,4 +139,78 @@ func keysOfProps(m map[string]*types.EntityRecord) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// TestAngularInputIsNotStampedLocalScope_6472 is the OTHER half of the
+// justification, and until now it existed only in hand-built fixtures.
+//
+// The entire argument for stamping React props — and for deleting the
+// framework-name clause from internal/resolve's isLocalBindingKind — rests on
+// the claim that Angular's @Input() is a DIFFERENT kind of record: a
+// component's public surface, addressable from a parent template as
+// `<app-chart [Data]="…">`, which must keep the repository-wide byName slot.
+// If the Angular emitter ever started stamping local_scope that distinction
+// would collapse and #6470's regression would return — silently, because every
+// test pinning it uses records typed out by hand.
+//
+// Both emitters live in this package, so the claim is cheap to assert against
+// the real extractor. It is asserted here rather than argued in a comment.
+//
+// Non-vacuity: the test fails unless the Angular @Input props are actually
+// extracted, and it asserts the React control in the SAME run — so "nothing is
+// stamped" cannot pass by the stamp being broken everywhere.
+func TestAngularInputIsNotStampedLocalScope_6472(t *testing.T) {
+	src := []byte("import { Component, Input } from '@angular/core';\n" +
+		"\n" +
+		"@Component({ selector: 'app-chart', template: '<div></div>' })\n" +
+		"export class ChartComponent {\n" +
+		"  @Input() Data: string;\n" +
+		"  @Input() label = 'x';\n" +
+		"}\n")
+
+	ents := extractReact(t, "chart.component.ts", src)
+
+	angularProps := map[string]*types.EntityRecord{}
+	for i := range ents {
+		e := &ents[i]
+		if e.Subtype == "component_prop" && e.Properties["framework"] == "angular" {
+			angularProps[e.Name] = e
+		}
+	}
+	// Non-vacuity: the @Input() props must actually exist.
+	for _, want := range []string{"Data", "label"} {
+		if angularProps[want] == nil {
+			t.Fatalf("non-vacuity: Angular @Input() %q was not extracted as a component_prop; %s",
+				want, dumpKinds(ents))
+		}
+	}
+
+	for name, e := range angularProps {
+		if e.Properties["local_scope"] == "true" {
+			t.Errorf("angular @Input() %q is stamped local_scope=true. An @Input() is the "+
+				"component's PUBLIC surface — addressable from a parent template, so it must "+
+				"keep the repository-wide byName slot. Stamping it collides the declaration "+
+				"into ambiguity against any same-named import placeholder in any language, "+
+				"which is the #6470 regression that forced the framework gate #6472 removed; "+
+				"Properties=%v", name, e.Properties)
+		}
+	}
+
+	// The React control, in the same run: the stamp mechanism is working, so
+	// the absence above is a real distinction rather than a dead code path.
+	react := extractReact(t, "ChartR.tsx", []byte("export function ChartR({ Data }) {\n"+
+		"  return <div>{Data}</div>;\n"+
+		"}\n"))
+	stamped := false
+	for i := range react {
+		e := &react[i]
+		if e.Subtype == "component_prop" && e.Name == "Data" && e.Properties["local_scope"] == "true" {
+			stamped = true
+		}
+	}
+	if !stamped {
+		t.Fatalf("non-vacuity: the React control prop was not stamped, so the Angular assertion "+
+			"above proves nothing about a distinction between the two emitters; %s",
+			dumpKinds(react))
+	}
 }

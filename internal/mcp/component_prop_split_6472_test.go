@@ -48,6 +48,70 @@ func reactPropProperties(component, prop string) map[string]string {
 	}
 }
 
+// TestComponentProp_SubtypeInPropertiesOnly_6472 pins that the carve-out reads
+// the SAME subtype carrier classifyNoise already computes for #2015, not
+// graph.Entity.Subtype directly.
+//
+// The extractor writes the subtype into BOTH EntityRecord.Subtype and
+// Properties["subtype"], and classifyNoise computes a `subtype` local that
+// falls back from one to the other precisely because some load/conversion
+// paths repopulate only one of them. A carve-out keyed on e.Subtype alone
+// therefore hides every prop that arrived through such a path — the exact
+// capability deletion this change exists to prevent, and invisible to every
+// other test here because they all hand-set the struct field.
+//
+// Non-vacuity: the control leg asserts a prop carrying the subtype in the
+// struct field IS classified noiseNone, so a mutant breaking classification
+// outright cannot make this test pass by hiding both.
+func TestComponentProp_SubtypeInPropertiesOnly_6472(t *testing.T) {
+	props := reactPropProperties("PriceTag", "currencyCode")
+
+	// Control: subtype in the struct field (what every other fixture does).
+	both := graph.Entity{
+		ID: "p1", Name: "currencyCode", Kind: "SCOPE.Operation",
+		Subtype: "component_prop", SourceFile: "src/PriceTag.jsx",
+		StartLine: 4, EndLine: 4, QualifiedName: "PriceTag.currencyCode",
+	}.WithProperties(props)
+	if got := classifyNoise(&both); got != noiseNone {
+		t.Fatalf("control: prop with Subtype set classified %v, want noiseNone", got)
+	}
+
+	// The case under test: Subtype field EMPTY, subtype only in Properties.
+	propsOnly := graph.Entity{
+		ID: "p2", Name: "currencyCode", Kind: "SCOPE.Operation",
+		SourceFile: "src/PriceTag.jsx",
+		StartLine:  4, EndLine: 4, QualifiedName: "PriceTag.currencyCode",
+	}.WithProperties(props)
+	if propsOnly.Subtype != "" {
+		t.Fatalf("premise broken: this case requires an empty Subtype field, got %q", propsOnly.Subtype)
+	}
+	if propsOnly.PropGet("subtype") != "component_prop" {
+		t.Fatalf("premise broken: the subtype must ride in Properties for this case, got %q",
+			propsOnly.PropGet("subtype"))
+	}
+	if got := classifyNoise(&propsOnly); got != noiseNone {
+		t.Errorf("classifyNoise = %v, want noiseNone: a component_prop whose subtype arrived in "+
+			"Properties rather than the struct field is still a component_prop. classifyNoise "+
+			"already computes a #2015 fallback local for exactly this reason; the carve-out must "+
+			"use it, or the prop is hidden from grafel_find on every load path that repopulates "+
+			"only Properties (#6472)", got)
+	}
+
+	// And the bucket still fires for a genuine local binding on that same path,
+	// so the fix widened nothing beyond component_prop.
+	localOnly := graph.Entity{
+		ID: "l1", Name: "subtotal", Kind: "SCOPE.Component",
+		SourceFile: "src/PriceTag.jsx", StartLine: 9, EndLine: 9,
+		QualifiedName: "PriceTag.subtotal",
+	}.WithProperties(map[string]string{
+		"kind": "SCOPE.Component", "subtype": "const_destructure", "local_scope": "true",
+	})
+	if got := classifyNoise(&localOnly); got != noiseLocalScope {
+		t.Errorf("classifyNoise(const_destructure with subtype in Properties only) = %v, "+
+			"want noiseLocalScope: the carve-out must not have widened past component_prop", got)
+	}
+}
+
 // TestComponentProp_VisibleToFindAndLocalToResolver_6472 asserts the split
 // directly: the SAME prop record is returned by grafel_find with default
 // options AND does not capture the repository-wide byName slot.

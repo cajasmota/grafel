@@ -29,17 +29,24 @@ import (
 // alone.
 //
 // THE KILLING ROW is "react, unstamped". Restore the deleted arm and that row
-// goes red — it is the only assertion in the tree that can observe the arm's
-// absence, because with the stamp present (which the real React emitter now
-// always writes, pinned by TestReactPropsCarryLocalScopeStamp_6472 in
-// internal/extractors/javascript) both predicates agree on every record.
+// goes red.
 //
-// The unstamped-react record is therefore a deliberate COUNTERFACTUAL, not a
-// claim about what the extractor emits: it asks "if a component_prop arrives
-// without the stamp, does the resolver still guess from its framework name?"
-// The answer must be no — the stamp is the contract, and any emitter that wants
-// its props treated as callable-locals has to write it, exactly as
-// dataflow_react.go now does.
+// THAT ROW IS NOT HYPOTHETICAL. An earlier draft of this file called it a
+// "counterfactual", on the reasoning that the React emitter always stamps now
+// so both predicates agree on everything producible. That was wrong, and
+// review caught it: a graph written by a PRE-#6472 binary holds exactly this
+// record — component_prop + framework=react + no stamp — and Path B's
+// incremental reindex feeds those carried-forward records straight into
+// BuildIndex. The shape is production-reachable for the whole window between a
+// user upgrading and their next full reindex.
+//
+// That window is closed at the carry-forward seam
+// (cmd/grafel/incremental_local_scope_compat.go), which stamps such records on
+// the way into the resolver index, and is pinned end-to-end through the real
+// indexer by TestPathBIncremental_LegacyComponentPropKeepsLocality_6472. So
+// the rows below state this predicate's contract — the stamp decides, the
+// framework name is never consulted — while the seam guarantees the stamp is
+// present for old graphs. Both halves are needed; neither alone is safe.
 //
 // Non-vacuity: every subtest asserts exactly one IMPORTS edge was found before
 // judging where it points (the shared helpers fail the run otherwise), and the
@@ -53,7 +60,8 @@ func TestComponentPropLocalityKeysOnStampNotFramework_6472(t *testing.T) {
 		language  string
 		file      string
 	}{
-		// The killing row: the deleted arm matched exactly this record.
+		// The killing row: the deleted arm matched exactly this record, and a
+		// pre-#6472 graph still produces it (see the header).
 		{"react component_prop with no local_scope stamp", "react", "typescript", "src/Chart.tsx"},
 		// Already pinned individually by the #6467 tests; repeated here so the
 		// three shapes are judged by one rule, which is the point of #6472.
@@ -93,6 +101,12 @@ func TestComponentPropLocalityKeysOnStampNotFramework_6472(t *testing.T) {
 	// The stamp is not component_prop-specific either: a non-prop subtype
 	// carrying it is equally local. This pins that the deletion did not leave a
 	// hidden subtype condition behind.
+	//
+	// The angular/vue rows above are NOT decorative, which is worth recording
+	// because review assumed they were: widening this predicate to
+	// `|| subtype == "component_prop"` — the #6470 regression — fails both of
+	// them, plus TestAngularInputIsNotALocalBinding_6467 and
+	// TestVueDefinePropsIsNotALocalBinding_6467. Mutant scored, not argued.
 	t.Run("non-prop subtype WITH the stamp also loses the slot", func(t *testing.T) {
 		assertDeclarationLosesSlot6467(t, "stamped const_destructure", types.EntityRecord{
 			ID: "dddd000000000009", Kind: "SCOPE.Component", Name: "Data",
