@@ -161,7 +161,7 @@ func TestIncremental_KotlinFile_EntitiesSurviveReExtraction_6151(t *testing.T) {
 	ntSeed(t, repo, stateDir, []graph.Entity{
 		ntEntity("SCOPE.Component", ntKotlinFile, ntKotlinFile),
 		ntEntity("SCOPE.Component", "Ledger", ntKotlinFile),
-		ntEntity("SCOPE.Operation", "applyCharge", ntKotlinFile),
+		ntEntity("SCOPE.Operation", "Ledger.applyCharge", ntKotlinFile),
 		ntEntity("SCOPE.Operation", "voidEntry", ntKotlinFile),
 	})
 
@@ -182,8 +182,10 @@ func TestIncremental_KotlinFile_EntitiesSurviveReExtraction_6151(t *testing.T) {
 		"SCOPE.Component|" + ntKotlinFile,
 		"SCOPE.Component|Ledger",
 		"SCOPE.Component|Reconciler",
-		"SCOPE.Operation|applyCharge",
-		"SCOPE.Operation|settleBatch",
+		// #6499 — a Kotlin method is emitted class-qualified; voidEntry is
+		// top-level and stays bare, which is the nesting rule in one line.
+		"SCOPE.Operation|Ledger.applyCharge",
+		"SCOPE.Operation|Reconciler.settleBatch",
 		"SCOPE.Operation|voidEntry",
 	}
 
@@ -259,7 +261,7 @@ func ntBaselineRepo(t *testing.T) (repo, stateDir string) {
 	ntSeed(t, repo, stateDir, []graph.Entity{
 		ntEntity("SCOPE.Component", ntKotlinFile, ntKotlinFile),
 		ntEntity("SCOPE.Component", "Ledger", ntKotlinFile),
-		ntEntity("SCOPE.Operation", "applyCharge", ntKotlinFile),
+		ntEntity("SCOPE.Operation", "Ledger.applyCharge", ntKotlinFile),
 		ntEntity("SCOPE.Operation", "voidEntry", ntKotlinFile),
 	})
 	return repo, stateDir
