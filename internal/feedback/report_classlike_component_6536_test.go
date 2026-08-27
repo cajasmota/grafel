@@ -8,6 +8,7 @@ import (
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/extractors/cross/imports"
 	"github.com/cajasmota/grafel/internal/extractors/haskell"
+	"github.com/cajasmota/grafel/internal/extractors/idris"
 	"github.com/cajasmota/grafel/internal/extractors/vbnet"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
@@ -368,11 +369,15 @@ namespace Demo { public class Widget { } }
 // below rule-by-rule, because the obsolete half is a standing invitation to
 // delete the whole entry.
 //
-// SCOPE NOTE: only haskell, elm, ocaml (#6481 arm A1) and fsharp (#6369) stamp
-// the marker today. The other five members of nonFieldBearingLanguages —
-// idris, reasonml, rescript, crystal, erlang — still emit bare-subtype
-// placeholders and still need the language exemption for BOTH halves, so that
-// set must not be pruned on the strength of this test.
+// SCOPE NOTE: fsharp (#6369), haskell/elm/ocaml (#6481 arm A1),
+// reasonml/rescript (arm A2) and idris (arm A3) stamp the marker today; the
+// idris half is observed directly in
+// TestIdrisImportPlaceholdersMarked_6481 below rather than only stated here.
+// Two members of nonFieldBearingLanguages still need the language exemption for
+// BOTH halves — erlang, whose placeholder sets no Subtype at all, and crystal,
+// whose placeholder sets Subtype "module", which nonClassSubtypes does not
+// exclude either — so that set must not be pruned on the strength of this test.
+// Every member still needs it for its `module` carrier regardless.
 func TestNonFieldBearingLanguageCarriersExempt_6536(t *testing.T) {
 	const hs = `module My.Mod where
 import Data.List
@@ -465,6 +470,76 @@ f x = x
 			"emits no Subtype \"field\" anywhere, so every entity it produces is a "+
 			"guaranteed zero-field failure (zero-field rate %v)",
 			r.FieldExtractionRate.ClassTotal, r.FieldExtractionRate.ZeroFieldsPct)
+	}
+}
+
+// TestIdrisImportPlaceholdersMarked_6481 pins #6481 arm A3's idris stamp from
+// the CONSUMER side, exactly as the haskell test above pins arm A1's.
+//
+// The scope note on nonFieldBearingLanguages names which of its members still
+// emit bare-subtype placeholders and which are now marked. That list decides
+// whether the language exemption's import half is still load-bearing for a
+// given entry, and an unobserved list goes stale the moment the next arm lands
+// — which is how it came to name idris after idris had already been fixed. So
+// the idris half is measured here rather than asserted in prose.
+//
+// The `module` carrier half is UNCHANGED and still uniquely load-bearing for
+// idris: "module" is deliberately absent from nonClassSubtypes, so removing
+// "idris" from nonFieldBearingLanguages re-admits its per-file carrier to a
+// denominator it can only fail.
+func TestIdrisImportPlaceholdersMarked_6481(t *testing.T) {
+	const src = `module Domain.Core
+
+import Acme.Speaker
+import Data.Vect
+
+data Animal = Dog | Cat
+`
+	ex := &idris.Extractor{}
+	recs, err := ex.Extract(context.Background(), extractor.FileInput{
+		Path:     "Core.idr",
+		Content:  []byte(src),
+		Language: "idris",
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	var carrier, marked, bare int
+	for i := range recs {
+		if !isClassLikeKind(recs[i].Kind) || recs[i].Subtype == "file" {
+			continue
+		}
+		switch recs[i].Subtype {
+		case "module":
+			carrier++
+		case "import":
+			marked++
+		case "":
+			bare++
+		}
+	}
+	// Premise guard: without a carrier AND a placeholder in the population,
+	// everything below exempts nothing and passes trivially.
+	if carrier == 0 || marked == 0 {
+		t.Fatalf("premise gone: idris emitted %d module carriers and %d marked import "+
+			"placeholders; this test would exempt nothing", carrier, marked)
+	}
+	if bare != 0 {
+		t.Errorf("#6481 arm A3 regressed: idris emitted %d class-like entities with an "+
+			"EMPTY Subtype; buildImportEntities must stamp Subtype \"import\"", bare)
+	}
+
+	// (a) the import placeholders are exempted by the SUBTYPE rule now, so the
+	// exemption holds independently of the language.
+	if isFieldExtractionCandidate("SCOPE.Component", "import", "idris") {
+		t.Error("an idris import placeholder is in the field-extraction denominator")
+	}
+	// (b) the per-file `module` carrier is still exempted ONLY by the language
+	// rule — the half that must not be pruned.
+	if isFieldExtractionCandidate("SCOPE.Component", "module", "idris") {
+		t.Error("the idris per-file `module` carrier is in the field-extraction " +
+			"denominator; it is a guaranteed zero-field failure")
 	}
 }
 

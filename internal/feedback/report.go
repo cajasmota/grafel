@@ -937,11 +937,16 @@ var interfaceSubtypeFieldBearingLanguages = map[string]bool{
 //
 // It ALSO used to be the only thing exempting their import placeholders, which
 // set no Subtype at all so the subtype exclusions above could not see them.
-// That second job is now partly discharged upstream: #6369 (fsharp) and #6481
-// (haskell, elm, ocaml) made buildImportEntities stamp Subtype "import", which
-// nonClassSubtypes already excludes one step earlier and independently of the
-// language. The remaining five — idris, reasonml, rescript, crystal, erlang —
-// still emit bare-subtype placeholders and still rely on this set for them.
+// That second job is now mostly discharged upstream: #6369 (fsharp) and #6481
+// arms A1 (haskell, elm, ocaml), A2 (reasonml, rescript) and A3 (idris) made
+// buildImportEntities stamp Subtype "import", which nonClassSubtypes already
+// excludes one step earlier and independently of the language. Two entries
+// still rely on this set for their placeholders: erlang, whose placeholder sets
+// no Subtype at all, and crystal, whose placeholder sets Subtype "module" —
+// which nonClassSubtypes does not exclude either. The haskell and idris halves
+// are observed, not merely asserted, in
+// TestNonFieldBearingLanguageCarriersExempt_6536 and
+// TestIdrisImportPlaceholdersMarked_6481.
 //
 // The `module` carriers rely on this set REGARDLESS, in every one of the nine:
 // "module" is deliberately absent from nonClassSubtypes because a VB.NET
