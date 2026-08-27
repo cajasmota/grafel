@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/extractor"
+
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -391,5 +393,140 @@ class Caller {
 	if !ktRefTo(ents, "Caller.make", "Helper") {
 		t.Fatalf("want REFERENCES Caller.make -> ...:Helper; operations: %s",
 			ktNames(ents, "SCOPE.Operation"))
+	}
+}
+
+// The companion-object decision must hold in the EXCEPTION-FLOW producer too,
+// not just in the entity minter. exception_flow.go's walk has no
+// `companion_object` case, so a companion body inherits the enclosing class's
+// parentType — the same fall-through kotlin.go relies on. Nothing in the suite
+// covered a throw or catch inside a companion body, so that agreement was
+// unpinned: a companion member's FromName could have been `Companion.build`
+// while its entity is `Outer.build`, and EmitExceptionEdges would have silently
+// re-attached the edge to entities[0].
+func TestKotlin6499_CompanionExceptionEdgeUsesOuterClass(t *testing.T) {
+	src := `package com.demo
+
+class Outer {
+    companion object {
+        fun build(): String {
+            throw BuildException("nope")
+        }
+
+        fun guard(): String {
+            try {
+                return build()
+            } catch (e: BuildException) {
+                return ""
+            }
+        }
+    }
+}
+`
+	ents := runKotlin(t, src)
+	// Positive control — the companion members were minted under the OUTER
+	// class, so the entities the edges must find actually exist.
+	if ktFind(ents, "Outer.build", "SCOPE.Operation") == nil {
+		t.Fatalf("positive control failed: want Outer.build; got %s",
+			ktNames(ents, "SCOPE.Operation"))
+	}
+	if n := ktExcNodeCount(ents, "BuildException"); n != 1 {
+		t.Fatalf("positive control failed: want 1 BuildException node, got %d", n)
+	}
+	if !ktExcEdge(ents, "Outer.build", "THROWS", "BuildException") {
+		t.Errorf("companion THROWS must attach to Outer.build (the OUTER class); operations: %s",
+			ktNames(ents, "SCOPE.Operation"))
+	}
+	if !ktExcEdge(ents, "Outer.guard", "CATCHES", "BuildException") {
+		t.Errorf("companion CATCHES must attach to Outer.guard; operations: %s",
+			ktNames(ents, "SCOPE.Operation"))
+	}
+	// A `Companion.`-qualified FromName would find no host, so the edge would
+	// land on entities[0] — the exact silent fallback this pass guards against.
+	for _, r := range ents[0].Relationships {
+		if r.Kind == "THROWS" || r.Kind == "CATCHES" {
+			t.Errorf("%s re-attached to entities[0] (%q) — the companion rule "+
+				"disagrees between buildOperation and kotlinFunctionName", r.Kind, ents[0].Name)
+		}
+	}
+}
+
+// A companion member's same-file REFERENCES also key off the OUTER class, so
+// all three producers agree on companion naming, not merely two.
+func TestKotlin6499_CompanionReferenceUsesOuterClass(t *testing.T) {
+	src := `package com.demo
+
+class Outer {
+    companion object {
+        fun render(): Int { return 1 }
+
+        fun draw(): Any {
+            val fn = this.render
+            return fn
+        }
+    }
+}
+`
+	ents := runKotlin(t, src)
+	if ktFind(ents, "Outer.draw", "SCOPE.Operation") == nil {
+		t.Fatalf("positive control failed: want Outer.draw; got %s", ktNames(ents, "SCOPE.Operation"))
+	}
+	if !ktRefTo(ents, "Outer.draw", "Outer.render") {
+		var got []string
+		for i := range ents {
+			for _, r := range ents[i].Relationships {
+				if r.Kind == "REFERENCES" {
+					got = append(got, ents[i].Name+" -> "+r.ToID)
+				}
+			}
+		}
+		t.Fatalf("want REFERENCES Outer.draw -> ...:Outer.render, got %v", got)
+	}
+}
+
+// Kotlin allows a dot INSIDE a backtick-quoted identifier, so the qualified
+// name of “ fun `x.y`() “ in `class Holder` is "Holder.`x.y`". Undoing that
+// qualification with a naive LastIndex(".") yields "y`" — a name no call site
+// spells — and keys the resolver's member index wrong. Pin the round trip on
+// the emitted entity, not on the helper in isolation.
+func TestKotlin6499_BacktickedNameSplitsAtTheRealQualifier(t *testing.T) {
+	src := "package com.demo\n" +
+		"\n" +
+		"class Holder {\n" +
+		"    fun `x.y`(): Int { return 1 }\n" +
+		"}\n"
+	ents := runKotlin(t, src)
+	if ktFind(ents, "Holder", "SCOPE.Component") == nil {
+		t.Fatalf("positive control failed: no SCOPE.Component Holder; got %s",
+			ktNames(ents, "SCOPE.Component"))
+	}
+	want := "Holder.`x.y`"
+	op := ktFind(ents, want, "SCOPE.Operation")
+	if op == nil {
+		t.Fatalf("want SCOPE.Operation %q; got %s", want, ktNames(ents, "SCOPE.Operation"))
+	}
+	// The split must recover the WHOLE backticked leaf, not the text after the
+	// inner dot. This is what internal/resolve keys byKotlinPkgMember on.
+	if got := extractor.KotlinMemberLeaf(op.Name); got != "`x.y`" {
+		t.Errorf("KotlinMemberLeaf(%q) = %q, want %q — a dot inside backticks is "+
+			"part of the identifier, not a qualifier", op.Name, got, "`x.y`")
+	}
+}
+
+// The split is the exact inverse of the qualification, across the shapes that
+// actually occur: bare, qualified, backticked leaf, backticked enclosing type.
+func TestKotlin6499_MemberLeafIsTheInverseOfQualification(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"bare top-level", "helper", "helper"},
+		{"qualified member", "OrderService.place", "place"},
+		{"backticked leaf", "Holder.`x.y`", "`x.y`"},
+		{"backticked enclosing type", "`A.B`.c", "c"},
+		{"both backticked", "`A.B`.`c.d`", "`c.d`"},
+		{"unbalanced backtick is not split", "`oops", "`oops"},
+	}
+	for _, tc := range cases {
+		if got := extractor.KotlinMemberLeaf(tc.in); got != tc.want {
+			t.Errorf("%s: KotlinMemberLeaf(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
 	}
 }

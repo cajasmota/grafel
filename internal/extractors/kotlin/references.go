@@ -79,7 +79,6 @@ package kotlin
 
 import (
 	"path/filepath"
-	"strings"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
@@ -322,11 +321,12 @@ func findKotlinEntityIndex(entities []types.EntityRecord, emittedName, filePath 
 // bare top-level "helper" → "helper". Source identifiers are always the bare
 // leaf, so the same-file symbol table is keyed by this, never by the emitted
 // Name. Inverse of kotlinQualifiedFuncName's qualification step.
+//
+// Shared with internal/resolve's byKotlinPkgMember keying via
+// extractor.KotlinMemberLeaf — the two layers must undo the qualification
+// identically, so there is exactly one implementation of the split.
 func kotlinOperationLeaf(name string) string {
-	if i := strings.LastIndex(name, "."); i >= 0 {
-		return name[i+1:]
-	}
-	return name
+	return extractor.KotlinMemberLeaf(name)
 }
 
 // kotlinDeclName returns the leaf name of a class/object/function

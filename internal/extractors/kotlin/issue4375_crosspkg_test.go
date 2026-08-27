@@ -74,6 +74,23 @@ func extractKotlinProjectForTest(t *testing.T, files map[string]string) []types.
 	return merged
 }
 
+// ktWantEntID is ktEntID plus the guard its bare form invites. ktEntID returns
+// "" for an entity that does not exist, so a `got != want` comparison where the
+// CALLS edge is also unresolved ("") passes for the wrong reason. #6499 hit
+// exactly that: renaming getCounts to XController.getCounts collapsed BOTH
+// sides to "" and TestIssue4687_MockKReceiverTyping went vacuously green while
+// asserting nothing. Resolving every expectation through this makes the next
+// rename fail loudly at the expectation rather than silently at the assertion.
+func ktWantEntID(t *testing.T, merged []types.EntityRecord, srcFile, name string) string {
+	t.Helper()
+	id := ktEntID(merged, srcFile, name)
+	if !ktIs16Hex(id) {
+		t.Fatalf("expectation names nothing: entity %q in %s resolved to %q, not a hex id — "+
+			"any comparison against it would be vacuous", name, srcFile, id)
+	}
+	return id
+}
+
 func ktIs16Hex(s string) bool {
 	if len(s) != 16 {
 		return false

@@ -95,6 +95,12 @@ func TestKotlin_CallsBareName(t *testing.T) {
 		t.Errorf("expected CALLS caller→helper")
 	}
 	caller := ktFind(ents, "A.caller", "SCOPE.Operation")
+	if caller == nil {
+		// Without this guard the deref below panics, which aborts the whole
+		// test BINARY and hides every later failure — it did exactly that
+		// during #6499's rename.
+		t.Fatalf("expected A.caller operation, got: %s", ktNames(ents, "SCOPE.Operation"))
+	}
 	n := 0
 	for _, r := range caller.Relationships {
 		if r.Kind == "CALLS" && r.ToID == "helper" {

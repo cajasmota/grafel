@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -1921,15 +1922,16 @@ func isOperationKind(k string) bool {
 }
 
 // kotlinMemberLeaf strips the enclosing-type qualifier from a Kotlin member
-// operation Name (#6499): "OrderService.place" → "place". A bare top-level
-// function name is returned unchanged. Both byKotlinPkgMember builders use it
-// so the member bucket is keyed the way the call site spells the callee — the
-// extractor's `call_leaf` property is always the bare trailing identifier.
+// operation Name (#6499): "OrderService.place" → "place". Both
+// byKotlinPkgMember builders use it so the member bucket is keyed the way the
+// call site spells the callee — the extractor's `call_leaf` property is always
+// the bare trailing identifier.
+//
+// The split itself is NOT reimplemented here. It is shared with the Kotlin
+// extractor's same-file symbol table via extractor.KotlinMemberLeaf, so the two
+// layers cannot drift — the very hazard #6499 exists to remove, one layer down.
 func kotlinMemberLeaf(name string) string {
-	if i := strings.LastIndex(name, "."); i >= 0 {
-		return name[i+1:]
-	}
-	return name
+	return extractor.KotlinMemberLeaf(name)
 }
 
 // isComponentKind reports whether the kind string is one of the Component

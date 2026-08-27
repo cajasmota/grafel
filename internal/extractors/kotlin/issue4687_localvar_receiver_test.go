@@ -65,7 +65,7 @@ func TestIssue4687_LocalVarCtorReceiver(t *testing.T) {
 	}
 	runKotlinResolve(merged)
 	toID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.getCountsWorks", "getCounts")
-	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
+	want := ktWantEntID(t, merged, "src/web/XController.kt", "XController.getCounts")
 	if toID != want || !ktIs16Hex(toID) {
 		t.Fatalf("CALLS did not bind to web XController.getCounts: got %q want %q", toID, want)
 	}
@@ -86,8 +86,8 @@ func TestIssue4687_LocalVarTypeAnnotationReceiver(t *testing.T) {
 	merged := extractKotlinProjectForTest(t, files)
 	runKotlinResolve(merged)
 	toID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.getCountsWorks", "getCounts")
-	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
-	if toID != want {
+	want := ktWantEntID(t, merged, "src/web/XController.kt", "XController.getCounts")
+	if !ktIs16Hex(toID) || toID != want {
 		t.Fatalf("type-annotation receiver did not bind: got %q want %q", toID, want)
 	}
 }
@@ -111,14 +111,14 @@ func TestIssue4687_MockKReceiverTyping(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 	runKotlinResolve(merged)
-	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
+	want := ktWantEntID(t, merged, "src/web/XController.kt", "XController.getCounts")
 
 	fieldID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.fieldReceiver", "getCounts")
-	if fieldID != want {
+	if !ktIs16Hex(fieldID) || fieldID != want {
 		t.Fatalf("@InjectMockKs field receiver did not bind: got %q want %q", fieldID, want)
 	}
 	mockID, _, _ := ktCallEdge(merged, "src/test/XControllerTest.kt", "XControllerTest.mockkLocal", "getCounts")
-	if mockID != want {
+	if !ktIs16Hex(mockID) || mockID != want {
 		t.Fatalf("mockk<XController>() local receiver did not bind: got %q want %q", mockID, want)
 	}
 }
@@ -153,8 +153,8 @@ func TestIssue4687_KotestScopeOwner(t *testing.T) {
 	}
 	runKotlinResolve(merged)
 	toID, _, _ := ktCallEdge(merged, "src/test/CountSpec.kt", "CountSpec", "getCounts")
-	want := ktEntID(merged, "src/web/XController.kt", "XController.getCounts")
-	if toID != want {
+	want := ktWantEntID(t, merged, "src/web/XController.kt", "XController.getCounts")
+	if !ktIs16Hex(toID) || toID != want {
 		t.Fatalf("Kotest scope CALLS did not bind to web XController.getCounts: got %q want %q", toID, want)
 	}
 }
