@@ -217,11 +217,32 @@ func (e *langchain4jKotlinExtractor) Extract(ctx context.Context, file extractor
 	}
 
 	// 2. @Tool methods -> SCOPE.Operation/function
+	//
+	// The entity Name is class-qualified to match what the BASE Kotlin
+	// extractor emits for the same `fun` (#6499), mirroring the Java sibling
+	// at internal/custom/java/langchain4j.go:144. This record is an
+	// ANNOTATION CARRIER, not a second node: entity IDs hash (SourceFile,
+	// Kind, Name), so an equal Name makes it collapse onto the base operation
+	// in buildDocument's dedupe and gap-fill its framework properties onto it
+	// (cmd/grafel/index.go, #4406). Emitting the bare leaf instead silently
+	// stops the annotation landing AND leaves a name-colliding operation
+	// competing for the repo-wide byName slot.
+	//
+	// tool_method stays the BARE method name — it names the method, not the
+	// entity — and owner_class carries the type, both matching Java.
 	for _, m := range reLc4jKotlinTool.FindAllStringSubmatchIndex(src, -1) {
-		name := src[m[2]:m[3]]
+		leaf := src[m[2]:m[3]]
+		name := leaf
+		owner := ktFindEnclosingOwner(src, m[0])
+		if owner != "" {
+			name = owner + "." + leaf
+		}
 		ent := makeEntity(name, "SCOPE.Operation", "function", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "langchain4j", "provenance", "INFERRED_FROM_LANGCHAIN4J_TOOL",
-			"tool_method", name)
+			"tool_method", leaf)
+		if owner != "" {
+			setProps(&ent, "owner_class", owner)
+		}
 		add(ent)
 	}
 
