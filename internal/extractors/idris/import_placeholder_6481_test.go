@@ -17,9 +17,17 @@ package idris_test
 // recognised it and #6369's fix never reached Idris. Idris has no
 // importDisplayName helper — the last-segment logic is INLINED in
 // buildImportEntities — but the shape is identical: one `import Acme.Speaker`
-// anywhere in the repo collided with the real `interface Speaker` and silently
-// deleted every bare-name IMPLEMENTS edge to it, repo-wide, including from
-// files that import nothing.
+// anywhere in the repo collided with the real `interface Speaker`, repo-wide,
+// including from files that import nothing.
+//
+// MEASURED, the edges are NOT dropped — they are silently REBOUND TO THE IMPORT
+// PLACEHOLDER'S OWN ENTITY ID. Without the marker the placeholder is indexed as
+// a declaration of `Speaker` and outranks the real interface, so every bare-name
+// IMPLEMENTS edge in the repo lands on a stub that stands for someone else's
+// module. That is why the assertions below compare the resolved ToID against the
+// real interface's exact id rather than merely checking that it resolved: an
+// id-equality check distinguishes the rebind from a drop, and the two want
+// different fixes.
 //
 // WHY THESE ARE UNIT TESTS AND NOT A GOLDEN FIXTURE: Subtype on a bodiless stub
 // is not surfaced in golden output (#6488), so a golden fixture passes
@@ -137,8 +145,9 @@ func TestIdrisImportPlaceholderDoesNotDropCrossFileImplements_6481(t *testing.T)
 	for _, owner := range []string{"Speaker Cat", "Speaker Dog"} {
 		if got[owner] != wantSpeaker {
 			t.Errorf("after one colliding `import Acme.Speaker` in an unrelated file: "+
-				"%q IMPLEMENTS = %q, want %q — a single import deleted a repo-wide "+
-				"bare-name edge", owner, got[owner], wantSpeaker)
+				"%q IMPLEMENTS = %q, want the real interface %q — a single import "+
+				"REBOUND a repo-wide bare-name edge to the import placeholder's own "+
+				"entity id", owner, got[owner], wantSpeaker)
 		}
 	}
 }
