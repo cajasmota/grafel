@@ -123,13 +123,25 @@ var kotlinReservedNames = map[string]struct{}{
 type kotlinSymbol struct {
 	kind    string
 	subtype string
-	name    string // emitted entity Name (Kotlin uses bare leaf for ops/properties)
+	// name is the EMITTED entity Name — `Class.method` for a nested
+	// operation, bare only at file top level (#6499). The REFERENCES ToID
+	// is built from it, so it is never the symbol table's lookup key.
+	name string
 }
 
 // kotlinFrame tracks the enclosing operation / class while walking a
 // file's CST during reference emission.
+//
+// The two name fields are deliberately different and must stay so (#6499):
+//
+//   - funcEmittedName is the Name the primary pass actually emitted —
+//     `Class.method` for a nested function, bare for a top-level one, per
+//     kotlinQualifiedFuncName. findKotlinEntityIndex matches on it, so
+//     handing it the leaf drops the edge entirely.
+//   - funcLeafName stays the bare declared name, because the self-name skip
+//     compares it against raw source identifiers, which are always bare.
 type kotlinFrame struct {
-	funcEmittedName string // "" outside a function; bare leaf inside
+	funcEmittedName string // "" outside a function; the emitted Name inside
 	funcLeafName    string // bare leaf name of the enclosing operation
 	parentClass     string // immediate enclosing class/object name
 }
@@ -148,11 +160,13 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 
 	// Phase 1 — build the file-scope symbol table.
 	//
-	// Index by THE NAME AS REFERENCED IN SOURCE. The Kotlin primary
-	// pass emits methods with bare-leaf Name (no `Class.method`
-	// qualification), so we index every operation under its bare name
-	// AND synthesise `Class.method` dotted entries during the walk by
-	// tracking the enclosing-class context. Properties are not
+	// Index by THE NAME AS REFERENCED IN SOURCE. Since #6499 the Kotlin
+	// primary pass emits a nested method's Name class-qualified
+	// (`Class.method`) and only a top-level function's bare — but a
+	// reference site spells the LEAF either way. So every operation is
+	// indexed under its leaf while the symbol carries the emitted Name for
+	// the ToID, AND `Class.method` dotted entries are synthesised during
+	// the walk by tracking the enclosing-class context. Properties are not
 	// currently emitted by the primary pass; class/object names are.
 	bareSymbols := make(map[string]kotlinSymbol)   // "foo" → method/class/import-leaf
 	dottedSymbols := make(map[string]kotlinSymbol) // "Class.foo" → method (synthesised)
@@ -189,9 +203,9 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 
 	// Phase 1b — synthesise dotted `Class.method` entries by walking the
 	// CST surface for class/object → method memberships. This lets
-	// `this.method` and `ClassName.method` resolve to the operation's
-	// bare-leaf Name in the symbol table while still computing the
-	// correct same-file binding.
+	// `this.method` and `ClassName.method` resolve through the leaf-keyed
+	// symbol table to the operation's EMITTED Name while still computing
+	// the correct same-file binding.
 	synthesiseKotlinDottedMembers(root, file, bareSymbols, dottedSymbols)
 
 	if len(bareSymbols) == 0 && len(dottedSymbols) == 0 {
@@ -363,10 +377,10 @@ func kotlinFindBody(node ts.Node) ts.Node {
 
 // synthesiseKotlinDottedMembers walks the CST once to build
 // `Class.method` → operation-entity entries for every function
-// declared inside a class/object body. The primary extractor emits
-// these methods with bare-leaf Name; the dotted synthesis lets
-// `this.<method>` and `ClassName.<method>` resolve via dottedSymbols
-// to the same emitted entity.
+// declared inside a class/object body. The primary extractor emits these
+// methods class-qualified (#6499) and the symbol table keys them by their
+// leaf; the dotted synthesis lets `this.<method>` and `ClassName.<method>`
+// resolve via dottedSymbols to that same emitted entity.
 func synthesiseKotlinDottedMembers(
 	root ts.Node,
 	file extractor.FileInput,
