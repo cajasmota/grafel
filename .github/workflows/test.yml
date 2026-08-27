@@ -410,3 +410,98 @@ jobs:
             echo "Running without -race"
             go test -count=1 -timeout 15m ./...
           fi
+
+  # ---------------------------------------------------------------------------
+  # Python unit tests for the quality ratchet (refs #6709).
+  #
+  # WHAT THIS IS NOT: it is NOT the first time the Python suite runs in CI.
+  # #6709 claimed no workflow ran any Python test, on the strength of a grep
+  # over .github/workflows/ that found no `unittest`/`pytest`/`python3 -m`.
+  # That grep was a FALSE NEGATIVE — the trigger is in Go, not in YAML.
+  # `internal/quality/ratchet_measured_on_6564_test.go` (#6568) shells out to
+  # `python3 scripts/quality/test_ratchet.py`, and the script ends in
+  # `if __name__ == "__main__": unittest.main(verbosity=2)`, so all 33 tests
+  # already run under `go test ./...` in the `test` job above — on every PR, on
+  # every matrix OS. #6709 was closed as invalid.
+  #
+  # WHAT THIS JOB IS: deliberate, cheap redundancy with a narrow resilience
+  # value. The Go wrapper is the primary execution path; this is a second,
+  # Go-free one, and it survives three things the wrapper does not:
+  #   1. A Go-side compile failure. `go test ./...` cannot report on the Python
+  #      suite if any package in the repo fails to build — the wrapper never
+  #      runs. This job needs no Go toolchain at all.
+  #   2. `requirePython3(t)`, which t.Skip()s when python3 is off PATH. A skip
+  #      is green. Here, a missing python3 fails the step.
+  #   3. The wrapper's own `exec.LookPath("git")` guard, which t.Skip()s when
+  #      git is off PATH — again green. Here a git-less runner lands red:
+  #      measured, `PATH=<python-only> python3 -m unittest
+  #      scripts.quality.test_ratchet` -> "FAILED (errors=33)", exit 1.
+  # It is also independent of the `test` job's 15m/40m `go test -timeout` and
+  # its 90-minute leg cap.
+  #
+  # WHY IT LIVES IN test.yml: this workflow has a plain `pull_request:` trigger
+  # (see the `on:` block above), so this job runs on every PR open/sync/reopen.
+  # Do NOT move it to `pre-merge.yml` or `quality.yml` — BOTH are
+  # `workflow_dispatch:`-only, so a job wired there would never fire on a PR.
+  # As of this commit the workflows with a real `pull_request` trigger are:
+  # board-hygiene.yml, coverage-docs.yml, cross-platform-compile.yml, test.yml
+  # (this file) and windows-installers.yml.
+  #
+  # SEPARATE JOB, ON PURPOSE: it deliberately does not sit under the `test`
+  # job's matrix or its multi-branch `if:`. It is Go-free (no toolchain, no
+  # module download, no build cache), single-platform, and finishes in ~20s
+  # locally, so it must not inherit the Go suite's 90-minute leg or its
+  # macOS/Windows fan-out. It carries its own `if:` that excludes only
+  # `pull_request_target`, where GitHub checks out the BASE ref — running the
+  # base branch's tests there would prove nothing about the PR.
+  #
+  # NO `paths:` FILTER, anywhere: not on this job and not on the workflow. A
+  # path filter is how this class of gate dies quietly — #6332 is the same
+  # shape one file over. The suite is ~20s on the cheapest runner, so there is
+  # no wall-clock argument for one.
+  #
+  # GIT IDENTITY: the suite builds ~12 temporary git repositories, but it sets
+  # `user.email`/`user.name` (and `commit.gpgsign=false`) per-repo itself
+  # immediately after each `git init` — verified by running the full suite with
+  # HOME pointed at an empty directory and both GIT_CONFIG_GLOBAL and
+  # GIT_CONFIG_SYSTEM neutralised: 33 tests, OK. So this job deliberately does
+  # NOT `git config` a committer identity; adding one here would be dead
+  # configuration that hides the day a new `git init` forgets its own.
+  python-quality-tests:
+    name: python ratchet tests
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python version
+        run: python3 --version
+
+      # Run from the repo root: the suite is addressed as the dotted path
+      # `scripts.quality.test_ratchet`, which resolves via implicit namespace
+      # packages (there is no `scripts/__init__.py` and none is needed), and
+      # the tests locate `ratchet.py` relative to their own file.
+      #
+      # `-m unittest` rather than `python3 scripts/quality/test_ratchet.py`:
+      # the dotted form does not execute the script's `__main__` block, so this
+      # job's behaviour does not depend on it. (Measured aside, NOT relied on
+      # here: that block's own git guard is dead code — it tests the RETURN
+      # code of `subprocess.call(["git", "--version"])`, but an absent git
+      # raises FileNotFoundError before any return code exists, so the script
+      # form tracebacks with exit 1 rather than taking the intended
+      # `sys.exit(0)` skip. Left alone; out of scope for this PR.)
+      #
+      # No `pytest`, no `pip install`: the suite is stdlib-only (`unittest`,
+      # `subprocess`, `tempfile`, `json`, `importlib.util`), so the hosted
+      # image's preinstalled python3 is the entire dependency set.
+      #
+      # A run that collects ZERO tests is a HARD FAILURE, not merely visible:
+      # on Python >= 3.12 `unittest` exits 5 with "NO TESTS RAN". ubuntu-24.04
+      # ships 3.12.3, so that holds today. It degrades to exit 0 if the runner
+      # image ever regresses below 3.12 — hence `-v`, which at least makes an
+      # empty collection legible in the log on such an image. `python3 -m
+      # unittest` also exits non-zero on an import error, so a broken dotted
+      # path lands this job red.
+      - name: Run ratchet unit tests
+        run: python3 -m unittest -v scripts.quality.test_ratchet
