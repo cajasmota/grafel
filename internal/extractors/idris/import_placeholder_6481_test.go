@@ -117,11 +117,11 @@ func idrResolveImplements6481(t *testing.T, files map[string]string) map[string]
 	return out
 }
 
-// TestIdrisImportPlaceholderDoesNotDropCrossFileImplements_6481 is the
+// TestIdrisImportPlaceholderDoesNotRebindCrossFileImplements_6481 is the
 // assertion that matters, and it drives the whole pipeline: two cross-file
 // bare-name edges that resolve today must still resolve after an UNRELATED file
 // adds one colliding import.
-func TestIdrisImportPlaceholderDoesNotDropCrossFileImplements_6481(t *testing.T) {
+func TestIdrisImportPlaceholderDoesNotRebindCrossFileImplements_6481(t *testing.T) {
 	wantSpeaker := graph.EntityID("repo", "SCOPE.Component", "Speaker", idrBaseFile6481)
 
 	base := idrResolveImplements6481(t, map[string]string{
