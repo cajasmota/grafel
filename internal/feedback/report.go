@@ -933,8 +933,21 @@ var interfaceSubtypeFieldBearingLanguages = map[string]bool{
 //
 // This is what enrolled their per-file `Subtype: "module"` carriers — a file
 // carrier under another name (haskell/extractor.go, elm, ocaml, fsharp, idris,
-// reasonml, rescript, crystal, erlang) — and Haskell's import placeholders,
-// which set no Subtype at all so the subtype exclusions above cannot see them.
+// reasonml, rescript, crystal, erlang).
+//
+// It ALSO used to be the only thing exempting their import placeholders, which
+// set no Subtype at all so the subtype exclusions above could not see them.
+// That second job is now partly discharged upstream: #6369 (fsharp) and #6481
+// (haskell, elm, ocaml) made buildImportEntities stamp Subtype "import", which
+// nonClassSubtypes already excludes one step earlier and independently of the
+// language. The remaining five — idris, reasonml, rescript, crystal, erlang —
+// still emit bare-subtype placeholders and still rely on this set for them.
+//
+// The `module` carriers rely on this set REGARDLESS, in every one of the nine:
+// "module" is deliberately absent from nonClassSubtypes because a VB.NET
+// `Module` is a genuine field-bearing container. So no entry may be removed
+// here on the grounds that its import placeholders are now marked. Asserted
+// rule-by-rule in TestNonFieldBearingLanguageCarriersExempt_6536.
 //
 // It is deliberately an allowlist of EXEMPTIONS keyed on the language, not a
 // blanket exclusion of the "module" subtype: a VB.NET `Module` is a genuine

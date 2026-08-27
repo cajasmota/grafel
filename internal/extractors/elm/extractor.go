@@ -315,8 +315,17 @@ func buildImportEntities(filePath string, imports []string) []types.EntityRecord
 		out = append(out, types.EntityRecord{
 			Name:       displayName,
 			Kind:       "SCOPE.Component",
+			Subtype:    "import",
 			SourceFile: filePath,
 			Language:   "elm",
+			// The FULL dotted specifier, for resolve.placeholderModuleSpecifier
+			// (#6156). Name is only the last segment, so without this the prune
+			// restore would rename the external node to that bare segment. It
+			// must NOT travel on Properties["module"] (the module-rollup label,
+			// which EnsureModule and stampModuleOnEntities both treat as
+			// authoritative) nor on QualifiedName (probed ahead of byName and
+			// never given #6427's placeholder precedence).
+			Properties: map[string]string{"import_module": mod},
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: filePath,
