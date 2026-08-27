@@ -180,8 +180,16 @@ func TestFind_KindFilter_LocalScopeEntityIsWithheld(t *testing.T) {
 // returned by grafel_find with DEFAULT options.
 //
 // Note grafel_find has no subtype filter — its parameter set is pinned at
-// schema_trim_5386_test.go:135 and only kind_filter exists — so both the ranked
-// path and the kind_filter enumeration are exercised via Kind SCOPE.Operation.
+// schema_trim_5386_test.go:135 and only kind_filter exists — so both paths are
+// exercised via Kind SCOPE.Operation.
+//
+// The two legs need DIFFERENT props to be distinct. The ranked leg needs a prop
+// the query textually reaches; but a prop that bm25-matches is retained by
+// enumerateByKind's STEP 1 (keep kind-matching bm25 hits) and never reaches the
+// STEP 2 fold-in, so reusing it for the kind_filter leg would make that leg a
+// near-duplicate of the first. The fixture therefore carries a second prop, in
+// another component and file, whose name and file stem do not match the query:
+// it can only arrive via the fold-in, which is what that leg is here to cover.
 func TestFind_ComponentPropIsVisibleByDefault(t *testing.T) {
 	const file = "src/widgets/PriceTag.jsx"
 	srv := newTestServer(t, minDoc([]graph.Entity{
@@ -189,7 +197,11 @@ func TestFind_ComponentPropIsVisibleByDefault(t *testing.T) {
 			ID: "fn1", Name: "PriceTag", Kind: "SCOPE.Operation",
 			SourceFile: file, StartLine: 3, QualifiedName: "PriceTag",
 		},
+		// bm25-reachable prop — the ranked leg's subject.
 		componentPropEntity("p1", "currencyCode", "PriceTag", file, 4),
+		// Fold-in-only prop: different component, different file stem, and a
+		// name sharing no token with the query.
+		componentPropEntity("p2", "QQlabelText", "PromoBanner", "src/promo/banner.jsx", 9),
 	}, nil))
 
 	// Ranked (bm25) path, default options — no include_noise.
@@ -200,6 +212,13 @@ func TestFind_ComponentPropIsVisibleByDefault(t *testing.T) {
 	if !def["currencyCode"] {
 		t.Errorf("component_prop must be reachable through grafel_find with default options, got %v", def)
 	}
+	// Premise guard for the leg below. If a scoring change ever makes the
+	// fold-in-only prop a bm25 hit, that leg silently degrades into a copy of
+	// this one. Fail loudly here rather than lose the coverage quietly.
+	if def["QQlabelText"] {
+		t.Fatalf("premise broken: QQlabelText was expected NOT to bm25-match %q, so the kind_filter "+
+			"leg below no longer exercises the enumerateByKind fold-in; rename it. got %v", "PriceTag", def)
+	}
 
 	// kind_filter enumeration path, default options.
 	kf := findNames(t, srv, map[string]any{"query": "PriceTag", "kind_filter": "Operation"})
@@ -208,6 +227,12 @@ func TestFind_ComponentPropIsVisibleByDefault(t *testing.T) {
 	}
 	if !kf["currencyCode"] {
 		t.Errorf("component_prop must survive the kind_filter enumeration with default options, got %v", kf)
+	}
+	// The load-bearing assertion: this prop is reachable only through the step-2
+	// fold-in, which re-decides noise on its own and is exactly where a future
+	// local_scope stamp on props would drop them.
+	if !kf["QQlabelText"] {
+		t.Errorf("a component_prop reachable only via the enumerateByKind fold-in must be returned, got %v", kf)
 	}
 }
 
@@ -257,8 +282,12 @@ func TestFind_SubstringPathDoesNotHideLocalScope(t *testing.T) {
 				names[n] = true
 			}
 		}
-		if len(names) == 0 {
-			t.Fatalf("search=%s: non-vacuity — substring search returned nothing at all", search)
+		// Positive control. "computeSubtotalTotals" also substring-matches
+		// "subtotal", so this asserts the search actually ran and returned the
+		// real entity — unlike a len(names)==0 guard, which that same match
+		// makes unfirable.
+		if !names["computeSubtotalTotals"] {
+			t.Fatalf("search=%s: non-vacuity — substring search did not return the real entity; got %v", search, names)
 		}
 		if !names["subtotal"] {
 			t.Errorf("search=%s: substring path does NOT filter local_scope; expected the local entity, got %v", search, names)
