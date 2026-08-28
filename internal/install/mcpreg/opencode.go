@@ -132,28 +132,46 @@ func readOpencode(path string) (hujson.Value, bool, error) {
 	return v, existing, nil
 }
 
-// indentInsertedMember gives a freshly inserted object member the same leading
-// indentation as the sibling above it.
+// indentLastMember gives a freshly inserted object member the same leading
+// indentation as the member above it.
 //
 // hujson's patch inserts with no leading extra at all, so a multi-line config
 // gets `},"grafel":{…}` jammed onto the previous member's closing line. Valid
 // JSON, but not something to hand back to a user who formatted the file.
 //
-// Only the whitespace run AFTER the sibling's last newline is copied, never the
-// sibling's whole BeforeExtra: that extra can contain the user's comment (`//
-// a server I already had`), and copying it would DUPLICATE that comment onto
-// grafel's entry. This is a formatting fix; it must not invent content.
+// TWO GUARDS, and both are load-bearing. An "extra" in hujson is not
+// whitespace — it is whatever sat between two syntax elements, INCLUDING the
+// user's comments. So this function must neither invent content nor destroy it:
 //
-// It is deliberately a no-op unless the object is already multi-line and the
-// member we inserted is the last one — there is nothing to match otherwise, and
-// guessing would be the reflow this package refuses to do.
-func indentInsertedMember(v *hujson.Value, ptr, name string) {
-	found := v.Find(ptr)
-	if found == nil {
-		return
-	}
-	obj, ok := found.Value.(*hujson.Object)
-	if !ok || len(obj.Members) < 2 {
+//   - NEVER INVENT (guard 1): only a pure-whitespace run is copied. The first
+//     version copied "everything after the sibling's last newline", which is
+//     whitespace only when the sibling's comments sit on their own lines. Given
+//     `/* keep b */ "b": {…}` the comment falls after that newline, gets copied,
+//     and grafel writes a SECOND `/* keep b */` into the user's file attached to
+//     its own entry — grafel inventing a comment about grafel.
+//
+//   - NEVER DESTROY (guard 2): only a blank destination is overwritten. This is
+//     the subtler one and it is NOT covered by guard 1. Given
+//     `"b": {…} // keep b`, hujson parks that trailing comment in the NEXT
+//     member's BeforeExtra — i.e. in grafel's. The sibling's run is pure
+//     whitespace, so guard 1 is satisfied, and assigning the indent then DELETES
+//     the user's comment outright. Silently losing a comment is worse than the
+//     duplication guard 1 prevents, and a whitespace-only rule alone does not
+//     stop it.
+//
+// Both guards fail SAFE: when either trips, the entry is simply left where
+// hujson put it. Valid JSON, no content invented, no content lost — only less
+// pretty.
+//
+// BEST-EFFORT, by design. It is a no-op unless the object already has a sibling
+// member to copy from, so the two commonest fresh-install shapes are left
+// alone: a config with no `mcp` key, and one with an empty `"mcp": {}`, both of
+// which leave grafel as the only member of its object. There is nothing to
+// match there, and inventing an indent step would be guessing at the user's
+// formatting — the reflow this arm refuses to do. See
+// TestOpencode_IndentIsBestEffort, which pins that.
+func indentLastMember(obj *hujson.Object, name string) {
+	if obj == nil || len(obj.Members) < 2 {
 		return
 	}
 	last := len(obj.Members) - 1
@@ -161,15 +179,37 @@ func indentInsertedMember(v *hujson.Value, ptr, name string) {
 	if !ok || lit.Kind() != '"' || lit.String() != name {
 		return
 	}
+	// Guard 2: never overwrite an extra that carries user content.
+	if !isBlankExtra(obj.Members[last].Name.BeforeExtra) {
+		return
+	}
 	prev := obj.Members[last-1].Name.BeforeExtra
 	nl := bytes.LastIndexByte(prev, '\n')
 	if nl < 0 {
 		return // single-line object: leave it single-line
 	}
-	indent := make([]byte, 0, 1+len(prev)-nl-1)
+	run := prev[nl+1:]
+	// Guard 1: never copy anything but whitespace.
+	if !isBlankExtra(run) {
+		return
+	}
+	indent := make([]byte, 0, 1+len(run))
 	indent = append(indent, '\n')
-	indent = append(indent, prev[nl+1:]...)
+	indent = append(indent, run...)
 	obj.Members[last].Name.BeforeExtra = indent
+}
+
+// isBlankExtra reports whether an hujson extra is pure whitespace — i.e.
+// carries none of the user's comment text.
+func isBlankExtra(b []byte) bool {
+	for _, c := range b {
+		switch c {
+		case ' ', '\t', '\n', '\r':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // isJSONNull reports whether a resolved value is the literal `null`.
@@ -263,6 +303,12 @@ func registerOpencode(path, binPath string) error {
 		if err := applyOpencodePatch(&v, path, "add", ptr, map[string]any{}); err != nil {
 			return err
 		}
+		// The container itself was just appended to the root object and has
+		// the same jammed-onto-the-previous-line problem, so give it the same
+		// treatment (and the same two guards).
+		if root, ok := v.Value.(*hujson.Object); ok {
+			indentLastMember(root, opencodeServersKey)
+		}
 	case isJSONNull(found):
 		// `"mcp": null` is treated as ABSENT and replaced with an object,
 		// exactly as mcpServersOf treats `"mcpServers": null` (`!present ||
@@ -285,7 +331,7 @@ func registerOpencode(path, binPath string) error {
 	if err := applyOpencodePatch(&v, path, "add", ptr+"/"+ServerName, newOpencodeEntry(binPath)); err != nil {
 		return err
 	}
-	indentInsertedMember(&v, ptr, ServerName)
+	indentLastMember(opencodeObject(&v, ptr), ServerName)
 	return writeOpencode(path, v, !existing)
 }
 

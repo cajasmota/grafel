@@ -125,12 +125,19 @@ func TestOpencode_WritesExactSchemaShape(t *testing.T) {
 // commas) and decodes it, so a test can assert on the STRUCTURE of a file that
 // encoding/json alone could not parse.
 //
-// It copies its input first. hujson.Standardize blanks comments IN PLACE in the
-// caller's slice — it overwrites each comment's bytes with spaces rather than
-// building a new buffer — so passing the same []byte to both this helper and a
-// comment assertion silently destroys the evidence the assertion is checking.
-// That is a trap for the reader, not a product bug: nothing in opencode.go
-// calls Standardize.
+// It copies its input first. hujson RETAINS AND MUTATES the caller's buffer:
+// Parse keeps a reference to the bytes handed to it rather than copying them,
+// so Standardize (which blanks each comment by overwriting its bytes with
+// spaces), Format and Pack can all write through to the original slice. Passing
+// the same []byte to both this helper and a comment assertion silently destroys
+// the evidence the assertion is checking.
+//
+// Treat any []byte given to hujson as owned by hujson from that moment on —
+// Standardize is the one that bit us here, but it is not the only offender and
+// Parse is NOT safe to call on a slice you intend to reuse.
+//
+// No live bug in the product: readOpencode passes a fresh os.ReadFile result
+// that is never read again afterwards. This is a trap for the next reader.
 func decodeJSONC(t *testing.T, b []byte) map[string]any {
 	t.Helper()
 	std, err := hujson.Standardize(bytes.Clone(b))
@@ -339,6 +346,177 @@ func TestOpencode_DoesNotReflowAUserOwnedFile(t *testing.T) {
 	}
 }
 
+// TestOpencode_IndentNeverCopiesComments is the regression gate for a bug the
+// exactly-once assertion in the round-trip test could not catch, because its
+// fixture never reached the failing shape.
+//
+// indentInsertedMember copies the sibling's leading whitespace so grafel's
+// entry lands on its own line. The first version copied "everything after the
+// sibling's last newline" — which is only whitespace when the sibling's
+// comments sit on their own lines. Put a BLOCK comment on the same line as the
+// member it documents and it falls after that last newline, gets copied, and
+// grafel writes a second `/* keep b */` into the user's config attached to its
+// own entry. grafel inventing a comment in a user-owned file, one that reads
+// as a comment ABOUT grafel, is the exact hazard the assertion exists for.
+//
+// The fixture in TestOpencode_JSONCRoundTripPreservesComments varies "are
+// there comments"; it holds "where is the comment relative to the last
+// newline" constant at own-line. This test varies that second axis. The fix is
+// in the code, not here: the copied run is now rejected unless it is pure
+// whitespace, which makes the whole class impossible rather than just this
+// instance.
+func TestOpencode_IndentNeverCopiesComments(t *testing.T) {
+	home := withHome(t)
+
+	seeds := map[string]string{
+		// Block comment on the SAME line as the member, after the newline.
+		"same-line block before member": "{\n" +
+			"  \"mcp\": {\n" +
+			"    \"a\": {\"type\": \"local\", \"command\": [\"/bin/a\"]},\n" +
+			"    /* keep b */ \"b\": {\"type\": \"local\", \"command\": [\"/bin/b\"]}\n" +
+			"  }\n}\n",
+		// Line comment on the same line, trailing the previous member.
+		"same-line trailing line comment": "{\n" +
+			"  \"mcp\": {\n" +
+			"    \"a\": {\"type\": \"local\", \"command\": [\"/bin/a\"]},\n" +
+			"    \"b\": {\"type\": \"local\", \"command\": [\"/bin/b\"]} // keep b\n" +
+			"  }\n}\n",
+		// Two block comments after the last newline.
+		"two same-line blocks": "{\n" +
+			"  \"mcp\": {\n" +
+			"    \"a\": {\"type\": \"local\", \"command\": [\"/bin/a\"]},\n" +
+			"    /* one */ /* two */ \"b\": {\"type\": \"local\", \"command\": [\"/bin/b\"]}\n" +
+			"  }\n}\n",
+	}
+
+	for name, seed := range seeds {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(home, ".config", "oc-"+strings.ReplaceAll(name, " ", "-"))
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "opencode.json")
+			if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := RegisterPath(path, "/usr/local/bin/grafel"); err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Every comment the user wrote must appear exactly as many times
+			// as it did before. grafel may not invent comment text.
+			for _, c := range []string{"/* keep b */", "// keep b", "/* one */", "/* two */"} {
+				want := strings.Count(seed, c)
+				if got := strings.Count(string(after), c); got != want {
+					t.Fatalf("grafel changed the number of copies of %q from %d to %d "+
+						"— it wrote a comment the user never wrote:\n%s", c, want, got, after)
+				}
+			}
+
+			// Positive control: the register actually happened.
+			doc := decodeJSONC(t, after)
+			mcp, _ := doc["mcp"].(map[string]any)
+			if _, ok := mcp[ServerName]; !ok {
+				t.Fatalf("no mcp.%s after register: %v", ServerName, mcp)
+			}
+			for _, sib := range []string{"a", "b"} {
+				if _, ok := mcp[sib]; !ok {
+					t.Fatalf("register dropped foreign server %q: %v", sib, mcp)
+				}
+			}
+		})
+	}
+}
+
+// TestOpencode_IndentIsBestEffort pins what the indent helper does for the two
+// commonest real-world shapes, both of which it deliberately leaves alone.
+//
+// The helper matches an existing SIBLING's indentation. When there is no
+// sibling there is nothing to match, and inventing an indent step would be
+// guessing at the user's formatting — the reflow this arm refuses to do. So:
+//
+//   - a config with no `mcp` key at all: the inserted `mcp` member gets the
+//     indentation of its own top-level siblings, but `grafel` inside it is the
+//     only member and stays inline.
+//   - a config with an empty `"mcp": {}`: same, `grafel` is the only member.
+//
+// Both are valid JSON and neither loses user content; this test exists so the
+// limitation is observed rather than asserted in prose, and so that a future
+// change to it is a deliberate one.
+func TestOpencode_IndentIsBestEffort(t *testing.T) {
+	home := withHome(t)
+
+	t.Run("no mcp key: the container is indented like its siblings", func(t *testing.T) {
+		dir := filepath.Join(home, ".config", "oc-nomcp")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "opencode.json")
+		seed := "{\n  \"model\": \"x\",\n  \"theme\": \"y\"\n}\n"
+		if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := RegisterPath(path, "/usr/local/bin/grafel"); err != nil {
+			t.Fatal(err)
+		}
+		after, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The `mcp` member must NOT be jammed onto the previous member's line.
+		if strings.Contains(string(after), `"theme": "y","mcp"`) {
+			t.Fatalf("the inserted mcp container was jammed onto the previous member's line:\n%s", after)
+		}
+		if !strings.Contains(string(after), "\n  \"mcp\"") {
+			t.Fatalf("the inserted mcp container did not pick up its siblings' indentation:\n%s", after)
+		}
+		doc := decodeJSONC(t, after)
+		mcp, _ := doc["mcp"].(map[string]any)
+		if _, ok := mcp[ServerName]; !ok {
+			t.Fatalf("no mcp.%s after register:\n%s", ServerName, after)
+		}
+		if doc["model"] != "x" || doc["theme"] != "y" {
+			t.Fatalf("register clobbered unrelated keys: %v", doc)
+		}
+	})
+
+	t.Run("empty mcp object: grafel stays inline, nothing is lost", func(t *testing.T) {
+		dir := filepath.Join(home, ".config", "oc-emptymcp")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "opencode.json")
+		seed := "{\n  \"theme\": \"y\",\n  \"mcp\": {}\n}\n"
+		if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := RegisterPath(path, "/usr/local/bin/grafel"); err != nil {
+			t.Fatal(err)
+		}
+		after, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc := decodeJSONC(t, after)
+		mcp, _ := doc["mcp"].(map[string]any)
+		entry, ok := mcp[ServerName].(map[string]any)
+		if !ok {
+			t.Fatalf("no mcp.%s after register:\n%s", ServerName, after)
+		}
+		if entry["type"] != "local" {
+			t.Fatalf("wrong entry shape: %v", entry)
+		}
+		if doc["theme"] != "y" {
+			t.Fatalf("register clobbered theme: %v", doc)
+		}
+	})
+}
+
 // TestOpencode_ToleratesNullContainer: `"mcp": null` is treated as ABSENT and
 // replaced, exactly as mcpServersOf treats `"mcpServers": null`. A user who
 // commented out their whole mcp block leaves this behind, and refusing it would
@@ -377,6 +555,18 @@ func TestOpencode_ToleratesNullContainer(t *testing.T) {
 		}
 		if _, err := RegisterPath(jsonPath, "/usr/local/bin/grafel"); err != nil {
 			t.Fatalf("the JSON arm rejects a null container, so this parity premise is wrong: %v", err)
+		}
+		// A no-error assertion alone is satisfied by a generic arm that
+		// regressed to silently doing nothing, which would make this a parity
+		// control that controls for nothing. Assert the entry actually landed.
+		jsonDoc := decodeOpencode(t, jsonPath)
+		jsonServers, ok := jsonDoc["mcpServers"].(map[string]any)
+		if !ok {
+			t.Fatalf("the JSON arm left mcpServers a non-object over a null: %#v", jsonDoc["mcpServers"])
+		}
+		if _, ok := jsonServers[ServerName]; !ok {
+			t.Fatalf("the JSON arm reported success over a null container but wrote no %s entry: %v",
+				ServerName, jsonServers)
 		}
 	})
 
