@@ -181,6 +181,8 @@ github.com/streadway/quantile v0.0.0-20220407130108-4246515d968d h1:X4+kt6zM/OVO
 github.com/streadway/quantile v0.0.0-20220407130108-4246515d968d/go.mod h1:lbP8tGiBjZ5YWIc2fzuRpTaz0b/53vT6PEs3QuAWzuU=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f h1:9hiVElpCmKzsBKQHkBqZ8LGzt82iLfM8egxr4sew+Ys=
+github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f/go.mod h1:8/zr1Tv0+cKpVtGCEB/7YfRXr2TszsMxMXLaT8YuBgU=
 github.com/tree-sitter-grammars/tree-sitter-lua v0.3.0 h1:EsPKckt1PBbdjSKQgnqSLnSdT5NRYhCJUWRjHGy8Jc4=
 github.com/tree-sitter-grammars/tree-sitter-lua v0.3.0/go.mod h1:hIOfn+lxpU4SRrtejLVrU2+8SAoRwNC01m3XaR/Cw0A=
 github.com/tree-sitter-grammars/tree-sitter-toml v0.7.0 h1:VQOyz+wSHzNZJ7gUMHAWVEP4Xt/YBZkeL7iurBv/9xc=

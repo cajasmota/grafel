@@ -84,6 +84,7 @@ const (
 	Zed               Tool = "zed"
 	Kiro              Tool = "kiro"
 	Antigravity       Tool = "antigravity"
+	Opencode          Tool = "opencode"
 )
 
 // ConfigShape describes the JSON layout of a host's config file for
@@ -214,6 +215,24 @@ func SettingsPath(tool Tool) (string, error) {
 		// only for remote HTTP MCP servers and does NOT apply here. Path source:
 		// the official github-mcp-server install-antigravity guide.
 		return filepath.Join(home, ".gemini", "antigravity", "mcp_config.json"), nil
+	case Opencode:
+		// opencode: $XDG_CONFIG_HOME/opencode/opencode.json (i.e.
+		// ~/.config/opencode/opencode.json by default) — same XDG precedent
+		// as Zed above. NOTE: the Windows path here is SOURCE-DERIVED, not
+		// doc-confirmed: opencode resolves its config dir with the
+		// `xdg-basedir` package, which performs no platform branching, so it
+		// lands on %USERPROFILE%\.config\opencode on Windows too. That is
+		// what xdgConfigHome() produces, but it has not been verified against
+		// a Windows install.
+		//
+		// The file is NOT written with the generic mcpServers shape — see
+		// opencode.go for the four-way schema divergence and why getting it
+		// wrong fails silently.
+		xdg, err := xdgConfigHome()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(xdg, "opencode", "opencode.json"), nil
 	}
 	return "", fmt.Errorf("unknown tool: %s", tool)
 }
@@ -521,6 +540,12 @@ func RegisterPath(path, binPath string) (string, error) {
 		// format-agnostic — it restores or deletes the raw bytes.
 		return path, registerTOML(path, binPath)
 	}
+	if isOpencode(path) {
+		// opencode host: still JSON, but a different key, a different `type`
+		// value and argv-as-array — and read/written as JSONC so the user's
+		// comments survive. See opencode.go.
+		return path, registerOpencode(path, binPath)
+	}
 	doc, err := readSettings(path)
 	if err != nil {
 		return "", err
@@ -558,6 +583,9 @@ func UnregisterPath(path string) error {
 	guardResolvedConfigPath(path, "MCP host config")
 	if isTOML(path) {
 		return unregisterTOML(path)
+	}
+	if isOpencode(path) {
+		return unregisterOpencode(path)
 	}
 	doc, err := readSettings(path)
 	if err != nil {
@@ -788,7 +816,8 @@ func writeThrough(path string, b []byte) error {
 
 // HasGrafelEntry reports whether the config file at path already contains a
 // grafel MCP server entry. It is format-aware (JSON mcpServers.grafel for the
-// JSON hosts, the [mcp_servers.grafel] table for Codex TOML) and never errors:
+// JSON hosts, mcp.grafel for opencode's JSONC, the [mcp_servers.grafel] table
+// for Codex TOML) and never errors:
 // a missing/unreadable/malformed file simply reports false. Used by the wizard
 // tool detector to pre-check tools that were previously configured (#5344).
 func HasGrafelEntry(path string) bool {
@@ -799,6 +828,11 @@ func HasGrafelEntry(path string) bool {
 		}
 		_, present := stripGrafelBlock(string(raw))
 		return present
+	}
+	if isOpencode(path) {
+		// opencode keeps its servers under `mcp`, not `mcpServers`; without
+		// this arm a correctly-registered opencode reads as unconfigured.
+		return hasOpencodeGrafelEntry(path)
 	}
 	doc, err := readSettings(path)
 	if err != nil {
