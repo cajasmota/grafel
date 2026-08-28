@@ -184,6 +184,11 @@ interface AssistantService {
 	}
 }
 
+// A @Tool method is named the way the BASE Kotlin extractor names it —
+// class-qualified (#6499) — because this record is an annotation carrier that
+// must collapse onto the base operation, not a second node. See
+// ktFindEnclosingOwner's doc and the end-to-end merge pin in
+// cmd/grafel/langchain4j_tool_merge_6499_test.go.
 func TestLangChain4jTool(t *testing.T) {
 	src := `
 class Tools {
@@ -192,8 +197,61 @@ class Tools {
 }
 `
 	ents := extract(t, "custom_kotlin_langchain4j", fi("Tools.kt", "kotlin", src))
-	if !containsEntity(ents, "SCOPE.Operation", "webSearch") {
-		t.Error("expected webSearch SCOPE.Operation")
+	e := findEntity(ents, "SCOPE.Operation", "Tools.webSearch")
+	if e == nil {
+		t.Fatalf("expected Tools.webSearch SCOPE.Operation, got %+v", ents)
+	}
+	if containsEntity(ents, "SCOPE.Operation", "webSearch") {
+		t.Error("bare webSearch must not be emitted — it would collide by name " +
+			"with nothing and miss the base operation entirely")
+	}
+	// tool_method names the METHOD, so it stays bare; owner_class carries the
+	// type. Both mirror internal/custom/java/langchain4j.go.
+	if got := e.Props["tool_method"]; got != "webSearch" {
+		t.Errorf("tool_method = %q, want the bare method name %q", got, "webSearch")
+	}
+	if got := e.Props["owner_class"]; got != "Tools" {
+		t.Errorf("owner_class = %q, want %q", got, "Tools")
+	}
+}
+
+// The base Kotlin extractor qualifies interface members too (a Kotlin
+// `interface` is a class_declaration), so the owner scan must match
+// `interface` as well as `class` — matching only `class` would leave an
+// interface-declared @Tool bare and back at the collision defect.
+func TestLangChain4jTool_InterfaceOwnerIsQualified(t *testing.T) {
+	src := `
+interface Assistant {
+    @Tool("look it up")
+    fun lookup(q: String): String
+}
+`
+	ents := extract(t, "custom_kotlin_langchain4j", fi("Assistant.kt", "kotlin", src))
+	e := findEntity(ents, "SCOPE.Operation", "Assistant.lookup")
+	if e == nil {
+		t.Fatalf("expected Assistant.lookup SCOPE.Operation, got %+v", ents)
+	}
+	if got := e.Props["owner_class"]; got != "Assistant" {
+		t.Errorf("owner_class = %q, want %q", got, "Assistant")
+	}
+}
+
+// An `object` owner qualifies as well, and a @Tool with no enclosing type at
+// all stays bare — the base extractor leaves a top-level fun unqualified, so
+// qualifying here would break the very collapse this exists to preserve.
+func TestLangChain4jTool_ObjectOwnerAndTopLevel(t *testing.T) {
+	src := `
+object Registry {
+    @Tool("reg")
+    fun register(q: String): String = ""
+}
+
+@Tool("loose")
+fun freeStanding(q: String): String = ""
+`
+	ents := extract(t, "custom_kotlin_langchain4j", fi("Registry.kt", "kotlin", src))
+	if findEntity(ents, "SCOPE.Operation", "Registry.register") == nil {
+		t.Errorf("expected Registry.register SCOPE.Operation, got %+v", ents)
 	}
 }
 

@@ -14,9 +14,12 @@
 //   1. Build a file-scope symbol table from the entities already
 //      emitted by the primary extractor pass. The table maps Name →
 //      entity-kind metadata so we can build the right structural-ref
-//      Format A target ID for each reference. Kotlin's primary pass
-//      emits operations with bare leaf names (no `Class.method`
-//      qualification, unlike Java's #65 contract); we synthesise a
+//      Format A target ID for each reference. Since #6499 Kotlin's
+//      primary pass emits member operations class-qualified
+//      (`Class.method`, matching Java's #65 contract) and top-level
+//      functions bare — but source identifiers are always the bare
+//      leaf, so the table is KEYED by the leaf while each symbol
+//      carries the emitted name for the ToID. We synthesise a
 //      `Class.method` key for class/object members on the fly during
 //      the walk so `this.<method>` and `ClassName.<method>` resolve.
 //
@@ -120,13 +123,25 @@ var kotlinReservedNames = map[string]struct{}{
 type kotlinSymbol struct {
 	kind    string
 	subtype string
-	name    string // emitted entity Name (Kotlin uses bare leaf for ops/properties)
+	// name is the EMITTED entity Name — `Class.method` for a nested
+	// operation, bare only at file top level (#6499). The REFERENCES ToID
+	// is built from it, so it is never the symbol table's lookup key.
+	name string
 }
 
 // kotlinFrame tracks the enclosing operation / class while walking a
 // file's CST during reference emission.
+//
+// The two name fields are deliberately different and must stay so (#6499):
+//
+//   - funcEmittedName is the Name the primary pass actually emitted —
+//     `Class.method` for a nested function, bare for a top-level one, per
+//     kotlinQualifiedFuncName. findKotlinEntityIndex matches on it, so
+//     handing it the leaf drops the edge entirely.
+//   - funcLeafName stays the bare declared name, because the self-name skip
+//     compares it against raw source identifiers, which are always bare.
 type kotlinFrame struct {
-	funcEmittedName string // "" outside a function; bare leaf inside
+	funcEmittedName string // "" outside a function; the emitted Name inside
 	funcLeafName    string // bare leaf name of the enclosing operation
 	parentClass     string // immediate enclosing class/object name
 }
@@ -145,11 +160,13 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 
 	// Phase 1 — build the file-scope symbol table.
 	//
-	// Index by THE NAME AS REFERENCED IN SOURCE. The Kotlin primary
-	// pass emits methods with bare-leaf Name (no `Class.method`
-	// qualification), so we index every operation under its bare name
-	// AND synthesise `Class.method` dotted entries during the walk by
-	// tracking the enclosing-class context. Properties are not
+	// Index by THE NAME AS REFERENCED IN SOURCE. Since #6499 the Kotlin
+	// primary pass emits a nested method's Name class-qualified
+	// (`Class.method`) and only a top-level function's bare — but a
+	// reference site spells the LEAF either way. So every operation is
+	// indexed under its leaf while the symbol carries the emitted Name for
+	// the ToID, AND `Class.method` dotted entries are synthesised during
+	// the walk by tracking the enclosing-class context. Properties are not
 	// currently emitted by the primary pass; class/object names are.
 	bareSymbols := make(map[string]kotlinSymbol)   // "foo" → method/class/import-leaf
 	dottedSymbols := make(map[string]kotlinSymbol) // "Class.foo" → method (synthesised)
@@ -168,8 +185,13 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 		}
 		switch {
 		case e.Kind == "SCOPE.Operation":
-			if _, exists := bareSymbols[e.Name]; !exists {
-				bareSymbols[e.Name] = kotlinSymbol{kind: e.Kind, subtype: e.Subtype, name: e.Name}
+			// #6499 — a member operation's Name is now `Class.method`, but
+			// bareSymbols is looked up with raw source identifiers, which are
+			// always the bare leaf. Key on the LEAF; carry the EMITTED name in
+			// the symbol so the REFERENCES ToID still points at a real entity.
+			key := kotlinOperationLeaf(e.Name)
+			if _, exists := bareSymbols[key]; !exists {
+				bareSymbols[key] = kotlinSymbol{kind: e.Kind, subtype: e.Subtype, name: e.Name}
 			}
 		case e.Kind == "SCOPE.Component" &&
 			(e.Subtype == "class" || e.Subtype == "data_class" || e.Subtype == "object"):
@@ -181,9 +203,9 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 
 	// Phase 1b — synthesise dotted `Class.method` entries by walking the
 	// CST surface for class/object → method memberships. This lets
-	// `this.method` and `ClassName.method` resolve to the operation's
-	// bare-leaf Name in the symbol table while still computing the
-	// correct same-file binding.
+	// `this.method` and `ClassName.method` resolve through the leaf-keyed
+	// symbol table to the operation's EMITTED Name while still computing
+	// the correct same-file binding.
 	synthesiseKotlinDottedMembers(root, file, bareSymbols, dottedSymbols)
 
 	if len(bareSymbols) == 0 && len(dottedSymbols) == 0 {
@@ -255,7 +277,9 @@ func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.En
 
 		case "function_declaration":
 			leaf := kotlinDeclName(n, file.Content)
-			emitted := leaf
+			// #6499 — must match the Name buildOperation emitted, or
+			// findKotlinEntityIndex misses and the REFERENCES edge is dropped.
+			emitted := kotlinQualifiedFuncName(parentClass, leaf)
 			body := findFunctionBody(n)
 			if body == nil || leaf == "" {
 				return
@@ -306,6 +330,19 @@ func findKotlinEntityIndex(entities []types.EntityRecord, emittedName, filePath 
 	return -1, false
 }
 
+// kotlinOperationLeaf strips the enclosing-type qualifier from an emitted
+// Kotlin operation Name (#6499): "UserController.health" → "health", and a
+// bare top-level "helper" → "helper". Source identifiers are always the bare
+// leaf, so the same-file symbol table is keyed by this, never by the emitted
+// Name. Inverse of kotlinQualifiedFuncName's qualification step.
+//
+// Shared with internal/resolve's byKotlinPkgMember keying via
+// extractor.KotlinMemberLeaf — the two layers must undo the qualification
+// identically, so there is exactly one implementation of the split.
+func kotlinOperationLeaf(name string) string {
+	return extractor.KotlinMemberLeaf(name)
+}
+
 // kotlinDeclName returns the leaf name of a class/object/function
 // declaration. Tree-sitter-kotlin uses `type_identifier` for
 // class/object names and `simple_identifier` for function names; both
@@ -340,10 +377,10 @@ func kotlinFindBody(node ts.Node) ts.Node {
 
 // synthesiseKotlinDottedMembers walks the CST once to build
 // `Class.method` → operation-entity entries for every function
-// declared inside a class/object body. The primary extractor emits
-// these methods with bare-leaf Name; the dotted synthesis lets
-// `this.<method>` and `ClassName.<method>` resolve via dottedSymbols
-// to the same emitted entity.
+// declared inside a class/object body. The primary extractor emits these
+// methods class-qualified (#6499) and the symbol table keys them by their
+// leaf; the dotted synthesis lets `this.<method>` and `ClassName.<method>`
+// resolve via dottedSymbols to that same emitted entity.
 func synthesiseKotlinDottedMembers(
 	root ts.Node,
 	file extractor.FileInput,
@@ -383,6 +420,9 @@ func synthesiseKotlinDottedMembers(
 			}
 			dotted := parentClass + "." + leaf
 			if _, ok := dottedSymbols[dotted]; !ok {
+				// bareSymbols is keyed by the LEAF (#6499), so this lookup is
+				// unaffected by qualification; the symbol it copies already
+				// carries the emitted `Class.method` name for the ToID.
 				if sym, ok := bareSymbols[leaf]; ok {
 					dottedSymbols[dotted] = sym
 				}

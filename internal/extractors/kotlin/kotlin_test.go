@@ -136,12 +136,12 @@ class Svc {
 
 	var found bool
 	for _, e := range got {
-		if e.Name == "getName" && e.Kind == "SCOPE.Operation" && e.Subtype == "function" {
+		if e.Name == "Svc.getName" && e.Kind == "SCOPE.Operation" && e.Subtype == "function" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected entity getName with Kind=SCOPE.Operation Subtype=function")
+		t.Error("expected entity Svc.getName with Kind=SCOPE.Operation Subtype=function")
 	}
 }
 

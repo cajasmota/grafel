@@ -74,6 +74,23 @@ func extractKotlinProjectForTest(t *testing.T, files map[string]string) []types.
 	return merged
 }
 
+// ktWantEntID is ktEntID plus the guard its bare form invites. ktEntID returns
+// "" for an entity that does not exist, so a `got != want` comparison where the
+// CALLS edge is also unresolved ("") passes for the wrong reason. #6499 hit
+// exactly that: renaming getCounts to XController.getCounts collapsed BOTH
+// sides to "" and TestIssue4687_MockKReceiverTyping went vacuously green while
+// asserting nothing. Resolving every expectation through this makes the next
+// rename fail loudly at the expectation rather than silently at the assertion.
+func ktWantEntID(t *testing.T, merged []types.EntityRecord, srcFile, name string) string {
+	t.Helper()
+	id := ktEntID(merged, srcFile, name)
+	if !ktIs16Hex(id) {
+		t.Fatalf("expectation names nothing: entity %q in %s resolved to %q, not a hex id — "+
+			"any comparison against it would be vacuous", name, srcFile, id)
+	}
+	return id
+}
+
 func ktIs16Hex(s string) bool {
 	if len(s) != 16 {
 		return false
@@ -163,7 +180,7 @@ func TestIssue4375_FullyQualified(t *testing.T) {
 	merged := extractKotlinProjectForTest(t, files)
 
 	// BEFORE: extractor stamped the qualifier; the bare leaf alone is ambiguous.
-	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if !ok {
 		t.Fatal("CALLS edge to place not found")
 	}
@@ -176,9 +193,9 @@ func TestIssue4375_FullyQualified(t *testing.T) {
 	if n < 1 {
 		t.Fatalf("expected >=1 kotlin cross-package rewrite, got %d", n)
 	}
-	want := ktEntID(merged, "src/services/OrderService.kt", "place")
-	collide := ktEntID(merged, "src/billing/OrderService.kt", "place")
-	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	want := ktEntID(merged, "src/services/OrderService.kt", "OrderService.place")
+	collide := ktEntID(merged, "src/billing/OrderService.kt", "OrderService.place")
+	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if !ktIs16Hex(got) {
 		t.Fatalf("ToID not resolved to a hex id: %q", got)
 	}
@@ -205,7 +222,7 @@ func TestIssue4375_ImportedTopLevelFunc(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "placeOrder")
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "placeOrder")
 	if !ok {
 		t.Fatal("CALLS edge to placeOrder not found")
 	}
@@ -222,7 +239,7 @@ func TestIssue4375_ImportedTopLevelFunc(t *testing.T) {
 	}
 	want := ktEntID(merged, "src/services/OrderService.kt", "placeOrder")
 	collide := ktEntID(merged, "src/billing/OrderService.kt", "placeOrder")
-	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "run", "placeOrder")
+	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "placeOrder")
 	if got != want {
 		t.Fatalf("resolved to wrong package: got %q want %q", got, want)
 	}
@@ -246,7 +263,7 @@ func TestIssue4375_ImportedTypeMember(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if !ok {
 		t.Fatal("CALLS edge to place not found")
 	}
@@ -258,9 +275,9 @@ func TestIssue4375_ImportedTypeMember(t *testing.T) {
 	if n < 1 {
 		t.Fatalf("expected >=1 rewrite, got %d", n)
 	}
-	want := ktEntID(merged, "src/services/OrderService.kt", "place")
-	collide := ktEntID(merged, "src/billing/OrderService.kt", "place")
-	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	want := ktEntID(merged, "src/services/OrderService.kt", "OrderService.place")
+	collide := ktEntID(merged, "src/billing/OrderService.kt", "OrderService.place")
+	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if got != want {
 		t.Fatalf("resolved to wrong package: got %q want %q", got, want)
 	}
@@ -284,7 +301,7 @@ func TestIssue4375_AliasedImport(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if !ok {
 		t.Fatal("CALLS edge to place not found")
 	}
@@ -299,9 +316,9 @@ func TestIssue4375_AliasedImport(t *testing.T) {
 	if n < 1 {
 		t.Fatalf("expected >=1 rewrite, got %d", n)
 	}
-	want := ktEntID(merged, "src/services/OrderService.kt", "place")
-	collide := ktEntID(merged, "src/billing/OrderService.kt", "place")
-	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	want := ktEntID(merged, "src/services/OrderService.kt", "OrderService.place")
+	collide := ktEntID(merged, "src/billing/OrderService.kt", "OrderService.place")
+	got, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if got != want {
 		t.Fatalf("resolved to wrong package: got %q want %q", got, want)
 	}
@@ -341,7 +358,7 @@ func TestIssue4375_SamePackageObjectMember(t *testing.T) {
 	}
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/services/Caller.kt", "run", "lookup")
+	_, props, ok := ktCallEdge(merged, "src/services/Caller.kt", "Caller.run", "lookup")
 	if !ok {
 		t.Fatal("CALLS edge to lookup not found")
 	}
@@ -353,9 +370,9 @@ func TestIssue4375_SamePackageObjectMember(t *testing.T) {
 	if n < 1 {
 		t.Fatalf("expected >=1 rewrite, got %d", n)
 	}
-	want := ktEntID(merged, "src/services/Registry.kt", "lookup")
-	collide := ktEntID(merged, "src/billing/Registry.kt", "lookup")
-	got, _, _ := ktCallEdge(merged, "src/services/Caller.kt", "run", "lookup")
+	want := ktEntID(merged, "src/services/Registry.kt", "Registry.lookup")
+	collide := ktEntID(merged, "src/billing/Registry.kt", "Registry.lookup")
+	got, _, _ := ktCallEdge(merged, "src/services/Caller.kt", "Caller.run", "lookup")
 	if got != want {
 		t.Fatalf("same-package object member resolved wrong: got %q want %q", got, want)
 	}
@@ -389,7 +406,7 @@ func TestIssue4375_NegativeInstanceReceiver(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if !ok {
 		t.Fatal("CALLS edge to place not found")
 	}
@@ -420,7 +437,7 @@ func TestIssue4375_LocalCtorReceiverNowTyped(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if !ok {
 		t.Fatal("CALLS edge to place not found")
 	}
@@ -428,8 +445,8 @@ func TestIssue4375_LocalCtorReceiverNowTyped(t *testing.T) {
 		t.Fatalf("ctor-local receiver should be typed OrderService, got type=%q", props["kotlin_call_type"])
 	}
 	runKotlinResolve(merged)
-	toID, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
-	want := ktEntID(merged, "src/services/OrderService.kt", "place")
+	toID, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
+	want := ktEntID(merged, "src/services/OrderService.kt", "OrderService.place")
 	if toID != want || !ktIs16Hex(toID) {
 		t.Fatalf("ctor-local receiver did not bind to com.app.services OrderService.place: got %q want %q", toID, want)
 	}
@@ -452,7 +469,7 @@ func TestIssue4375_NegativeStarImport(t *testing.T) {
 		"}\n"
 	merged := extractKotlinProjectForTest(t, files)
 
-	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "Caller.run", "place")
 	if !ok {
 		t.Fatal("CALLS edge to place not found")
 	}

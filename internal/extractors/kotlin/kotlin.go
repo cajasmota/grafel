@@ -67,7 +67,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// `Type.method()` call stamps its resolved (package[, type], leaf) onto the
 	// CALLS edge for the resolver's package-keyed bind.
 	crossCtx := buildKotlinCrossCtx(root, file.Content)
-	walk(root, file, &entities, crossCtx)
+	walk(root, file, &entities, crossCtx, "")
 
 	// #4375 — stamp every Kotlin entity with its file's package. Kotlin is
 	// one-package-per-file, so a post-pass is exact. The resolver's
@@ -124,13 +124,56 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	return entities, nil
 }
 
+// kotlinQualifiedFuncName is THE single rule for the Name a Kotlin
+// SCOPE.Operation entity carries (#6499, arms 1+2).
+//
+// A function declared inside a class / object / interface body is qualified
+// `<EnclosingType>.<leaf>`, matching what Java emits post-#6429 so one Spring
+// construct has one shape regardless of source language. A TOP-LEVEL function
+// has no enclosing type and stays bare — qualifying it unconditionally would
+// yield `.helper`, which names nothing.
+//
+// Three producers must agree exactly or edges silently mis-attach:
+//
+//	buildOperation      here            → the entity Name
+//	kotlinFunctionName  exception_flow  → THROWS / CATCHES FromName
+//	kotlinDeclName use  references.go   → REFERENCES source + target
+//
+// All three route through this function; do not inline the rule anywhere.
+//
+// A companion-object member is qualified by the OUTER class (the walk has no
+// `companion_object` case, so companion bodies inherit the enclosing class's
+// parentType). That is deliberate: Kotlin source calls it `Outer.build()`,
+// so `Outer.build` is the name call sites actually spell.
+func kotlinQualifiedFuncName(parentType, leaf string) string {
+	if leaf == "" || parentType == "" {
+		return leaf
+	}
+	return parentType + "." + leaf
+}
+
+// kotlinFuncLeafName returns the BARE declared name of a function_declaration,
+// before any enclosing-type qualification. The self-recursion filter in
+// extractCallRelationships compares call-site text — which is always bare —
+// against this, so it must never be handed the qualified form (#6499).
+func kotlinFuncLeafName(node ts.Node, src []byte) string {
+	// Kotlin grammar uses simple_identifier for function names (no "name" field).
+	if name := childFieldText(node, "name", src); name != "" {
+		return name
+	}
+	return firstChildOfType(node, src, "simple_identifier")
+}
+
 // walk performs a depth-first traversal of the CST, collecting entities.
 //
 // PORT-2-FIX-2-ALL (#41): class/object declarations attach a CONTAINS edge
 // per function declared inside the body, and every function body is scanned
 // for call_expression / call_suffix nodes that yield CALLS edges with stub
 // to_id. Imports are still NOT emitted.
-func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx *kotlinCrossCtx) {
+//
+// parentType is the innermost enclosing class/object/interface name, or "" at
+// file top level; it is what qualifies member operation names (#6499).
+func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx *kotlinCrossCtx, parentType string) {
 	if node == nil {
 		return
 	}
@@ -154,7 +197,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 			*out = append(*out, vs)
 		}
 		for i := range node.ChildCount() {
-			walk(node.Child(int(i)), file, out, ctx)
+			walk(node.Child(int(i)), file, out, ctx, parentType)
 		}
 		return
 
@@ -170,7 +213,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		rec, ok := buildComponent(node, file, subtype)
 		if !ok {
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, out, ctx)
+				walk(node.Child(int(i)), file, out, ctx, parentType)
 			}
 			return
 		}
@@ -222,7 +265,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 					}
 					continue
 				}
-				walk(ch, file, out, ctx)
+				walk(ch, file, out, ctx, rec.Name)
 			}
 			// #4428: grouped `const val` string properties form a class-level
 			// value-set named after the class.
@@ -269,7 +312,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		rec, ok := buildComponent(node, file, "object")
 		if !ok {
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, out, ctx)
+				walk(node.Child(int(i)), file, out, ctx, parentType)
 			}
 			return
 		}
@@ -292,7 +335,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 					}
 					continue
 				}
-				walk(ch, file, out, ctx)
+				walk(ch, file, out, ctx, rec.Name)
 			}
 			// #4428: grouped `const val` string properties form an
 			// object-level value-set named after the object (the common
@@ -330,9 +373,17 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		return
 
 	case "function_declaration":
-		if rec, ok := buildOperation(node, file); ok {
+		if rec, ok := buildOperation(node, file, parentType); ok {
+			// #6499 — the entity carries the QUALIFIED name, but the
+			// self-recursion filter inside extractCallRelationships compares
+			// against raw call-site text, which is always the bare leaf.
+			// Handing it rec.Name would stop `health()` inside
+			// `UserController.health` matching, minting a spurious self-CALLS
+			// edge on every recursive method. There is no compile error for
+			// that, hence the explicit leaf.
+			leaf := kotlinFuncLeafName(node, file.Content)
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(findFunctionBody(node), file.Content, rec.Name, ctx)...)
+				extractCallRelationships(findFunctionBody(node), file.Content, leaf, ctx)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -345,7 +396,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 	}
 
 	for i := range node.ChildCount() {
-		walk(node.Child(int(i)), file, out, ctx)
+		walk(node.Child(int(i)), file, out, ctx, parentType)
 	}
 }
 
@@ -396,6 +447,12 @@ var kotlinKeywordStop = map[string]bool{
 // simple_identifier of the call's expression. FromID is left empty so
 // buildDocument substitutes the caller's entity ID at emit time. Self-recursion
 // is dropped to match Python/Go extractor dedup semantics.
+//
+// callerName MUST be the caller's BARE leaf name, never its emitted entity Name
+// (#6499). It is used only for the self-recursion drop, which compares it
+// against raw call-site text — and a call site spells the leaf. Passing the
+// class-qualified Name compiles fine and silently stops the comparison ever
+// matching, minting a self-CALLS edge on every recursive method.
 //
 // When ctx is non-nil (issue #4375), each call is additionally probed for a
 // statically-qualified cross-package shape — a fully-qualified
@@ -749,15 +806,17 @@ func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bo
 }
 
 // buildOperation creates an Operation entity for function declarations.
-func buildOperation(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
-	// Kotlin grammar uses simple_identifier for function names (no "name" field).
-	name := childFieldText(node, "name", file.Content)
-	if name == "" {
-		name = firstChildOfType(node, file.Content, "simple_identifier")
-	}
-	if name == "" {
+//
+// parentType is the innermost enclosing class/object/interface name, or "" at
+// file top level. The emitted Name is class-qualified for members and bare for
+// top-level functions — see kotlinQualifiedFuncName, which owns that rule for
+// all three name producers (#6499).
+func buildOperation(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+	leaf := kotlinFuncLeafName(node, file.Content)
+	if leaf == "" {
 		return types.EntityRecord{}, false
 	}
+	name := kotlinQualifiedFuncName(parentType, leaf)
 
 	return types.EntityRecord{
 		Name:               name,

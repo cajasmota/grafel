@@ -203,7 +203,17 @@ func representativeFixture() []types.EntityRecord {
 			Properties: map[string]string{"csharp_namespace": "App.Data"}},
 
 		// Kotlin package member + top-level func (byKotlinPkgMember/Func, #4375).
-		{ID: "00000000000000f1", Kind: "SCOPE.Operation", Name: "load", SourceFile: "kt/Loader.kt",
+		// #6499 — a Kotlin member entity Name is class-qualified `Type.method`;
+		// both index builders must key byKotlinPkgMember by the LEAF, so this
+		// row is what makes that agreement observable.
+		//
+		// NOTE this pins AGREEMENT, not correctness: mutate both builders the
+		// same way and parity re-agrees while every bind breaks. The keying is
+		// pinned as CORRECT from internal/extractors/kotlin — the #4375 /
+		// #4687 cross-package tests there go red on either builder alone and on
+		// both together. Neither half is sufficient; do not delete one because
+		// the other is green.
+		{ID: "00000000000000f1", Kind: "SCOPE.Operation", Name: "Loader.load", SourceFile: "kt/Loader.kt",
 			Properties: map[string]string{"kotlin_package": "app.kt", "kotlin_enclosing_type": "Loader"}},
 		{ID: "00000000000000f2", Kind: "SCOPE.Operation", Name: "main", SourceFile: "kt/Main.kt",
 			Properties: map[string]string{"kotlin_package": "app.kt"}},

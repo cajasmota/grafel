@@ -97,10 +97,10 @@ class Repo {
 `
 	recs := extractKotlinRaw(t, src)
 
-	if !ktExcEdge(recs, "read", "THROWS", "NotFoundException") {
+	if !ktExcEdge(recs, "Repo.read", "THROWS", "NotFoundException") {
 		t.Errorf("missing THROWS(read -> NotFoundException)")
 	}
-	if !ktExcEdge(recs, "caller", "CATCHES", "NotFoundException") {
+	if !ktExcEdge(recs, "Repo.caller", "CATCHES", "NotFoundException") {
 		t.Errorf("missing CATCHES(caller -> NotFoundException)")
 	}
 	if n := ktExcNodeCount(recs, "NotFoundException"); n != 1 {
@@ -141,7 +141,7 @@ class Db {
 }
 `
 	recs := extractKotlinRaw(t, src)
-	if !ktExcEdge(recs, "query", "CATCHES", "SqlException") {
+	if !ktExcEdge(recs, "Db.query", "CATCHES", "SqlException") {
 		t.Errorf("missing CATCHES(query -> SqlException)")
 	}
 }
@@ -158,7 +158,7 @@ class Ctrl {
 }
 `
 	recs := extractKotlinRaw(t, src)
-	if !ktExcEdge(recs, "get", "THROWS", "ResponseStatusException") {
+	if !ktExcEdge(recs, "Ctrl.get", "THROWS", "ResponseStatusException") {
 		t.Errorf("missing THROWS(get -> ResponseStatusException)")
 	}
 }
@@ -177,7 +177,7 @@ class GlobalErrors {
 }
 `
 	recs := extractKotlinRaw(t, src)
-	if !ktExcEdge(recs, "handle", "CATCHES", "NotFoundException") {
+	if !ktExcEdge(recs, "GlobalErrors.handle", "CATCHES", "NotFoundException") {
 		t.Errorf("missing CATCHES(handle -> NotFoundException) from @ExceptionHandler")
 	}
 }
@@ -194,10 +194,10 @@ class GlobalErrors {
 }
 `
 	recs := extractKotlinRaw(t, src)
-	if !ktExcEdge(recs, "handle", "CATCHES", "NotFoundException") {
+	if !ktExcEdge(recs, "GlobalErrors.handle", "CATCHES", "NotFoundException") {
 		t.Errorf("missing CATCHES(handle -> NotFoundException)")
 	}
-	if !ktExcEdge(recs, "handle", "CATCHES", "BadRequestException") {
+	if !ktExcEdge(recs, "GlobalErrors.handle", "CATCHES", "BadRequestException") {
 		t.Errorf("missing CATCHES(handle -> BadRequestException)")
 	}
 }
@@ -239,10 +239,10 @@ class S {
 }
 `
 	recs := extractKotlinRaw(t, src)
-	if !ktExcEdge(recs, "a", "THROWS", "Boom") {
+	if !ktExcEdge(recs, "S.a", "THROWS", "Boom") {
 		t.Errorf("missing THROWS(a -> Boom) from qualified throw")
 	}
-	if !ktExcEdge(recs, "b", "CATCHES", "Boom") {
+	if !ktExcEdge(recs, "S.b", "CATCHES", "Boom") {
 		t.Errorf("missing CATCHES(b -> Boom)")
 	}
 	if n := ktExcNodeCount(recs, "Boom"); n != 1 {

@@ -63,7 +63,7 @@ class Caller {
 }
 `
 	ents := runKotlinExtract(t, src)
-	if !hasKotlinRef(ents, "make", "Helper") {
+	if !hasKotlinRef(ents, "Caller.make", "Helper") {
 		t.Fatalf("expected REFERENCES make -> Helper, got: %s", kotlinRelsSummary(ents))
 	}
 }
@@ -95,8 +95,8 @@ class Box {
 	// land on the bump operation, not on Box or the file carrier.
 	for _, e := range ents {
 		for _, r := range e.Relationships {
-			if r.Kind == "REFERENCES" && strings.HasSuffix(r.ToID, ":counter") && e.Name != "bump" {
-				t.Errorf("REFERENCES :counter must originate from bump, got from %q", e.Name)
+			if r.Kind == "REFERENCES" && strings.HasSuffix(r.ToID, ":counter") && e.Name != "Box.bump" {
+				t.Errorf("REFERENCES :counter must originate from Box.bump, got from %q", e.Name)
 			}
 		}
 	}
@@ -120,7 +120,7 @@ class Outer {
 }
 `
 	ents := runKotlinExtract(t, src)
-	if !hasKotlinRef(ents, "build", "Outer") {
+	if !hasKotlinRef(ents, "Outer.build", "Outer") {
 		t.Fatalf("expected REFERENCES build -> Outer (companion → enclosing class), got: %s",
 			kotlinRelsSummary(ents))
 	}
@@ -252,7 +252,7 @@ object Factory {
 }
 `
 	ents := runKotlinExtract(t, src)
-	if !hasKotlinRef(ents, "make", "Helper") {
+	if !hasKotlinRef(ents, "Factory.make", "Helper") {
 		t.Fatalf("expected REFERENCES make -> Helper (from object), got: %s",
 			kotlinRelsSummary(ents))
 	}

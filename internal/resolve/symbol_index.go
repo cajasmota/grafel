@@ -807,11 +807,13 @@ func insertModuleEntry(
 	}
 
 	// Kotlin package-scoped indexes (#4375). Mirrors BuildIndex: Kotlin
-	// function entities carry a BARE Name plus kotlin_package /
-	// kotlin_enclosing_type properties.
+	// function entities carry kotlin_package / kotlin_enclosing_type
+	// properties. Since #6499 a member's Name is `Type.method`, so the member
+	// bucket is keyed by the leaf — the call site's `call_leaf` is bare.
 	if me.properties != nil && isOperationKind(me.kind) {
 		if pkg := me.properties["kotlin_package"]; pkg != "" && me.name != "" {
 			if typ := me.properties["kotlin_enclosing_type"]; typ != "" {
+				name := kotlinMemberLeaf(me.name)
 				pkgBucket := idx.byKotlinPkgMember[pkg]
 				if pkgBucket == nil {
 					pkgBucket = make(map[string]map[string]string)
@@ -822,10 +824,10 @@ func insertModuleEntry(
 					typeBucket = make(map[string]string)
 					pkgBucket[typ] = typeBucket
 				}
-				if existing, ok := typeBucket[me.name]; ok && existing != me.id {
-					typeBucket[me.name] = ""
+				if existing, ok := typeBucket[name]; ok && existing != me.id {
+					typeBucket[name] = ""
 				} else {
-					typeBucket[me.name] = me.id
+					typeBucket[name] = me.id
 				}
 			} else {
 				funcBucket := idx.byKotlinPkgFunc[pkg]
