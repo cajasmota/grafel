@@ -96,6 +96,7 @@ func adapters() []Adapter {
 		copilotAdapter{},
 		kiroAdapter{},
 		antigravityAdapter{},
+		opencodeAdapter{},
 	}
 }
 

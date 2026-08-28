@@ -30,7 +30,7 @@ func TestDefaultEnablement_ReproducesAllSixRulesFiles(t *testing.T) {
 // TestDefaultEnablement_MCPTools guards the set of MCP tools grafel
 // registers under the default (all-tools) enablement. Cursor and Codex were
 // added in #5254 alongside the pre-existing Claude + Windsurf; Kiro was added
-// in #5255; Antigravity MCP was wired in #5280.
+// in #5255; Antigravity MCP was wired in #5280; opencode in #6730.
 func TestDefaultEnablement_MCPTools(t *testing.T) {
 	var mcp []mcpreg.Tool
 	for _, a := range tooladapter.EnabledAdapters(nil) {
@@ -39,7 +39,7 @@ func TestDefaultEnablement_MCPTools(t *testing.T) {
 		}
 	}
 	sort.Slice(mcp, func(i, j int) bool { return mcp[i] < mcp[j] })
-	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Codex, mcpreg.Cursor, mcpreg.Windsurf, mcpreg.Kiro, mcpreg.Antigravity}
+	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Codex, mcpreg.Cursor, mcpreg.Windsurf, mcpreg.Kiro, mcpreg.Antigravity, mcpreg.Opencode}
 	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
 	if !reflect.DeepEqual(mcp, want) {
 		t.Fatalf("default MCP tools = %v, want %v", mcp, want)
@@ -110,7 +110,7 @@ func TestLookupAndAllIDs(t *testing.T) {
 	if _, ok := tooladapter.Lookup("does-not-exist"); ok {
 		t.Fatal("unknown id must not resolve")
 	}
-	want := []string{"claude", "codex", "cursor", "windsurf", "codeium", "copilot", "kiro", "antigravity"}
+	want := []string{"claude", "codex", "cursor", "windsurf", "codeium", "copilot", "kiro", "antigravity", "opencode"}
 	if got := tooladapter.AllIDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("AllIDs = %v, want %v", got, want)
 	}
@@ -154,6 +154,38 @@ func TestAntigravityAdapter(t *testing.T) {
 	}
 	if a.SupportsAgentHook() || a.SupportsSkills() {
 		t.Fatalf("antigravity should not support hook/skills")
+	}
+}
+
+// TestOpencodeAdapter checks opencode's targets (#6730). Two of its field
+// values encode decisions that look wrong at a glance and are not:
+//
+//   - RulesFileTargets is AGENTS.md, the SAME file codex owns. opencode really
+//     does read AGENTS.md, so this is deliberate shared ownership rather than a
+//     copy-paste slip; the removal semantics that fall out of it are pinned by
+//     TestApplyToolDelta_OpencodeCodexShareAGENTS in package install.
+//   - SupportsSkills is FALSE even though opencode DOES read skills. It reads
+//     them out of ~/.claude/skills via its Claude-compat fallback — a directory
+//     grafel populates for Claude, globally, not per tool. See the adapter's
+//     comment in adapters.go.
+func TestOpencodeAdapter(t *testing.T) {
+	cfg := &registry.GroupConfig{Tools: []string{"opencode"}}
+	ad := tooladapter.EnabledAdapters(cfg)
+	if len(ad) != 1 || ad[0].ID() != "opencode" {
+		t.Fatalf("expected only opencode adapter, got %v", idsOf(ad))
+	}
+	a := ad[0]
+	if a.DisplayName() != "opencode" {
+		t.Fatalf("opencode display name = %q, want %q (the project lowercases its own name)", a.DisplayName(), "opencode")
+	}
+	if rt := unionRulesTargets(ad); !reflect.DeepEqual(rt, []string{"AGENTS.md"}) {
+		t.Fatalf("opencode rules targets = %v, want [AGENTS.md]", rt)
+	}
+	if !a.SupportsMCP() || a.MCPTool() != mcpreg.Opencode {
+		t.Fatalf("opencode must register Opencode MCP, got supports=%v tool=%q", a.SupportsMCP(), a.MCPTool())
+	}
+	if a.SupportsAgentHook() || a.SupportsSkills() {
+		t.Fatalf("opencode should not support hook/skills (skills reach it via Claude's ~/.claude/skills, not a per-tool copy)")
 	}
 }
 

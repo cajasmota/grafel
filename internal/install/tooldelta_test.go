@@ -124,6 +124,72 @@ func TestApplyToolDelta_DisableCodexKeepsClaudeRules(t *testing.T) {
 	}
 }
 
+// TestApplyToolDelta_OpencodeCodexShareAGENTS pins the SHARED-OWNERSHIP
+// behaviour codex and opencode acquired in #6730 — the tradeoff the owner
+// accepted when opencode was given AGENTS.md rather than a file of its own.
+//
+// Every existing case in this file pairs tools whose rules files are DISJOINT
+// (TestApplyToolDelta_DisableCodexKeepsClaudeRules only looks disjointness in
+// the eye: claude contributes no per-repo target at all since #5702). So the
+// "shared target survives while any owner survives" branch of ApplyToolDelta —
+// subtractTargets(targetsFor(disabled), survivingRules) — had no pair that
+// actually exercised it. codex+opencode is that pair.
+//
+// Case 0 is the POSITIVE CONTROL: it proves opencode owns AGENTS.md on its own
+// and that removal fires at all, so the three "not removed" assertions below
+// mean "held back by a surviving owner" rather than "nothing was ever wired".
+func TestApplyToolDelta_OpencodeCodexShareAGENTS(t *testing.T) {
+	removedFor := func(t *testing.T, prev, next []string) []string {
+		t.Helper()
+		rec, ops := newRecordingOps()
+		if _, err := ApplyToolDelta(cfgWithRepo(), "g", "/bin/grafel", prev, next, &ops); err != nil {
+			t.Fatalf("ApplyToolDelta(%v→%v): %v", prev, next, err)
+		}
+		return rec.rulesRemoved[repoPath]
+	}
+
+	// Case 0 — positive control: opencode alone owns AGENTS.md, and disabling
+	// it strips the file.
+	if got := removedFor(t, []string{"opencode"}, nil); !reflect.DeepEqual(got, []string{"AGENTS.md"}) {
+		t.Fatalf("control: disabling opencode alone removed %v, want [AGENTS.md] "+
+			"(if this is empty, opencode does not own AGENTS.md and the cases below prove nothing)", got)
+	}
+
+	// Case 1 — disable opencode, codex survives: AGENTS.md must STAY.
+	if got := removedFor(t, []string{"codex", "opencode"}, []string{"codex"}); len(got) != 0 {
+		t.Fatalf("disabling opencode removed %v; AGENTS.md must survive while codex still reads it", got)
+	}
+
+	// Case 2 — the mirror: disable codex, opencode survives. AGENTS.md must
+	// STAY. (Without opencode this is exactly what
+	// TestApplyToolDelta_DisableCodexKeepsClaudeRules asserts DOES get removed,
+	// so the two tests together show the surviving-owner check is what moved.)
+	if got := removedFor(t, []string{"codex", "opencode"}, []string{"opencode"}); len(got) != 0 {
+		t.Fatalf("disabling codex removed %v; AGENTS.md must survive while opencode still reads it", got)
+	}
+
+	// Case 3 — last owner out: with BOTH disabled, AGENTS.md is finally removed.
+	if got := removedFor(t, []string{"codex", "opencode"}, nil); !reflect.DeepEqual(got, []string{"AGENTS.md"}) {
+		t.Fatalf("disabling both removed %v, want [AGENTS.md] — no owner is left", got)
+	}
+}
+
+// TestApplyToolDelta_OpencodeMCPIsNotShared is the counterpart on the MCP axis:
+// unlike AGENTS.md, opencode's MCP entry is its OWN file, so disabling opencode
+// while codex survives must still unregister mcpreg.Opencode. This keeps the
+// shared-rules leniency above from being mistaken for a blanket "a surviving
+// tool suppresses every teardown".
+func TestApplyToolDelta_OpencodeMCPIsNotShared(t *testing.T) {
+	rec, ops := newRecordingOps()
+	if _, err := ApplyToolDelta(cfgWithRepo(), "g", "/bin/grafel",
+		[]string{"codex", "opencode"}, []string{"codex"}, &ops); err != nil {
+		t.Fatal(err)
+	}
+	if got := sortedTools(rec.mcpUnregister); !reflect.DeepEqual(got, []string{string(mcpreg.Opencode)}) {
+		t.Fatalf("mcp unregistered = %v, want [%s]", got, mcpreg.Opencode)
+	}
+}
+
 func TestApplyToolDelta_NoChangeNoOps(t *testing.T) {
 	rec, ops := newRecordingOps()
 	res, err := ApplyToolDelta(cfgWithRepo(), "g", "/bin/grafel",
