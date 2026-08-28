@@ -1160,6 +1160,7 @@ func TestInstall_SkipsAbsentHost(t *testing.T) {
 		{"Zed", DetectZedPaths},
 		{"Kiro", DetectKiroPaths},
 		{"Antigravity", DetectAntigravityPaths},
+		{"Opencode", DetectOpencodePaths},
 	}
 	for _, h := range hosts {
 		t.Run(h.name, func(t *testing.T) {
