@@ -26,6 +26,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/treesitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -85,6 +86,19 @@ func astDrivenRouteTargets(result *DetectResult) map[string]string {
 		}
 	}
 	return out
+}
+
+// topChildTypes6499 lists a root node's immediate child types, for failure
+// messages that need to show HOW a fixture parsed.
+func topChildTypes6499(root ts.Node) string {
+	var b strings.Builder
+	for i := 0; i < int(root.ChildCount()); i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(root.Child(i).Type())
+	}
+	return b.String()
 }
 
 // TestKotlinSpring6499_RouteEdgeTargetsQualifiedHandler pins edit site 2 (the
@@ -251,63 +265,130 @@ class Outer {
 	}
 }
 
-// TestKotlinSpring6499_TopLevelFunctionIsNotAHandlerShape records why this arm
-// ships no "top-level handler stays bare" fixture: the shape is UNREACHABLE in
-// this pass. walkKotlinClasses descends only into class_declaration nodes, and
-// processKotlinSpringClass reads handlers from that class's class_body — so a
-// top-level `fun` can never become a Spring handler here, whatever annotation
-// it carries, and there is no bare-name branch left to exercise.
-//
-// This asserts that unreachability rather than asserting on a fixture invented
-// to look like it. The positive control is a SEPARATE file whose only
-// difference is that the annotated handler sits inside a controller class: it
-// routes. The top-level file, with the same annotations and the same
-// @RestController marker text present, emits nothing.
-func TestKotlinSpring6499_TopLevelFunctionIsNotAHandlerShape(t *testing.T) {
-	// Positive control — the in-class shape this pass DOES reach.
-	control := detectKotlin6499(t, "src/main/kotlin/Kept.kt", `package io.shipfast.toplevel
+// scopedControllerSrc6499 renders the SAME controller under a chosen Kotlin
+// declaration keyword. `class` yields a class_declaration; `object` yields an
+// object_declaration. Everything else — annotations, paths, the handler
+// function, the member name — is byte-identical, so the declaration node type
+// is the ONLY variable between the two renderings.
+func scopedControllerSrc6499(keyword string) string {
+	return `package io.shipfast.scoped
 
 import org.springframework.web.bind.annotation.*
 
 @RestController
-@RequestMapping("/api/top")
-class RealController {
+@RequestMapping("/api/scoped")
+` + keyword + ` ScopedController {
 
-    @GetMapping("/kept")
-    fun kept(): String = "ok"
+    @GetMapping("/ping")
+    fun ping(): String = "pong"
 }
-`)
-	controlTargets := astDrivenRouteTargets(control)
-	got, ok := controlTargets["http:GET:/api/top/kept"]
+`
+}
+
+// TestKotlinSpring6499_PassIsScopedToClassDeclarations pins the reach of this
+// pass — the reason arm 3 ships no "top-level handler stays bare" fixture.
+//
+// walkKotlinClasses descends only into `class_declaration`, and
+// processKotlinSpringClass reads handlers from that class's class_body. So the
+// only handler shape this pass can address is a method of a class, and the
+// bare-name branch the pre-#6499 code needed has no reachable caller left.
+//
+// The discriminator is one KEYWORD. Both renderings are valid Kotlin that
+// tree-sitter parses into a proper declaration node (`class_declaration` vs
+// `object_declaration`); both carry the same @RestController, the same
+// class-level @RequestMapping and the same annotated `ping` handler. Only the
+// class version routes.
+//
+// An earlier version of this test used an annotated TOP-LEVEL `fun` as the
+// negative. That fixture was vacuous: tree-sitter-kotlin does not parse an
+// annotated top-level function as a function_declaration at all (it degrades to
+// a prefix_expression), so the absent route was attributable to the parse, not
+// to the walk's scoping — the assertion would have held even if the walk
+// visited every node in the file. The object/class pair cannot be confused that
+// way, and the same-file control below proves it.
+//
+// NOTE this pins the pass's CURRENT reach, not a desirable end state: a Kotlin
+// `object` Spring controller is unusual but legal, and this pass does not see
+// it. Recorded as a boundary, not endorsed. #6736 tracks a larger reach hole in
+// the same walk.
+func TestKotlinSpring6499_PassIsScopedToClassDeclarations(t *testing.T) {
+	// Positive control — the class rendering routes, with the qualified target.
+	classTargets := astDrivenRouteTargets(
+		detectKotlin6499(t, "src/main/kotlin/ScopedController.kt", scopedControllerSrc6499("class")))
+	got, ok := classTargets["http:GET:/api/scoped/ping"]
 	if !ok {
-		t.Fatalf("positive control failed: no ast_driven ROUTES_TO from http:GET:/api/top/kept; got %v", controlTargets)
+		t.Fatalf("positive control failed: the class rendering emitted no ast_driven ROUTES_TO "+
+			"from http:GET:/api/scoped/ping; got %v", classTargets)
 	}
-	if got != "SCOPE.Operation:RealController.kept" {
-		t.Errorf("ROUTES_TO target = %q, want %q", got, "SCOPE.Operation:RealController.kept")
+	if got != "SCOPE.Operation:ScopedController.ping" {
+		t.Errorf("ROUTES_TO target = %q, want %q", got, "SCOPE.Operation:ScopedController.ping")
 	}
 
-	// The same handler, hoisted to file top level. `@RestController` is still
-	// present in the file so the pass's cheap byte gate does not short-circuit
-	// — the pass really runs and really finds no class to walk.
-	loose := detectKotlin6499(t, "src/main/kotlin/Loose.kt", `package io.shipfast.toplevel
+	objSrc := scopedControllerSrc6499("object")
 
-import org.springframework.web.bind.annotation.*
-
-// @RestController — deliberately not on a class; nothing here is a handler.
-
-@RequestMapping("/api/top")
-@GetMapping("/loose")
-fun loose(): String = "nope"
-`)
-	if looseTargets := astDrivenRouteTargets(loose); len(looseTargets) != 0 {
-		t.Errorf("top-level fun produced ast_driven routes %v; the pass is class-scoped "+
-			"(walkKotlinClasses descends only into class_declaration) and must not reach it",
-			looseTargets)
+	// Same-file control — the object rendering PARSES and really does contain
+	// the annotated handler, which the Kotlin extractor lands as a qualified
+	// SCOPE.Operation. Without this, "no route" could not be told apart from
+	// "the fixture did not parse" — the exact hole the top-level `fun` version
+	// of this test fell into.
+	pr, err := treesitter.NewParserFactory(nil).
+		Parse(context.Background(), []byte(objSrc), "kotlin")
+	if err != nil {
+		t.Fatalf("object rendering failed to parse: %v", err)
 	}
-	for _, e := range loose.Entities {
+	defer pr.TSTree.Close()
+	root := pr.TSTree.RootNode()
+	foundObjDecl := false
+	for i := 0; i < int(root.ChildCount()); i++ {
+		switch root.Child(i).Type() {
+		case "object_declaration":
+			foundObjDecl = true
+		case "class_declaration":
+			t.Fatalf("fixture control failed: the object rendering parsed a class_declaration; "+
+				"the two renderings are no longer distinguished by declaration kind (top children: %s)",
+				topChildTypes6499(root))
+		}
+	}
+	if !foundObjDecl {
+		t.Fatalf("fixture control failed: no object_declaration in the object rendering — it did not "+
+			"parse as a declaration, so a missing route would prove nothing about scoping "+
+			"(top children: %s)", topChildTypes6499(root))
+	}
+	ext, ok := extractor.Get("kotlin")
+	if !ok {
+		t.Fatalf("positive control failed: no registered kotlin extractor")
+	}
+	objEnts, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path: "src/main/kotlin/ScopedObject.kt", Content: []byte(objSrc),
+		Language: "kotlin", TSTree: pr.TSTree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	handlerSeen := false
+	for i := range objEnts {
+		if objEnts[i].Kind == "SCOPE.Operation" && objEnts[i].Name == "ScopedController.ping" {
+			handlerSeen = true
+		}
+	}
+	if !handlerSeen {
+		t.Fatalf("fixture control failed: the object rendering yielded no SCOPE.Operation " +
+			"ScopedController.ping, so its handler is not a real declaration in this fixture")
+	}
+
+	// The claim: an object_declaration carrying the identical controller
+	// annotations produces NO ast_driven route, because the walk never reaches
+	// it — not because anything about the file failed to parse.
+	objTargets := astDrivenRouteTargets(
+		detectKotlin6499(t, "src/main/kotlin/ScopedObject.kt", objSrc))
+	if len(objTargets) != 0 {
+		t.Errorf("object rendering produced ast_driven routes %v; walkKotlinClasses descends only "+
+			"into class_declaration and must not reach an object_declaration", objTargets)
+	}
+	for _, e := range detectKotlin6499(t, "src/main/kotlin/ScopedObject.kt", objSrc).Entities {
 		if e.Kind == httpEndpointDefinitionKind && e.Properties["pattern_type"] == "ast_driven" &&
-			strings.Contains(e.Properties["source_handler"], "loose") {
-			t.Errorf("top-level fun produced an ast_driven endpoint with source_handler %q",
+			strings.Contains(e.Properties["source_handler"], "ping") {
+			t.Errorf("object rendering produced an ast_driven endpoint with source_handler %q",
 				e.Properties["source_handler"])
 		}
 	}

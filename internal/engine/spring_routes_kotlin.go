@@ -280,8 +280,17 @@ func kotlinSpringHandlerRef(className, methodName string) string {
 //
 // A `nodeFieldText(node, "name", src)` attempt in front of the scan was
 // measured to be DEAD: deleting it leaves the whole internal/engine suite
-// green, because the field never exists. Left out rather than kept as an
-// unreachable, untestable branch.
+// green, because the field never exists. Independently confirmed from the
+// grammar across 18 Kotlin shapes — ChildByFieldName("name") is nil in every
+// one, and FieldNameForChild is "" for every child, because
+// tree-sitter-kotlin attaches no fields to these nodes at all. Left out rather
+// than kept as an unreachable, untestable branch.
+//
+// Caveat for whoever touches the other side: buildComponent
+// (internal/extractors/kotlin/kotlin.go:711) still carries the same dead
+// childFieldText(node, "name", …) attempt, so "mirrors buildComponent" above is
+// true of the LIVE path only — the two producers now differ in shape. Removing
+// it there is a separate, extractor-side change.
 func kotlinDeclaredTypeName(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
