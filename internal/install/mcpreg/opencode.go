@@ -27,6 +27,7 @@ package mcpreg
 // a local stdio process.
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,12 +73,27 @@ func newOpencodeEntry(binPath string) opencodeEntry {
 //
 // Dispatch is on BASENAME, deliberately mirroring isTOML's dispatch on
 // extension: the format has to be derivable from the path ALONE, because
-// UnregisterPath and HasGrafelEntry are called by the uninstall loop and the
-// wizard's tool detector with nothing but a recorded path and no tool
-// identity. Extension cannot separate opencode from Cursor/Kiro — all three
-// are `.json` — so the filename is the next-narrowest discriminator that
+// UnregisterPath is driven by the uninstall loop over RECORDED PATHS with no
+// tool identity in scope (internal/install/uninstall.go, internal/cli/
+// uninstall.go). Extension cannot separate opencode from Cursor/Kiro — all
+// three are `.json` — so the filename is the next-narrowest discriminator that
 // preserves that property. `opencode.jsonc` is accepted too because opencode
 // documents comments in its config and users name the file accordingly.
+//
+// (HasGrafelEntry's only production caller, mcptools.go, DOES have the adapter
+// in scope and could pass a discriminator. UnregisterPath alone is what forces
+// path-derived dispatch; HasGrafelEntry follows it for consistency rather than
+// out of necessity.)
+//
+// KNOWN LIMITATION — this is too NARROW, never too broad. opencode honours an
+// OPENCODE_CONFIG env var pointing at an arbitrary filename. A config living
+// at such a path does not match here and would fall to the generic JSON arm,
+// which writes `mcpServers` — the exact silent never-loads failure this file
+// exists to prevent. It is a COVERAGE gap rather than a corruption risk:
+// grafel only ever writes its own canonical SettingsPath, so it cannot reach
+// such a file on its own. Following OPENCODE_CONFIG is deliberately NOT done —
+// one canonical global path per tool is how grafel treats every other host
+// (ADR-0004).
 func isOpencode(path string) bool {
 	switch strings.ToLower(filepath.Base(path)) {
 	case "opencode.json", "opencode.jsonc":
@@ -116,9 +132,63 @@ func readOpencode(path string) (hujson.Value, bool, error) {
 	return v, existing, nil
 }
 
+// indentInsertedMember gives a freshly inserted object member the same leading
+// indentation as the sibling above it.
+//
+// hujson's patch inserts with no leading extra at all, so a multi-line config
+// gets `},"grafel":{…}` jammed onto the previous member's closing line. Valid
+// JSON, but not something to hand back to a user who formatted the file.
+//
+// Only the whitespace run AFTER the sibling's last newline is copied, never the
+// sibling's whole BeforeExtra: that extra can contain the user's comment (`//
+// a server I already had`), and copying it would DUPLICATE that comment onto
+// grafel's entry. This is a formatting fix; it must not invent content.
+//
+// It is deliberately a no-op unless the object is already multi-line and the
+// member we inserted is the last one — there is nothing to match otherwise, and
+// guessing would be the reflow this package refuses to do.
+func indentInsertedMember(v *hujson.Value, ptr, name string) {
+	found := v.Find(ptr)
+	if found == nil {
+		return
+	}
+	obj, ok := found.Value.(*hujson.Object)
+	if !ok || len(obj.Members) < 2 {
+		return
+	}
+	last := len(obj.Members) - 1
+	lit, ok := obj.Members[last].Name.Value.(hujson.Literal)
+	if !ok || lit.Kind() != '"' || lit.String() != name {
+		return
+	}
+	prev := obj.Members[last-1].Name.BeforeExtra
+	nl := bytes.LastIndexByte(prev, '\n')
+	if nl < 0 {
+		return // single-line object: leave it single-line
+	}
+	indent := make([]byte, 0, 1+len(prev)-nl-1)
+	indent = append(indent, '\n')
+	indent = append(indent, prev[nl+1:]...)
+	obj.Members[last].Name.BeforeExtra = indent
+}
+
+// isJSONNull reports whether a resolved value is the literal `null`.
+func isJSONNull(v *hujson.Value) bool {
+	lit, ok := v.Value.(hujson.Literal)
+	return ok && lit.Kind() == 'n'
+}
+
+// isJSONObject reports whether a resolved value is a JSON object.
+func isJSONObject(v *hujson.Value) bool {
+	_, ok := v.Value.(*hujson.Object)
+	return ok
+}
+
 // opencodeObject returns the object at ptr, or nil when the pointer resolves
 // to something that is not an object (including a JSON null, which is what a
-// user who commented their whole `mcp` block out leaves behind).
+// user who commented their whole `mcp` block out leaves behind — on the
+// UNREGISTER side there is nothing to remove from a null, so nil here makes it
+// a no-op; registerOpencode replaces it, see there).
 func opencodeObject(v *hujson.Value, ptr string) *hujson.Object {
 	found := v.Find(ptr)
 	if found == nil {
@@ -187,19 +257,35 @@ func registerOpencode(path, binPath string) error {
 	}
 
 	ptr := "/" + opencodeServersKey
-	if found := v.Find(ptr); found == nil {
+	found := v.Find(ptr)
+	switch {
+	case found == nil:
 		if err := applyOpencodePatch(&v, path, "add", ptr, map[string]any{}); err != nil {
 			return err
 		}
-	} else if _, isObj := found.Value.(*hujson.Object); !isObj {
-		// Something non-object already occupies `mcp`. Replacing it would
-		// destroy real user data, so refuse the way mcpServersOf does.
+	case isJSONNull(found):
+		// `"mcp": null` is treated as ABSENT and replaced with an object,
+		// exactly as mcpServersOf treats `"mcpServers": null` (`!present ||
+		// raw == nil` → empty map). This is not a hypothetical shape: it is
+		// what a user who commented out the whole `mcp` block, or who left a
+		// key behind while disabling every server, has on disk. A null carries
+		// no data, so replacing it destroys nothing — which is precisely why
+		// the JSON arm tolerates it, and refusing here would have given
+		// opencode a stricter contract than every other host for no reason.
+		if err := applyOpencodePatch(&v, path, "replace", ptr, map[string]any{}); err != nil {
+			return err
+		}
+	case !isJSONObject(found):
+		// Any OTHER non-object (array, string, number, bool) is real user data
+		// whose replacement would destroy something. Refuse the way
+		// mcpServersOf does.
 		return fmt.Errorf("%s: %w: %q is not an object", filepath.Base(path), ErrMalformedConfig, opencodeServersKey)
 	}
 
 	if err := applyOpencodePatch(&v, path, "add", ptr+"/"+ServerName, newOpencodeEntry(binPath)); err != nil {
 		return err
 	}
+	indentInsertedMember(&v, ptr, ServerName)
 	return writeOpencode(path, v, !existing)
 }
 
