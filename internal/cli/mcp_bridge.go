@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -332,13 +334,43 @@ func bridgeBackoffForAttempt(n int) time.Duration {
 //   - the daemon's "restarting — retry" drain sentinel (#5633), which arrives
 //     as a plain error string over the wire (net/rpc collapses the typed error
 //     to ServerError(text)), so we string-match it.
+//   - syscall-level transport death: EPIPE / ECONNRESET / net.ErrClosed (#6722)
+//
+// On the syscall set (#6722): measured on macOS + AF_UNIX + net/rpc/jsonrpc,
+// a peer teardown is RACE-DEPENDENT. If the client's read loop notices the
+// closed peer first, the call fails with rpc.ErrShutdown / io.ErrUnexpectedEOF
+// (already covered above). If the request write wins that race, it fails with
+// a raw &net.OpError{Op:"write", Err: syscall.EPIPE} — "broken pipe" — which
+// the pre-#6722 classifier called a genuine tool failure. That branch is the
+// #6722 field bug: the error was returned without dropping the cached client,
+// so every later call reused the dead connection. ECONNRESET is the sibling
+// outcome of the same race; net.ErrClosed covers a call racing the bridge's own
+// teardown and is portable.
+//
+// These two POSIX sentinels do NOT cover Windows, and this comment previously
+// claimed they did. Go defines syscall.EPIPE / ECONNRESET on Windows as
+// synthetic APPLICATION_ERROR-offset values, not real Win32 codes: they compile
+// without a build tag and can never false-positive, but a named-pipe teardown
+// surfaces ERROR_BROKEN_PIPE (109) / ERROR_PIPE_NOT_CONNECTED (233), which will
+// never match them. On Windows the repair comes entirely from the unconditional
+// resetRPCClient in callDaemon (#6722 defect 2), which is platform-independent
+// — that is the fix that matters there, not this classifier.
+//
+// Matching is by errors.Is on
+// the sentinel only — never on the error text — so a tool result that happens
+// to *mention* "broken pipe" still fails fast instead of burning the retry
+// budget. See TestBridge_PeerTeardown_SurfacesRetryableTransportErrors, which
+// pins the measurement this rests on.
 func isRetryableRPCErr(err error) bool {
 	if err == nil {
 		return false
 	}
 	if errors.Is(err, rpc.ErrShutdown) ||
 		errors.Is(err, io.EOF) ||
-		errors.Is(err, io.ErrUnexpectedEOF) {
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, net.ErrClosed) {
 		return true
 	}
 	return strings.Contains(err.Error(), daemon.ErrDaemonDrainingMsg)
@@ -414,6 +446,18 @@ func (b *bridge) callDaemon(ctx context.Context, method string, args, reply any)
 			return nil
 		}
 		lastErr = callErr
+		// #6722: drop the cached client on ANY call error, before deciding
+		// whether to retry. Invalidation and classification are separate
+		// questions and coupling them is what made a daemon restart
+		// unrecoverable: an error the classifier did not recognise returned
+		// here with b.rpcClient still pointing at the old connection, so every
+		// later call reused it and failed identically — forever, until the MCP
+		// client was restarted. Classification decides only whether to retry
+		// *this* call; it must never decide whether the connection is kept.
+		//
+		// Cost is one redial (~300µs, #1671) on the call after a genuine tool
+		// error, which is not on any hot path.
+		b.resetRPCClient()
 		if !isRetryableRPCErr(callErr) {
 			// Genuine failure (bad args, tool error, unknown method) — do not
 			// retry; surface it to the caller immediately.
