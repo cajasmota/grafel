@@ -403,6 +403,103 @@ func TestOpencode_ToleratesNullContainer(t *testing.T) {
 	})
 }
 
+// TestOpencode_RefusesNonObjectContainer pins the branch that separates the
+// tolerated null from every other non-object.
+//
+// registerOpencode's comment claims: "Any OTHER non-object (array, string,
+// number, bool) is real user data whose replacement would destroy something."
+// That is a claim about NOT DESTROYING A USER'S CONFIG, and until this test it
+// was pure prose — widening `case isJSONNull(found)` to `case
+// !isJSONObject(found)` made the refusal branch unreachable and silently
+// replaced any such value with an empty object, and the whole package stayed
+// green.
+//
+// This is a DIFFERENT path from TestOpencode_MalformedJSONCIsRefusedNotRewritten:
+// there the file does not parse at all. Here it is perfectly well-formed
+// HuJSON and the value under `mcp` is simply not a container grafel may write
+// into. Arrays and scalars are covered separately because they take different
+// hujson paths (*hujson.Array vs hujson.Literal).
+func TestOpencode_RefusesNonObjectContainer(t *testing.T) {
+	home := withHome(t)
+
+	cases := []struct {
+		name string
+		mcp  string // the JSON value placed under "mcp"
+	}{
+		{"array", `["something"]`},
+		{"string", `"grafel"`},
+		{"number", `42`},
+		{"bool", `true`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := filepath.Join(home, ".config", "opencode-"+tc.name)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "opencode.json")
+			seed := `{"theme":"tokyonight","mcp":` + tc.mcp + `}`
+			if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			// Sanity: the seed really is well-formed, so this test is about the
+			// VALUE's type and not about a parse failure.
+			if _, err := hujson.Parse([]byte(seed)); err != nil {
+				t.Fatalf("seed is not well-formed HuJSON, so this test is not exercising what it claims: %v", err)
+			}
+
+			_, err := RegisterPath(path, "/usr/local/bin/grafel")
+			if err == nil {
+				b, _ := os.ReadFile(path)
+				t.Fatalf("RegisterPath overwrote a %s under mcp instead of refusing it.\n"+
+					"That value is the user's data; replacing it destroys something.\nfile is now: %s", tc.name, b)
+			}
+			if !errors.Is(err, ErrMalformedConfig) {
+				t.Fatalf("RegisterPath error = %v, want ErrMalformedConfig", err)
+			}
+			if b, _ := os.ReadFile(path); string(b) != seed {
+				t.Fatalf("RegisterPath modified a file it refused:\n got: %s\nwant: %s", b, seed)
+			}
+
+			// UnregisterPath is a NO-OP here, not an error, and that is
+			// deliberate parity rather than laxity: the mcpServers arm reaches
+			// `servers, _ := doc["mcpServers"].(map[string]any); if servers ==
+			// nil { return nil }` for exactly this shape. There is no grafel
+			// entry inside a non-object, so there is nothing to remove, and an
+			// uninstall must not fail on a config it never wrote to.
+			if err := UnregisterPath(path); err != nil {
+				t.Fatalf("UnregisterPath on a %s under mcp = %v, want nil (no-op)", tc.name, err)
+			}
+			if b, _ := os.ReadFile(path); string(b) != seed {
+				t.Fatalf("UnregisterPath modified a file with nothing to remove:\n got: %s\nwant: %s", b, seed)
+			}
+
+			// Parity control: the JSON arm behaves the same way for the
+			// equivalent mcpServers shape. If this ever stops holding, the
+			// premise of the two assertions above is wrong, not just their
+			// expected values.
+			jsonPath := filepath.Join(dir, "mcp.json")
+			jsonSeed := `{"mcpServers":` + tc.mcp + `}`
+			if err := os.WriteFile(jsonPath, []byte(jsonSeed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := RegisterPath(jsonPath, "/usr/local/bin/grafel"); !errors.Is(err, ErrMalformedConfig) {
+				t.Fatalf("the JSON arm accepts a %s container (err = %v), so the parity premise is wrong", tc.name, err)
+			}
+			if err := UnregisterPath(jsonPath); err != nil {
+				t.Fatalf("the JSON arm errors unregistering a %s container (err = %v), so the parity premise is wrong", tc.name, err)
+			}
+
+			// And a refused config is never reported as registered.
+			if HasGrafelEntry(path) {
+				t.Fatalf("HasGrafelEntry = true for a %s under mcp", tc.name)
+			}
+		})
+	}
+}
+
 // TestOpencode_MalformedJSONCIsRefusedNotRewritten: genuinely unparseable
 // content is reported as ErrMalformedConfig — the USER's file is broken, not
 // grafel's write — and the file is left byte-identical. The failure mode this
