@@ -77,27 +77,49 @@ func TestAbsentExpectedRelationshipsIsHardErrorWithNoEntitiesEither_6490(t *test
 	}
 }
 
-// TestEmptyExpectedRelationshipsIsAccepted_6490 pins the other half. Without
-// this the hard error could be implemented as "reject any fixture with no
-// rows", which would make the explicit empty array — the deliberate, visible
-// "we assert nothing here" marker this arm introduces — unusable, and would
-// make absence and emptiness indistinguishable again, just in the other
-// direction.
-func TestEmptyExpectedRelationshipsIsAccepted_6490(t *testing.T) {
-	dir := writeExpectedJSON(t, `  "fixture_name": "empty-array-mini",
+// TestEmptyExpectedRelationshipsIsDeclaredButNotSufficient_6490 pins the
+// other half of the absent-vs-empty distinction, which still matters: an
+// empty array is a DECLARATION, and must be rejected for a different reason
+// than an absent key — it fails the must-have floor, not the key check.
+//
+// Without this the absent-key error could be implemented as "reject any
+// fixture with no rows", which would make absence and emptiness
+// indistinguishable again, just in the other direction. The two errors are
+// therefore asserted to be different errors, by their text.
+func TestEmptyExpectedRelationshipsIsDeclaredButNotSufficient_6490(t *testing.T) {
+	empty := writeExpectedJSON(t, `  "fixture_name": "empty-array-mini",
   "language": "php",
   "description": "explicitly asserts nothing",
   "expected_entities": [{"name": "App", "kind": "SCOPE.Component", "must_exist": true}],
   "expected_relationships": []`)
+	absent := writeExpectedJSON(t, `  "fixture_name": "absent-key-mini",
+  "language": "php",
+  "description": "declines to assert",
+  "expected_entities": [{"name": "App", "kind": "SCOPE.Component", "must_exist": true}]`)
 
-	fix, err := LoadFixture(dir)
-	if err != nil {
-		t.Fatalf("LoadFixture rejected an explicit empty expected_relationships array: %v\n"+
-			"an empty array is a legitimate declaration; only an absent key is an error", err)
+	emptyErr, absentErr := mustLoadError(t, empty), mustLoadError(t, absent)
+	if !strings.Contains(emptyErr, "must-have") {
+		t.Fatalf("an explicit empty array must be rejected for asserting nothing, not "+
+			"for omitting the key: %s", emptyErr)
 	}
-	if len(fix.ExpectedRelationships) != 0 {
-		t.Fatalf("expected_relationships: got %d rows, want 0", len(fix.ExpectedRelationships))
+	if !strings.Contains(absentErr, "is required") {
+		t.Fatalf("an absent key must still be rejected as a missing declaration: %s", absentErr)
 	}
+	if emptyErr == absentErr {
+		t.Fatalf("empty and absent produce the identical error %q — the loader has "+
+			"collapsed the two shapes it exists to distinguish", emptyErr)
+	}
+}
+
+// mustLoadError fails the test unless LoadFixture rejects dir, and returns the
+// error text.
+func mustLoadError(t *testing.T, dir string) string {
+	t.Helper()
+	_, err := LoadFixture(dir)
+	if err == nil {
+		t.Fatalf("LoadFixture accepted %s, want an error", dir)
+	}
+	return err.Error()
 }
 
 // TestNullExpectedRelationshipsIsHardError_6490 closes the obvious hole in a
@@ -154,6 +176,7 @@ func TestEveryGoldenFixtureDeclaresExpectedRelationships_6490(t *testing.T) {
 	}
 	var missing []string
 	var assertsNoMustHave []string
+	var loadErrs []string
 	fixtures := 0
 	for _, e := range ents {
 		if !e.IsDir() {
@@ -190,9 +213,12 @@ func TestEveryGoldenFixtureDeclaresExpectedRelationships_6490(t *testing.T) {
 			assertsNoMustHave = append(assertsNoMustHave, e.Name())
 		}
 
-		// And the loader must agree with the raw read.
+		// And the loader must agree with the raw read. Collected rather than
+		// fatal so the report names EVERY offending fixture in one run —
+		// arm B is scoped from this list, and a first-failure abort would
+		// hand it a list of one.
 		if _, err := LoadFixture(filepath.Join(goldenDir, e.Name())); err != nil {
-			t.Fatalf("%s: LoadFixture: %v", e.Name(), err)
+			loadErrs = append(loadErrs, e.Name()+": "+err.Error())
 		}
 	}
 	if len(missing) != 0 {
@@ -207,13 +233,24 @@ func TestEveryGoldenFixtureDeclaresExpectedRelationships_6490(t *testing.T) {
 		t.Fatalf("inspected %d golden fixtures, want 26 — the corpus size changed, so this "+
 			"test's coverage claim needs re-deriving rather than silently shrinking", fixtures)
 	}
-	// Not a failure — the count is recorded so that #6490 arm B, which writes
-	// real rows, has a number to move and cannot claim progress without it.
+	// A FAILURE, not a t.Logf. It was a log while arm A only required the key
+	// to be declared; the owner's decision on #6490 makes a zero-must-have
+	// assertion a hard grader failure, and a count that is only logged is the
+	// same unfailable gate one level up.
 	//
 	// The debt is counted in MUST-HAVE rows, not in rows: haskell-warp-mini
 	// carries three rows that are all `must_exist:false`, so counting rows
 	// would report 8 and hand arm B a number two short of its own debt — the
 	// nine fixtures baseline.json records at `relationship_expected: 0`.
-	t.Logf("golden fixtures asserting NO must-have relationship (arm B owes these "+
-		"real rows): %d %v", len(assertsNoMustHave), assertsNoMustHave)
+	//
+	// These fixtures are EXPECTED to be red until arm B writes their rows. Do
+	// not close this by relaxing the loader or by stamping the opt-in on them.
+	if len(assertsNoMustHave) != 0 {
+		t.Errorf("golden fixtures asserting NO must-have relationship: %d %v\n"+
+			"each of these grades its language's edge extraction with nothing — #6490 "+
+			"arm B owes them real must_exist rows", len(assertsNoMustHave), assertsNoMustHave)
+	}
+	if len(loadErrs) != 0 {
+		t.Errorf("golden fixtures LoadFixture now rejects:\n  %s", strings.Join(loadErrs, "\n  "))
+	}
 }

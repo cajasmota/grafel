@@ -9,5 +9,27 @@
     { "name": "http:PUT:/invoices/{id}", "kind": "http_endpoint_definition", "must_exist": true },
     { "name": "http:DELETE:/invoices/{id}", "kind": "http_endpoint_definition", "must_exist": true }
   ],
-  "expected_relationships": []
+  "expected_relationships": [
+    { "from_name": "restapi/v1/index.php", "from_kind": "SCOPE.Component", "from_file": "restapi/v1/index.php",
+      "kind": "IMPORTS", "to_bare_name": "Slim\\Factory\\AppFactory",
+      "must_exist": true,
+      "note": "#6490 arm B. `use Slim\\Factory\\AppFactory;` — the fully-qualified external class, kept fully qualified in the edge target." },
+    { "from_name": "restapi/v1/index.php", "from_kind": "SCOPE.Component", "from_file": "restapi/v1/index.php",
+      "kind": "IMPORTS", "to_name": "psr", "to_kind": "SCOPE.External",
+      "must_exist": true,
+      "note": "`use Psr\\Http\\Message\\ResponseInterface as Response;` and `…ServerRequestInterface as Request;`. Both collapse onto one lowercased package stub named `psr`, which loses ResponseInterface/ServerRequestInterface entirely — see the FINDING rows below. The edge itself is real and must not disappear." },
+
+    { "from_name": "restapi/v1/index.php", "from_kind": "SCOPE.Component", "from_file": "restapi/v1/index.php",
+      "kind": "CONTAINS", "to_name": "http:GET:/invoices", "to_kind": "http_endpoint_definition", "to_file": "restapi/v1/index.php",
+      "must_exist": false, "nice_to_have": true,
+      "note": "#6490 arm B FINDING: the five endpoints are declared by this one file and NOTHING anchors them to it. Their only inbound edge is the repo-level `Module php-slim-mini CONTAINS …` produced by module aggregation, which is emitted for every entity in the graph and so distinguishes nothing." },
+    { "from_name": "http:GET:/invoices", "from_kind": "http_endpoint_definition", "from_file": "restapi/v1/index.php",
+      "kind": "IMPLEMENTS", "to_bare_name": "restapi/v1/index.php:closure",
+      "must_exist": false, "nice_to_have": true,
+      "note": "#6490 arm B FINDING, and the reason this fixture can assert so little: `$app->get('/invoices', function (Request $request, Response $response) { … })` registers an ANONYMOUS handler, and the PHP extractor emits no Operation entity for a route closure. With no handler entity there can be no ROUTES_TO and no IMPLEMENTS, so all five endpoints are dead ends and the request-handling flow this fixture exists to model is absent from the graph. Compare java-spring-mini, where every endpoint carries an IMPLEMENTS edge back to its handler method." },
+    { "from_name": "restapi/v1/index.php", "from_kind": "SCOPE.Component", "from_file": "restapi/v1/index.php",
+      "kind": "IMPORTS", "to_bare_name": "Psr\\Http\\Message\\ResponseInterface",
+      "must_exist": false, "nice_to_have": true,
+      "note": "#6490 arm B FINDING: PHP `use` of a namespaced class keeps its full path only for Slim\\Factory\\AppFactory (matched above); the two Psr imports are truncated to a lowercase vendor stub `psr` and deduplicated into one another, so the aliases `Response` and `Request` used throughout the route bodies bind to nothing." }
+  ]
 }
