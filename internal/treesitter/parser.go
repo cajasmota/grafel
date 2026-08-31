@@ -279,6 +279,19 @@ func (f *ParserFactory) parseOfficial(span trace.Span, source []byte, language s
 		return nil, fmt.Errorf("treesitter: parse produced nil tree for language %s", language)
 	}
 
+	// #6736 — tree-sitter-kotlin misparses a top-level declaration that carries
+	// two or more annotations and is not the last construct in the file, WITHOUT
+	// producing a single ERROR node. Repair it here, before the ratio and the
+	// error-skipping wrapper below, so every downstream consumer (the Kotlin
+	// extractor as well as the Spring route pass) sees the declaration. Kotlin
+	// only, and a no-op — no re-parse, no wrapper — unless the misparse
+	// signature is actually present. See kotlin_annot_repair.go.
+	if language == "kotlin" {
+		if repaired, ok := repairKotlinAnnotationMisparse(p, source, tree); ok {
+			tree = repaired
+		}
+	}
+
 	total, errNodes := countNodesTS(tree.RootNode())
 	errorRatio := ratio(total, errNodes)
 	setParseSpan(span, language, len(source), errorRatio, total)
