@@ -328,9 +328,12 @@ func TestV2CreateGroupFromScan_RequiresRepos(t *testing.T) {
 // TestV2DetectMCPTools returns the detected MCP-capable tools with the smart
 // default (#5344). HOME is redirected to an isolated dir holding one Claude
 // config so the detector sees exactly one tool, default-checked (recent).
+// #6735: isolated via testsupport.IsolateHome rather than a hand-rolled
+// t.Setenv("HOME", …), so GRAFEL_HOME and USERPROFILE move with HOME. The
+// XDG_CONFIG_HOME line stays because this test wants the detector pointed at
+// <home>/.config specifically, not at IsolateHome's <home>/cfg default.
 func TestV2DetectMCPTools(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := testsupport.IsolateHome(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	// A fresh ~/.claude.json (recent mtime) → detected + default-checked.
 	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{}}`), 0o644); err != nil {
