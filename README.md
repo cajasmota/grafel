@@ -182,7 +182,7 @@ After `grafel install`, the daemon registers itself as an MCP server in your Cla
 | [docs/mcp-tools.md](docs/mcp-tools.md) | MCP tool catalogue and pointer to full schema |
 | [docs/install.md](docs/install.md) | Full install matrix (script, binary, source, dev mode) |
 | [docs/tools.md](docs/tools.md) | Supported AI coding tools matrix + per-tool enable/disable (CLI + web) |
-| [docs/setup-per-tool.md](docs/setup-per-tool.md) | Step-by-step "set up grafel in my tool" guide (Claude Code, Codex, Cursor, Windsurf, Kiro, Antigravity, Codeium, Copilot) |
+| [docs/setup-per-tool.md](docs/setup-per-tool.md) | Step-by-step "set up grafel in my tool" guide (Claude Code, Codex, Cursor, Windsurf, Kiro, Antigravity, opencode, Codeium, Copilot) |
 | [docs/agent-hosts.md](docs/agent-hosts.md) | Per-agent setup (Claude Code, Cursor, Windsurf, Continue, Aider, Cline) |
 | [skills/README.md](skills/README.md) | Skill family — chains, dependencies, install |
 | [internal/mcp/SCHEMA.md](internal/mcp/SCHEMA.md) | Full MCP tool schema (canonical) |

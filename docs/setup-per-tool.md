@@ -63,7 +63,7 @@ grafel tools disable codeium      # disable tools + remove their artifacts
 ```
 
 Valid tool IDs: `claude`, `codex`, `cursor`, `windsurf`, `codeium`,
-`copilot`, `kiro`, `antigravity`.
+`copilot`, `kiro`, `antigravity`, `opencode`.
 
 You can also edit the selection from the dashboard under **Settings → AI coding
 tools** — a checklist with each tool's enabled and `(detected)` state. Saving
@@ -181,6 +181,44 @@ ls .agent/rules/grafel.md
 
 Restart Antigravity; confirm the `grafel` MCP server loads.
 
+### opencode (`opencode`)
+
+- **MCP**: `~/.config/opencode/opencode.json` (honours `$XDG_CONFIG_HOME`).
+  JSON, but **not** the `mcpServers` shape the other JSON hosts use — opencode
+  puts servers under a top-level **`mcp`** key, wants `type: "local"`, and takes
+  the whole argv as a `command` **array** with no `args` key:
+
+  ```json
+  { "mcp": { "grafel": { "type": "local",
+                         "command": ["/path/to/grafel", "mcp-bridge"] } } }
+  ```
+
+  grafel writes this shape for you. It matters because opencode **ignores**
+  config keys it does not recognise rather than erroring, so a file written in
+  the `mcpServers` shape looks perfectly valid and simply never loads the
+  server. The file is edited as JSONC — your comments and trailing commas
+  survive, and other servers are left untouched.
+- **Rules**: `AGENTS.md` (per repo) — the **same file Codex uses**. opencode
+  checks the project `AGENTS.md` first (walking up from the working directory),
+  then `~/.config/opencode/AGENTS.md`, then `~/.claude/CLAUDE.md`. Because the
+  file has two owners, `grafel tools disable codex` leaves `AGENTS.md` in place
+  while opencode is still enabled — it is removed only when the last owner goes.
+- **Skills**: nothing opencode-specific is written, but opencode still **sees**
+  grafel's skills if you have Claude Code enabled: it reads
+  `~/.claude/skills/<name>/SKILL.md` through its Claude-compat fallback, and
+  that is the directory grafel populates for Claude.
+
+**Verify**
+
+```sh
+grep -A 6 '"grafel"' ~/.config/opencode/opencode.json   # under "mcp", not "mcpServers"
+ls AGENTS.md
+```
+
+Restart opencode; the `grafel` MCP server should load and the `grafel_*` tools
+be callable. If the tools are missing but the file looks right, check that the
+entry is under `"mcp"` — an entry under `"mcpServers"` is silently ignored.
+
 ### Codeium (`codeium`) — rules only
 
 - **MCP**: none. grafel does **not** register an MCP server for Codeium, so the
@@ -195,7 +233,7 @@ ls .codeium/instructions.md
 
 The rules file steers the agent toward grafel's conventions, but there is no
 MCP surface. For graph queries, use an MCP-capable host (Claude Code, Cursor,
-Windsurf, Kiro, Antigravity, Codex).
+Windsurf, Kiro, Antigravity, Codex, opencode).
 
 ### GitHub Copilot (`copilot`) — rules only
 
@@ -218,8 +256,12 @@ for graph queries.
 - **Rules files are per-repo**; MCP entries are written once to the
   **user-global** path shown above. On Windows the same relative paths apply
   under the user profile.
-- **Codex writes TOML** (`[mcp_servers.grafel]`); every other MCP-capable tool
-  writes JSON (`{ "mcpServers": { "grafel": { ... } } }`).
+- **There are three MCP config shapes.** Claude Code, Cursor, Windsurf, Kiro and
+  Antigravity write JSON `{ "mcpServers": { "grafel": { ... } } }`; **Codex**
+  writes TOML (`[mcp_servers.grafel]`); **opencode** writes JSON under a
+  top-level `"mcp"` key with `command` as an array — see its section above.
+- **`AGENTS.md` is shared by Codex and opencode.** It is written once, and
+  removed only when the last of the two is disabled.
 - After enabling/disabling tools with `grafel tools enable|disable` or the web
   panel, restart the affected tool so it re-reads its config.
 

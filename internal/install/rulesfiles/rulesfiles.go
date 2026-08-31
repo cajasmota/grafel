@@ -6,12 +6,38 @@
 //
 //   - Claude Code      → AGENTS.md, CLAUDE.md
 //   - Codex / OpenAI   → AGENTS.md
+//   - opencode         → AGENTS.md
 //   - Windsurf Cascade → .windsurfrules
 //   - Cursor Composer  → .cursorrules
 //   - Codeium          → .codeium/instructions.md
 //   - GitHub Copilot   → .github/copilot-instructions.md
 //   - Kiro             → .kiro/steering/grafel.md
 //   - Antigravity      → .agent/rules/grafel.md
+//
+// THE LIST ABOVE IS "READS", NOT "OWNS" — and the two have never matched.
+// Reading a file is an upstream fact about the agent; OWNING it means some
+// adapter names it in RulesFileTargets, which is the only thing that makes
+// grafel write or remove it. Claude Code has read AGENTS.md all along, yet
+// claudeAdapter.RulesFileTargets() has returned nil since #5702, when its
+// guidance moved to the personal ~/.claude/CLAUDE.md. So AGENTS.md has always
+// had several readers; what CHANGED in #6730 is the owner count.
+//
+// AGENTS.md NOW HAS TWO GRAFEL-OWNED CLAIMS ON IT: codex and opencode. It is
+// the first file in this list with more than one, and the distinction above is
+// exactly why nobody noticed the shared-target code path existed — before
+// #6730 no two adapters named the same target, so
+// install.ApplyToolDelta's surviving-owner check was unreachable.
+//
+// It matters on REMOVAL: ApplyToolDelta strips a rules target only when NO
+// surviving enabled tool still OWNS it, so disabling codex alone leaves
+// AGENTS.md on disk for opencode, and vice versa; only the last owner out
+// removes it. Claude Code reading the file grants it no say either way.
+// This package's writers are unaffected: the block is marker-wrapped and
+// idempotent, so two owners naming one file still write it once.
+//
+// (opencode's own lookup order is project AGENTS.md first, walking up from the
+// cwd, then ~/.config/opencode/AGENTS.md, then ~/.claude/CLAUDE.md as a
+// Claude-compat fallback — upstream behaviour, not something grafel controls.)
 //
 // `grafel install` historically only wrote the rules block into
 // AGENTS.md, which meant Cascade and Cursor sessions did not learn that

@@ -11,7 +11,7 @@ Reference documentation for grafel. The [README.md](../README.md) at the repo ro
 | [quickstart.md](quickstart.md) | Install, first index, first query — 5 commands |
 | [install.md](install.md) | Full install matrix: script, binary, source, dev mode, troubleshooting |
 | [tools.md](tools.md) | Supported AI coding tools matrix (MCP / rules / skills paths) + per-tool enable/disable via CLI and web |
-| [setup-per-tool.md](setup-per-tool.md) | Step-by-step setup per tool (what `grafel install` writes + how to verify) for Claude Code, Codex, Cursor, Windsurf, Kiro, Antigravity, Codeium, Copilot |
+| [setup-per-tool.md](setup-per-tool.md) | Step-by-step setup per tool (what `grafel install` writes + how to verify) for Claude Code, Codex, Cursor, Windsurf, Kiro, Antigravity, opencode, Codeium, Copilot |
 | [agent-hosts.md](agent-hosts.md) | Per-agent MCP setup (Claude Code, Cursor, Windsurf, Continue, Aider, Cline) |
 
 ## Core concepts

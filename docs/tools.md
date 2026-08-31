@@ -29,6 +29,7 @@ writes what the tool can actually consume.
 | **GitHub Copilot** (`copilot`) | ✗ | `.github/copilot-instructions.md` | ✗ | ✗ | ✗ (rules-only) |
 | **Kiro** (`kiro`) | ✓ `~/.kiro/settings/mcp.json` | `.kiro/steering/grafel.md` | ✗ | ✗ | ✓ (MCP config present) |
 | **Antigravity** (`antigravity`) | ✓ `~/.gemini/antigravity/mcp_config.json` | `.agent/rules/grafel.md` | ✗ | ✗ | ✓ (MCP config present) |
+| **opencode** (`opencode`) | ✓ `~/.config/opencode/opencode.json` (JSON, top-level `mcp` — **not** `mcpServers`) | `AGENTS.md` (shared with Codex) | ✗ (see note) | ✗ | ✓ (MCP config present) |
 
 Notes:
 
@@ -45,9 +46,16 @@ Notes:
   detected" since there is no config file to probe. Detection is **advisory** —
   it only pre-checks tools in the wizard; install still honours your explicit
   selection regardless.
-- **Codex** writes TOML (table `[mcp_servers.grafel]`), not JSON. Every other
-  MCP-capable tool uses the JSON `{ "mcpServers": { "grafel": { ... } } }`
-  shape.
+- **Three MCP config shapes, not one.** Claude Code, Cursor, Windsurf, Kiro and
+  Antigravity share the JSON `{ "mcpServers": { "grafel": { "command": …,
+  "args": ["mcp-bridge"] } } }` shape. **Codex** writes TOML (table
+  `[mcp_servers.grafel]`). **opencode** writes JSON, but a *different* JSON —
+  see its section below.
+- **AGENTS.md has two owners**: Codex and opencode both read it. grafel writes
+  the block once (it is marker-wrapped and idempotent) and removes the file's
+  block only when the **last** owner is disabled — so `grafel tools disable
+  codex` leaves `AGENTS.md` in place while opencode is still enabled, and vice
+  versa. Enabling *either* tool alone is enough to get `AGENTS.md` written.
 
 ### Antigravity — MCP + rules
 
@@ -57,6 +65,55 @@ MCP entry at `~/.gemini/antigravity/mcp_config.json` (#5280). grafel is a local
 `{ "mcpServers": { "grafel": { "command": ..., "args": ["mcp-bridge"] } } }`
 shape — identical to Cursor/Kiro. (The `serverUrl` key applies only to remote
 HTTP MCP servers and is not used here.)
+
+### opencode — a different JSON shape, and a shared rules file
+
+opencode's config is JSON but **not** the `mcpServers` shape every other JSON
+host uses. grafel writes `~/.config/opencode/opencode.json` (honouring
+`$XDG_CONFIG_HOME`) in opencode's own schema:
+
+```json
+{
+  "mcp": {
+    "grafel": {
+      "type": "local",
+      "command": ["/path/to/grafel", "mcp-bridge"]
+    }
+  }
+}
+```
+
+Four things differ from the `mcpServers` shape, and **none of them fails
+loudly**:
+
+- the top-level key is **`mcp`**, not `mcpServers`;
+- `type` is **`"local"`**, not `"stdio"`;
+- the whole argv goes in **`command` as an array** — there is no `args` key, and
+  the schema sets `additionalProperties: false`, so an `args` sibling is invalid
+  rather than ignored;
+- since v1.18.16 opencode **ignores unknown top-level config fields instead of
+  failing to parse**. Writing `mcpServers` there therefore succeeds, leaves a
+  valid file on disk, satisfies any existence check — and the server simply
+  never loads, with no error anywhere to find. That is why grafel has a
+  dedicated writer for this format (#6730) rather than reusing the JSON one.
+
+The file is edited as JSONC: your comments and trailing commas survive, foreign
+servers and unrelated keys are left alone, and a file grafel did not create is
+never reflowed.
+
+**Rules**: opencode reads `AGENTS.md` — the project file first (walking up from
+the working directory), then `~/.config/opencode/AGENTS.md`, then
+`~/.claude/CLAUDE.md` as a Claude-compat fallback. grafel writes the per-repo
+`AGENTS.md`, the **same file Codex uses**; see the shared-ownership note above
+for what that means when you disable one of the two.
+
+**Skills**: the matrix says ✗, which needs a word of explanation, because
+opencode *does* read skills. It reads them from
+`~/.claude/skills/<name>/SKILL.md` — the directory grafel populates for Claude
+Code — via the same Claude-compat fallback. So if you have Claude Code enabled,
+grafel's skills are already visible in opencode. The ✗ means "grafel writes no
+opencode-specific skills artifact", not "skills are unavailable here": the
+skills copy is Claude-pathed and global, so there is nothing per-tool to write.
 
 ---
 
@@ -85,7 +142,8 @@ grafel install --tools claude,cursor,windsurf
 ```
 
 Valid IDs: `claude`, `codex`, `cursor`, `windsurf`, `codeium`, `copilot`,
-`kiro`, `antigravity`. Run `grafel tools list` to see them with current state.
+`kiro`, `antigravity`, `opencode`. Run `grafel tools list` to see them with
+current state.
 
 ### CLI — the interactive wizard
 
