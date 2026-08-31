@@ -104,10 +104,15 @@ func TestApplyToolDelta_DisableWindsurf(t *testing.T) {
 	}
 }
 
-// Shared rules file: claude+codex both... actually claude→CLAUDE.md,
-// codex→AGENTS.md are distinct. Use a case where disabling does NOT strip a
-// file still owned by a surviving tool. claude (CLAUDE.md) + codex (AGENTS.md):
-// disabling codex strips AGENTS.md only, leaving CLAUDE.md.
+// Disabling codex strips AGENTS.md and touches nothing of claude's.
+//
+// NOT a shared-target case, despite the name — read it as "claude's artifacts
+// are undisturbed". claude contributes NO per-repo rules target at all since
+// #5702 (its guidance moved to the personal ~/.claude/CLAUDE.md), so AGENTS.md
+// has exactly one owner here and the surviving-owner branch of ApplyToolDelta
+// is never reached. For that branch see
+// TestApplyToolDelta_OpencodeCodexShareAGENTS below — codex+opencode is the
+// first adapter pair in the registry that shares a rules file at all (#6730).
 func TestApplyToolDelta_DisableCodexKeepsClaudeRules(t *testing.T) {
 	rec, ops := newRecordingOps()
 	_, err := ApplyToolDelta(cfgWithRepo(), "g", "/bin/grafel",

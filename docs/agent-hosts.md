@@ -34,6 +34,7 @@ active model in each supported agent host **before** starting enrichment.
 | [Codex](#newer-hosts) | Session model (Codex settings / `~/.codex/config.toml`) | Yes (TOML config) | No | grafel enrichment runs whatever the session model is |
 | [Kiro](#newer-hosts) | Session model (Kiro settings) | Yes (`~/.kiro/settings/mcp.json`) | No | grafel enrichment runs whatever the session model is |
 | [Antigravity](#newer-hosts) | Session model (Antigravity settings) | Yes (`~/.gemini/antigravity/mcp_config.json`) | No | grafel enrichment runs whatever the session model is |
+| [opencode](#newer-hosts) | Session model (opencode model picker) | Yes (`~/.config/opencode/opencode.json`, top-level `mcp`) | No | grafel enrichment runs whatever the session model is |
 | [Copilot](#newer-hosts) | Session model (Copilot model picker) | No (rules-only) | No | Rules-only; no `grafel_*` MCP tools — run enrichment in Claude Code |
 | [Codeium](#newer-hosts) | Session model (Codeium settings) | No (rules-only) | No | Rules-only; no `grafel_*` MCP tools — run enrichment in Claude Code |
 
@@ -322,19 +323,21 @@ tier-aware enrichment.
 
 ## Newer hosts
 
-grafel also installs into Codex, Kiro, Antigravity, GitHub Copilot, and
-Codeium (see [tools.md](tools.md) for the exact config/rules paths each one
+grafel also installs into Codex, Kiro, Antigravity, opencode, GitHub Copilot,
+and Codeium (see [tools.md](tools.md) for the exact config/rules paths each one
 gets). None of these expose grafel's per-batch model selection the way Claude
 Code does, so the guidance is short:
 
-- **Codex / Kiro / Antigravity** — MCP-capable, so the `grafel_*` tools are
-  available. There is no per-task model override for enrichment: select your
-  model in the host's own settings and grafel enrichment runs whatever the
-  current session model is. Choose the Haiku tier (`claude-haiku-4-5`) before
-  invoking `/grafel-graph-enrich` if the host lets you, then restore your
-  normal coding model afterward. Codex stores its MCP entry as TOML at
-  `~/.codex/config.toml`; Kiro at `~/.kiro/settings/mcp.json`; Antigravity at
-  `~/.gemini/antigravity/mcp_config.json`.
+- **Codex / Kiro / Antigravity / opencode** — MCP-capable, so the `grafel_*`
+  tools are available. There is no per-task model override for enrichment:
+  select your model in the host's own settings and grafel enrichment runs
+  whatever the current session model is. Choose the Haiku tier
+  (`claude-haiku-4-5`) before invoking `/grafel-graph-enrich` if the host lets
+  you, then restore your normal coding model afterward. Codex stores its MCP
+  entry as TOML at `~/.codex/config.toml`; Kiro at `~/.kiro/settings/mcp.json`;
+  Antigravity at `~/.gemini/antigravity/mcp_config.json`; opencode at
+  `~/.config/opencode/opencode.json`, under a top-level `mcp` key rather than
+  the `mcpServers` the others use.
 - **GitHub Copilot / Codeium** — rules-only. grafel writes a guidance file
   (`.github/copilot-instructions.md` for Copilot, `.codeium/instructions.md`
   for Codeium) but registers **no** MCP server, so the `grafel_*` tools are not

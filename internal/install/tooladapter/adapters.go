@@ -208,6 +208,19 @@ func (antigravityAdapter) SupportsAgentHook() bool    { return false }
 // the copy lives in the global install transaction, not a per-tool step), so
 // there is no opencode-specific skills artifact for this flag to gate. It stays
 // false to mean "grafel writes no skills for this tool", which is true.
+//
+// DETECTION IS NARROWER THAN REGISTRATION, and the gap is widest here.
+// DetectInstalled uses hasMCPHost, which stats the config FILE — consistent
+// with every sibling adapter. But mcpreg.DetectOpencodePaths goes through
+// DetectHostPaths, which accepts the file OR its parent directory. So a user
+// with ~/.config/opencode/ but no opencode.json yet gets: `grafel install`
+// WILL write the MCP entry (registration finds the dir), while the wizard will
+// NOT pre-check opencode (detection wants the file). Not a regression — the
+// same asymmetry exists for every tool — but opencode is where it bites,
+// because its config file is genuinely optional in a way ~/.cursor/mcp.json is
+// not: opencode runs perfectly well with no opencode.json at all. Detection is
+// advisory (install honours an explicit selection regardless), so the cost is a
+// missing pre-tick, not a missing entry.
 type opencodeAdapter struct{}
 
 func (opencodeAdapter) ID() string                 { return "opencode" }

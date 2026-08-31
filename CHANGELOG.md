@@ -15,6 +15,27 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 - **csharp: resolve file-scoped namespace imports (#5835)** — thanks @marcus555
 - **csharp: synthesize ABP conventional endpoints (#5836)** — thanks @marcus555
 - **daemon: configure memory limits via settings (#5838)** — thanks @marcus555
+- **opencode is a supported tool (#6730).** `--tools opencode`, `grafel tools
+  enable opencode`, and the wizard checklist now target it. grafel writes
+  `~/.config/opencode/opencode.json` in **opencode's own schema** — servers
+  under a top-level `mcp` key, `type: "local"`, and the whole argv as a
+  `command` array with no `args`. All four differ from the `{ "mcpServers": …
+  }` shape every other JSON host uses, and none of them fails loudly: since
+  v1.18.16 opencode ignores unrecognised top-level config keys rather than
+  erroring, so a file written in the `mcpServers` shape is valid, passes any
+  existence check, and simply never loads the server. The file is edited as
+  JSONC, so comments, trailing commas and foreign servers survive.
+
+  **`AGENTS.md` now has two owners.** opencode reads it (project file first,
+  walking up; then `~/.config/opencode/AGENTS.md`; then `~/.claude/CLAUDE.md`),
+  so it shares Codex's rules file rather than getting one of its own. The block
+  is marker-wrapped and written once; on disable it is removed only when the
+  **last** owner goes — disabling Codex leaves `AGENTS.md` in place while
+  opencode is enabled, and vice versa. Enabling either tool alone writes it.
+
+  opencode also reads skills, from `~/.claude/skills/<name>/SKILL.md` — the
+  directory grafel populates for Claude Code — so grafel's skills reach it via
+  opencode's Claude-compat fallback with no opencode-specific artifact written.
 
 ---
 

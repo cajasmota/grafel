@@ -29,8 +29,11 @@
 //     Its coverage is PARTIAL, inherently: only RunCopy/RunDev record into
 //     state.MCP.RegisteredPaths, and only the Claude and Windsurf config
 //     paths. install.Apply registers MCP for every enabled adapter but
-//     persists nothing, so for Cursor, Codex, Kiro and Antigravity B2 is a
-//     permanent no-op and the (B) default stands alone.
+//     persists nothing, so for every OTHER MCP-capable tool — Cursor, Codex,
+//     Kiro, Antigravity and opencode — B2 is a permanent no-op and the (B)
+//     default stands alone. (Stated as "every tool but Claude and Windsurf"
+//     rather than as a list, because the list grows with the adapter registry
+//     and went stale once already.)
 //
 //   - (C) remember last choice: the user's selection is persisted to
 //     ~/.grafel/mcp-tools.json and, on subsequent runs, becomes the default.

@@ -187,8 +187,10 @@ func runInteractiveTUI(out, errOut io.Writer, opts wizardOptions) (wiztui.Result
 // interactive (alt-screen) wizard (#5701). An explicit --tools flag wins and
 // skips the prompt (validated; a bad ID errors before anything is registered).
 // Otherwise it runs the shared promptTools picker so the human's checkbox
-// selection — all eight adapters offered, detected ones pre-checked,
-// deselection honoured — becomes cfg.Tools. An empty result (deselect-all, no
+// selection — EVERY registered adapter offered (promptTools → WizardChoices(nil)
+// iterates tooladapter's registry, so this tracks the registry rather than a
+// fixed count), detected ones pre-checked, deselection honoured — becomes
+// cfg.Tools. An empty result (deselect-all, no
 // flag) is left as-is: applyGroupConfig then falls back to the empty-means-all
 // default, and we print a one-line hint that --tools can pin a subset.
 func resolveInteractiveTools(out io.Writer, opts wizardOptions) ([]string, error) {

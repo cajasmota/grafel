@@ -6,12 +6,24 @@
 //
 //   - Claude Code      → AGENTS.md, CLAUDE.md
 //   - Codex / OpenAI   → AGENTS.md
+//   - opencode         → AGENTS.md
 //   - Windsurf Cascade → .windsurfrules
 //   - Cursor Composer  → .cursorrules
 //   - Codeium          → .codeium/instructions.md
 //   - GitHub Copilot   → .github/copilot-instructions.md
 //   - Kiro             → .kiro/steering/grafel.md
 //   - Antigravity      → .agent/rules/grafel.md
+//
+// AGENTS.md IS SHARED. Since #6730 it has more than one owner: codex and
+// opencode both read it (opencode looks for the project file first, walking up
+// from the cwd, then ~/.config/opencode/AGENTS.md, then ~/.claude/CLAUDE.md as
+// a Claude-compat fallback). This map is one-directional — tool → file — so the
+// sharing is easy to miss reading down the list. It matters on REMOVAL:
+// install.ApplyToolDelta strips a rules target only when NO surviving enabled
+// tool still owns it, so disabling codex alone leaves AGENTS.md on disk for
+// opencode, and vice versa. This package's writers are unaffected: the block is
+// marker-wrapped and idempotent, so two owners naming the same file write it
+// once.
 //
 // `grafel install` historically only wrote the rules block into
 // AGENTS.md, which meant Cascade and Cursor sessions did not learn that
