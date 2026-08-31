@@ -15,8 +15,9 @@ package testsupport
 // for a literal filename argument", which is exactly what this automates:
 //
 //	an os.ReadFile/os.Open/os.OpenFile whose path expression, resolved up to
-//	two assignments back inside the enclosing function (package-level consts in
-//	the same file included), contains a filename-shaped string literal.
+//	two assignments back inside the enclosing function (package-level consts
+//	and vars from ANYWHERE in the package included), contains a filename-shaped
+//	string literal.
 //
 // The audit was a hand-maintained snapshot and #6478 records the consequence:
 // four consecutive rounds each fixed the sites the previous review named and
@@ -30,10 +31,12 @@ package testsupport
 //     population, and the guard that consumes it subtracts declared ledgers.
 //     That is a deliberate division of labour, not a gap: the ledgers are
 //     ratcheted, so the population can only shrink.
-//   - It resolves IDENTIFIERS, not calls, and only within one function plus
-//     that file's package-level consts. A path that arrives as a bare function
-//     parameter is invisible. Pinned as a MISS row in
-//     blockingopenscan_test.go.
+//   - It resolves IDENTIFIERS, not calls. A path that arrives as a bare
+//     function parameter is invisible, because answering it needs the CALLERS
+//     of that function rather than its body. Pinned as a MISS row in
+//     blockingopenscan_test.go. Cross-FILE consts are NOT such a case — they
+//     were a hole, were found by review with a positive control, and are now
+//     resolved; see CollectPackageValues.
 //   - It is keyed on a literal. A filename that arrives entirely through a
 //     parameter or a package-level slice of names is invisible — which is why
 //     internal/install/hooks's HookNames loop needed the audit to find it and
@@ -81,8 +84,43 @@ var writeFlags = map[string]bool{
 	"O_APPEND": true, "O_TRUNC": true, "O_EXCL": true,
 }
 
-// FindNameChosenOpens reports every name-chosen blocking open in f.
+// CollectPackageValues maps every package-level const/var name declared across
+// files to its initialiser. Pass the result to FindNameChosenOpensInPackage.
+//
+// It exists because a per-FILE scope was a real hole, found by review and
+// reproduced with a positive control: a `const rulesFile = ".grafel"` in
+// consts.go and an `os.ReadFile(rulesFile)` in reader.go evaded the scan
+// entirely, while the byte-identical read with the const moved into the same
+// file was caught. A separate consts.go or paths.go holding path literals is
+// ordinary idiomatic Go, so that gap was likelier to be hit by the next
+// name-chosen read than either of the two limits this detector documents.
+//
+// Package scope is safe to flatten in a way FUNCTION scope is not: Go
+// guarantees these names are unique across the package, so merging them cannot
+// let one declaration explain an unrelated identifier. Function locals are
+// still collected per function for exactly that reason.
+func CollectPackageValues(files []*ast.File) map[string][]ast.Expr {
+	out := map[string][]ast.Expr{}
+	for _, f := range files {
+		for k, v := range collectFileLevelValues(f) {
+			out[k] = append(out[k], v...)
+		}
+	}
+	return out
+}
+
+// FindNameChosenOpens reports every name-chosen blocking open in f, resolving
+// identifiers against f alone. Callers that can see the whole package should
+// use FindNameChosenOpensInPackage instead — see CollectPackageValues for why
+// the difference is load-bearing rather than cosmetic.
 func FindNameChosenOpens(fset *token.FileSet, f *ast.File, rel string) []NameChosenOpen {
+	return FindNameChosenOpensInPackage(fset, f, rel, nil)
+}
+
+// FindNameChosenOpensInPackage reports every name-chosen blocking open in f,
+// resolving identifiers against f's own declarations AND pkgScope (from
+// CollectPackageValues). A nil pkgScope degrades to single-file resolution.
+func FindNameChosenOpensInPackage(fset *token.FileSet, f *ast.File, rel string, pkgScope map[string][]ast.Expr) []NameChosenOpen {
 	var out []NameChosenOpen
 	seen := map[string]bool{}
 
@@ -90,12 +128,17 @@ func FindNameChosenOpens(fset *token.FileSet, f *ast.File, rel string) []NameCho
 	// function in it. They are collected separately from function bodies rather
 	// than by walking the whole file, because a single flat map over every
 	// function's locals would let one function's `path := "x.json"` explain
-	// another function's unrelated `path`.
+	// another function's unrelated `path`. pkgScope adds the same declarations
+	// from the package's OTHER files, which Go's own scoping rules already put
+	// in reach of every function here.
 	fileScope := collectFileLevelValues(f)
 
 	inspectFunc := func(fnName string, body *ast.BlockStmt, scope ast.Node) {
 		assigns := collectAssignments(scope)
 		for k, v := range fileScope {
+			assigns[k] = append(assigns[k], v...)
+		}
+		for k, v := range pkgScope {
 			assigns[k] = append(assigns[k], v...)
 		}
 		ast.Inspect(scope, func(n ast.Node) bool {

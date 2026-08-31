@@ -55,8 +55,10 @@ The population is now tracked by
 `internal/safeio/name_chosen_open_sweep_guard_6478_test.go`: an AST sweep over
 every non-test `.go` file under `internal/` and `cmd/` that reports any
 `os.ReadFile` / `os.Open` / `os.OpenFile` whose path expression, resolved up to
-two assignments back, contains a filename-shaped string literal. A new
-unguarded read fails the suite and names its file, line, function and literal.
+two assignments back — through package-level consts and vars declared anywhere
+in the package, not just in the reading file — contains a filename-shaped
+string literal. A new unguarded read fails the suite and names its file, line,
+function and literal.
 That is the durable half of #6478, and it exists because a hand-maintained list
 of `file:line` rows is the same failure mode as a hand-maintained integer: it
 goes stale the first time someone adds a read, which is exactly how the class
@@ -70,6 +72,14 @@ any rule that would not also match half the identifiers in the tree. Those two
 misses are pinned as MISS rows in
 `internal/testsupport/blockingopenscan_test.go`, and the sites they cover are
 pinned by per-package FIFO deadline tests instead.
+
+A third gap existed and was closed rather than documented: review found that a
+path literal held in a package-level const in a DIFFERENT FILE of the same
+package evaded the scan entirely, while the byte-identical read with the const
+in the same file was caught. A separate `consts.go` or `paths.go` holding path
+literals is ordinary Go — likelier to be hit by the next name-chosen read than
+either miss above — so resolution now spans the whole package, and both the
+detector and the repo-wide sweep are pinned against that shape end to end.
 
 **Its ledger is 34 entries, not the 243 #6478 projected.** The issue expected
 every not-applicable row to need a day-one allowlist entry. It does not: the

@@ -9,6 +9,8 @@ package testsupport_test
 // claim #6468 made four times.
 
 import (
+	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"testing"
@@ -177,6 +179,78 @@ func TestFilenameShaped(t *testing.T) {
 	for _, s := range no {
 		if testsupport.FilenameShaped(s) {
 			t.Errorf("FilenameShaped(%q) = true, want false", s)
+		}
+	}
+}
+
+// TestFindNameChosenOpensResolvesCrossFileConsts is the regression for the
+// review finding on f5cc2410c: a path literal living in a package-level const
+// in a DIFFERENT FILE of the same package evaded the scan entirely.
+//
+// It is pinned in both directions on purpose. The HIT is the fix. The negative
+// control is the reason the fix had to be a scope change rather than a MISS
+// row: single-file resolution genuinely cannot see it, so any caller that
+// scans file-by-file stays blind, and that is what makes
+// FindNameChosenOpensInPackage the entry point the repo-wide sweep must use.
+func TestFindNameChosenOpensResolvesCrossFileConsts(t *testing.T) {
+	const constsSrc = `package p
+const rulesFile = ".grafel"`
+	const readerSrc = `package p
+import "os"
+func ReadRules() []byte { b, _ := os.ReadFile(rulesFile); return b }`
+
+	fset := token.NewFileSet()
+	consts, err := parser.ParseFile(fset, "consts.go", constsSrc, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse consts.go: %v", err)
+	}
+	reader, err := parser.ParseFile(fset, "reader.go", readerSrc, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse reader.go: %v", err)
+	}
+
+	// Negative control: file-scoped resolution cannot see the const. Asserted,
+	// not left as a claim in a comment.
+	if got := testsupport.FindNameChosenOpens(fset, reader, "reader.go"); len(got) != 0 {
+		t.Fatalf("single-file scan reported %v; this control exists to pin that it CANNOT see a "+
+			"cross-file const — if it now can, the package-scope plumbing below is untested", got)
+	}
+
+	scope := testsupport.CollectPackageValues([]*ast.File{consts, reader})
+	got := testsupport.FindNameChosenOpensInPackage(fset, reader, "reader.go", scope)
+	if len(got) != 1 {
+		t.Fatalf("package-scoped scan reported %d sites, want 1: %v\n\n"+
+			"A separate consts.go or paths.go holding path literals is ordinary Go. A guard that "+
+			"resolves consts in one file and not in the file next to it is a guard with a hole its "+
+			"own documentation denies.", len(got), got)
+	}
+	if got[0].Key() != "reader.go:ReadRules" || got[0].Literal != ".grafel" {
+		t.Fatalf("got %v, want reader.go:ReadRules with literal \".grafel\"", got[0])
+	}
+}
+
+// TestCollectPackageValuesMergesEveryFile pins the merge itself. A
+// CollectPackageValues that kept only the last file's declarations would pass
+// the test above by luck, since that fixture has exactly one declaring file.
+func TestCollectPackageValuesMergesEveryFile(t *testing.T) {
+	fset := token.NewFileSet()
+	var files []*ast.File
+	for i, src := range []string{
+		"package p\nconst a = \"a.json\"",
+		"package p\nconst b = \"b.json\"",
+		"package p\nvar c = \"c.json\"",
+	} {
+		f, err := parser.ParseFile(fset, fmt.Sprintf("f%d.go", i), src, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		files = append(files, f)
+	}
+	scope := testsupport.CollectPackageValues(files)
+	for _, name := range []string{"a", "b", "c"} {
+		if len(scope[name]) != 1 {
+			t.Fatalf("scope[%q] has %d initialisers, want 1 — CollectPackageValues is dropping files",
+				name, len(scope[name]))
 		}
 	}
 }

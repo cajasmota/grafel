@@ -391,17 +391,39 @@ func ReadArg(p string) []byte { b, _ := os.ReadFile(p); return b }`)
 	write("offender_test.go", `package planted
 import "os"
 func helper() { os.ReadFile("CLAUDE.md") }`)
+	// Offender: the literal lives in a package-level const in ANOTHER FILE.
+	// This is the shape that evaded the sweep on f5cc2410c, reproduced here end
+	// to end rather than only at the detector's unit level — the evasion was in
+	// the SWEEP's file-at-a-time walk as much as in the detector's scope, and a
+	// unit test of the detector alone would not have caught it.
+	write("consts.go", `package planted
+const rulesFile = ".grafel"`)
+	write("crossfile.go", `package planted
+import "os"
+func ReadCrossFile() []byte { b, _ := os.ReadFile(rulesFile); return b }`)
 
 	got := scanNameChosenOpens(t, root)
-	if len(got) != 1 {
-		t.Fatalf("sweep reported %d sites over the synthetic tree, want exactly 1 (offender.go:ReadRules): %v", len(got), got)
+	want := map[string]string{
+		"internal/planted/offender.go:ReadRules":      "CLAUDE.md",
+		"internal/planted/crossfile.go:ReadCrossFile": ".grafel",
 	}
-	if got[0].Key() != "internal/planted/offender.go:ReadRules" {
-		t.Fatalf("sweep named %s, want internal/planted/offender.go:ReadRules", got[0].Key())
+	if len(got) != len(want) {
+		t.Fatalf("sweep reported %d sites over the synthetic tree, want exactly %d: %v", len(got), len(want), got)
 	}
-	if got[0].Literal != "CLAUDE.md" {
-		t.Fatalf("offender.Literal = %q, want \"CLAUDE.md\" — the report must name the literal that "+
-			"triggered it, or the author cannot tell which argument the guard objected to", got[0].Literal)
+	for _, o := range got {
+		lit, ok := want[o.Key()]
+		if !ok {
+			t.Fatalf("sweep named %s, which is not one of the two planted offenders", o.Key())
+		}
+		if o.Literal != lit {
+			t.Fatalf("%s reported literal %q, want %q — the report must name the literal that "+
+				"triggered it, or the author cannot tell which argument the guard objected to",
+				o.Key(), o.Literal, lit)
+		}
+		delete(want, o.Key())
+	}
+	for k := range want {
+		t.Fatalf("sweep did not report planted offender %s", k)
 	}
 }
 
@@ -414,12 +436,45 @@ func TestNameChosenOpenSweepIsNotVacuous(t *testing.T) {
 	}
 }
 
+// scanNameChosenOpens scans root one PACKAGE at a time.
+//
+// Per-package, not per-file, and that distinction was a real hole rather than
+// tidiness: with a per-file scope, a `const rulesFile = ".grafel"` in consts.go
+// and an `os.ReadFile(rulesFile)` in reader.go evaded the sweep, while the
+// byte-identical read with the const in the same file was caught. A separate
+// consts.go or paths.go holding path literals is ordinary Go, so that gap was
+// likelier to be hit than either limit the detector documents.
 func scanNameChosenOpens(t *testing.T, root string) []testsupport.NameChosenOpen {
 	t.Helper()
 	var out []testsupport.NameChosenOpen
+	// A directory is a package for this purpose. Files carrying build tags for
+	// another GOOS are parsed and merged in too, which can only ever WIDEN the
+	// scope — the failure direction of a guard is the one to prefer.
+	type pkgFile struct {
+		rel  string
+		fset *token.FileSet
+		f    *ast.File
+	}
+	byDir := map[string][]pkgFile{}
+	var dirs []string
 	walkNonTestGoFiles(t, root, func(rel string, fset *token.FileSet, f *ast.File) {
-		out = append(out, testsupport.FindNameChosenOpens(fset, f, rel)...)
+		d := filepath.Dir(rel)
+		if _, ok := byDir[d]; !ok {
+			dirs = append(dirs, d)
+		}
+		byDir[d] = append(byDir[d], pkgFile{rel, fset, f})
 	})
+	sort.Strings(dirs)
+	for _, d := range dirs {
+		files := make([]*ast.File, 0, len(byDir[d]))
+		for _, pf := range byDir[d] {
+			files = append(files, pf.f)
+		}
+		scope := testsupport.CollectPackageValues(files)
+		for _, pf := range byDir[d] {
+			out = append(out, testsupport.FindNameChosenOpensInPackage(pf.fset, pf.f, pf.rel, scope)...)
+		}
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].File != out[j].File {
 			return out[i].File < out[j].File
