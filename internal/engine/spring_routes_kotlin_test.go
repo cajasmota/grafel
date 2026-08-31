@@ -5,9 +5,13 @@ package engine
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tskotlin "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/kotlin"
+	tsofficial "github.com/cajasmota/grafel/internal/treesitter/ts/official"
 )
 
 // sampleKotlinSpringController mirrors the Java fixture in spring_routes_test.go.
@@ -270,4 +274,153 @@ func keyList(m map[string]bool) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// --- #6736 -------------------------------------------------------------------
+//
+// A Kotlin @RestController that is NOT the last top-level declaration in its
+// file emitted zero routes. Every Spring fixture in the corpus — Kotlin and
+// Java, 63 of them — happens to put its controller last, so the whole suite was
+// blind to the file-position axis.
+//
+// The measured mechanism is NOT the #6360 ERROR-skipping wrapper: the raw parse
+// of the fixture below carries ZERO ERROR nodes, so that wrapper is never even
+// applied. It is a tree-sitter-kotlin (fwcd 0.3.8) ambiguity — TWO OR MORE
+// consecutive annotations on a top-level declaration are parsed as a chain of
+// `prefix_expression` operators, swallowing the declaration into an
+// `infix_expression` plus a trailing `lambda_literal`, whenever the declaration
+// is not the last construct in the file. The class therefore never appears as a
+// `class_declaration` at all: `walkKotlinClasses` finds nothing to process, and
+// the Kotlin extractor loses the class entity itself (`kept` degrades from
+// `RealController.kept` to a bare top-level `kept`).
+
+const kotlinControllerNotLast6736 = `package io.demo
+
+import org.springframework.web.bind.annotation.*
+
+@RestController
+@RequestMapping("/api")
+class RealController {
+
+    @GetMapping("/kept")
+    fun kept(): String = "ok"
+}
+
+fun looseHelper(): String = "helper"
+
+val looseConst: String = "const"
+
+class SecondClass {
+    fun unrelated() {}
+}
+`
+
+const kotlinControllerNotLastPath6736 = "src/main/kotlin/io/demo/RealController.kt"
+
+// TestKotlinSpring6736_ControllerFollowedByDeclarations is the regression pin:
+// the controller keeps its route even though a top-level fun, a top-level val
+// and a second class follow it in the same file.
+func TestKotlinSpring6736_ControllerFollowedByDeclarations(t *testing.T) {
+	result := detectKotlin6499(t, kotlinControllerNotLastPath6736, kotlinControllerNotLast6736)
+
+	targets := astDrivenRouteTargets(result)
+	got, ok := targets["http:GET:/api/kept"]
+	if !ok {
+		t.Fatalf("no ast_driven ROUTES_TO from http:GET:/api/kept — the controller was erased "+
+			"by the declarations that follow it; got %v", targets)
+	}
+	const want = "SCOPE.Operation:RealController.kept"
+	if got != want {
+		t.Errorf("ROUTES_TO target = %q, want %q", got, want)
+	}
+}
+
+// TestKotlinSpring6736_ControllerNotLastNonVacuity is the non-vacuity control
+// for the test above. Without it, "no route" cannot be told apart from "the
+// fixture never parsed" — the exact confusion that produced a wrong mechanism
+// for this bug twice.
+//
+// It establishes three things:
+//
+//  1. On the RAW, un-repaired, un-wrapped parse the fixture has ZERO ERROR
+//     nodes. That rules out the #6360 error-skipping wrapper by construction:
+//     it is applied only when errNodes > 0.
+//  2. On that same raw parse the annotated controller is NOT reachable as a
+//     top-level `class_declaration` — it is a `prefix_expression`. This pins the
+//     grammar misparse itself, so the repair has a stated premise.
+//  3. The identical controller text, with the trailing declarations removed, DOES
+//     yield the route. Only its POSITION differs, so a missing route above is a
+//     position defect and not a broken fixture.
+func TestKotlinSpring6736_ControllerNotLastNonVacuity(t *testing.T) {
+	p, err := tsofficial.New().NewParser(tskotlin.Language())
+	if err != nil {
+		t.Fatalf("NewParser: %v", err)
+	}
+	defer p.Close()
+	tree, err := p.Parse([]byte(kotlinControllerNotLast6736))
+	if err != nil {
+		t.Fatalf("raw parse failed: %v", err)
+	}
+	defer tree.Close()
+	root := tree.RootNode()
+
+	var countErrs func(n ts.Node) int
+	countErrs = func(n ts.Node) int {
+		if n == nil {
+			return 0
+		}
+		c := 0
+		if n.IsError() {
+			c++
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			c += countErrs(n.Child(i))
+		}
+		return c
+	}
+	if errs := countErrs(root); errs != 0 {
+		t.Fatalf("control failed: the RAW parse has %d ERROR node(s) — this fixture is a "+
+			"malformed-source case, not the clean-parse misparse #6736 describes", errs)
+	}
+
+	var topTypes []string
+	sawClassDecl := false
+	sawAnnotatedPrefixExpr := false
+	for i := 0; i < int(root.ChildCount()); i++ {
+		c := root.Child(i)
+		topTypes = append(topTypes, c.Type())
+		start, end := int(c.StartByte()), int(c.EndByte())
+		covers := strings.Contains(kotlinControllerNotLast6736[start:end], "class RealController")
+		if !covers {
+			continue
+		}
+		switch c.Type() {
+		case "class_declaration":
+			sawClassDecl = true
+		case "prefix_expression":
+			sawAnnotatedPrefixExpr = true
+		}
+	}
+	if sawClassDecl {
+		t.Fatalf("control failed: the RAW parse DOES expose `class RealController` as a top-level "+
+			"class_declaration (top children: %v) — the grammar-misparse premise of #6736 no "+
+			"longer holds, so this fixture no longer exercises the defect", topTypes)
+	}
+	if !sawAnnotatedPrefixExpr {
+		t.Fatalf("control failed: `class RealController` is neither a class_declaration nor the "+
+			"expected misparsed prefix_expression in the RAW tree (top children: %v)", topTypes)
+	}
+
+	// The controller half, alone, DOES produce the route. Only position differs.
+	idx := strings.Index(kotlinControllerNotLast6736, "\nfun looseHelper")
+	if idx < 0 {
+		t.Fatalf("control failed: fixture no longer has the trailing declarations")
+	}
+	onlyTargets := astDrivenRouteTargets(
+		detectKotlin6499(t, kotlinControllerNotLastPath6736, kotlinControllerNotLast6736[:idx]))
+	if _, ok := onlyTargets["http:GET:/api/kept"]; !ok {
+		t.Fatalf("control failed: the controller emits no route even when it IS the last "+
+			"declaration — the fixture itself is broken, so a missing route proves nothing; got %v",
+			onlyTargets)
+	}
 }
