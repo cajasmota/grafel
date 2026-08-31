@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/executil"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // grafelGitignoreEntry is the line we append to .gitignore when the
@@ -28,7 +30,7 @@ func EnsureGitignore(repoRoot string) (string, error) {
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")
 
 	// Read existing content (tolerate missing file).
-	existing, err := os.ReadFile(gitignorePath)
+	existing, err := safeio.ReadFileReported(gitignorePath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil && !os.IsNotExist(err) {
 		return "", fmt.Errorf("read .gitignore %s: %w", gitignorePath, err)
 	}

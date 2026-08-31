@@ -43,6 +43,8 @@ import (
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/version"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // DoctorSchemaVersion is the JSON schema version for DoctorReport.
@@ -766,7 +768,7 @@ func checkGitignore(repoRoot string) CheckResult {
 	cr := CheckResult{Surface: "gitignore/" + filepath.Base(repoRoot), OK: true, Severity: SeverityWarning}
 
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")
-	data, err := os.ReadFile(gitignorePath)
+	data, err := safeio.ReadFileReported(gitignorePath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			cr.OK = false

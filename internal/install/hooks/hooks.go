@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 const (
@@ -62,7 +64,7 @@ func Uninstall(repo string) error {
 	}
 	for _, name := range HookNames {
 		path := filepath.Join(hooksDir, name)
-		body, err := os.ReadFile(path)
+		body, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
@@ -136,7 +138,7 @@ func hooksDir(repo string) (string, error) {
 	if fi.IsDir() {
 		return filepath.Join(gitPath, "hooks"), nil
 	}
-	b, err := os.ReadFile(gitPath)
+	b, err := safeio.ReadFileReported(gitPath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +156,7 @@ func hooksDir(repo string) (string, error) {
 
 func installOne(path, block string) error {
 	existing := ""
-	if b, err := os.ReadFile(path); err == nil {
+	if b, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes); err == nil {
 		existing = string(b)
 	}
 	stripped := stripBlock(existing)

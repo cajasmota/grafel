@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // Marker tokens used to wrap the pattern-block. v=1 lets future
@@ -110,7 +112,7 @@ func RenderBlock(patterns []Pattern, opts ExportOptions) string {
 // User content outside the markers is preserved byte-for-byte.
 func UpsertFile(path string, patterns []Pattern, opts ExportOptions) error {
 	block := RenderBlock(patterns, opts)
-	existing, err := os.ReadFile(path)
+	existing, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
@@ -144,7 +146,7 @@ func UpsertFile(path string, patterns []Pattern, opts ExportOptions) error {
 // ExtractBlock returns the contents of the marker-wrapped block in path
 // (excluding the markers themselves), or "" if no block exists.
 func ExtractBlock(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	data, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil

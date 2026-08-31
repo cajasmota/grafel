@@ -23,6 +23,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // Marker tokens for the architecture-map block. Use a distinct namespace
@@ -213,7 +215,7 @@ func renderBlock(s Stats, tools detectedTools) string {
 // and writes back atomically. Creates the file (and parent dirs) if missing.
 // User content outside the markers is preserved byte-for-byte.
 func upsertFile(path, block string) error {
-	existing, err := os.ReadFile(path)
+	existing, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read %s: %w", path, err)
 	}

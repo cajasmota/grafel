@@ -35,6 +35,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // ---------------------------------------------------------------------------
@@ -148,7 +150,7 @@ type wrapperConfigFile struct {
 // normal for repos that rely on heuristic detection only.
 func LoadWrapperConfigs(repoRoot string) ([]WrapperConfig, error) {
 	path := filepath.Join(repoRoot, ".grafel", "wrappers.json")
-	data, err := os.ReadFile(path)
+	data, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}

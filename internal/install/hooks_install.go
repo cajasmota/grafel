@@ -16,6 +16,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 const (
@@ -193,7 +195,7 @@ func InstallGitHooks(opts HookInstallOptions) error {
 func writeHookBlock(hookPath, block string) error {
 	// Read existing content.
 	var existing string
-	data, err := os.ReadFile(hookPath)
+	data, err := safeio.ReadFileReported(hookPath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read hook file: %w", err)
 	}

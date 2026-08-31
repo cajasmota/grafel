@@ -11,6 +11,8 @@ import (
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/pathboundary"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // resolveGroup implements the ADR-0008 cascade (#1746):
@@ -281,7 +283,7 @@ func groupFromCWD(dir string) string {
 	var group string
 	pathboundary.Climb(dir, func(cur string) bool {
 		marker := filepath.Join(cur, ".grafel", "group.json")
-		data, err := os.ReadFile(marker)
+		data, err := safeio.ReadFileReported(marker, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 		if err != nil {
 			return false
 		}
@@ -390,7 +392,7 @@ func loadFleetConfigForGroup(s *State, groupName string) *fleetGroupConfig {
 	if configPath == "" {
 		return nil
 	}
-	data, err := os.ReadFile(configPath)
+	data, err := safeio.ReadFileReported(configPath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		return nil
 	}

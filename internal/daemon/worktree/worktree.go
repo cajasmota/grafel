@@ -64,6 +64,8 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/watch"
 	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // ---------------------------------------------------------------------------
@@ -810,7 +812,7 @@ func gitWorktreesDir(repoPath string) string {
 	}
 	// .git is a file ("gitdir: <path>"). Resolve and take its parent dir's
 	// worktrees subdir.
-	data, err := os.ReadFile(gitPath)
+	data, err := safeio.ReadFileReported(gitPath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		return ""
 	}

@@ -21,6 +21,8 @@ import (
 
 	"github.com/cajasmota/grafel/internal/atomicfile"
 	"github.com/cajasmota/grafel/internal/pathboundary"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // StackList is a JSON-polymorphic list of language tags for a repo.
@@ -699,7 +701,7 @@ func LoadManifest(repoOrManifest string) (*Manifest, error) {
 	if fi, err := os.Stat(p); err == nil && fi.IsDir() {
 		p = filepath.Join(p, ".grafel", "group.json")
 	}
-	b, err := os.ReadFile(p)
+	b, err := safeio.ReadFileReported(p, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		return nil, err
 	}

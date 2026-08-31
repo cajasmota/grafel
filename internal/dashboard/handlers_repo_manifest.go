@@ -22,6 +22,8 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/registry"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,7 +225,7 @@ func scanAgentsMD(repoPath string) AgentsMDInfo {
 			EditorURI: "file://" + full,
 		}
 		// Read up to 50 lines.
-		f, err := os.Open(full)
+		f, err := safeio.OpenReported(full, safeio.FollowSymlinks)
 		if err != nil {
 			return info
 		}

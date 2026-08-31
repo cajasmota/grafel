@@ -26,6 +26,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // RootKind classifies a candidate repo root for onboarding decisions.
@@ -122,7 +124,7 @@ func ClassifyRoot(candidatePath string) RootClassification {
 // Relative pointers (git can write `gitdir: ../.git/worktrees/x`) are resolved
 // against the directory containing the `.git` file.
 func readGitdirPointer(gitFilePath string) string {
-	data, err := os.ReadFile(gitFilePath)
+	data, err := safeio.ReadFileReported(gitFilePath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		return ""
 	}
