@@ -136,6 +136,33 @@ func processKotlinSpringClass(
 		return
 	}
 
+	// #6499 arm 3 — the enclosing class name. Arms 1+2 (b1dbdf010) made every
+	// Kotlin SCOPE.Operation declared inside a class / object / interface body
+	// class-qualified (`UserController.health`), matching Java post-#6429. The
+	// bare `Controller:<method>` stub this pass used to emit therefore named an
+	// entity that no longer exists, so the route→handler hop dangled — and
+	// dangled QUIETLY, because classifyDispositionLang's `Controller:`-with-no-
+	// dot hatch (resolve/refs.go) accounted it as runtime dispatch.
+	//
+	// The address below is the one Java's AST-driven pass emits
+	// (`SCOPE.Operation:<Class>.<method>`, spring_routes.go), and it binds: the
+	// kind/name pair is exactly what BuildIndex keys the handler entity under.
+	// Pinned end-to-end — through resolve.References, against the handler's own
+	// graph ID — by TestKotlinSpring6499_RouteEdgeResolvesToHandlerEntity.
+	//
+	// This is the INNERMOST enclosing class, matching kotlinQualifiedFuncName's
+	// innermost-wins rule in the extractor: walkKotlinClasses recurses into
+	// nested class_declarations and calls this function for each one, so a
+	// controller nested inside another class qualifies by its own name.
+	//
+	// No `className == ""` fallback, matching spring_routes.go's reasoning for
+	// Java — and demonstrated here rather than argued: with the guard deleted,
+	// an anonymous `@RestController @RequestMapping("/x") class { … }` still
+	// emits zero entities and zero relationships, because tree-sitter-kotlin
+	// never yields a class_declaration for it at all. The branch is
+	// unreachable, so it would be untestable.
+	className := kotlinDeclaredTypeName(class, src)
+
 	// Find the class_body child.
 	var body ts.Node
 	for i := 0; i < int(class.ChildCount()); i++ {
@@ -211,7 +238,7 @@ func processKotlinSpringClass(
 					"path":           canonical,
 					"framework":      "spring_mvc",
 					"pattern_type":   "ast_driven",
-					"source_handler": fmt.Sprintf("Controller:%s", methodName),
+					"source_handler": kotlinSpringHandlerRef(className, methodName),
 					"owning_backend": deriveOwningBackend(path),
 				},
 				EnrichmentRequired: false,
@@ -220,7 +247,7 @@ func processKotlinSpringClass(
 			})
 			*rels = append(*rels, types.RelationshipRecord{
 				FromID: id,
-				ToID:   fmt.Sprintf("Controller:%s", methodName),
+				ToID:   kotlinSpringHandlerRef(className, methodName),
 				Kind:   "ROUTES_TO",
 				Properties: types.Props{
 					{K: "framework", V: "spring_mvc"},
@@ -229,6 +256,52 @@ func processKotlinSpringClass(
 			})
 		}
 	}
+}
+
+// kotlinSpringHandlerRef builds the graph address of a Kotlin Spring handler
+// method: `SCOPE.Operation:<Class>.<method>`, the kind/name pair the Kotlin
+// extractor really lands the method under post-#6499 arms 1+2, and the same
+// string Java's AST-driven route pass emits post-#6429.
+//
+// Both the ROUTES_TO ToID and the endpoint's `source_handler` property go
+// through here so the two can never drift: they address the same entity, and
+// http_endpoint_resolve.go splits `source_handler` on the FIRST colon into
+// exactly this (kind, name) pair.
+func kotlinSpringHandlerRef(className, methodName string) string {
+	return fmt.Sprintf("SCOPE.Operation:%s.%s", className, methodName)
+}
+
+// kotlinDeclaredTypeName returns the declared name of a Kotlin
+// class_declaration. The Kotlin grammar carries no "name" FIELD on these nodes
+// (unlike Java, where spring_routes.go uses nodeFieldText) — the first
+// type_identifier child is the name. That mirrors buildComponent in
+// internal/extractors/kotlin, which is what decides the SCOPE.Component Name
+// this qualification has to agree with.
+//
+// A `nodeFieldText(node, "name", src)` attempt in front of the scan was
+// measured to be DEAD: deleting it leaves the whole internal/engine suite
+// green, because the field never exists. Independently confirmed from the
+// grammar across 18 Kotlin shapes — ChildByFieldName("name") is nil in every
+// one, and FieldNameForChild is "" for every child, because
+// tree-sitter-kotlin attaches no fields to these nodes at all. Left out rather
+// than kept as an unreachable, untestable branch.
+//
+// Caveat for whoever touches the other side: buildComponent
+// (internal/extractors/kotlin/kotlin.go:711) still carries the same dead
+// childFieldText(node, "name", …) attempt, so "mirrors buildComponent" above is
+// true of the LIVE path only — the two producers now differ in shape. Removing
+// it there is a separate, extractor-side change.
+func kotlinDeclaredTypeName(node ts.Node, src []byte) string {
+	if node == nil {
+		return ""
+	}
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch.Type() == "type_identifier" {
+			return nodeText(ch, src)
+		}
+	}
+	return ""
 }
 
 // kotlinClassModifiers returns the annotation children from the modifiers node
