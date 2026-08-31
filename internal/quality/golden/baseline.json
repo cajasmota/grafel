@@ -14,20 +14,20 @@
     "csharp-aspnet-core-mini": {
       "entity_found": 4,
       "entity_expected": 5,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 11,
+      "relationship_expected": 11
     },
     "csharp-hangfire-mini": {
       "entity_found": 5,
       "entity_expected": 5,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 13,
+      "relationship_expected": 13
     },
     "csharp-quartz-net-mini": {
       "entity_found": 5,
       "entity_expected": 5,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 12,
+      "relationship_expected": 12
     },
     "elixir-phoenix-mini": {
       "entity_found": 22,
@@ -38,8 +38,8 @@
     "erlang-otp-mini": {
       "entity_found": 20,
       "entity_expected": 20,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 22,
+      "relationship_expected": 22
     },
     "express-baseurl-mini": {
       "entity_found": 8,
@@ -62,14 +62,14 @@
     "haskell-warp-mini": {
       "entity_found": 24,
       "entity_expected": 24,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 24,
+      "relationship_expected": 24
     },
     "java-quartz-mini": {
       "entity_found": 6,
       "entity_expected": 7,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 16,
+      "relationship_expected": 16
     },
     "java-spring-mini": {
       "entity_found": 29,
@@ -86,8 +86,8 @@
     "php-slim-mini": {
       "entity_found": 5,
       "entity_expected": 5,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 2,
+      "relationship_expected": 2
     },
     "proto-mini": {
       "entity_found": 19,
@@ -104,8 +104,8 @@
     "python-dramatiq-mini": {
       "entity_found": 4,
       "entity_expected": 4,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 11,
+      "relationship_expected": 11
     },
     "python-fastapi-mini": {
       "entity_found": 5,
@@ -116,8 +116,8 @@
     "python-rq-mini": {
       "entity_found": 3,
       "entity_expected": 3,
-      "relationship_found": 0,
-      "relationship_expected": 0
+      "relationship_found": 12,
+      "relationship_expected": 12
     },
     "rust-tokio-mini": {
       "entity_found": 16,

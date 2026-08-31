@@ -39,5 +39,61 @@
       "note": "IUserService implementation."
     }
   ],
-  "expected_relationships": []
+  "expected_relationships": [
+    { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
+      "kind": "CONTAINS", "to_name": "UsersController.GetById", "to_kind": "SCOPE.Operation", "to_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "#6490 arm B. `class UsersController { ... IActionResult GetById(int id) }` — the class declares the method. from_kind is Controller, not SCOPE.Component: the ASP.NET framework pass re-kinds the class, which is also why the SCOPE.Component entity row above misses (see the report on this fixture)." },
+    { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
+      "kind": "CONTAINS", "to_name": "UsersController.Create", "to_kind": "SCOPE.Operation", "to_file": "Controllers/UsersController.cs",
+      "must_exist": true },
+    { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
+      "kind": "CONTAINS", "to_name": "UsersController.Delete", "to_kind": "SCOPE.Operation", "to_file": "Controllers/UsersController.cs",
+      "must_exist": true },
+    { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
+      "kind": "CONTAINS", "to_name": "UsersController._userService", "to_kind": "SCOPE.Schema", "to_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "`private readonly IUserService _userService;` — the injected field." },
+
+    { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
+      "kind": "CONTAINS", "to_name": "UserService.GetByIdAsync", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "`class UserService { Task<User> GetByIdAsync(int id) }`." },
+    { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
+      "kind": "CONTAINS", "to_name": "UserService.CreateAsync", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
+      "must_exist": true },
+    { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
+      "kind": "CONTAINS", "to_name": "UserService.DeleteAsync", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
+      "must_exist": true },
+
+    { "from_name": "UsersController.GetById", "from_kind": "SCOPE.Operation", "from_file": "Controllers/UsersController.cs",
+      "kind": "IMPLEMENTS", "to_name": "http:GET:/api/users/{id}", "to_kind": "http_endpoint_definition", "to_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "[Route(\"api/[controller]\")] on the class + [HttpGet(\"{id}\")] on the method compose to GET /api/users/{id}, and the handler bridge binds the action to it." },
+    { "from_name": "UsersController.Create", "from_kind": "SCOPE.Operation", "from_file": "Controllers/UsersController.cs",
+      "kind": "IMPLEMENTS", "to_name": "http:POST:/api/users", "to_kind": "http_endpoint_definition", "to_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "[HttpPost] with no template — the class route alone." },
+    { "from_name": "UsersController.Delete", "from_kind": "SCOPE.Operation", "from_file": "Controllers/UsersController.cs",
+      "kind": "IMPLEMENTS", "to_name": "http:DELETE:/api/users/{id}", "to_kind": "http_endpoint_definition", "to_file": "Controllers/UsersController.cs",
+      "must_exist": true },
+
+    { "from_name": "Controllers/UsersController.cs", "from_kind": "SCOPE.Component", "from_file": "Controllers/UsersController.cs",
+      "kind": "IMPORTS", "to_name": "Microsoft.AspNetCore:Mvc", "to_kind": "SCOPE.External",
+      "must_exist": true,
+      "note": "`using Microsoft.AspNetCore.Mvc;`." },
+
+    { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
+      "kind": "IMPLEMENTS", "to_name": "IUserService", "to_kind": "SCOPE.Class", "to_file": "Controllers/UsersController.cs",
+      "must_exist": false, "nice_to_have": true,
+      "note": "#6490 arm B FINDING, tracked under #6370's family: `public class UserService : IUserService` emits no IMPLEMENTS edge. C# emits no class-hierarchy edge at all in this fixture — see also the ControllerBase row below. Held nice_to_have rather than deleted so the expectation stays visible; promote it when C# hierarchy extraction lands." },
+    { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
+      "kind": "EXTENDS", "to_bare_name": "ControllerBase",
+      "must_exist": false, "nice_to_have": true,
+      "note": "#6490 arm B FINDING: `public class UsersController : ControllerBase` emits no EXTENDS edge, not even to an external stub." },
+    { "from_name": "UsersController.GetById", "from_kind": "SCOPE.Operation", "from_file": "Controllers/UsersController.cs",
+      "kind": "CALLS", "to_name": "UserService.GetByIdAsync", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
+      "must_exist": false, "nice_to_have": true,
+      "note": "#6490 arm B FINDING: `await _userService.GetByIdAsync(id)` resolves only to the dangling bare name `IUserService.GetByIdAsync`. The constructor-injected field is not bound to the interface's single in-repo implementation, so the controller→service call is invisible. Java does resolve the equivalent (java-spring-mini's UserController.listUsers → UserService.listAll)." }
+  ]
 }
