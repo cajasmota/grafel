@@ -166,6 +166,21 @@ func TestKotlinAnnotRepair_OffsetsAddressTheOriginalSource(t *testing.T) {
 	}
 	defer pr.TSTree.Close()
 
+	// D3 — REGRESSION PIN, not just an offset check. Without this the test
+	// passed with the repair disabled: the unrepaired tree has no misparse
+	// fixed, but its offsets are trivially correct, so every assertion below
+	// held vacuously. Require that a repair actually happened before checking
+	// how it mapped its offsets.
+	decl := findNode6736(pr.TSTree.RootNode(), "class_declaration")
+	if decl == nil {
+		t.Fatalf("no class_declaration in the tree — the controller was not recovered, so the "+
+			"offset assertions below would be vacuous; top children: %v",
+			topTypes6736(pr.TSTree.RootNode()))
+	}
+	if got := src[decl.StartByte():decl.EndByte()]; !strings.Contains(got, "class RealController") {
+		t.Fatalf("the recovered class_declaration does not span the controller: %q", got)
+	}
+
 	// Every identifier in the tree must slice out of the ORIGINAL source to a
 	// plausible identifier — one byte of drift turns `RealController` into
 	// `RealControlle` or `ealController`.
@@ -428,5 +443,261 @@ func TestKotlinMisparsePoints_OnlyAnnotationLedExpressions(t *testing.T) {
 	if got := pr.TSTree.RootNode().String(); got != want {
 		t.Errorf("well-formed Kotlin with a top-level prefix_expression was rewritten\n got: %s\nwant: %s",
 			got, want)
+	}
+}
+
+// --- review round 2: D1 / D2 -------------------------------------------------
+
+// TestKotlinAnnotRepair_NonConvergingShapeIsRejected pins D1.
+//
+// A single-line class body is MORE idiomatic Kotlin than the multi-line shape
+// the repair fixes, and it does not respond to the terminator at all: the body
+// is already read as a trailing lambda, so `;` never disambiguates it. Before
+// the strict-progress guard the loop ran its full ceiling anyway, wrote `};;;`
+// at every site, fixed nothing, and MANUFACTURED ERROR nodes in a file whose raw
+// parse had none — pushing it toward the maxErrorRatio drop that `main` does not
+// trigger.
+//
+// The required behaviour is therefore not "repair it" but "refuse cleanly":
+// hand back exactly what the grammar produced.
+func TestKotlinAnnotRepair_NonConvergingShapeIsRejected(t *testing.T) {
+	src := "package io.demo\n\n@A\n@B\nclass One { fun a() = 1 }\n\n@A\n@B\nclass Two { fun b() = 2 }\n\nfun tail() = 3\n"
+
+	raw, done := rawParseKotlin6736(t, src)
+	wantSexp := raw.RootNode().String()
+	_, rawErrs := countNodesTS(raw.RootNode())
+	rawPts := kotlinMisparsePoints(raw.RootNode())
+	done()
+
+	// Premise: this fixture really is the misparse (so the repair is entered),
+	// and really is clean (so any ERROR node afterwards is one we invented).
+	if len(rawPts) == 0 {
+		t.Fatalf("premise failed: the single-line fixture no longer trips the detector, so this " +
+			"test no longer exercises the non-converging path")
+	}
+	if rawErrs != 0 {
+		t.Fatalf("premise failed: the raw parse already has %d ERROR node(s); an ERROR count "+
+			"after repair would not prove the repair invented it", rawErrs)
+	}
+
+	pr, err := NewParserFactory(nil).Parse(context.Background(), []byte(src), "kotlin")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	defer pr.TSTree.Close()
+
+	if pr.ErrorRatio != 0 {
+		t.Errorf("the repair invented syntax errors in a clean file: error_ratio=%.4f, want 0 "+
+			"(this is the #6736 D1 regression: blind rounds append `};;;`)", pr.ErrorRatio)
+	}
+	if got := pr.TSTree.RootNode().String(); got != wantSexp {
+		t.Errorf("a non-converging repair was kept instead of discarded\n got: %s\nwant: %s",
+			got, wantSexp)
+	}
+	if int(pr.TSTree.RootNode().EndByte()) != len(src) {
+		t.Errorf("root EndByte=%d, want %d — a mangled buffer leaked to the caller",
+			pr.TSTree.RootNode().EndByte(), len(src))
+	}
+}
+
+// TestKotlinAnnotRepair_NeverIncreasesErrorCount is the invariant that actually
+// protects users, stated independently of HOW the loop terminates: whatever the
+// repair returns must never carry more ERROR nodes than the tree it was handed.
+//
+// A higher count is strictly worse than doing nothing — it pushes the file
+// toward the maxErrorRatio gate (a whole-file drop) and toward the #6360 wrapper
+// hiding subtrees that were previously visible. It is checked across repairable,
+// non-repairable and already-broken sources, so it holds on every path through
+// the function rather than on the one the other tests happen to take.
+func TestKotlinAnnotRepair_NeverIncreasesErrorCount(t *testing.T) {
+	annots := "@RestController\n@RequestMapping(\"/api\")\n"
+	tail := "\nfun loose(): String = \"x\"\n"
+	sources := map[string]string{
+		"repairable multi-line":  annots + "class A {\n  fun k() {}\n}\n" + tail,
+		"non-converging inline":  "@A\n@B\nclass One { fun a() = 1 }\n\nfun tail() = 3\n",
+		"two inline classes":     "@A\n@B\nclass One { fun a() = 1 }\n\n@A\n@B\nclass Two { fun b() = 2 }\n\nfun t() = 3\n",
+		"mixed inline+multiline": "@A\n@B\nclass One { fun a() = 1 }\n\n" + annots + "class B {\n  fun k() {}\n}\n" + tail,
+		"already malformed":      annots + "class A {\n  fun k() {}\n}\n\nfun broken( { ) = = =\n\nval ok = 1\n",
+		"object carrier":         annots + "object A {\n  fun k() {}\n}\n" + tail,
+		"clean, no annotations":  "class A {\n  fun k() {}\n}\n" + tail,
+	}
+	for name, src := range sources {
+		t.Run(name, func(t *testing.T) {
+			raw, done := rawParseKotlin6736(t, src)
+			_, before := countNodesTS(raw.RootNode())
+			done()
+
+			pr, err := NewParserFactory(nil).Parse(context.Background(), []byte(src), "kotlin")
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			defer pr.TSTree.Close()
+
+			// Count through the RETURNED tree. The #6360 wrapper can only hide
+			// ERROR nodes, so this is a lower bound on what the repair produced;
+			// the ratio below is computed pre-wrapper and is the exact figure.
+			_, after := countNodesTS(pr.TSTree.RootNode())
+			if after > before {
+				t.Errorf("repair raised the reachable ERROR count from %d to %d", before, after)
+			}
+			if before == 0 && pr.ErrorRatio != 0 {
+				t.Errorf("repair invented syntax errors in a file that parsed cleanly: "+
+					"error_ratio=%.4f", pr.ErrorRatio)
+			}
+			if int(pr.TSTree.RootNode().EndByte()) > len(src) {
+				t.Errorf("root EndByte=%d exceeds the original source length %d",
+					pr.TSTree.RootNode().EndByte(), len(src))
+			}
+		})
+	}
+}
+
+// TestKotlinAnnotRepair_EndByteBoundaryIsExact pins D2: the exact boundary
+// unshift() has to get right.
+//
+// Every inserted `;` sits at EXACTLY the repaired end offset of the declaration
+// it terminates, so that declaration's EndByte is the one offset where
+// "insertions strictly before" and "insertions at or before" disagree. Turning
+// `sort.SearchInts(ins, int(off))` into `int(off)+1` compiles clean and passed
+// every other test in this file, while silently truncating the recovered class
+// by one byte — it lost its closing `}` and the `}` token collapsed to an empty
+// span. Nothing else in the suite looks at a span whose end coincides with an
+// insertion, which is why that mutant survived.
+func TestKotlinAnnotRepair_EndByteBoundaryIsExact(t *testing.T) {
+	src := "package io.demo\n\n@RestController\n@RequestMapping(\"/api\")\nclass RealController {\n" +
+		"    @GetMapping(\"/kept\")\n    fun kept(): String = \"ok\"\n}\n\nfun looseHelper() = 1\n"
+
+	pr, err := NewParserFactory(nil).Parse(context.Background(), []byte(src), "kotlin")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	defer pr.TSTree.Close()
+
+	decl := findNode6736(pr.TSTree.RootNode(), "class_declaration")
+	if decl == nil {
+		t.Fatalf("premise failed: no class_declaration after repair; top children: %v",
+			topTypes6736(pr.TSTree.RootNode()))
+	}
+	start, end := int(decl.StartByte()), int(decl.EndByte())
+
+	// The insertion for this declaration lands at exactly `end`. Both bounds
+	// must therefore be exact in the ORIGINAL buffer.
+	if got := src[start:end]; !strings.HasPrefix(got, "@RestController") {
+		t.Errorf("class_declaration start bound is off: src[%d:%d] starts %q, want it to start "+
+			"at the first annotation", start, end, got[:min6736(20, len(got))])
+	}
+	if got := src[start:end]; !strings.HasSuffix(got, "}") {
+		t.Errorf("class_declaration END bound is off by one: src[%d:%d] ends %q, want it to end "+
+			"at the class's closing brace. This is the unshift() boundary — an insertion sits at "+
+			"exactly this offset.", start, end, got[max6736(0, len(got)-20):])
+	}
+
+	// The closing brace token itself must be a NON-EMPTY span. Under the
+	// off-by-one it degenerates to [end,end) == "".
+	body := findNode6736(decl, "class_body")
+	if body == nil {
+		t.Fatalf("premise failed: the recovered class_declaration has no class_body")
+	}
+	var brace ts.Node
+	for i := 0; i < int(body.ChildCount()); i++ {
+		if c := body.Child(i); c != nil && c.Type() == "}" {
+			brace = c
+		}
+	}
+	if brace == nil {
+		t.Fatalf("premise failed: no `}` token in the class_body")
+	}
+	bs, be := int(brace.StartByte()), int(brace.EndByte())
+	if be <= bs {
+		t.Errorf("the `}` token collapsed to an empty span [%d,%d) — unshift() is mapping the "+
+			"end bound with \"at or before\" instead of \"strictly before\"", bs, be)
+	}
+	if got := src[bs:be]; got != "}" {
+		t.Errorf("the `}` token slices the original source to %q, want \"}\"", got)
+	}
+}
+
+func min6736(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max6736(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// TestKotlinAnnotRepair_PartialRepairSurvivesANonConvergingSibling pins that the
+// strict-progress guard is LOAD-BEARING, not merely redundant with the
+// never-worse-error invariant.
+//
+// The two guards look interchangeable on a file where every misparse is
+// unrepairable — both end up returning the original tree — so the invariant
+// alone would let `>=` be weakened to `>` unnoticed. They come apart on a MIXED
+// file, which is the realistic case: one repairable multi-line class and one
+// unrepairable single-line class.
+//
+//	strict `>=`  round 0 reduces 2 misparses to 1 and is KEPT; round 1 makes no
+//	             progress and is discarded. The multi-line class is recovered,
+//	             the inline one is left alone, no ERROR node is invented.
+//	weakened `>` round 1 and 2 run anyway, pile semicolons onto the inline class
+//	             until it carries ERROR nodes, and the final invariant then
+//	             throws away the WHOLE repair — including the multi-line class
+//	             that was already fixed.
+//
+// So without strict progress a recoverable controller is lost because an
+// unrelated declaration elsewhere in the file happens to be unrepairable.
+func TestKotlinAnnotRepair_PartialRepairSurvivesANonConvergingSibling(t *testing.T) {
+	src := "package io.demo\n\n" +
+		"@A\n@B\nclass Inline { fun a() = 1 }\n\n" +
+		"@RestController\n@RequestMapping(\"/api\")\nclass Multi {\n    fun k() {}\n}\n\n" +
+		"fun tail() = 3\n"
+
+	raw, done := rawParseKotlin6736(t, src)
+	rawPts := kotlinMisparsePoints(raw.RootNode())
+	_, rawErrs := countNodesTS(raw.RootNode())
+	done()
+
+	// Premise: BOTH declarations are misparsed to begin with, and the file is
+	// clean. Otherwise this is not the mixed case it claims to be.
+	if len(rawPts) != 2 {
+		t.Fatalf("premise failed: expected 2 misparsed constructs in the mixed fixture, got %d — "+
+			"the fixture no longer exercises partial repair", len(rawPts))
+	}
+	if rawErrs != 0 {
+		t.Fatalf("premise failed: raw parse already carries %d ERROR node(s)", rawErrs)
+	}
+
+	pr, err := NewParserFactory(nil).Parse(context.Background(), []byte(src), "kotlin")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	defer pr.TSTree.Close()
+
+	// The repairable class MUST be recovered despite its unrepairable sibling.
+	found := false
+	root := pr.TSTree.RootNode()
+	for i := 0; i < int(root.ChildCount()); i++ {
+		c := root.Child(i)
+		if c.Type() != "class_declaration" {
+			continue
+		}
+		if strings.Contains(src[c.StartByte():c.EndByte()], "class Multi") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the repairable `class Multi` was NOT recovered; an unrepairable sibling in the "+
+			"same file discarded the whole repair. top children: %v", topTypes6736(root))
+	}
+
+	// And the unrepairable sibling must not have cost us any invented errors.
+	if pr.ErrorRatio != 0 {
+		t.Errorf("error_ratio=%.4f, want 0 — semicolons were piled onto the non-converging "+
+			"sibling", pr.ErrorRatio)
 	}
 }

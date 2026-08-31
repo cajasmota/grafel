@@ -59,16 +59,45 @@ import (
 // completely untouched (same tree, no wrapper, no re-parse). No other grammar
 // is reachable from here, which is deliberately unlike the shared #6360 wrapper.
 //
-// KNOWN LIMIT. Each inserted `;` shifts the columns of anything after it ON THE
-// SAME LINE by one. In practice nothing follows: the insertion point is the end
-// of a top-level declaration, which is end-of-line in any real Kotlin file. Byte
-// offsets are mapped exactly, and rows are never affected because no newline is
-// ever inserted.
+// WHY THE `language == "kotlin"` GATE IS UNTESTABLE, AND KEPT ANYWAY. Removing
+// it survives the whole suite, and that mutant is reported ALIVE rather than
+// killed with a manufactured fixture: a symbol sweep of all 27 vendored grammars
+// found that ONLY kotlin carries all three of `prefix_expression`, `annotation`
+// and `source_file` (Groovy, the nearest miss, has two of the three). So no
+// other grammar can produce the detector's signature, no natural fixture can
+// distinguish gated from ungated, and the gate is defence-in-depth against a
+// future grammar bump rather than a load-bearing condition.
+//
+// NOT EVERY SHAPE IS REPAIRABLE, AND THAT IS HANDLED EXPLICITLY. A single-line
+// class body — `class One { fun a() = 1 }`, which is more idiomatic Kotlin than
+// the multi-line shape — does NOT respond to the terminator at all: the body is
+// already being read as a trailing lambda, and appending `;` never converges.
+// Re-running the insertion on such a file just accumulates `};;;` and, from the
+// third semicolon on, MANUFACTURES ERROR nodes in a file that had none
+// (measured: ratio 0.0000 on the raw parse, 0.0347 after three blind rounds on a
+// 20-class file). With maxErrorRatio at 0.10 that is a path to dropping a whole
+// file the unrepaired parser accepts, so a repair that does not converge must be
+// thrown away, not kept.
+//
+// The guard that does this is the STRICT PER-ROUND PROGRESS check in
+// repairKotlinAnnotationMisparse: a round that fails to reduce the misparse
+// count is discarded, and rounds that DID make progress are kept, so one
+// unrepairable declaration no longer costs a repairable one in the same file. A
+// second, never-worse error-count check follows it as defence in depth; it is
+// currently unreachable, and says so at its own site rather than claiming to be
+// load-bearing.
+//
+// COLUMN SHIFT IS A NON-ISSUE, for a stronger reason than "nothing follows on
+// that line". `ts.Point.Column` has ZERO consumers in this repository — the only
+// occurrences construct it, in internal/treesitter/ts/official.go:212,216 — and
+// grafel's Kotlin consumers read `StartPoint().Row` only. Rows are exact by
+// construction because no newline is ever inserted, and byte offsets are mapped
+// exactly. So the one field an inserted `;` could perturb is one nothing reads.
 
-// maxKotlinRepairRounds bounds the re-parse loop. Each round must strictly
-// reduce the number of misparsed constructs or the loop stops, so this is a
-// belt-and-braces ceiling against a grammar shape that never converges rather
-// than an expected cost — every measured shape converges in one round.
+// maxKotlinRepairRounds bounds the re-parse loop. It is a ceiling, not the
+// termination condition: the loop's real exit is the strict-progress check in
+// repairKotlinAnnotationMisparse, which discards any round that fails to reduce
+// the misparse count. Every repairable shape measured converges in ONE round.
 const maxKotlinRepairRounds = 3
 
 // repairKotlinAnnotationMisparse returns a tree in which top-level declarations
@@ -94,6 +123,9 @@ func repairKotlinAnnotationMisparse(p ts.Parser, source []byte, tree ts.Tree) (t
 	// insertions holds, in REPAIRED-buffer coordinates, the offset of every `;`
 	// this repair has added, in ascending order.
 	var insertions []int
+	// remaining is the misparse count of the tree currently held in curTree.
+	// Every accepted round must STRICTLY reduce it.
+	remaining := len(pts)
 
 	for round := 0; round < maxKotlinRepairRounds; round++ {
 		next, added := insertTerminators(cur, pts)
@@ -105,25 +137,63 @@ func repairKotlinAnnotationMisparse(p ts.Parser, source []byte, tree ts.Tree) (t
 			}
 			return nil, false
 		}
+
+		newPts := kotlinMisparsePoints(repaired.RootNode())
+		if len(newPts) >= remaining {
+			// STRICT-PROGRESS GUARD. This round did not reduce the misparse
+			// count, so the terminator is not disambiguating this shape and
+			// never will — more rounds only pile up semicolons and eventually
+			// invent ERROR nodes (the single-line class body does exactly
+			// this). Drop THIS round's work and keep whatever earlier rounds
+			// legitimately achieved; if there was none, the caller gets its
+			// original tree back untouched.
+			repaired.Close()
+			break
+		}
+
 		if curTree != tree {
 			curTree.Close()
 		}
 		curTree = repaired
 		cur = next
 		insertions = mergeInsertions(insertions, added)
-
-		pts = kotlinMisparsePoints(repaired.RootNode())
-		if len(pts) == 0 {
+		remaining = len(newPts)
+		pts = newPts
+		if remaining == 0 {
 			break
 		}
 	}
 
 	if len(insertions) == 0 {
-		if curTree != tree {
-			curTree.Close()
-		}
+		// Nothing survived the progress guard: `curTree` is still `tree`.
 		return nil, false
 	}
+
+	// NEVER-WORSE INVARIANT. Strict progress is about the misparse count; this
+	// is about what actually reaches users. A repaired tree carrying more ERROR
+	// nodes than the one we were handed pushes the file toward the maxErrorRatio
+	// gate and toward the #6360 wrapper hiding real subtrees — strictly worse
+	// than doing nothing.
+	//
+	// HONESTY NOTE, so this comment does not outrun its evidence: with the
+	// strict-progress guard above in place, this check is DEFENCE IN DEPTH and
+	// is not currently reachable. Deleting it keeps the whole suite green, and
+	// that mutant is reported ALIVE rather than killed with a manufactured
+	// fixture. A search for an input on which a strictly-progressing round also
+	// RAISES the error count — the annotated-class repair followed by ten
+	// different malformed tails — found none; the error count was identical
+	// before and after in every case. It is kept because it is the property that
+	// actually protects users, stated independently of how the loop happens to
+	// terminate today, and because a future change to the insertion strategy
+	// would reach it. TestKotlinAnnotRepair_NeverIncreasesErrorCount pins the
+	// PROPERTY across every path; it does not pin this branch.
+	_, wasErrs := countNodesTS(tree.RootNode())
+	_, nowErrs := countNodesTS(curTree.RootNode())
+	if nowErrs > wasErrs {
+		curTree.Close()
+		return nil, false
+	}
+
 	tree.Close()
 	return &shiftedTree{inner: curTree, insertions: insertions, pin: cur}, true
 }
