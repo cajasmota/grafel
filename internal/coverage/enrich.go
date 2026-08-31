@@ -28,6 +28,8 @@ import (
 
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // Stats summarizes one Enrich run for the indexer's verbose log line.
@@ -234,7 +236,7 @@ func resolveReport(repoRoot string, cfg Config) (string, bool) {
 // pinned Config.Format ("" auto-detects from content); it dispatches through
 // ParseReport so LCOV/Cobertura/JaCoCo all share one ingestion path.
 func parseReportFile(path, format string) (*Report, error) {
-	f, err := os.Open(path)
+	f, err := safeio.OpenReported(path, safeio.FollowSymlinks)
 	if err != nil {
 		return nil, err
 	}

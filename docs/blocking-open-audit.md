@@ -44,13 +44,59 @@ and `cmd/` falls into one of four buckets.
 A literal leaf joined onto a directory that itself came from a `ReadDir` still
 counts as **name-chosen** — the leaf is what the attacker names.
 
-## The open list: name-chosen sites not yet routed through safeio
+## The open list: EMPTY as of #6478
 
-Round 5 fixes the two groups that block `grafel index` ITSELF — the walker's
+**Round 6 (#6478) routed all 26 remaining rows through `safeio` and, more
+importantly, replaced this table with a checker.** The table below is kept as
+the historical record of what round 6 closed; it is no longer the thing that
+tracks the population.
+
+The population is now tracked by
+`internal/safeio/name_chosen_open_sweep_guard_6478_test.go`: an AST sweep over
+every non-test `.go` file under `internal/` and `cmd/` that reports any
+`os.ReadFile` / `os.Open` / `os.OpenFile` whose path expression, resolved up to
+two assignments back — through package-level consts and vars declared anywhere
+in the package, not just in the reading file — contains a filename-shaped
+string literal. A new unguarded read fails the suite and names its file, line,
+function and literal.
+That is the durable half of #6478, and it exists because a hand-maintained list
+of `file:line` rows is the same failure mode as a hand-maintained integer: it
+goes stale the first time someone adds a read, which is exactly how the class
+was declared closed four times.
+
+**What the checker can and cannot see, stated plainly.** It pins the BOUNDARY,
+not the sites. It resolves identifiers, not calls, so a path arriving as a bare
+function parameter is invisible to it (`internal/agents.upsertFile` is the live
+example), and an extensionless name like `pre-push` is not filename-shaped by
+any rule that would not also match half the identifiers in the tree. Those two
+misses are pinned as MISS rows in
+`internal/testsupport/blockingopenscan_test.go`, and the sites they cover are
+pinned by per-package FIFO deadline tests instead.
+
+A third gap existed and was closed rather than documented: review found that a
+path literal held in a package-level const in a DIFFERENT FILE of the same
+package evaded the scan entirely, while the byte-identical read with the const
+in the same file was caught. A separate `consts.go` or `paths.go` holding path
+literals is ordinary Go — likelier to be hit by the next name-chosen read than
+either miss above — so resolution now spans the whole package, and both the
+detector and the repo-wide sweep are pinned against that shape end to end.
+
+**Its ledger is 34 entries, not the 243 #6478 projected.** The issue expected
+every not-applicable row to need a day-one allowlist entry. It does not: the
+audit's 324 raw call sites include writes, procfs reads, walker-produced paths
+and paths with no literal in them at all, none of which have this shape. All 34
+were read individually; every one resolves under `~/.grafel`, the daemon root,
+grafel's own generated output, or a directory the user typed. The ledger is
+ratcheted by an exact-equality constant, so it cannot be appended to in order to
+silence a new finding.
+
+### Historical: the 26 rows round 6 closed
+
+Round 5 fixed the two groups that block `grafel index` ITSELF — the walker's
 own inherited-`.grafelignore` read and all five reads in `internal/gitmeta` —
-and moves those six rows to Done. The 26 below are **not** fixed, and are
+and moves those six rows to Done. The 26 below were **not** fixed by round 5 and were
 deliberately left for sized follow-up work rather than swept into an
-already-large PR. Every one of them is reached only after indexing has started
+already-large PR; round 6 (#6478) routed every one of them. Every one of them is reached only after indexing has started
 or through a surface other than `grafel index`, which is why they could be
 deferred and the six could not.
 
@@ -172,16 +218,23 @@ ungated read in the package.
 | `internal/licenses` | `licenses.go:106` — one `readLicenseFile` choke point covering all ten former sites |
 | `internal/daemon/walk` | `walker.go:343` — `readIgnoreFile` (`saferead.go`). The gate this PR added covers entries the WALKER produced; this read is name-chosen and runs before the walk. |
 | `internal/gitmeta` | `cache.go` `commondir` / `refs/…` / `HEAD` / `.git`, and `sparse.go`'s `info/sparse-checkout` — one `readGitMetaFile` choke point covering all five |
+| all 14 packages in the open table above | Round 6 (#6478) — every site routed through `safeio.ReadFileReported` / `safeio.OpenReported`, which read AND report the skip in one call. Deadline-pinned FIFO regressions in `internal/{agents,dashboard,engine,install,install/hooks,quality/fitness}`; the boundary itself is now pinned by `internal/safeio/name_chosen_open_sweep_guard_6478_test.go` |
 
 ## Counts
 
 | Bucket | Count |
 |---|---|
-| name-chosen, open | 26 |
-| name-chosen, fixed (already-safeio) | 14 |
+| name-chosen, open | 0 |
+| name-chosen, fixed (already-safeio) | 41 |
 | walker-gated | 40 |
-| not-applicable | 243 |
+| not-applicable | 242 |
 | **total non-test call sites** | **324** |
+
+Round 6 routed **27 call sites for 26 rows**: `internal/mcp/routing.go` carries
+two reads of the same `.grafel` shape — the marker walk-up in `groupFromCWD` and
+the `group.json` read in the resolver below it — which the single row above
+conflated. Both are routed, so one site moves out of not-applicable and the
+fixed bucket gains 27.
 
 Across 206 non-test files of the 2118 `.go` files under `internal/` + `cmd/`.
 599 further hits in `_test.go` files are out of scope.

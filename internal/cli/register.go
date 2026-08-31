@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/grafel/internal/atomicfile"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // agentsMDMarkers for the grafel discovery stub.
@@ -167,7 +169,7 @@ func upsertAgentsMDFile(path, block string) error {
 		return err
 	}
 
-	existing, err := os.ReadFile(target)
+	existing, err := safeio.ReadFileReported(target, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read %s: %w", target, err)
 	}

@@ -41,6 +41,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cajasmota/grafel/internal/graph"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,7 +163,7 @@ const DefaultConfigName = "fitness.yaml"
 // Returns an empty Config (no rules) when the file does not exist.
 func LoadConfig(stateDir string) (*Config, error) {
 	path := stateDir + "/" + DefaultConfigName
-	raw, err := os.ReadFile(path)
+	raw, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if os.IsNotExist(err) {
 		return &Config{}, nil
 	}

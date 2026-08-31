@@ -22,6 +22,8 @@ import (
 
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/registry"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -296,7 +298,7 @@ func fileExists(root, rel string) bool {
 
 // readManifestGroup reads the "group" field from .grafel/group.json.
 func readManifestGroup(path string) string {
-	data, err := os.ReadFile(path)
+	data, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		return ""
 	}

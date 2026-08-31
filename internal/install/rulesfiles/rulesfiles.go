@@ -69,6 +69,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/atomicfile"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // BlockVersion is the version embedded in the start marker. Bumping the
@@ -290,7 +292,7 @@ func RemoveTargets(repoRoot string, targets []string) (*RemoveResult, error) {
 	res := &RemoveResult{}
 	for _, target := range targets {
 		abs := filepath.Join(repoRoot, target)
-		existing, err := os.ReadFile(abs)
+		existing, err := safeio.ReadFileReported(abs, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -460,7 +462,7 @@ func UpsertGuidance(path, block string) error {
 // replace-in-place / append only. Used by UpsertGuidance for the personal and
 // opt-in project Claude guidance files.
 func upsertPlain(path, block string) (action, error) {
-	existing, err := os.ReadFile(path)
+	existing, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	switch {
 	case err != nil && !os.IsNotExist(err):
 		return actionUnknown, fmt.Errorf("read %s: %w", path, err)
@@ -509,7 +511,7 @@ const (
 // upsert reads path, decides what to do, and writes back atomically.
 // See package doc for the decision tree.
 func upsert(path, block string) (action, error) {
-	existing, err := os.ReadFile(path)
+	existing, err := safeio.ReadFileReported(path, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	switch {
 	case err != nil && !os.IsNotExist(err):
 		return actionUnknown, fmt.Errorf("read %s: %w", path, err)
@@ -560,7 +562,7 @@ func upsert(path, block string) (action, error) {
 
 // classify returns the FileStatus for a single absolute path.
 func classify(abs string) FileStatus {
-	data, err := os.ReadFile(abs)
+	data, err := safeio.ReadFileReported(abs, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return FileStatus{Path: abs, Status: StatusMissing, Detail: "file does not exist"}

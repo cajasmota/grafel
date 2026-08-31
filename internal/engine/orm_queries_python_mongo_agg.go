@@ -60,6 +60,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/types"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // mongoAggPyGate signals whether a pymongo/motor surface is plausible in the
@@ -1307,7 +1309,7 @@ func newMongoAggPyCrossFileResolver(repoRoot, path, src string) mongoAggPyCrossF
 		if file == "" {
 			return ""
 		}
-		data, err := os.ReadFile(file)
+		data, err := safeio.ReadFileReported(file, safeio.FollowSymlinks, safeio.MaxConfigFileBytes)
 		if err != nil {
 			return ""
 		}

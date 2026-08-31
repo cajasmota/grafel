@@ -34,6 +34,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/types"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // messageTopicKind is the Kind used for synthetic Kafka topic entities.
@@ -505,7 +507,7 @@ type channelBinding struct {
 var quarkusPropChannelRe = regexp.MustCompile(`^\s*mp\.messaging\.(incoming|outgoing)\.([\w.-]+?)\.([\w.-]+)\s*=\s*(.+?)\s*$`)
 
 func parseQuarkusProperties(path string, out map[string]channelBinding) {
-	f, err := os.Open(path)
+	f, err := safeio.OpenReported(path, safeio.FollowSymlinks)
 	if err != nil {
 		return
 	}

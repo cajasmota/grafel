@@ -16,12 +16,13 @@ package watch
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 
 	"github.com/cajasmota/grafel/internal/daemon/walk"
+
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // RepoWatchConfig is the optional per-repo override stored at
@@ -78,7 +79,7 @@ func loadRepoIgnoreState(repoPath string) *repoIgnoreState {
 	// Parse per-repo watch.json override (non-fatal if absent).
 	var cfg RepoWatchConfig
 	cfgPath := filepath.Join(repoPath, ".grafel", "watch.json")
-	if data, err := os.ReadFile(cfgPath); err == nil {
+	if data, err := safeio.ReadFileReported(cfgPath, safeio.FollowSymlinks, safeio.MaxConfigFileBytes); err == nil {
 		_ = json.Unmarshal(data, &cfg)
 	}
 
