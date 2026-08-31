@@ -80,8 +80,8 @@
     "kotlin-spring-mini": {
       "entity_found": 18,
       "entity_expected": 19,
-      "relationship_found": 7,
-      "relationship_expected": 12
+      "relationship_found": 12,
+      "relationship_expected": 17
     },
     "php-slim-mini": {
       "entity_found": 5,
