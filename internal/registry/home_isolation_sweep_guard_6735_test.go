@@ -59,6 +59,11 @@ package registry_test
 // in this change; the rest are frozen in grafelHomePinDeferred so the guard is
 // binding for anything NEW.
 //
+// The freeze is mechanical, not advisory: grafelHomePinDeferredMax pins the
+// ledger's exact size, so an author who trips the sweep cannot silence it by
+// appending a line. That gap was real in this file's first version and was
+// demonstrated, not argued — see the constant's own comment.
+//
 // That freeze is the point, and #6290 is why it is a freeze and not a sed:
 // "Treating the remainder as a sed is how a guard acquires a wall of noise that
 // everybody learns to ignore." A ledgered entry costs nothing to keep and
@@ -105,8 +110,10 @@ var deliberatelyUnpinnedHome = map[string]string{
 // every one was run with GRAFEL_HOME set on 2026-09-01 and passed. The value is
 // a family tag; see deferredFamilyReason.
 //
-// This list must only ever SHRINK. A new hit that is not the removal of an
-// existing entry is exactly the defect this guard exists to catch before merge.
+// This list must only ever SHRINK, and that is ENFORCED, not requested: see
+// grafelHomePinDeferredMax and TestGrafelHomePinDeferredOnlyShrinks below. A new
+// hit that is not the removal of an existing entry is exactly the defect this
+// guard exists to catch before merge.
 var grafelHomePinDeferred = map[string]string{
 	"internal/cli/install_refreshstate_test.go:refreshStateEnv":                                                  "cli",
 	"internal/cli/install_registermcp_6169_test.go:TestInstallRefreshState_RejectsRegisterMCP":                   "cli",
@@ -178,6 +185,154 @@ var grafelHomePinDeferred = map[string]string{
 	"internal/licenses/licenses_fifo_6416_test.go:TestGemLicenseFIFODoesNotHang": "licenses",
 }
 
+// grafelHomePinDeferredMax is the RATCHET on grafelHomePinDeferred: the exact
+// number of entries the ledger is allowed to hold.
+//
+// Without it, "this ledger only shrinks" was a sentence in a comment and a
+// sentence in a failure message, and nothing more — an author who tripped the
+// sweep could silence it by appending one correctly-spelled line, `go vet`
+// clean, suite green. That was demonstrated against the first version of this
+// file, not theorised: a planted offender in internal/licenses turned the sweep
+// red, one ledger line turned it green again. Prose asserting a property no code
+// implements is the defect class this repository re-files most often, and it had
+// no business living inside the guard whose job is to stop it.
+//
+// The assertion is EXACT, not an upper bound, so it ratchets in both directions:
+//
+//   - The ledger GROWS → the sweep's own failure already named the site; this
+//     fires second and says the fix is testsupport.IsolateHome(t), not a bigger
+//     number. Raising this constant is still possible — anything in-repo is —
+//     but it is now a conspicuous, single-purpose edit a reviewer sees, instead
+//     of one more line in a 65-line map.
+//   - The ledger SHRINKS (a site was converted, which is the point) → this fires
+//     and requires the constant to come down with it, so the bar can never be
+//     silently left slack for a future append to slip under.
+const grafelHomePinDeferredMax = 65
+
+// TestGrafelHomePinDeferredOnlyShrinks is the ratchet itself.
+func TestGrafelHomePinDeferredOnlyShrinks(t *testing.T) {
+	if len(grafelHomePinDeferred) > grafelHomePinDeferredMax {
+		t.Fatalf("grafelHomePinDeferred has GROWN to %d entries (ratchet: %d).\n\n"+
+			"This ledger records sites that were measured green and deferred; it is not a "+
+			"suppression list for new work. If the sweep just named your test, the fix is "+
+			"`home := testsupport.IsolateHome(t)` at the top of it, which sets HOME, USERPROFILE, "+
+			"GRAFEL_HOME, GRAFEL_DAEMON_ROOT and both XDG vars together. If your test genuinely "+
+			"must leave GRAFEL_HOME alone because it is asserting something ABOUT home "+
+			"resolution, it belongs in deliberatelyUnpinnedHome with a reason. Raising this "+
+			"constant is neither of those things.",
+			len(grafelHomePinDeferred), grafelHomePinDeferredMax)
+	}
+	if len(grafelHomePinDeferred) < grafelHomePinDeferredMax {
+		t.Fatalf("grafelHomePinDeferred has shrunk to %d entries but the ratchet still reads %d — "+
+			"lower grafelHomePinDeferredMax to %d in the same change.\n\n"+
+			"Thank you for converting a site. The constant has to follow the ledger down, or the "+
+			"slack it leaves behind is exactly the room a future append needs to pass unnoticed.",
+			len(grafelHomePinDeferred), grafelHomePinDeferredMax, len(grafelHomePinDeferred))
+	}
+}
+
+// TestGrafelHomePinDeferredRatchetIsWired pins the ratchet's EXISTENCE, not just
+// its current verdict. A ratchet no test observes is the same defect one layer
+// up: deleting TestGrafelHomePinDeferredOnlyShrinks, or relaxing it to a
+// one-sided bound, leaves every other test in this file green and returns the
+// ledger to being append-able in one line — with the "only shrinks" prose still
+// sitting above it, now lying again.
+//
+// Modelled on TestHomeIsolationGuardIsWiredIntoTestMain in
+// internal/install/home_isolation_guard_6171_test.go, which exists for the same
+// reason and whose first version was measurably dead until #6290 rewrote it to
+// assert the CALL rather than an identifier anywhere in the body. So this
+// asserts the two comparisons, by operator and by operand — an identifier walk
+// would survive `_ = grafelHomePinDeferredMax`.
+func TestGrafelHomePinDeferredRatchetIsWired(t *testing.T) {
+	dir, err := testsupport.PackageDirOfCaller(0)
+	if err != nil {
+		t.Fatalf("locate package dir: %v", err)
+	}
+	const self = "home_isolation_sweep_guard_6735_test.go"
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filepath.Join(dir, self), nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse %s: %v", self, err)
+	}
+
+	// The constant must exist, and be a constant — a var could be reassigned.
+	constFound := false
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, s := range gd.Specs {
+			vs, ok := s.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, n := range vs.Names {
+				if n.Name == "grafelHomePinDeferredMax" {
+					constFound = true
+				}
+			}
+		}
+	}
+	if !constFound {
+		t.Fatal("grafelHomePinDeferredMax is no longer declared as a package-level const. " +
+			"Without it nothing stops grafelHomePinDeferred from growing, and the \"this ledger " +
+			"only shrinks\" comment above it becomes prose asserting a property no code implements.")
+	}
+
+	// Both directions of the comparison must be asserted, inside a Test.
+	ops := map[token.Token]bool{}
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Body == nil || !strings.HasPrefix(fd.Name.Name, "Test") {
+			continue
+		}
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			be, ok := n.(*ast.BinaryExpr)
+			if !ok {
+				return true
+			}
+			if isLenOfDeferredLedger(be.X) && isIdent(be.Y, "grafelHomePinDeferredMax") {
+				ops[be.Op] = true
+			}
+			// The mirrored spelling counts as the mirrored operator.
+			if isLenOfDeferredLedger(be.Y) && isIdent(be.X, "grafelHomePinDeferredMax") {
+				switch be.Op {
+				case token.LSS:
+					ops[token.GTR] = true
+				case token.GTR:
+					ops[token.LSS] = true
+				}
+			}
+			return true
+		})
+	}
+	if !ops[token.GTR] {
+		t.Fatal("no Test in this file compares len(grafelHomePinDeferred) > grafelHomePinDeferredMax. " +
+			"That is the growth half of the ratchet — the one that stops a tripped sweep being " +
+			"silenced with a one-line append.")
+	}
+	if !ops[token.LSS] {
+		t.Fatal("no Test in this file compares len(grafelHomePinDeferred) < grafelHomePinDeferredMax. " +
+			"That is the shrink half — without it the constant is an upper bound that stays slack " +
+			"after a site is converted, leaving room for a future append to pass unnoticed.")
+	}
+}
+
+func isLenOfDeferredLedger(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 || !isIdent(call.Fun, "len") {
+		return false
+	}
+	return isIdent(call.Args[0], "grafelHomePinDeferred")
+}
+
+func isIdent(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == name
+}
+
 // deferredFamilyReason explains each family tag used in grafelHomePinDeferred.
 // Every claim of "measured green" refers to the 2026-09-01 -count=1 sweep
 // described in this file's doc comment.
@@ -223,7 +378,8 @@ func TestNoTestRedirectsHomeWithoutPinningGrafelHome(t *testing.T) {
 			"sets HOME, USERPROFILE, GRAFEL_HOME, GRAFEL_DAEMON_ROOT and both XDG vars together. If the "+
 			"test genuinely must leave GRAFEL_HOME alone (it is asserting something ABOUT home "+
 			"resolution), add it to deliberatelyUnpinnedHome with a reason. Do NOT add it to "+
-			"grafelHomePinDeferred — that ledger only shrinks.",
+			"grafelHomePinDeferred — that ledger only shrinks, and the grafelHomePinDeferredMax "+
+			"ratchet will fail the moment you try.",
 			strings.Join(unexpected, "\n  "))
 	}
 
