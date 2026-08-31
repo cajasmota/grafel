@@ -825,7 +825,7 @@ var allowedKinds = map[string]bool{
 	"SCOPE.Pattern":       true,
 	"SCOPE.Evolution":     true,
 	"SCOPE.Datastore":     true,
-	"SCOPE.ExternalAPI":   true,
+	"SCOPE.IngressHost":   true,
 	"SCOPE.Event":         true,
 	"SCOPE.Queue":         true,
 	"SCOPE.Schema":        true,
@@ -1479,7 +1479,7 @@ spec:
                   number: 443
 `)
 
-func TestMX1104_Ingress_Hosts_AreExternalAPI(t *testing.T) {
+func TestMX1104_Ingress_Hosts_AreIngressHost(t *testing.T) {
 	entities, err := extractYAML(k8sIngressFixture, "k8s/ingress.yml")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1492,8 +1492,8 @@ func TestMX1104_Ingress_Hosts_AreExternalAPI(t *testing.T) {
 		t.Error("expected ingress_host 'api.example.com'")
 	}
 	for _, e := range hosts {
-		if e.Kind != "SCOPE.ExternalAPI" {
-			t.Errorf("ingress_host %q kind=%q, want SCOPE.ExternalAPI", e.Name, e.Kind)
+		if e.Kind != "SCOPE.IngressHost" {
+			t.Errorf("ingress_host %q kind=%q, want SCOPE.IngressHost", e.Name, e.Kind)
 		}
 	}
 }

@@ -406,7 +406,7 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	//
 	// 23 since #6433 added angular-http-mini — the first fixture that grades
 	// OUTBOUND http client calls at all. Before it, nothing in golden/ asserted
-	// a single SCOPE.ExternalAPI or consumer-side http_endpoint_call, so the
+	// a single SCOPE.ExternalEndpoint or consumer-side http_endpoint_call, so the
 	// frontend half of cross-stack linking could sit at zero indefinitely
 	// without any fixture noticing (it had).
 	//

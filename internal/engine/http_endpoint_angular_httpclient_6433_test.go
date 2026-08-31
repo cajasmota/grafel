@@ -1,6 +1,6 @@
 // Unit tests for #6433 — Angular HttpClient consumer-side extraction.
 //
-// Reported by @auxmedrano: SCOPE.ExternalAPI = 98 across a monorepo, all of
+// Reported by @auxmedrano: SCOPE.ExternalAPI = 98 (pre-#6451 name) across a monorepo, all of
 // them backend, against 42 frontend files making concrete
 // `this.http.get/post/patch(...)` calls. Nothing on the frontend existed for a
 // cross-stack link to attach to.

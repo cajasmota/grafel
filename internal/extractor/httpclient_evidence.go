@@ -13,14 +13,14 @@ import (
 // Both consumer-side HTTP client passes — the engine's receiver-style synthesis
 // (internal/engine/http_endpoint_jsts_client_1483.go, which emits
 // http_endpoint_call) and the cross extractor (internal/extractors/cross/
-// httpclient, which emits SCOPE.ExternalAPI) — need the same two decisions:
+// httpclient, which emits SCOPE.ExternalEndpoint) — need the same two decisions:
 //
 //	"is this file test scaffolding?"      → IsTestSourceFile
 //	"does this file consume an HTTP client?" → HasInjectedHTTPClientEvidence
 //
 // They live here, in the package both already import, so the two passes cannot
 // drift apart. They had: the engine excluded test sources and the extractor did
-// not, so an Angular spec file contributed a SCOPE.ExternalAPI and no
+// not, so an Angular spec file contributed a SCOPE.ExternalEndpoint and no
 // http_endpoint_call — inflating precisely the number #6433 was reported on,
 // with test scaffolding.
 

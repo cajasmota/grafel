@@ -42,7 +42,7 @@
 //
 // #6494 — this header used to describe that property as firing "whenever
 // the chain ALSO terminates in an external-library SCOPE.External /
-// SCOPE.ExternalAPI node", i.e. an AND on the terminal step. The code has
+// SCOPE.ExternalEndpoint node", i.e. an AND on the terminal step. The code has
 // never done that: chainCrossesExternalLib is an OR over EVERY step —
 // boundary-set membership, an HTTP-endpoint-ish kind, or an external-lib
 // kind, at any position. This paragraph is corrected to match the code.
@@ -1168,7 +1168,7 @@ func isHTTPEndpointDefinition(e *graph.Entity) bool {
 // `cross_stack` flag for "this process touches an HTTP handler" can
 // switch to this label without losing that signal. The check is also
 // useful for documentation generators that want to highlight processes
-// terminating in third-party libraries (SCOPE.External / SCOPE.ExternalAPI).
+// terminating in third-party libraries (SCOPE.External / SCOPE.ExternalEndpoint).
 func chainCrossesExternalLib(chain []string, byID map[string]*graph.Entity, boundary map[string]bool) bool {
 	for _, id := range chain {
 		if boundary[id] {
@@ -1199,7 +1199,12 @@ func chainCrossesExternalLib(chain []string, byID map[string]*graph.Entity, boun
 		case "http_endpoint",
 			strings.ToLower(string(EntityKindEndpoint)),
 			strings.ToLower(string(EntityKindRoute)),
-			strings.ToLower(string(EntityKindExternalAPI)),
+			// #6451 — the HTTP-client half of the old SCOPE.ExternalAPI.
+			// SCOPE.IngressHost (the k8s Ingress half) is excluded: it has
+			// no inbound CALLS edge, so it cannot legitimately reach this
+			// gate, and it describes traffic coming IN — the opposite of
+			// "this process calls out to a third party".
+			strings.ToLower(string(EntityKindExternalEndpoint)),
 			"scope.external":
 			return true
 		}

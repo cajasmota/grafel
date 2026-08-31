@@ -6,7 +6,7 @@ import { inject, Injectable } from '@angular/core';
 // Negative control for the test-source exclusion (#6446). HttpClientTestingModule
 // carries `HttpClient` as a substring, so every Angular spec file opened the old
 // substring gate -- and the cross extractor, unlike the engine, had no test-file
-// exclusion, so spec scaffolding inflated SCOPE.ExternalAPI: the exact metric
+// exclusion, so spec scaffolding inflated SCOPE.ExternalEndpoint: the exact metric
 // #6433 was reported on.
 //
 // The in-spec stub service below is written in the same receiver shape as the

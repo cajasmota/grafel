@@ -47,12 +47,17 @@ const RelationshipKindCalls = "CALLS"
 // cross_stack=true. See issue #754.
 const RelationshipKindFetches = "FETCHES"
 
-// EntityKindEndpoint, EntityKindRoute, EntityKindExternalAPI are referenced
-// by chainCrossesStack and match the canonical SCOPE.* names produced by
-// the per-language extractors. Duplicated here as raw strings to avoid an
-// internal/types import for a single-use lookup.
+// EntityKindEndpoint, EntityKindRoute, EntityKindExternalEndpoint are
+// referenced by chainCrossesStack and match the canonical SCOPE.* names
+// produced by the per-language extractors. Duplicated here as raw strings to
+// avoid an internal/types import for a single-use lookup.
+//
+// #6451 — the former EntityKindExternalAPI covered two producers. Only the
+// HTTP-client half (now SCOPE.ExternalEndpoint) can appear in a code CALLS
+// chain; SCOPE.IngressHost is YAML-sourced inbound topology and is
+// deliberately NOT listed here.
 const (
-	EntityKindEndpoint    = "SCOPE.Endpoint"
-	EntityKindRoute       = "SCOPE.Route"
-	EntityKindExternalAPI = "SCOPE.ExternalAPI"
+	EntityKindEndpoint         = "SCOPE.Endpoint"
+	EntityKindRoute            = "SCOPE.Route"
+	EntityKindExternalEndpoint = "SCOPE.ExternalEndpoint"
 )

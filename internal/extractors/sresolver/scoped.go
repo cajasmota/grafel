@@ -179,7 +179,7 @@ const kindExternalPlaceholder = "SCOPE.External"
 //
 // # Coverage limits of the rank, as it stands
 //
-//   - `SCOPE.ExternalAPI` and `SCOPE.ExternalService` are also synthetic,
+//   - `SCOPE.ExternalEndpoint` and `SCOPE.ExternalService` are also synthetic,
 //     file-less kinds and are NOT ranked here. Whether they can shadow a real
 //     entity on this path is untested in either direction — no fixture produces
 //     the collision. Worth a follow-up rather than a silent assumption.

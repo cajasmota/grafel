@@ -1089,7 +1089,7 @@ func extractKubernetes(root ts.Node, file extractor.FileInput) []types.EntityRec
 //	containers[].volumeMounts[].name:  → SCOPE.Schema,    subtype="volume_mount"
 //	initContainers[].name:             → SCOPE.Component, subtype="init_container"
 //	ConfigMap data keys:               → SCOPE.Schema,    subtype="config_key"
-//	Ingress spec.rules[].host:         → SCOPE.ExternalAPI, subtype="ingress_host"
+//	Ingress spec.rules[].host:         → SCOPE.IngressHost, subtype="ingress_host"
 //	Ingress spec.rules[].http.paths[].path: → SCOPE.Operation, subtype="ingress_path"
 //	Service selector + ports:          → existing extractK8sService logic
 func extractKubernetesDoc(doc ts.Node, file extractor.FileInput) []types.EntityRecord {
@@ -1377,7 +1377,7 @@ func k8sTemplatePairs(specPairs []ts.Node, src []byte) ([]ts.Node, []ts.Node) {
 }
 
 // extractK8sIngress extracts entities from a Kubernetes Ingress spec.
-// Emits ingress_host (SCOPE.ExternalAPI) and ingress_path (SCOPE.Operation).
+// Emits ingress_host (SCOPE.IngressHost) and ingress_path (SCOPE.Operation).
 func extractK8sIngress(specPairs []ts.Node, ingressName, refPrefix string, file extractor.FileInput, src []byte) []types.EntityRecord {
 	var entities []types.EntityRecord
 
@@ -1387,7 +1387,7 @@ func extractK8sIngress(specPairs []ts.Node, ingressName, refPrefix string, file 
 		rStart, rEnd := pairsLineRange(rulePairs)
 		if host != "" {
 			entities = append(entities, entity(
-				"SCOPE.ExternalAPI", host, "ingress_host",
+				"SCOPE.IngressHost", host, "ingress_host",
 				refPrefix+"ingress/"+ingressName+"/"+host,
 				file.Path, "yaml", rStart, rEnd,
 			))

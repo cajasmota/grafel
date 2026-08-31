@@ -295,7 +295,7 @@ func isTestSourceFile(filePath string) bool {
 	// arms live in internal/extractor so the cross HTTP-client extractor shares
 	// ONE definition with this one. They disagreed before: the engine excluded
 	// spec files and the extractor did not, so an Angular spec contributed a
-	// SCOPE.ExternalAPI and no http_endpoint_call. The arms below are the
+	// SCOPE.ExternalEndpoint and no http_endpoint_call. The arms below are the
 	// languages only endpoint synthesis cares about.
 	if extractor.IsTestSourceFile(filePath) {
 		return true

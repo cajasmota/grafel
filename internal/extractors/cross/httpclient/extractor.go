@@ -1,7 +1,7 @@
 // Package httpclient implements the cross-language HTTP client call extractor.
 //
 // Scans source files for outbound HTTP client calls and emits
-// SCOPE.ExternalAPI entities with CALLS(kind=external_http_call) relationships.
+// SCOPE.ExternalEndpoint entities with CALLS(kind=external_http_call) relationships.
 //
 // Supported patterns:
 //   - JavaScript / TypeScript: fetch('url'), axios.get('url'), axios.post(...)
@@ -9,7 +9,7 @@
 //   - Go:                      http.Get("url"), http.Post("url", ...), http.NewRequest(...)
 //   - Java / Kotlin:           restTemplate.exchange("url"), URI.create("url")
 //
-// Entity kind: "SCOPE.ExternalAPI"
+// Entity kind: "SCOPE.ExternalEndpoint"
 // Relationships emitted: CALLS(kind=external_http_call)
 //
 // OTel span: indexer.http_client_extractor.extract
@@ -105,7 +105,7 @@ var jsAxiosBacktickRE = regexp.MustCompile(
 //	private http = inject(HttpClient);
 //	this.http.get<readonly Thing[]>('/api/things')
 //
-// which matches under none of them. @auxmedrano measured SCOPE.ExternalAPI = 98
+// which matches under none of them. @auxmedrano measured SCOPE.ExternalAPI = 98 (the pre-#6451 name of this kind)
 // across a monorepo — all backend, zero frontend — against 42 files making
 // exactly these calls (#6433). The optional `<...>` group swallows the
 // TypeScript generic parameter; `(` / `)` are excluded from it so a call
@@ -135,13 +135,13 @@ var jsReceiverClientBacktickRE = regexp.MustCompile(jsReceiverClientHead + "`([^
 // #6446 — this was `strings.Contains(source, "HttpClient")`, defended as "it is
 // a class name, so it only appears where the client is used". False: a MENTION
 // opens a Contains gate. A migration TODO in a comment, an `import type`, and a
-// doc string each minted a SCOPE.ExternalAPI from a plain-object member named
+// doc string each minted a SCOPE.ExternalEndpoint from a plain-object member named
 // `http` — inflating the exact metric #6433 was reported on.
 //
 // Call sites whose URL argument is NOT a literal (`base(code)`) are deliberately
 // left to the engine's consumer-side pass
 // (internal/engine/http_endpoint_jsts_client_1483.go), which has a canonical
-// placeholder path and a runtime_dynamic marker for them. A SCOPE.ExternalAPI
+// placeholder path and a runtime_dynamic marker for them. A SCOPE.ExternalEndpoint
 // node is keyed on the URL string itself and has nowhere to put "unknown".
 func hasInjectedClientToken(source string) bool {
 	return extractor.HasInjectedHTTPClientEvidence(source)
@@ -479,7 +479,7 @@ func apiRef(url string) string {
 func buildEntitiesAndRels(filePath string, calls []call, importedModules map[string]bool) []types.EntityRecord {
 	var out []types.EntityRecord
 	cRef := callerRef(filePath)
-	// indexOf maps url -> position in `out` of the SCOPE.ExternalAPI for that
+	// indexOf maps url -> position in `out` of the SCOPE.ExternalEndpoint for that
 	// URL, so the CALLS edge can be embedded on the real entity instead of a
 	// synthetic "relationship"-kind container (#560). Multiple call sites with
 	// distinct HTTP methods to the same URL each contribute an embedded edge.
@@ -492,7 +492,7 @@ func buildEntitiesAndRels(filePath string, calls []call, importedModules map[str
 		if !seen {
 			out = append(out, types.EntityRecord{
 				Name:       c.url,
-				Kind:       "SCOPE.ExternalAPI",
+				Kind:       "SCOPE.ExternalEndpoint",
 				SourceFile: filePath,
 				Properties: map[string]string{
 					"url":        c.url,
@@ -548,7 +548,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// #6446 — test scaffolding is not an outbound dependency. The engine's
 	// consumer-side pass has excluded test sources since #1217; this extractor
 	// did not, so the two disagreed: an Angular spec file yielded NO
-	// http_endpoint_call but DID yield a SCOPE.ExternalAPI. SCOPE.ExternalAPI
+	// http_endpoint_call but DID yield a SCOPE.ExternalEndpoint. SCOPE.ExternalEndpoint
 	// is the metric #6433 was reported on, so the asymmetry inflated precisely
 	// the number being counted, with stubs. Both sides now share one definition
 	// (internal/extractor.IsTestSourceFile).
@@ -582,10 +582,10 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	importedModules := extractImportedModules(source)
 	entities := buildEntitiesAndRels(file.Path, calls, importedModules)
 
-	// Count unique URLs (entity records with Kind=SCOPE.ExternalAPI).
+	// Count unique URLs (entity records with Kind=SCOPE.ExternalEndpoint).
 	uniqueURLs := 0
 	for _, rec := range entities {
-		if rec.Kind == "SCOPE.ExternalAPI" {
+		if rec.Kind == "SCOPE.ExternalEndpoint" {
 			uniqueURLs++
 		}
 	}

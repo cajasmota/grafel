@@ -846,20 +846,20 @@ func TestHTMLExtractor_FlaskJinja2Register_MinEntityCount(t *testing.T) {
 func TestHTMLExtractor_FlaskJinja2Register_AllKindsAllowlistCompliant(t *testing.T) {
 	// Every entity Kind emitted by the Jinja2 fixture must be in the 14-type allowlist.
 	allowlist := map[string]struct{}{
-		"SCOPE.Service":       {},
-		"SCOPE.Component":     {},
-		"SCOPE.Operation":     {},
-		"SCOPE.Pattern":       {},
-		"SCOPE.Evolution":     {},
-		"SCOPE.Datastore":     {},
-		"SCOPE.ExternalAPI":   {},
-		"SCOPE.Event":         {},
-		"SCOPE.Queue":         {},
-		"SCOPE.Schema":        {},
-		"SCOPE.ScopeUnknown":  {},
-		"SCOPE.Stylesheet":    {},
-		"SCOPE.UIComponent":   {},
-		"SCOPE.InfraResource": {},
+		"SCOPE.Service":          {},
+		"SCOPE.Component":        {},
+		"SCOPE.Operation":        {},
+		"SCOPE.Pattern":          {},
+		"SCOPE.Evolution":        {},
+		"SCOPE.Datastore":        {},
+		"SCOPE.ExternalEndpoint": {},
+		"SCOPE.Event":            {},
+		"SCOPE.Queue":            {},
+		"SCOPE.Schema":           {},
+		"SCOPE.ScopeUnknown":     {},
+		"SCOPE.Stylesheet":       {},
+		"SCOPE.UIComponent":      {},
+		"SCOPE.InfraResource":    {},
 	}
 
 	src := `{% extends "base.html" %}

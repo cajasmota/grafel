@@ -451,16 +451,23 @@ var enrichmentMarkerSubtypes = map[string]bool{
 // are not self-describing from their name alone and benefit from an
 // agent-written description that explains their responsibility.
 var qualifyHighArchKinds = map[string]bool{
-	"Controller":         true,
-	"Service":            true,
-	"SCOPE.Service":      true,
-	"SCOPE.Controller":   true,
-	"SCOPE.ExternalAPI":  true,
-	"SCOPE.ScheduledJob": true,
-	"SCOPE.DataAccess":   true,
-	"Model":              true,
-	"Task":               true,
-	"View":               true,
+	"Controller":       true,
+	"Service":          true,
+	"SCOPE.Service":    true,
+	"SCOPE.Controller": true,
+	// #6451 — this entry predates the SCOPE.ExternalAPI split and was written
+	// against that kind's documented meaning, "calls into third-party HTTP /
+	// SDK surfaces" (internal/mcp/SCHEMA.md): the HTTP-client half, now
+	// SCOPE.ExternalEndpoint. Its node aggregates real call sites, so a model
+	// has material to describe. SCOPE.IngressHost (the k8s Ingress half) is
+	// deliberately NOT added: it is a hostname and a line of YAML, with no
+	// body for a description to summarise.
+	"SCOPE.ExternalEndpoint": true,
+	"SCOPE.ScheduledJob":     true,
+	"SCOPE.DataAccess":       true,
+	"Model":                  true,
+	"Task":                   true,
+	"View":                   true,
 }
 
 // qualifyComplexComponentRE matches SCOPE.Component names whose name starts

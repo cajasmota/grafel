@@ -346,20 +346,20 @@ func TestMX1059_Dbt_RealWorldFixture_AtLeast3Entities(t *testing.T) {
 
 func TestMX1059_Dbt_AllowlistCompliant(t *testing.T) {
 	allowed := map[string]bool{
-		"SCOPE.Service":       true,
-		"SCOPE.Component":     true,
-		"SCOPE.Operation":     true,
-		"SCOPE.Pattern":       true,
-		"SCOPE.Evolution":     true,
-		"SCOPE.Datastore":     true,
-		"SCOPE.ExternalAPI":   true,
-		"SCOPE.Event":         true,
-		"SCOPE.Queue":         true,
-		"SCOPE.Schema":        true,
-		"SCOPE.ScopeUnknown":  true,
-		"SCOPE.Stylesheet":    true,
-		"SCOPE.UIComponent":   true,
-		"SCOPE.InfraResource": true,
+		"SCOPE.Service":          true,
+		"SCOPE.Component":        true,
+		"SCOPE.Operation":        true,
+		"SCOPE.Pattern":          true,
+		"SCOPE.Evolution":        true,
+		"SCOPE.Datastore":        true,
+		"SCOPE.ExternalEndpoint": true,
+		"SCOPE.Event":            true,
+		"SCOPE.Queue":            true,
+		"SCOPE.Schema":           true,
+		"SCOPE.ScopeUnknown":     true,
+		"SCOPE.Stylesheet":       true,
+		"SCOPE.UIComponent":      true,
+		"SCOPE.InfraResource":    true,
 	}
 	entities := extractSQLContent(t, dbtModelFixture, "models/orders.sql")
 	for _, e := range entities {

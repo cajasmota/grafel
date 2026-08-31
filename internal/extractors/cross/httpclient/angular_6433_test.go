@@ -7,14 +7,14 @@ import (
 	"github.com/cajasmota/grafel/internal/extractor"
 )
 
-// #6433 — @auxmedrano measured SCOPE.ExternalAPI = 98 across a monorepo, every
+// #6433 — @auxmedrano measured SCOPE.ExternalAPI = 98 (pre-#6451 name) across a monorepo, every
 // one of them backend, against 42 frontend files making concrete
 // `this.http.get/post/patch(...)` calls.
 //
 // Every JS/TS pattern in this extractor anchors on the BARE identifiers `fetch`
 // or `axios`. Angular's idiom is a receiver — `this.http.<verb><T>(...)` on an
 // injected HttpClient — which matches under none of them, so the frontend
-// contributed zero SCOPE.ExternalAPI nodes and there was nothing for a
+// contributed zero SCOPE.ExternalEndpoint nodes and there was nothing for a
 // cross-stack link to attach to.
 
 const angularSrc = `
@@ -52,7 +52,7 @@ func extractAngular(t *testing.T, path, src string) []string {
 	}
 	var urls []string
 	for _, r := range recs {
-		if r.Kind == "SCOPE.ExternalAPI" {
+		if r.Kind == "SCOPE.ExternalEndpoint" {
 			urls = append(urls, r.Name)
 		}
 	}
@@ -68,13 +68,13 @@ func hasURL(urls []string, want string) bool {
 	return false
 }
 
-// TestAngularHttpClient_EmitsExternalAPI_6433 is the reporter's metric: an
-// Angular service must contribute SCOPE.ExternalAPI nodes.
-func TestAngularHttpClient_EmitsExternalAPI_6433(t *testing.T) {
+// TestAngularHttpClient_EmitsExternalEndpoint_6433 is the reporter's metric: an
+// Angular service must contribute SCOPE.ExternalEndpoint nodes.
+func TestAngularHttpClient_EmitsExternalEndpoint_6433(t *testing.T) {
 	urls := extractAngular(t, "src/app/thing.service.ts", angularSrc)
 	for _, want := range []string{"/api/things", "/api/things/{*}"} {
 		if !hasURL(urls, want) {
-			t.Errorf("missing SCOPE.ExternalAPI %q (got %v)", want, urls)
+			t.Errorf("missing SCOPE.ExternalEndpoint %q (got %v)", want, urls)
 		}
 	}
 }
@@ -133,7 +133,7 @@ export class NotAConsumer {
 
 // TestAngularHttpClient_MentionIsNotEvidence_6433 — the gate was a bare
 // strings.Contains over raw file text, so a MENTION of the client class name
-// opened it and minted a SCOPE.ExternalAPI from a plain-object member named
+// opened it and minted a SCOPE.ExternalEndpoint from a plain-object member named
 // `http`. That is the reporter's exact metric, inflated with non-calls.
 func TestAngularHttpClient_MentionIsNotEvidence_6433(t *testing.T) {
 	cases := []struct{ name, mention string }{
@@ -159,7 +159,7 @@ export class LegacyWrapper {
 
 // TestAngularHttpClient_SpecFileIsExcluded_6433 — the engine's consumer pass
 // skips test sources; this extractor had no such exclusion, so the two passes
-// disagreed and only the SCOPE.ExternalAPI side (the counted one) picked up test
+// disagreed and only the SCOPE.ExternalEndpoint side (the counted one) picked up test
 // scaffolding. HttpClientTestingModule carries `HttpClient` as a substring, so
 // every Angular spec file opened the old gate.
 func TestAngularHttpClient_SpecFileIsExcluded_6433(t *testing.T) {
@@ -177,7 +177,7 @@ describe('ThingService', () => {
 `
 	urls := extractAngular(t, "src/app/thing.service.spec.ts", src)
 	if hasURL(urls, "/api/spec-only") {
-		t.Errorf("spec file contributed a SCOPE.ExternalAPI (got %v)", urls)
+		t.Errorf("spec file contributed a SCOPE.ExternalEndpoint (got %v)", urls)
 	}
 }
 
