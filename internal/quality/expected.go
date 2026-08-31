@@ -39,6 +39,12 @@ type Fixture struct {
 	ExpectedEntities       []ExpectedEntity       `json:"expected_entities"`
 	ExpectedRelationships  []ExpectedRelationship `json:"expected_relationships"`
 	ForbiddenRelationships []ExpectedRelationship `json:"forbidden_relationships,omitempty"`
+	// AssertsNoRelationships is the explicit, named opt-in that exempts a
+	// fixture from the must-have relationship floor (#6490 arm A). It is a
+	// positive claim on purpose: only `true` exempts, so neither the absent
+	// field nor an empty `expected_relationships` array can ever be read as
+	// consent — that reading is the defect this field exists to close.
+	AssertsNoRelationships bool `json:"asserts_no_relationships,omitempty"`
 }
 
 // ExpectedEntity is a hand-curated assertion about what the indexer SHOULD
@@ -169,6 +175,43 @@ func LoadFixture(dir string) (*Fixture, error) {
 				"row states a single intent", p, i, ee.Name, ee.SourceFile)
 		}
 	}
+	// #6490 arm A, second half. Declaring the key is not yet an assertion: a
+	// fixture can declare it and still assert nothing that can ever go red —
+	// an empty array, or rows that are all `nice_to_have`. Nine of the
+	// twenty-six golden fixtures were in that shape, so `grafel quality`
+	// reported "relationships: 0/0 — pass" for six languages (three of them
+	// C# fixtures) whose edge extraction it was grading with nothing.
+	//
+	// The floor is therefore counted in MUST-HAVE rows, not in rows.
+	// `nice_to_have` rows are evaluated but never counted as a miss, so a
+	// fixture made entirely of them is exactly as unfailable as an empty
+	// array; a check written against `len(rows)` sees three rows and waves
+	// haskell-warp-mini through.
+	//
+	// forbidden_relationships deliberately does not count either. A forbidden
+	// row goes red when an edge APPEARS — it can never go red when the
+	// extractor stops emitting edges, which is the regression this floor
+	// exists to catch.
+	//
+	// AssertsNoRelationships is the only exemption, and it must be positively
+	// true. An absent field, an empty array and a `false` all mean "no
+	// exemption claimed": the defect being closed here is precisely that an
+	// absent or empty value was read as consent, so the opt-in may not be
+	// expressible as one.
+	mustHave := 0
+	for _, er := range f.ExpectedRelationships {
+		if er.MustExist {
+			mustHave++
+		}
+	}
+	if mustHave == 0 && !f.AssertsNoRelationships {
+		return nil, fmt.Errorf("%s: no must-have relationship rows (%d row(s) declared, "+
+			"%d forbidden) — a fixture that asserts no relationship cannot go red when "+
+			"edge extraction regresses, so it grades its language with nothing; add "+
+			"must_exist rows, or set \"asserts_no_relationships\": true to state the "+
+			"exemption out loud", p, len(f.ExpectedRelationships), len(f.ForbiddenRelationships))
+	}
+
 	return &f, nil
 }
 
