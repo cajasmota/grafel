@@ -720,6 +720,36 @@ const (
 	//              carries broker pub/sub fan-out semantics.
 	RelationshipKindEnqueues RelationshipKind = "ENQUEUES"
 
+	// #6741 (Arm 1, ADR-0028): the queue-hop pair. Both strings were already
+	// traversed by four consumers (internal/mcp/flow_tools.go,
+	// internal/mcp/dead_code.go, internal/links/reachability.go,
+	// internal/dashboard/topology_compound.go) and PRODUCES was already emitted
+	// by internal/custom/java/quartz.go; neither was ever declared here.
+	//
+	//   PRODUCES : producing site (the enclosing operation of the dispatch
+	//              call, or the framework producer entity such as a Quartz
+	//              job_builder) → the WORK UNIT the queue carries, addressed
+	//              `task:<framework>:<id>` (e.g. `task:hangfire:EmailService.SendConfirmation`).
+	//   CONSUMES : that same work unit → the handler that executes it.
+	//
+	// The two hops share the work-unit node, so a reachability walk goes
+	// producer → work unit → handler. CONSUMES therefore points the same way as
+	// TRIGGERS (ScheduledJob → handler) and DELIVERS_TO (topic → handler), not
+	// back at the queue.
+	//
+	// PRODUCES SUPPLEMENTS the CALLS edge a dispatch lambda already yields; it
+	// never replaces it (ADR-0028). CALLS says "this code names that function";
+	// PRODUCES says "the invocation is deferred through a queue" — a fact CALLS
+	// cannot carry, and one that has no CALLS edge at all in the
+	// `JobBuilder.newJob(SendEmailJob.class)` / string-keyed dispatch shapes.
+	// Same complementary stance as CONSUMES_API vs CALLS→ExternalEndpoint.
+	//
+	// Distinct from ENQUEUES above: ENQUEUES/TRIGGERS is the already-complete
+	// pair for the SCOPE.ScheduledJob topology (Sidekiq/Resque/Que). A pass
+	// that emits ENQUEUES for a hop must not also emit PRODUCES for it.
+	RelationshipKindProduces RelationshipKind = "PRODUCES"
+	RelationshipKindConsumes RelationshipKind = "CONSUMES"
+
 	// #725: gRPC service definitions + client/server cross-repo edges.
 	//   GRPC_IMPLEMENTS : handler method → GrpcMethod (server declares it implements this RPC).
 	//   GRPC_HANDLES    : client call site → GrpcMethod (client invokes this RPC).
@@ -1607,6 +1637,9 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindMapsTo,
 		// #4983 infra↔code deployment topology: IaC compute resource → code service.
 		RelationshipKindDeploys,
+		// #6741 queue-hop pair (ADR-0028): producer → work unit → handler.
+		RelationshipKindProduces,
+		RelationshipKindConsumes,
 	}
 }
 

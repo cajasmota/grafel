@@ -33,6 +33,7 @@ decision itself, and the consequences we accepted.
 | [0025](0025-channelbinding-config-code-topic-messaging.md) | Proposed | ChannelBinding — connect config↔code↔topic for messaging (reference impl: Quarkus/SmallRye/Kafka) |
 | [0026](0026-fbwriter-sharding-2gib-cliff.md) | Deferred | fbwriter sharding — remove the 2 GiB serialization cliff |
 | [0027](0027-mmap-zerocopy-resident-graph.md) | Proposed | mmap + zero-copy resident graph (memory north-star) |
+| [0028](0028-produces-consumes-queue-hop.md) | Accepted | PRODUCES / CONSUMES model the queue hop, and supplement CALLS |
 
 Numbers are append-only.
 

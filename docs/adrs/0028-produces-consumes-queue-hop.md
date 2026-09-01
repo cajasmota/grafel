@@ -1,0 +1,82 @@
+# ADR-0028: PRODUCES / CONSUMES model the queue hop, and supplement CALLS
+
+- **Status**: Accepted
+- **Date**: 2026-09-02
+- **Issue**: #6741 (Arm 1 — blocking; Arms 2-5 are written against this decision)
+- **Deciders**: Jorge Cajas
+- **Amends**: ADR-0003 (see its 2026-09-02 amendment)
+
+## Context
+
+Five golden fixtures — `csharp-hangfire-mini`, `csharp-quartz-net-mini`, `java-quartz-mini`, `python-dramatiq-mini`, `python-rq-mini` — carry the identical sentence at `expected.json:4`: *"Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for …"*. `docs/coverage/detail/msg.hangfire-recurring.md` marks Producer extraction **full**, asserting "All PRODUCES carrying `task:hangfire:<Type>.<Method>`".
+
+None of it was true. Grounding for #6741 established:
+
+- **No `PRODUCES` or `CONSUMES` relationship kind existed.** `internal/types/kinds.go` declared neither; the nearest name, `CONSUMES_API`, is a different semantic (same-file HTTP client → endpoint).
+- The C# and Python passes (`custom/csharp/hangfire.go`, `custom/csharp/quartz_net.go`, `custom/csharp/handle_messages.go`, `custom/python/dramatiq.go`, `custom/python/rq.go`) set `edge_kind: "PRODUCES"` as an **entity property**. They contain zero `addRel` / `Relationship{` calls. It is inert metadata, not an edge.
+- Exactly one site emits a real edge of this kind: `internal/custom/java/quartz.go:274`. It is same-file-only, and in `java-quartz-mini` the producers and consumers live in different files, so it never fires there either.
+- Four consumers already traverse both strings: `internal/mcp/flow_tools.go`, `internal/mcp/dead_code.go`, `internal/links/reachability.go`, `internal/dashboard/topology_compound.go`.
+- Nothing rejected the undeclared string, because `IsValidRelationshipKind` has zero non-test callers (#6757 wires it, and must land *after* this ADR or it would drop `java/quartz.go`'s edge).
+
+So the vocabulary had to be declared. The question that blocked everything else is what the edges **mean**, because nothing in the repo recorded it and each later arm implements a different language against the answer.
+
+The concrete case: `BackgroundJob.Enqueue(() => EmailService.SendConfirmation(orderId))` already yields a `CALLS` edge from the enclosing method to `SendConfirmation`, emitted by the generic C# extractor. Does `PRODUCES` **supplement** that edge, or **replace** it with one modelling the queue hop?
+
+## Decision
+
+### 1. Endpoints and direction
+
+`PRODUCES` and `CONSUMES` are two hops of one path, joined on a shared **work-unit** node — the job/task/message the queue carries, addressed `task:<framework>:<id>` (e.g. `task:hangfire:EmailService.SendConfirmation`, the address the inert `edge_kind` properties already imply):
+
+```
+producing site --PRODUCES--> work unit --CONSUMES--> handler
+```
+
+- **`PRODUCES`**: the enclosing operation of the dispatch call — or the framework producer entity, such as a Quartz `job_builder` — → the work unit.
+- **`CONSUMES`**: the work unit → the handler that executes it.
+
+`CONSUMES` points *away* from the queue, not back at it. This is deliberate and matches `TRIGGERS` (`ScheduledJob` → handler) and `DELIVERS_TO` (topic → handler). The alternative reading — handler `CONSUMES` queue — is the more natural English, and it is wrong for this graph: it makes the path un-walkable, so a reachability BFS from a producer would never reach the handler and every queue-only handler would be reported as dead code by `internal/links/reachability.go` and `internal/mcp/dead_code.go`. Both already list `PRODUCES` and `CONSUMES` as forward reachability edges; the direction above is what makes that listing correct.
+
+Where a pass mints no separate work-unit node and the job class *is* the work unit, the one-hop form (producer → job class) that `java/quartz.go:274` already emits is a valid degenerate case. Whether Arm 2 normalises it is Arm 2's call; this ADR does not require churn on a shipped edge.
+
+### 2. `PRODUCES` supplements `CALLS`. It never replaces it.
+
+A framework pass emits `PRODUCES` in addition to whatever `CALLS` the generic extractor derived. It does not suppress, rewrite, or delete that edge.
+
+Reasoning, in the order that decided it:
+
+**The user's question settles it.** "What happens when `PlaceOrder` runs?" has two correct answers that must both be visible: *the code names `SendConfirmation`* (a static fact about this file, which `CALLS` records) and *that invocation is deferred through a queue* — it happens later, in another process, possibly retried, possibly never. `CALLS` cannot express the second; that is exactly what `PRODUCES` adds. Replacing `CALLS` would trade one of those facts for the other, and would answer "what happens when X runs?" by deleting the part the source code literally says.
+
+**It is not merely an annotation on `CALLS`.** The two do not always coincide: `JobBuilder.newJob(SendEmailJob.class)` and string- or type-keyed dispatch produce a `PRODUCES` hop where there is no `CALLS` edge at all, because no method is named at the call site. So `PRODUCES` must be emitted independently. Where it does coincide with `CALLS`, the endpoints are the same but the claims are not, and duplicating the *path* is the price of not losing the *distinction*.
+
+**Replacement is not a pass's to make.** `CALLS` is emitted by the generic language extractor; a framework pass deleting another producer's edge has no precedent here, and the passes are append-only by construction. `CONSUMES_API` states the same stance about its own overlap with `CALLS`→`ExternalEndpoint`: *"complementary to, not a duplicate of"*.
+
+**Supplement is recoverable; replacement is not.** With both edges, a consumer wanting only synchronous flow filters to `CALLS`, and one wanting "reaches at all" walks both — every existing `CALLS` consumer keeps working unchanged. With replacement, every consumer that does not yet know about `PRODUCES` silently loses a call it used to see: `find_callers` on `SendConfirmation`, impact radius, the call graph. A supplement can be collapsed later by any consumer that wants to; a replacement cannot be un-deleted.
+
+**The losing option, stated plainly.** *Replace: the enqueue site does not really call the job method, it hands a description of the call to a queue; a `CALLS` edge there is a lie about control flow, and keeping both duplicates a path the graph can already walk.* This is a real argument, and it loses on cost: the duplication it objects to is one extra edge per dispatch site, while the precision it buys is paid for by breaking every unqualified `CALLS` consumer in the tree and discarding a fact the source text states outright. The deferral is better carried *on* the graph as an extra, differently-typed edge than *by removing* an existing one.
+
+### 3. Not a second `ENQUEUES`
+
+`ENQUEUES` (caller → `SCOPE.ScheduledJob`) with `TRIGGERS` (`ScheduledJob` → handler) is the same shape and is already complete for the Sidekiq/Resque/Que topology. **A pass that emits `ENQUEUES` for a hop must not also emit `PRODUCES` for that hop.** One hop, one pair. Where a pass currently emits neither pair consistently — Arm 4 records `dramatiq` yielding `REFERENCES` where `rq` yields `ENQUEUES` for the same producer shape — the fix is to pick one pair for that hop, not to add a third edge alongside them.
+
+### 4. `CONSUMES_QUEUE` stays invalid
+
+ADR-0003's "closed enum" listed `CONSUMES_QUEUE`, `TRIGGERS_LAMBDA`, `READS_TABLE`, `WRITES_TABLE`; `internal/types/kinds_test.go` asserted all four must **not** be valid. The test is right and the ADR was wrong; ADR-0003's amendment records why and what shipped in their place. Declaring the sketch names to make the prose true would re-create the exact defect #6741 is about: a documented edge kind no producer emits.
+
+## Consequences for Arms 3-4 (the C#/Python emitters)
+
+These are the constraints those arms are written against:
+
+1. **Emit real relationships.** `addRel(&result, seenRels, Relationship{...})`, as `java/quartz.go:274` does. Do **not** keep satisfying the requirement with an `edge_kind` entity property — that property is what made two fixtures pass for months without the edge they claim to verify. Arm 5 decides whether the now-redundant property is removed.
+2. **Emit both halves, on the address the pair joins on.** `PRODUCES` → work unit and `CONSUMES` → handler, sharing one `task:<framework>:<id>` address. A producer half alone leaves the consumer an island, which is the state #6741 found.
+3. **Leave the `CALLS` edge alone.** Do not suppress the lambda-body call. Expect the duplicate path; it is intended.
+4. **Do not emit `PRODUCES` where the pass already emits `ENQUEUES`** for the same hop (§3).
+5. **Every new edge kind must be in `AllRelationshipKinds()`.** #6757 makes `IsValidRelationshipKind` load-bearing; a constant declared but not registered will start dropping edges once it lands.
+6. **The mutant test is the acceptance bar**, not a green fixture: removing the emission must fail a test. The fixtures' `nice_to_have` PRODUCES/CONSUMES rows, written from the source by #6740, are the specification, and are promoted to `must_exist` as each arm lands.
+
+## Alternatives considered
+
+- **Replace `CALLS` with `PRODUCES`** — rejected; see §2 for the full argument and its cost.
+- **Keep `PRODUCES` as an entity property and teach consumers to read it** — rejected: four consumers already traverse it as an *edge kind*, edges are what reachability, `find_callers` and the topology dashboard walk, and a property on one endpoint cannot express a two-node relationship at all.
+- **Reuse `ENQUEUES`/`TRIGGERS` for every queue framework and never declare `PRODUCES`** — genuinely tempting, and it would have been the smaller change. Rejected because one emitter already ships `PRODUCES` edges, four consumers hard-code both strings, five fixtures and a coverage doc promise them, and `ENQUEUES` is documented as targeting `SCOPE.ScheduledJob` specifically, which is not the entity the message-broker and Hangfire-style passes mint. Renaming the shipped edge is a migration with no payoff over declaring the kind that already exists in the tree.
+- **Add `CONSUMES_QUEUE`, `TRIGGERS_LAMBDA`, `READS_TABLE`, `WRITES_TABLE` so ADR-0003 reads true** — rejected; §4.
