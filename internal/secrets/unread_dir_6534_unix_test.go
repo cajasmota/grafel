@@ -3,6 +3,8 @@
 package secrets
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -104,6 +106,21 @@ func TestScanPathDoesNotCountUnreadableFileAsUnreadDir(t *testing.T) {
 // the lstat itself fail; chmod 0o000 on the root directory takes the ReadDir
 // path instead and is covered above.
 //
+// It asserts on BOTH admissible outcomes rather than skipping one of them.
+// An earlier draft skipped when ScanPath returned a non-nil error, on the
+// reasoning that a caller checking err is already safe — true, but it made
+// the test capable of skipping silently on the platform that gates merges,
+// which is a gate that cannot fail. Both outcomes are acceptable BEHAVIOUR,
+// so both are assertable:
+//
+//   - non-nil error: the caller is told, and the error must actually carry
+//     fs.ErrPermission rather than being some unrelated failure;
+//   - nil error: Complete() must be false and the count must be 1.
+//
+// The third combination — nil error AND a clean-looking complete result — is
+// the defect, and is the only way this test fails. Whichever path a platform
+// takes, something real is asserted, and the logged line records which.
+//
 // Killing mutant: narrow the gate back to `d != nil && d.IsDir() && ...`.
 func TestScanPathCountsUnreadableRoot(t *testing.T) {
 	requireModeBitsHonoured(t)
@@ -126,11 +143,21 @@ func TestScanPathCountsUnreadableRoot(t *testing.T) {
 
 	res, err := ScanPath(root, 0)
 	if err != nil {
-		// A caller that checks err is already safe; the defect is the path
-		// where err is nil, which is what WalkDir actually does here.
-		t.Skipf("ScanPath surfaced the error directly (%v); the silent-clean "+
-			"path this test guards is not reachable on this platform", err)
+		// Path A. A caller that checks err is genuinely safe — but only if
+		// the error says what happened, so assert that rather than accepting
+		// any error at all.
+		if !errors.Is(err, fs.ErrPermission) {
+			t.Fatalf("ScanPath returned %v; a caged root must surface an error "+
+				"matching fs.ErrPermission, or a caller cannot tell this from "+
+				"an ordinary failure", err)
+		}
+		t.Logf("platform takes the ERROR path: ScanPath returned %v", err)
+		return
 	}
+	// Path B: WalkDir swallowed the error because this callback returns nil,
+	// so the ScanResult is the only thing carrying the fact. This is the path
+	// macOS takes, and it is where the defect lived.
+	t.Logf("platform takes the NIL-ERROR path: the verdict must come from ScanResult")
 	if len(res.Findings) != 0 {
 		t.Fatalf("precondition failed: the caged repo was read; findings=%+v", res.Findings)
 	}
