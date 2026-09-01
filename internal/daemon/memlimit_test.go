@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/process"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestResolveMemLimitMB_EnvOverride asserts the env override wins and is
@@ -38,7 +39,12 @@ func TestResolveMemLimitMB_Disabled(t *testing.T) {
 // big-RAM hosts (#5237); the floor protects tiny hosts.
 func TestResolveMemLimitMB_DefaultClamped(t *testing.T) {
 	t.Setenv(memLimitEnv, "") // ensure no override
-	t.Setenv("GRAFEL_HOME", t.TempDir())
+	// testsupport.TempDirWithCleanupDiagnostic, not t.TempDir: this is one of
+	// the two #6512 call sites whose TempDir cleanup intermittently fails on
+	// windows-latest. On Windows it arms a post-RemoveAll diagnostic; on every
+	// other GOOS it is exactly t.TempDir(). It does not change what this test
+	// asserts, and cannot change whether it passes.
+	t.Setenv("GRAFEL_HOME", testsupport.TempDirWithCleanupDiagnostic(t))
 	mb, src := resolveMemLimitMB()
 	if mb < memLimitFloorMB {
 		t.Errorf("default limit %d below floor %d (src=%s)", mb, memLimitFloorMB, src)
@@ -65,7 +71,8 @@ func TestResolveMemLimitMB_DefaultClamped(t *testing.T) {
 func TestResolveMemLimitMB_SettingsOverride(t *testing.T) {
 	t.Setenv(memLimitEnv, "")
 	t.Setenv("GOMEMLIMIT", "")
-	home := t.TempDir()
+	// The second of the two #6512 call sites — see the note above.
+	home := testsupport.TempDirWithCleanupDiagnostic(t)
 	t.Setenv("GRAFEL_HOME", home)
 	if err := os.WriteFile(filepath.Join(home, "settings.json"), []byte(`{"daemon_go_memory_limit_mb":8192}`), 0o644); err != nil {
 		t.Fatal(err)
