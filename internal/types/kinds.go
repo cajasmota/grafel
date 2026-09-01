@@ -1640,6 +1640,12 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #6741 queue-hop pair (ADR-0028): producer → work unit → handler.
 		RelationshipKindProduces,
 		RelationshipKindConsumes,
+		// #6757: both were declared, documented and actively emitted
+		// (async_trigger_edges.go:96; scheduled_jobs_edges.go, four sites) yet
+		// were never added here, so IsValidRelationshipKind rejected two kinds
+		// the graph really carries.
+		RelationshipKindDeliversTo,
+		RelationshipKindEnqueues,
 	}
 }
 
