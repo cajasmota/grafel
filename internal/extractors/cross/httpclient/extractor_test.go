@@ -25,7 +25,7 @@ func runExtract(t *testing.T, lang, source string) []types.EntityRecord {
 func apiEntities(records []types.EntityRecord) []types.EntityRecord {
 	var out []types.EntityRecord
 	for _, r := range records {
-		if r.Kind == "SCOPE.ExternalAPI" {
+		if r.Kind == "SCOPE.ExternalEndpoint" {
 			out = append(out, r)
 		}
 	}
@@ -34,7 +34,7 @@ func apiEntities(records []types.EntityRecord) []types.EntityRecord {
 
 func callRels(records []types.EntityRecord) []types.RelationshipRecord {
 	// #560: post-flatten, CALLS edges are embedded directly on the
-	// SCOPE.ExternalAPI entity rather than on a synthetic
+	// SCOPE.ExternalEndpoint entity rather than on a synthetic
 	// "relationship"-kind container. Scan every record's Relationships and
 	// filter by Kind to keep the helper precise.
 	var out []types.RelationshipRecord

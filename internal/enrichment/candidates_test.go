@@ -1143,7 +1143,7 @@ func TestTemplateLiteralName_SkipsDescribeEntity(t *testing.T) {
 		doc := mkDoc(graph.Entity{
 			ID:   "ext1",
 			Name: name,
-			Kind: "SCOPE.ExternalAPI",
+			Kind: "SCOPE.ExternalEndpoint",
 		})
 		got := CollectCandidates(doc, emitter, nil)
 		if len(got) != 0 {

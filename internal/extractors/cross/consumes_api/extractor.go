@@ -32,7 +32,7 @@
 //
 // Complementary, not duplicate
 // ----------------------------
-//   - _cross_httpclient emits CALLS → SCOPE.ExternalAPI(url). That is the raw
+//   - _cross_httpclient emits CALLS → SCOPE.ExternalEndpoint(url). That is the raw
 //     outbound-call fact; it does not know which endpoint the URL resolves to.
 //   - _cross_endpoint emits SCOPE.Operation endpoint entities + SERVES edges to
 //     handlers. That is the server-side route catalog.
@@ -43,7 +43,7 @@
 // underlying entities, this extractor reuses the existing _cross_httpclient and
 // _cross_endpoint extractors to discover calls and endpoints and emits ONLY the
 // new CONSUMES_API relationship (carried on a thin, deduplicated entity record);
-// it never re-emits the ExternalAPI / endpoint entities those extractors own.
+// it never re-emits the ExternalEndpoint / endpoint entities those extractors own.
 //
 // Registration key: "_cross_consumes_api"
 package consumes_api
@@ -179,7 +179,7 @@ type serverEndpoint struct {
 
 // harvestClientCalls runs the reused httpclient extractor and lifts each
 // CALLS(kind=external_http_call) edge into a clientCall. The httpclient
-// extractor embeds the CALLS edge on the ExternalAPI entity it owns; we read it
+// extractor embeds the CALLS edge on the ExternalEndpoint entity it owns; we read it
 // without re-emitting that entity.
 func (e *Extractor) harvestClientCalls(ctx context.Context, file extractor.FileInput) []clientCall {
 	recs, err := e.clientExtractor.Extract(ctx, file)
@@ -244,7 +244,7 @@ func (e *Extractor) harvestServerEndpoints(ctx context.Context, file extractor.F
 
 // consumesEntityID builds the stable identity for the thin carrier entity that
 // holds a file's CONSUMES_API edges. One per file keeps the edge set
-// deduplicated and avoids colliding with the ExternalAPI / endpoint entities
+// deduplicated and avoids colliding with the ExternalEndpoint / endpoint entities
 // the reused extractors own.
 func consumesEntityID(filePath string) string {
 	return "scope:consumes_api:" + filePath

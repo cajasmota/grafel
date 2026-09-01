@@ -987,20 +987,20 @@ public class Event extends PanacheMongoEntityBase {
 // Kind value outside the 14-type SCOPE allowlist.
 func TestQuarkus_NoInvalidKind(t *testing.T) {
 	validTypes := map[string]struct{}{
-		"SCOPE.Service":       {},
-		"SCOPE.Component":     {},
-		"SCOPE.Operation":     {},
-		"SCOPE.Pattern":       {},
-		"SCOPE.Evolution":     {},
-		"SCOPE.Datastore":     {},
-		"SCOPE.ExternalAPI":   {},
-		"SCOPE.Event":         {},
-		"SCOPE.Queue":         {},
-		"SCOPE.Schema":        {},
-		"SCOPE.ScopeUnknown":  {},
-		"SCOPE.Stylesheet":    {},
-		"SCOPE.UIComponent":   {},
-		"SCOPE.InfraResource": {},
+		"SCOPE.Service":          {},
+		"SCOPE.Component":        {},
+		"SCOPE.Operation":        {},
+		"SCOPE.Pattern":          {},
+		"SCOPE.Evolution":        {},
+		"SCOPE.Datastore":        {},
+		"SCOPE.ExternalEndpoint": {},
+		"SCOPE.Event":            {},
+		"SCOPE.Queue":            {},
+		"SCOPE.Schema":           {},
+		"SCOPE.ScopeUnknown":     {},
+		"SCOPE.Stylesheet":       {},
+		"SCOPE.UIComponent":      {},
+		"SCOPE.InfraResource":    {},
 	}
 
 	source := `

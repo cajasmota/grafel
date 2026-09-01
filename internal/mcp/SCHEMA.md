@@ -1050,7 +1050,8 @@ on-disk `graph.json` keeps the namespaced form.
 | `SCOPE.Event` | `Event` | Event-bus events, domain events. |
 | `SCOPE.Datastore` | `Datastore` | Databases, tables, collections, caches. |
 | `SCOPE.DataAccess` | `DataAccess` | Repository / DAO / ORM accessor units. |
-| `SCOPE.ExternalAPI` | `ExternalAPI` | Calls into third-party HTTP / SDK surfaces. |
+| `SCOPE.ExternalEndpoint` | `ExternalEndpoint` | Outbound HTTP call targets — calls into third-party HTTP / SDK surfaces. Keyed on the URL alone; the verb rides on the `CALLS` edge. Replaces `SCOPE.ExternalAPI` (#6451). |
+| `SCOPE.IngressHost` | `IngressHost` | Kubernetes Ingress hostname (`spec.rules[].host`) — inbound cluster topology, not a call out. Split out of `SCOPE.ExternalAPI` (#6451). |
 | `SCOPE.InfraResource` | `InfraResource` | IaC-defined deployed resources (S3 bucket, Lambda fn, ECS service). |
 | `SCOPE.CodeBlock` | `CodeBlock` | Anonymous block / lambda / closure. |
 | `SCOPE.Document` | `Document` | Markdown / RST / ADoc documents. |

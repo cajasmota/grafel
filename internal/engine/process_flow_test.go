@@ -262,7 +262,7 @@ func TestProcessFlow_InternalHandlerNotCrossStack(t *testing.T) {
 }
 
 func TestProcessFlow_ExternalLibTerminalNotCrossStack(t *testing.T) {
-	// #754 — chain terminating in SCOPE.External / SCOPE.ExternalAPI is
+	// #754 — chain terminating in SCOPE.External / SCOPE.ExternalEndpoint is
 	// crosses_external_lib=true but NOT cross_stack=true.
 	doc := &graph.Document{Repo: "r"}
 	doc.Entities = []graph.Entity{

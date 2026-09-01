@@ -23,7 +23,7 @@ grafel adopts the SCOPE entity-kind hierarchy as its canonical node taxonomy. In
 - **Code structure**: `SCOPE.Operation`, `SCOPE.Component`, `SCOPE.Schema`, `SCOPE.Variable`, `SCOPE.Reference`
 - **Behavioral patterns**: `SCOPE.Pattern`, `SCOPE.Evolution`
 - **Web / framework**: `SCOPE.Endpoint`, `SCOPE.Route`, `SCOPE.Service`, `SCOPE.View`, `SCOPE.UIComponent`, `SCOPE.JSX`, `SCOPE.Stylesheet`
-- **Async / data**: `SCOPE.Queue`, `SCOPE.Event`, `SCOPE.Datastore`, `SCOPE.DataAccess`, `SCOPE.ExternalAPI`
+- **Async / data**: `SCOPE.Queue`, `SCOPE.Event`, `SCOPE.Datastore`, `SCOPE.DataAccess`, `SCOPE.ExternalEndpoint`
 - **Infrastructure**: `SCOPE.InfraResource`
 
 Edges use a closed enum of relationship kinds: `CALLS`, `IMPORTS`, `DEPENDS_ON`, `IMPLEMENTS`, `EXTENDS`, `USES_HOOK`, `ROUTES_TO`, `CONSUMES_QUEUE`, `TRIGGERS_LAMBDA`, `READS_TABLE`, `WRITES_TABLE`, plus a small set of additional relations documented in `SCHEMA.md`.

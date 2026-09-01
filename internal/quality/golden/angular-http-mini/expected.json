@@ -1,7 +1,7 @@
 {
   "fixture_name": "angular-http-mini",
   "language": "typescript",
-  "description": "Angular HttpClient consumer-side extraction (#6433, reported by @auxmedrano; hardened after review #6446). Before this fixture nothing in the golden set graded OUTBOUND http client calls at all, so the frontend half of cross-stack linking could regress to zero in silence -- which is what had happened: SCOPE.ExternalAPI was minted only for bare-identifier `fetch` / `axios`, and the engine's receiver-style pass was gated on the literal token `httpService`, so an idiomatic Angular service (`private http = inject(HttpClient)` + `this.http.get<T>(...)`) produced no node of either kind. Argument shapes covered: a static quoted literal behind a TS generic parameter; a template literal with a static leading segment; a statically-known RELATIVE literal (assets/i18n/en.json -- resolvable, must NOT be marked dynamic); a nested generic (Record<string,string>, which matched nothing at all before #6446); and TWO non-literal call expressions in one file, which must produce TWO nodes -- the dynamic marker used to be one shared path, so N sites in a file collapsed into one and reintroduced the undercount the issue was reported for. Constant folding: a BARE IDENTIFIER argument bound to a same-file `const NAME = '<string literal>'` IS now folded (#6551, reported by @auxmedrano) -- app/const-fold.service.ts's `this.http.get<readonly Thing[]>(PEOPLE)` resolves to /api/admin/v1/people, where it used to dangle at /{dynamic}/PEOPLE and link to nothing. The binding is resolved off the tree-sitter AST, not off the regex symbol table the string and template arms use (buildJSScopedConstTable, #6552): that arm is the SOLE source of truth for a call that would otherwise be an honest /{dynamic} marker, so a wrong binding does not degrade an answer -- it publishes a confident runtime_dynamic=false endpoint the cross-stack linker attaches to a route the call never makes. Everything the fold cannot PROVE still declines and stays dynamic, and two negative controls in that file pin it: a commented-out `const PEOPLE = '/api/OLD/people'` above the live declaration (a first-match-wins regex over raw text binds the dead one), and a module-level const shadowed by a method parameter of the same name. Base-URL folding through a call expression or a non-literal initialiser is still deliberately NOT attempted. Three negative controls guard the token gate, which is evidence-based (DI call / type annotation / value import / NestJS receiver) over comment- and literal-stripped source, NOT a substring match: not-a-consumer.ts (no token at all), legacy-wrapper.ts (the token in a migration TODO comment -- the most common shape in a mid-migration codebase), and thing.service.spec.ts (HttpClientTestingModule carries `HttpClient` as a substring; test scaffolding must not inflate SCOPE.ExternalAPI, which is the metric the issue was measured on).",
+  "description": "Angular HttpClient consumer-side extraction (#6433, reported by @auxmedrano; hardened after review #6446). Before this fixture nothing in the golden set graded OUTBOUND http client calls at all, so the frontend half of cross-stack linking could regress to zero in silence -- which is what had happened: SCOPE.ExternalEndpoint was minted only for bare-identifier `fetch` / `axios`, and the engine's receiver-style pass was gated on the literal token `httpService`, so an idiomatic Angular service (`private http = inject(HttpClient)` + `this.http.get<T>(...)`) produced no node of either kind. Argument shapes covered: a static quoted literal behind a TS generic parameter; a template literal with a static leading segment; a statically-known RELATIVE literal (assets/i18n/en.json -- resolvable, must NOT be marked dynamic); a nested generic (Record<string,string>, which matched nothing at all before #6446); and TWO non-literal call expressions in one file, which must produce TWO nodes -- the dynamic marker used to be one shared path, so N sites in a file collapsed into one and reintroduced the undercount the issue was reported for. Constant folding: a BARE IDENTIFIER argument bound to a same-file `const NAME = '<string literal>'` IS now folded (#6551, reported by @auxmedrano) -- app/const-fold.service.ts's `this.http.get<readonly Thing[]>(PEOPLE)` resolves to /api/admin/v1/people, where it used to dangle at /{dynamic}/PEOPLE and link to nothing. The binding is resolved off the tree-sitter AST, not off the regex symbol table the string and template arms use (buildJSScopedConstTable, #6552): that arm is the SOLE source of truth for a call that would otherwise be an honest /{dynamic} marker, so a wrong binding does not degrade an answer -- it publishes a confident runtime_dynamic=false endpoint the cross-stack linker attaches to a route the call never makes. Everything the fold cannot PROVE still declines and stays dynamic, and two negative controls in that file pin it: a commented-out `const PEOPLE = '/api/OLD/people'` above the live declaration (a first-match-wins regex over raw text binds the dead one), and a module-level const shadowed by a method parameter of the same name. Base-URL folding through a call expression or a non-literal initialiser is still deliberately NOT attempted. Three negative controls guard the token gate, which is evidence-based (DI call / type annotation / value import / NestJS receiver) over comment- and literal-stripped source, NOT a substring match: not-a-consumer.ts (no token at all), legacy-wrapper.ts (the token in a migration TODO comment -- the most common shape in a mid-migration codebase), and thing.service.spec.ts (HttpClientTestingModule carries `HttpClient` as a substring; test scaffolding must not inflate SCOPE.ExternalEndpoint, which is the metric the issue was measured on).",
   "expected_entities": [
     {
       "name": "http:GET:/api/things",
@@ -46,17 +46,17 @@
     },
     {
       "name": "/api/things",
-      "kind": "SCOPE.ExternalAPI",
+      "kind": "SCOPE.ExternalEndpoint",
       "source_file": "app/thing.service.ts",
       "must_exist": true,
-      "note": "The reporter's metric. SCOPE.ExternalAPI is minted by internal/extractors/cross/httpclient; every JS/TS pattern there anchored on a bare `fetch` / `axios` identifier, which a receiver call never matches."
+      "note": "The reporter's metric. SCOPE.ExternalEndpoint is minted by internal/extractors/cross/httpclient; every JS/TS pattern there anchored on a bare `fetch` / `axios` identifier, which a receiver call never matches."
     },
     {
       "name": "/api/things/{*}",
-      "kind": "SCOPE.ExternalAPI",
+      "kind": "SCOPE.ExternalEndpoint",
       "source_file": "app/thing-detail.service.ts",
       "must_exist": true,
-      "note": "Template-literal URL; ${...} normalises to the {*} wildcard sentinel (#2615). The GET and the PATCH share this node \u2014 SCOPE.ExternalAPI is keyed on the URL, the verb lives on the CALLS edge."
+      "note": "Template-literal URL; ${...} normalises to the {*} wildcard sentinel (#2615). The GET and the PATCH share this node \u2014 SCOPE.ExternalEndpoint is keyed on the URL, the verb lives on the CALLS edge."
     },
     {
       "name": "ThingService",
@@ -115,7 +115,7 @@
     },
     {
       "name": "assets/i18n/en.json",
-      "kind": "SCOPE.ExternalAPI",
+      "kind": "SCOPE.ExternalEndpoint",
       "source_file": "app/i18n.service.ts",
       "must_exist": true
     },
@@ -215,7 +215,7 @@
       "from_kind": "Module",
       "kind": "CONTAINS",
       "to_name": "/api/things",
-      "to_kind": "SCOPE.ExternalAPI",
+      "to_kind": "SCOPE.ExternalEndpoint",
       "to_file": "app/thing.service.ts",
       "must_exist": true
     },
@@ -224,7 +224,7 @@
       "from_kind": "Module",
       "kind": "CONTAINS",
       "to_name": "/api/things/{*}",
-      "to_kind": "SCOPE.ExternalAPI",
+      "to_kind": "SCOPE.ExternalEndpoint",
       "to_file": "app/thing-detail.service.ts",
       "must_exist": true
     },
@@ -242,7 +242,7 @@
       "from_kind": "Module",
       "kind": "CONTAINS",
       "to_name": "assets/i18n/en.json",
-      "to_kind": "SCOPE.ExternalAPI",
+      "to_kind": "SCOPE.ExternalEndpoint",
       "to_file": "app/i18n.service.ts",
       "must_exist": true
     },
@@ -341,7 +341,7 @@
       "from_kind": "Module",
       "kind": "CONTAINS",
       "to_name": "/cache/never-extracted",
-      "to_kind": "SCOPE.ExternalAPI",
+      "to_kind": "SCOPE.ExternalEndpoint",
       "must_exist": false,
       "note": "Falsifiable, not decorative: app/not-a-consumer.ts calls this.http.get('/cache/never-extracted') on a plain object member named http, in a file carrying no HttpClient / HttpService token. Deleting the hasInjectedClientToken gate in internal/extractors/cross/httpclient mints this node and this row hits \u2014 verified by mutation."
     },
@@ -350,7 +350,7 @@
       "from_kind": "Module",
       "kind": "CONTAINS",
       "to_name": "/legacy/never-extracted",
-      "to_kind": "SCOPE.ExternalAPI",
+      "to_kind": "SCOPE.ExternalEndpoint",
       "must_exist": false,
       "note": "HIGH 1 of #6446. app/legacy-wrapper.ts mentions the client class ONLY in a migration TODO comment. Reverting the gate to strings.Contains over raw source mints this node and this row hits -- verified by mutation."
     },
@@ -359,9 +359,9 @@
       "from_kind": "Module",
       "kind": "CONTAINS",
       "to_name": "/api/spec-never-extracted",
-      "to_kind": "SCOPE.ExternalAPI",
+      "to_kind": "SCOPE.ExternalEndpoint",
       "must_exist": false,
-      "note": "HIGH 2 of #6446. app/thing.service.spec.ts is test scaffolding, and HttpClientTestingModule carries `HttpClient` as a substring. Deleting the IsTestSourceFile guard in internal/extractors/cross/httpclient mints this node and this row hits -- verified by mutation. SCOPE.ExternalAPI is the metric the issue was measured on, so inflating it with stubs is the worst possible false positive here."
+      "note": "HIGH 2 of #6446. app/thing.service.spec.ts is test scaffolding, and HttpClientTestingModule carries `HttpClient` as a substring. Deleting the IsTestSourceFile guard in internal/extractors/cross/httpclient mints this node and this row hits -- verified by mutation. SCOPE.ExternalEndpoint is the metric the issue was measured on, so inflating it with stubs is the worst possible false positive here."
     },
     {
       "from_name": "angular-http-mini",

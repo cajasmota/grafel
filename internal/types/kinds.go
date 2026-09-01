@@ -35,13 +35,27 @@ const (
 	// table and points both migration MODIFIES_TABLE edges and (existing)
 	// query ACCESSES_TABLE accessors at it, so "what touches table X" unifies
 	// schema evolution (migrations) with data access (queries) on one node.
-	EntityKindTable         EntityKind = "SCOPE.Table"
-	EntityKindExternalAPI   EntityKind = "SCOPE.ExternalAPI"
-	EntityKindInfraResource EntityKind = "SCOPE.InfraResource"
-	EntityKindCodeBlock     EntityKind = "SCOPE.CodeBlock"
-	EntityKindDocument      EntityKind = "SCOPE.Document"
-	EntityKindHeading       EntityKind = "SCOPE.Heading"
-	EntityKindScopeUnknown  EntityKind = "SCOPE.ScopeUnknown"
+	EntityKindTable EntityKind = "SCOPE.Table"
+	// #6451: SCOPE.ExternalAPI was minted by two unrelated producers under
+	// incompatible address dialects — internal/extractors/cross/httpclient
+	// (Name = a URL *path*, usually relative, no host) and the k8s Ingress
+	// pass in internal/extractors/yaml (Name = a bare *hostname*, no path).
+	// One kind, two meanings: neither half's join story could be settled
+	// while they shared it. Split along the producer boundary, the way #6472
+	// split local_scope. The retired kind is deliberately absent from the
+	// enum so a stale producer fails IsValidEntityKind rather than silently
+	// re-creating the ambiguity.
+	//
+	// ExternalEndpoint: an outbound HTTP call target, keyed on the URL alone
+	// (the verb rides on the CALLS edge). IngressHost: a Kubernetes Ingress
+	// hostname — inbound cluster topology, not a call out.
+	EntityKindExternalEndpoint EntityKind = "SCOPE.ExternalEndpoint"
+	EntityKindIngressHost      EntityKind = "SCOPE.IngressHost"
+	EntityKindInfraResource    EntityKind = "SCOPE.InfraResource"
+	EntityKindCodeBlock        EntityKind = "SCOPE.CodeBlock"
+	EntityKindDocument         EntityKind = "SCOPE.Document"
+	EntityKindHeading          EntityKind = "SCOPE.Heading"
+	EntityKindScopeUnknown     EntityKind = "SCOPE.ScopeUnknown"
 	// Documented-but-previously-undocumented kinds (Issue #77 reconciliation):
 	EntityKindExternal EntityKind = "SCOPE.External"
 	EntityKindProject  EntityKind = "SCOPE.Project"
@@ -400,7 +414,9 @@ func AllEntityKinds() []EntityKind {
 		EntityKindDataAccess,
 		// #3628 [schema] migration↔query table convergence node:
 		EntityKindTable,
-		EntityKindExternalAPI,
+		// #6451 split of the former SCOPE.ExternalAPI:
+		EntityKindExternalEndpoint,
+		EntityKindIngressHost,
 		EntityKindInfraResource,
 		EntityKindCodeBlock,
 		EntityKindDocument,
@@ -1058,7 +1074,7 @@ const (
 	//   "via"           : "same_file_http_consumption" (capability tag)
 	//   "provenance"    : "INFERRED_FROM_HTTP_CLIENT_CALL"
 	// This is the *consumption* semantic — it is complementary to, not a
-	// duplicate of, the CALLS→ExternalAPI edge emitted by _cross_httpclient and
+	// duplicate of, the CALLS→ExternalEndpoint edge emitted by _cross_httpclient and
 	// the cross-repo MethodHTTP links emitted by internal/links/http_pass.go
 	// (which only fires for groups of ≥2 repos via synthetic http_endpoint
 	// entities). Cross-org / cross-repo consumption stays owned by the links

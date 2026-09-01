@@ -99,7 +99,7 @@ func (r Reachability) Properties() map[string]string {
 //     Template, Stylesheet, DesignDecision, Pattern (non-test patterns are
 //     advisory, not call-graph surface).
 //   - Aggregation / synthetic nodes: Module, Project, Package, Reference,
-//     External, ExternalAPI, ExternalService, ScopeUnknown.
+//     External, ExternalEndpoint, ExternalService, ScopeUnknown.
 //
 // It INCLUDES executable surface: Function, Operation, Method-bearing Class,
 // Service, Endpoint, Route, Command, ServerlessFunction, View, UIComponent,
