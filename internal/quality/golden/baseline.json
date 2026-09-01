@@ -26,8 +26,8 @@
     "csharp-quartz-net-mini": {
       "entity_found": 5,
       "entity_expected": 5,
-      "relationship_found": 12,
-      "relationship_expected": 12
+      "relationship_found": 14,
+      "relationship_expected": 14
     },
     "elixir-phoenix-mini": {
       "entity_found": 22,

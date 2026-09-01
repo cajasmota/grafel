@@ -2305,6 +2305,18 @@ func hintKinds(relKind string) []string {
 	case "INJECTED_INTO", "BINDS", "GRAPH_RELATES", "REGISTERS",
 		"HANDLES_SIGNAL", "FEDERATES":
 		return componentKindFamily
+	// #6741 — PRODUCES' TO endpoint is the job/work-unit CLASS a dispatch site
+	// hands work to (ADR-0028 §1's one-hop degenerate form), addressed by the
+	// bare `Class:<Name>` stub the C#/Java job passes emit. That name is
+	// ambiguous whenever a framework pass mints a SCOPE.Service job_class twin
+	// beside the base extractor's class node — which is exactly what
+	// custom/csharp/quartz_net.go and hangfire.go do — so without a family hint
+	// the edge fell to statusAmbiguous and was keyed under a phantom node,
+	// invisible to inspect/neighbors/subgraph. componentKindFamily excludes
+	// SCOPE.Service by construction (see its comment), so the hint resolves the
+	// collision onto the real class rather than widening it.
+	case "PRODUCES":
+		return componentKindFamily
 	// #3930: operation-shaped semantic edges — the real endpoint is a
 	// function/method; the opposite endpoint is a synthetic SCOPE.* stub
 	// resolved on the QualifiedName / structural tiers, never here.

@@ -669,8 +669,58 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		add(ent)
 	}
 
+	// 10. PRODUCES edges: dispatch site → the type whose method it enqueues.
+	//
+	// #6741 arm 3. Like quartz_net.go, this pass emitted ZERO relationships and
+	// recorded the intent as an inert `edge_kind: "PRODUCES"` entity property,
+	// while csharp-hangfire-mini's description claimed it existed "to verify
+	// PRODUCES/CONSUMES edge emission for Hangfire".
+	//
+	// SCOPE — the LOAD-BEARING guard is `job_type != ""`. Sections 8 and 9 mint
+	// honest UNRESOLVED producers (`BackgroundJob.Enqueue(work)`, a captured-
+	// variable job id) with the SAME subtypes and the SAME `edge_kind` property,
+	// and those name no type at all; keying on the inert property, or on the
+	// subtype alone, would fabricate an edge out of a call site whose target
+	// this pass explicitly declined to resolve.
+	// TestHangfireDynamicProducerEmitsNoProduces is the mutant that pins it.
+	// The subtype check in front is redundant today (no consumer entity this
+	// pass mints sets `job_type`) and is kept as the statement of intent.
+	//
+	// PAIRING — each dispatch targets the type IT names. `job_type` is captured
+	// from that call site's own lambda/generic argument, so two dispatches in
+	// one file cannot cross-pair.
+	//
+	// HONEST-PARTIAL. The target is the dispatched TYPE (`EmailService` in
+	// `Enqueue(() => EmailService.SendConfirmation(id))`), which is what the
+	// source names. Where a repo declares that type, the resolver binds the
+	// stub; where the type is external — as all three are in
+	// csharp-hangfire-mini — the edge stays unresolved rather than being
+	// re-pointed at some other job class the source never mentions.
+	for i := range out {
+		if !hfProducerSubtypes[out[i].Subtype] {
+			continue
+		}
+		jobType := out[i].Properties["job_type"]
+		if jobType == "" {
+			continue
+		}
+		out[i].Relationships = append(out[i].Relationships, csJobProducesEdge(
+			"hangfire", jobType, out[i].Properties["task_id"],
+			"INFERRED_FROM_HANGFIRE_PRODUCER",
+		))
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
+}
+
+// hfProducerSubtypes are the entity subtypes this pass mints for a Hangfire
+// DISPATCH site, as opposed to a consumer (`job_class`) or a policy annotation
+// (`retry_policy`). Only a dispatch site can produce work.
+var hfProducerSubtypes = map[string]bool{
+	"task_enqueue":  true,
+	"task_schedule": true,
+	"recurring_job": true,
 }
 
 func intStr(n int) string {
