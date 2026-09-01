@@ -121,6 +121,12 @@ func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
 		// Function:<callable> directly (mirroring Celery's TRIGGERS target
 		// convention). No synthetic queue node: the function is the rendezvous.
 		relationships = synthesizeRQEnqueueEdges(src, relationships)
+		// #6741 arm 4: dramatiq `actor.send(...)` / `.send_with_options(...)`.
+		// The same hop as RQ's, and per ADR-0028 §3 it gets the same pair —
+		// ENQUEUES to Function:<actor> — rather than a PRODUCES edge of its
+		// own. See synthesizeDramatiqSendEdges for why the evidence guard is
+		// load-bearing here in a way RQ's import guard is not.
+		relationships = synthesizeDramatiqSendEdges(src, relationships)
 		// #3628 area: APScheduler decorator form
 		// `@scheduler.scheduled_job('cron', hour=2)` above a def. The add_job
 		// call form is handled by synthesizePyAPScheduler above; the decorator
@@ -1555,6 +1561,109 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// ---------------------------------------------------------------------------
+// Python — dramatiq actor dispatch → handler ENQUEUES (#6741 arm 4)
+// ---------------------------------------------------------------------------
+//
+// `charge_card.send(...)` and `send_receipt.send_with_options(...)` are the
+// structural twins of RQ's `queue.enqueue(send_email, ...)`: a dispatch site
+// handing work to a named callable that runs later, in a worker process.
+//
+// #6490 arm B recorded that the two got different answers — RQ an ENQUEUES
+// edge, dramatiq only the generic cross-file REFERENCES the Python resolver
+// derives from the import. ADR-0028 §3 says to pick ONE pair for a hop rather
+// than add a third edge beside them, so dramatiq joins ENQUEUES here on the
+// same Function:<name> target convention rather than growing a PRODUCES edge of
+// its own. That is also why `internal/custom/python/rq.go` gained no PRODUCES
+// edge in arm 4: its producer sections match the same three call shapes
+// synthesizeRQEnqueueEdges already covers, so a PRODUCES there would be exactly
+// the double-edge §3 forbids.
+
+// reDramatiqSend matches `actor.send(` with the receiver in group 1. It does
+// NOT match `.send_with_options(` — `\s*\(` is not satisfied by `_`.
+var reDramatiqSend = regexp.MustCompile(`(?m)(\w+)\.send\s*\(`)
+
+// reDramatiqSendWithOptions matches `actor.send_with_options(`, receiver in
+// group 1.
+var reDramatiqSendWithOptions = regexp.MustCompile(`(?m)(\w+)\.send_with_options\s*\(`)
+
+// hasDramatiqEvidence reports whether this file is a dramatiq dispatch site.
+//
+// This guard is the whole reason the pass is safe to run. `.send(` is generic
+// Python — sockets, generators, requests, channel objects — so unlike RQ's
+// `.enqueue(` the method name proves nothing on its own, and an unguarded scan
+// would mint an ENQUEUES edge to whatever function happened to share the
+// receiver's name.
+//
+// Two signals count, and both are dramatiq-specific:
+//
+//   - the token `dramatiq` anywhere in the file (the import, or the
+//     `@dramatiq.actor` decorator on a consumer);
+//   - a `.send_with_options(` call, which is a dramatiq method name.
+//
+// The second signal is not redundant: in `python-dramatiq-mini` the PRODUCING
+// file (`api/checkout.py`) never imports dramatiq — it imports the actors from
+// `workers.billing` — so the token test alone would leave that file, the exact
+// shape this arm exists to model, unmatched.
+//
+// Honest-partial by construction: a producer file that only ever calls `.send()`
+// and names dramatiq nowhere gets no edge. Under-reporting there is the correct
+// trade against fabricating an edge out of every `sock.send(payload)` in the
+// tree.
+func hasDramatiqEvidence(src string) bool {
+	return strings.Contains(src, "dramatiq") ||
+		strings.Contains(src, ".send_with_options(")
+}
+
+// synthesizeDramatiqSendEdges emits ENQUEUES edges from the enclosing Python
+// function of each dramatiq dispatch site to Function:<actor>. Dedupes on
+// (caller, actor).
+func synthesizeDramatiqSendEdges(
+	src string,
+	relationships []types.RelationshipRecord,
+) []types.RelationshipRecord {
+	if !strings.Contains(src, ".send") || !hasDramatiqEvidence(src) {
+		return relationships
+	}
+
+	seenEdge := map[string]bool{}
+	emit := func(matchOffset int, actor string) {
+		if actor == "" {
+			return
+		}
+		caller := enclosingFunction(src, matchOffset)
+		if caller == "" {
+			return // module-level dispatch: no producer operation to hang the edge on
+		}
+		if caller == actor {
+			return // self-enqueue inside the actor's own def
+		}
+		key := caller + "|" + actor
+		if seenEdge[key] {
+			return
+		}
+		seenEdge[key] = true
+		relationships = append(relationships, types.RelationshipRecord{
+			FromID: "SCOPE.Operation:" + caller,
+			ToID:   "Function:" + actor,
+			Kind:   string(types.RelationshipKindEnqueues),
+			Properties: types.Props{
+				{K: "actor", V: actor},
+				{K: "framework", V: "dramatiq"},
+				{K: "pattern_type", V: "dramatiq_send_synthesis"},
+			},
+		})
+	}
+
+	for _, m := range reDramatiqSendWithOptions.FindAllStringSubmatchIndex(src, -1) {
+		emit(m[0], src[m[2]:m[3]])
+	}
+	for _, m := range reDramatiqSend.FindAllStringSubmatchIndex(src, -1) {
+		emit(m[0], src[m[2]:m[3]])
+	}
+	return relationships
 }
 
 // itoa converts an int to a decimal string without importing strconv.
