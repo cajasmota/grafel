@@ -5035,6 +5035,34 @@ func (i *Indexer) foldClassHierarchyShadows(
 		bySymbol[key] = []cand{win}
 	}
 
+	// Issue #6276 — the mirror of the #6275 exclusion above. A record named as
+	// the ANCHOR of a #6104 merge facet (some other record's grafel.twin_of
+	// holds its id) is never a fold SOURCE. #6275 stopped a base class node
+	// folding INTO its own twin; this stops it folding into a THIRD,
+	// framework-typed record while a twin of it exists. Both are the same
+	// contract violation seen from opposite ends: the facet exists precisely
+	// because the #6104 merge boundary decided the language-level node and the
+	// framework-level node COEXIST, so deleting the anchor leaves the facet
+	// naming an id that is no longer in the graph and moves the class's Kind,
+	// span and edges onto a node the facet does not reference.
+	//
+	// python-django-mini is the live case: `User` carries the Django custom
+	// pass's SCOPE.Schema/model facet AND a Pass 2.5 Detect record of bare kind
+	// "Model" (priority 100) for the same (source_file, name). The Detect
+	// record is not a twin, so the #6275 survivor exclusion does not reach it,
+	// and the base SCOPE.Component User was being folded away into it — leaving
+	// only ormlink's SCOPE.Component sentinel wearing that (Kind, Name).
+	twinAnchors := make(map[string]bool)
+	for k := range merged {
+		r := &merged[k]
+		if !r.IsMergeTwinAlias() {
+			continue
+		}
+		if anchor := r.Properties[types.EntityTwinOfProperty]; anchor != "" {
+			twinAnchors[anchor] = true
+		}
+	}
+
 	// Index non-shadow records by stamped ID so a surviving shadow can detect a
 	// sibling AST SCOPE.Component node (same ID) to defer to (#1613): the shadow
 	// and the per-language AST class node share an EntityID, so only one is
@@ -5091,6 +5119,15 @@ func (i *Indexer) foldClassHierarchyShadows(
 					stats.ShadowsStillLine0++
 				}
 			}
+			continue
+		}
+		if r.ID != "" && twinAnchors[r.ID] {
+			// #6276 — this record is the ANCHOR of a #6104 twin facet: it must
+			// stay the class's language-level node, so it is not a fold source
+			// even though a framework-typed survivor exists for its symbol.
+			// Checked here rather than at the top of the loop so a hierarchy
+			// shadow with no survivor still takes the branch above that defers
+			// to its AST sibling.
 			continue
 		}
 		// Pick the strongest class-like candidate (see bestCand: priority, then

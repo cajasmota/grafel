@@ -328,10 +328,33 @@ func FoldFrameworkClassKinds(recs []types.EntityRecord, fw []types.EntityRecord)
 		}
 	}
 
+	// twinAnchors — issue #6276, mirroring cmd/grafel/index.go's
+	// foldClassHierarchyShadows. A record that some OTHER record names as its
+	// #6104 merge-facet anchor (grafel.twin_of) is never a fold SOURCE: the
+	// facet exists because the merge boundary decided both nodes coexist, so
+	// folding the anchor into a third framework-typed record deletes the very
+	// node the facet points at. #6275 forbade the base folding INTO its twin;
+	// this forbids it folding OUT from under one.
+	//
+	// Keyed by (file, name) rather than by id: records here are PRE-STAMP (see
+	// the ID REMAP note above), so an anchor's id is not yet computable in the
+	// same form the twin's twin_of holds. Every candidate/source pairing in
+	// this function is already keyed on (file, name), and a twin is emitted for
+	// the same symbol it anchors, so the coarser key selects the same records.
+	twinAnchors := make(map[key]bool)
+	for _, r := range all {
+		if r.IsMergeTwinAlias() && r.SourceFile != "" && r.Name != "" {
+			twinAnchors[key{r.SourceFile, r.Name}] = true
+		}
+	}
+
 	// ── Loop 2: fold-source loop ──
 	folded := 0
 	for _, r := range all {
 		if dropped[r] || !IsClassFoldSource(r) {
+			continue
+		}
+		if twinAnchors[key{r.SourceFile, r.Name}] {
 			continue
 		}
 		// sv == r is reachable: a class-hierarchy SHADOW carrying an eligible

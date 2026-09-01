@@ -340,3 +340,59 @@ func TestFoldFrameworkClassKinds_TwinFacetNeverEligibleAsSurvivor(t *testing.T) 
 		"SCOPE.Schema|User||User.java",
 	})
 }
+
+// TestFoldFrameworkClassKinds_TwinAnchorNeverFoldsIntoAThirdRecord — issue
+// #6276, the OTHER half of the twin contract from
+// TestFoldFrameworkClassKinds_TwinFacetNeverEligibleAsSurvivor above. #6275
+// forbade the anchor folding INTO its twin; this pins that it also cannot fold
+// OUT from under one into a THIRD, framework-typed record. A record some other
+// record names as its #6104 merge-facet anchor (grafel.twin_of) is not a fold
+// SOURCE, so it survives even when a stronger survivor candidate shares its
+// (source_file, name).
+//
+// Why this test exists SEPARATELY from the CLI/golden-fixture coverage: the
+// golden path runs the FULL index, which folds in cmd/grafel/index.go's
+// foldClassHierarchyShadows. Deleting this function's twinAnchors guard leaves
+// every fixture's measured recall unchanged, because no fixture reaches the
+// INCREMENTAL path. The failure that guard prevents is a reindex after an
+// unrelated edit silently re-folding an anchor the full index kept — the #6472
+// shape. Only a direct call can observe it.
+//
+// The axes deliberately held apart: the twin is a facet of a DIFFERENT entity
+// (a real grafel.twin_of value, so IsMergeTwinAlias is true), the anchor is a
+// genuine fold source (a class-hierarchy shadow), and the third record is a
+// legitimate, higher-priority survivor candidate ("Model", priority 100) that
+// WOULD absorb the anchor if the anchor were not twin-anchored — which is what
+// TestFoldFrameworkClassKinds_TypedSurvivorReplacesGenericNode already pins for
+// the un-anchored case.
+func TestFoldFrameworkClassKinds_TwinAnchorNeverFoldsIntoAThirdRecord(t *testing.T) {
+	anchor := cfSource("User", "models.py")
+	anchor.Relationships = []types.RelationshipRecord{{ToID: "User.save", Kind: "CONTAINS"}}
+	twin := types.EntityRecord{
+		Kind: "SCOPE.Schema", Name: "User", SourceFile: "models.py",
+		QualifiedName: "m.User", Language: "python", StartLine: 3, EndLine: 9,
+		Properties: map[string]string{"framework": "django", types.EntityTwinOfProperty: "some-other-entity-id"},
+	}
+	third := cfFramework("Model", "User", "models.py")
+
+	out, n := FoldFrameworkClassKinds([]types.EntityRecord{anchor, twin}, []types.EntityRecord{third})
+	if n != 0 {
+		t.Errorf("folded %d records; want 0 — a record another record names as its #6104 twin anchor is not a fold source", n)
+	}
+	cfAssertRows(t, cfRows(out), []string{
+		"Model|User||models.py",
+		"SCOPE.Component|User|class|models.py",
+		"SCOPE.Schema|User||models.py",
+	})
+	// The anchor keeps its own edges: a fold that did not happen must not have
+	// donated them to the survivor candidate on the way past.
+	for i := range out {
+		r := &out[i]
+		if r.Kind == "SCOPE.Component" && len(r.Relationships) != 1 {
+			t.Errorf("anchor lost its owned edges: %+v", r.Relationships)
+		}
+		if r.Kind == "Model" && len(r.Relationships) != 0 {
+			t.Errorf("the anchor's edges were donated to a survivor it never folded into: %+v", r.Relationships)
+		}
+	}
+}
