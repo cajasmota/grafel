@@ -284,6 +284,47 @@ func (e *quartzNetExtractor) Extract(ctx context.Context, file extractor.FileInp
 		add(ent)
 	}
 
+	// 6. PRODUCES edges: job builder → the job class it dispatches.
+	//
+	// #6741 arm 3. Until now this pass emitted ZERO relationships: it set
+	// `edge_kind: "PRODUCES"` as an entity PROPERTY, which is inert metadata no
+	// consumer traverses, while the fixture csharp-quartz-net-mini claimed in
+	// its own description to exist "to verify PRODUCES/CONSUMES edge emission".
+	// Deleting that half of this extractor changed nothing observable.
+	//
+	// SCOPE — why not `edge_kind == "PRODUCES"`. Three of this pass's entity
+	// kinds carry that inert property: job_builder, trigger and schedule_job.
+	// Only `JobBuilder.Create<T>()` names a job type, so it is the only one with
+	// an honest target. `TriggerBuilder.Create()` names a trigger identity and
+	// `scheduler.ScheduleJob(job, trigger)` names local variables; pairing
+	// either with a job class would require guessing which one.
+	//
+	// The two guards below are JOINTLY load-bearing and individually redundant:
+	// `job_builder` is the only entity this pass mints that sets `job_type`, and
+	// a `job_builder` is only ever minted from a `(\w+)` capture so its
+	// `job_type` cannot be empty. Deleting EITHER on its own is an equivalent
+	// mutant; deleting BOTH mints `Class:` edges out of the trigger and
+	// schedule_job producers, which is what TestQuartzNetProducesScopedToJob-
+	// Builders kills. Both are kept: each states an independent premise, and
+	// neither is free to be assumed by the other.
+	//
+	// PAIRING — keyed on the producer's OWN generic type argument. Matching any
+	// job class in scope would mint edges between unrelated jobs in any file
+	// that schedules more than one.
+	for i := range out {
+		if out[i].Subtype != "job_builder" {
+			continue
+		}
+		jobType := out[i].Properties["job_type"]
+		if jobType == "" {
+			continue
+		}
+		out[i].Relationships = append(out[i].Relationships, csJobProducesEdge(
+			"quartz.net", jobType, "task:quartz.net:"+jobType,
+			"INFERRED_FROM_QUARTZ_NET_JOB_BUILDER",
+		))
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
 }

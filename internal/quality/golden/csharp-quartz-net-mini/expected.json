@@ -60,6 +60,15 @@
       "must_exist": true,
       "note": "`[DisallowConcurrentExecution]` on ReportJob." },
 
+    { "from_name": "JobBuilder.Create<ReportJob>", "from_kind": "SCOPE.Operation", "from_file": "Startup.cs",
+      "kind": "PRODUCES", "to_name": "ReportJob", "to_kind": "SCOPE.Component", "to_file": "jobs/ReportJob.cs",
+      "must_exist": true,
+      "note": "#6741 arm 3. `JobBuilder.Create<ReportJob>()` in Startup.cs dispatches the IJob declared in jobs/ReportJob.cs. ADR-0028 §1's one-hop degenerate form: producer -> job class, carrying `task:quartz.net:ReportJob` as a property. Cross-file, so the edge targets the resolvable `Class:ReportJob` stub the C# passes already use for out-of-file types." },
+    { "from_name": "JobBuilder.Create<EmailJob>", "from_kind": "SCOPE.Operation", "from_file": "Startup.cs",
+      "kind": "PRODUCES", "to_name": "EmailJob", "to_kind": "SCOPE.Component", "to_file": "jobs/ReportJob.cs",
+      "must_exist": true,
+      "note": "The second builder must pair with the type IT names, not with whichever job class happens to come first." },
+
     { "from_name": "Startup.ConfigureScheduler", "from_kind": "SCOPE.Operation", "from_file": "Startup.cs",
       "kind": "CALLS", "to_name": "scheduler.ScheduleJob", "to_kind": "SCOPE.Operation", "to_file": "Startup.cs",
       "must_exist": false, "nice_to_have": true,
