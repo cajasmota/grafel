@@ -97,6 +97,17 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 	}
 	skippedFiles := []skipOut{}
 
+	// unreadOut is a directory the scan could not OPEN (#6534). Without it a
+	// permission-denied subtree renders as an unqualified clean: the model
+	// reads "total_findings: 0" and reports the repo safe on the strength of
+	// files nothing ever looked at.
+	type unreadOut struct {
+		Repo string `json:"repo"`
+		Dir  string `json:"dir"`
+	}
+	unreadDirs := []unreadOut{}
+	scanComplete := true
+
 	bySeverity := map[string]int{
 		"critical": 0,
 		"high":     0,
@@ -131,6 +142,13 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 				Reason: sk.Reason,
 				Kind:   sk.Kind,
 			})
+		}
+
+		if !scan.Complete() {
+			scanComplete = false
+		}
+		for _, u := range scan.Unread {
+			unreadDirs = append(unreadDirs, unreadOut{Repo: r.Repo, Dir: u.Rel})
 		}
 
 		for _, f := range scan.Findings {
@@ -175,6 +193,15 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 	totalSkipped := len(skippedFiles)
 	if totalSkipped > maxSkippedFilesReported {
 		skippedFiles = skippedFiles[:maxSkippedFilesReported]
+	}
+
+	// The LIST is capped like the others; the COUNT is not. The count is the
+	// load-bearing half of #6534 — a truncated list reporting its own length
+	// as the total would understate the gap, which is the same class of lie
+	// as reporting clean.
+	totalUnread := len(unreadDirs)
+	if totalUnread > maxSkippedFilesReported {
+		unreadDirs = unreadDirs[:maxSkippedFilesReported]
 	}
 
 	// Group into per-file rollups for readability.
@@ -226,6 +253,16 @@ func (s *Server) handleSecrets(_ context.Context, req mcpapi.CallToolRequest) (*
 		"skipped_files":           skippedFiles,
 		"skipped_files_total":     totalSkipped,
 		"skipped_files_truncated": totalSkipped > len(skippedFiles),
-		"tip":                     "Add '// grafel: ignore-secret' to suppress a specific line. Replace hardcoded values with the suggested env var.",
+		// scan_complete is the headline verdict qualifier (#6534). false
+		// means part of the tree was never opened, so "total_findings: 0"
+		// means "found nothing in what could be read", not "clean". It is
+		// deliberately a top-level boolean rather than a note inside a list:
+		// the rejected alternative was a warning that still reported clean,
+		// and warnings buried in a list go unread.
+		"scan_complete":         scanComplete,
+		"unread_dirs":           unreadDirs,
+		"unread_dirs_total":     totalUnread,
+		"unread_dirs_truncated": totalUnread > len(unreadDirs),
+		"tip":                   "Add '// grafel: ignore-secret' to suppress a specific line. Replace hardcoded values with the suggested env var.",
 	}), nil
 }
