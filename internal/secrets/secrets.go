@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -433,6 +434,46 @@ type ScanResult struct {
 	// "I did not check this file" and "I checked it and it was clean" are not
 	// interchangeable answers from a secret scanner.
 	Skipped []Skip
+	// Unread are the directories the walk could not OPEN at all (#6534).
+	//
+	// It is a second list rather than a fifth Skip reason because it is a
+	// different fact with a different shape. Skip names one file the scanner
+	// declined to read and can say why; an unreadable directory names no file
+	// at all — WalkDir hands over the directory path and no listing — so the
+	// only honest thing to report is that a subtree of unknown size was never
+	// looked at.
+	//
+	// Keeping the two apart also keeps the four-reason vocabulary closed: a
+	// caller that renders Skipped per-file does not suddenly have to handle
+	// an entry whose Path is a directory and whose Kind is meaningless.
+	Unread []UnreadDir
+}
+
+// UnreadCount is the number of directories the scan could not open.
+//
+// It is the count the owner's decision on #6534 requires the result to carry.
+// It counts DIRECTORIES, not files: the file population under an unopenable
+// directory is unknowable by construction, and inventing an estimate would be
+// a worse lie than the silent drop it replaces.
+func (r ScanResult) UnreadCount() int { return len(r.Unread) }
+
+// Complete reports whether the scan actually read the whole tree.
+//
+// This is the distinct non-clean outcome #6534 asks for. "Found nothing" is
+// Complete() && len(Findings) == 0; "looked at nothing" is !Complete(). A
+// caller that renders those two identically is telling a user a tree is safe
+// on the strength of files it never opened.
+func (r ScanResult) Complete() bool { return len(r.Unread) == 0 }
+
+// UnreadDir is one directory the walk could not open (#6534).
+//
+// It carries no Reason: there is exactly one condition that produces it —
+// fs.ErrPermission on a directory — and a single-valued field is noise.
+type UnreadDir struct {
+	// Path is the absolute path of the directory that could not be opened.
+	Path string `json:"path"`
+	// Rel is Path relative to the scan root — what a caller displays.
+	Rel string `json:"rel"`
 }
 
 // ScanPath walks root and returns all secret findings, plus every file the
@@ -445,24 +486,43 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 
 	var findings []Finding
 	var skipped []Skip
+	var unread []UnreadDir
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			// An entry the walk itself could not read — most often an
 			// EACCES directory, which is N unread FILES, not one.
 			//
-			// It stays unreported, unlike the per-file skips below, because
-			// there is nothing useful to report: WalkDir hands us the
-			// directory path and no listing, so the skip entry could not
-			// name a single file the caller might care about, and the count
-			// it would imply is unknown. The stated exclusion for
-			// ENOENT/EACCES on files applies here for the same reason it
-			// applies there — a permission-scoped tree would otherwise
-			// produce a permanent, unactionable entry on every scan.
+			// This used to return nil unreported (#6483's comment argued the
+			// case: the entry can name no file, and the count it implies is
+			// unknown). #6534 overrules that: a scanner whose caller cannot
+			// tell "scanned a tree with no secrets" from "scanned a tree with
+			// a subtree it could not open" is actively misleading, because
+			// users act on a clean secrets result. The unknowable file count
+			// is not a reason to report nothing — it is a reason to report
+			// the directory and let Complete() carry the verdict.
 			//
-			// Follow-up if this proves wrong in the field: a fifth reason
-			// carrying the directory path, gated on fs.ErrPermission only so
-			// the ordinary mid-walk ENOENT stays silent.
+			// Two gates keep it from becoming the permanent, unactionable
+			// noise the old comment feared:
+			//
+			//   - fs.ErrPermission only, so the ordinary mid-walk ENOENT
+			//     (files and dirs vanish under a live tree all the time)
+			//     stays silent.
+			//   - directories only. An unreadable FILE stays excluded exactly
+			//     as before: it is one file, the closed Skip vocabulary
+			//     deliberately excludes EACCES, and
+			//     TestScanPathDoesNotReportUnreadableFileAsSkip pins it.
+			//
+			// d is nil only when the LSTAT of root itself failed, in which
+			// case there is no tree to talk about and WalkDir's error is
+			// returned to the caller anyway.
+			if d != nil && d.IsDir() && errors.Is(err, fs.ErrPermission) {
+				rel, relErr := filepath.Rel(root, path)
+				if relErr != nil {
+					rel = path
+				}
+				unread = append(unread, UnreadDir{Path: path, Rel: rel})
+			}
 			return nil
 		}
 		if d.IsDir() {
@@ -606,7 +666,7 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 		return nil
 	})
 
-	return ScanResult{Findings: findings, Skipped: skipped}, err
+	return ScanResult{Findings: findings, Skipped: skipped, Unread: unread}, err
 }
 
 // keepPartialFindings decides whether the findings scanFile collected BEFORE

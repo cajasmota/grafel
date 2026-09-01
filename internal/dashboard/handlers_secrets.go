@@ -71,6 +71,29 @@ type SecretScanReply struct {
 	// always-present [] says "asked, and the answer is none". Files above
 	// already renders this way; this keeps the two uniform.
 	SkippedFiles []SecretSkippedFile `json:"skipped_files"`
+	// ScanComplete is false when any repo in the group had a directory the
+	// scan could not open (#6534).
+	//
+	// It is the qualifier on the headline number. total_findings:0 with
+	// scan_complete:false means "found nothing in what could be read"; the
+	// two must never render as the same verdict, because a user acts on a
+	// clean secrets scan. It is a top-level boolean, not an entry inside a
+	// list, because the rejected design was a warning that still reported
+	// clean — and warnings inside lists go unread.
+	ScanComplete bool `json:"scan_complete"`
+	// UnreadDirs are the directories that could not be opened, and
+	// UnreadDirsTotal is their count. Like SkippedFiles this is deliberately
+	// NOT omitempty and is initialised to a non-nil slice, so an absent key
+	// can never be misread as "nothing was unread".
+	UnreadDirs      []SecretUnreadDir `json:"unread_dirs"`
+	UnreadDirsTotal int               `json:"unread_dirs_total"`
+}
+
+// SecretUnreadDir is one directory the secret scan could not open. It carries
+// no reason: the only condition that produces it is a permission error.
+type SecretUnreadDir struct {
+	Repo string `json:"repo"`
+	Dir  string `json:"dir"`
 }
 
 // SecretSkippedFile is one file the secret scan did not read.
@@ -122,6 +145,8 @@ func (s *Server) handleQualitySecrets(w http.ResponseWriter, r *http.Request) {
 		Group:        groupName,
 		BySeverity:   map[string]int{"critical": 0, "high": 0, "medium": 0, "low": 0},
 		SkippedFiles: []SecretSkippedFile{},
+		UnreadDirs:   []SecretUnreadDir{},
+		ScanComplete: true,
 	}
 
 	for _, rp := range repoPaths {
@@ -140,6 +165,17 @@ func (s *Server) handleQualitySecrets(w http.ResponseWriter, r *http.Request) {
 				Kind:   sk.Kind,
 			})
 		}
+
+		if !scan.Complete() {
+			reply.ScanComplete = false
+		}
+		for _, u := range scan.Unread {
+			reply.UnreadDirs = append(reply.UnreadDirs, SecretUnreadDir{
+				Repo: rp.Slug,
+				Dir:  u.Rel,
+			})
+		}
+		reply.UnreadDirsTotal += scan.UnreadCount()
 
 		report := secrets.BuildReport(rp.Path, scan.Findings)
 		for k, v := range report.BySeverity {
