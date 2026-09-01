@@ -19261,7 +19261,7 @@
           },
           "endpoint_synthesis": {
             "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml","internal/engine/rules/graphql/frameworks/absinthe_elixir.yaml"],
+            "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml"],
             "verified_at": "2026-05-28"
           },
           "handler_attribution": {
@@ -28351,20 +28351,20 @@
           },
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/gqlgen_go.yaml"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go"],
             "issue": "3613",
             "verified_at": "2026-06-02"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/gqlgen_go.yaml"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go"],
             "issue": "3613",
             "notes": "Resolver method on generated *queryResolver/*mutationResolver/*subscriptionResolver -\u003e http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e; source_handler=SCOPE.Operation:\u003creceiver\u003e.\u003cMethod\u003e rebinds to a HANDLES edge.",
             "verified_at": "2026-06-02"
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/gqlgen_go.yaml","internal/extractors/graphql/graphql.go"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/extractors/graphql/graphql.go"],
             "issue": "3613",
             "notes": "Operation endpoints synthesised from Go resolver receivers; SDL schema types parsed by the shared graphql extractor. Field-name mapping is gqlgen default lowerCamel and does not yet read gqlgen.yml overrides or @goField directives.",
             "verified_at": "2026-06-02"
@@ -44449,7 +44449,7 @@
           },
           "procedure_extraction": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/graphql/frameworks/apollo_server.yaml","internal/engine/rules/graphql/frameworks/graphql_yoga.yaml","internal/extractors/graphql/graphql.go"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/extractors/graphql/graphql.go"],
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
@@ -47795,18 +47795,18 @@
           },
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/pothos_jsts.yaml"],
+            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go"],
             "issue": "3619",
             "verified_at": "2026-06-02"
           },
           "handler_attribution": {
             "status": "not_applicable",
-            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/pothos_jsts.yaml"],
+            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go"],
             "notes": "Pothos root fields are inline-arrow resolvers (builder.queryField('users', t =\u003e ...)) with no addressable handler symbol; the operation endpoint is emitted with NO source_handler (NoHandlerProp keep-path), matching the Apollo resolver-map convention. There is no method symbol to bind a HANDLES edge to."
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/pothos_jsts.yaml"],
+            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go"],
             "issue": "3619",
             "notes": "builder.queryField/mutationField/subscriptionField + the builder.queryType/mutationType/subscriptionType fields:(t)=\u003e({...}) maps -\u003e http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e (EXACT canonical shape as gqlgen/Apollo/Strawberry so client links #3667 join). Honest-partial: a non-literal (variable/computed) field name is not recovered."
           },
@@ -50505,19 +50505,19 @@
           },
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml"],
+            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go"],
             "issue": "3619",
             "verified_at": "2026-06-02"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml"],
+            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go"],
             "issue": "3619",
             "notes": "@Query/@Mutation/@Subscription method in an @Resolver class -\u003e http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e; source_handler=SCOPE.Operation:\u003cmethod\u003e rebinds to a HANDLES (IMPLEMENTS) edge against the extracted method symbol (proven end-to-end in TestResolve_TypeGraphQL_HandlesEdge)."
           },
           "route_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml"],
+            "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go"],
             "issue": "3619",
             "notes": "Root @Query/@Mutation/@Subscription methods only; @FieldResolver (non-root) methods are skipped, matching gqlgen/spring-graphql. Field name = method name or the { name: '...' } decorator option. Honest-partial: a dynamic/computed name option is not recovered."
           },
@@ -72487,7 +72487,7 @@
           },
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/graphql/frameworks/strawberry_python.yaml","internal/engine/rules/python/frameworks/strawberry_graphql.yaml"],
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/strawberry_graphql.yaml"],
             "issue": "3066",
             "verified_at": "2026-05-29"
           },
