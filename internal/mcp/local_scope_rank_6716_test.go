@@ -190,3 +190,71 @@ func TestRankTier_LocalScopeDemotionIsNotOverBroad_6716(t *testing.T) {
 		t.Errorf("module-scope binding tier %d != authored lined tier %d", rankTier(moduleScope), rankTier(authored))
 	}
 }
+
+// TestRerank_LocalScopeSortsBelowEveryOtherNoiseBucket_6716 pins the "worst
+// tier there is" claim that the case comment in tierFor makes.
+//
+// WHY THIS EXISTS AS A SEPARATE TEST. The prefix-equality property above is
+// satisfied by ANY tier at or below 4, because tiers 4-8 are all noise buckets
+// and real entities fall through the switch entirely — so `localScopeTier = 8`
+// keeps every real entity exactly where it was and the property holds. It was
+// an ALIVE mutant. What it breaks is the prose: at 8 a local binding is EQUAL
+// to noisePattern, not below it, while the code comment says "BELOW EVERY
+// OTHER BUCKET" and the constant's doc says "the worst tier there is". Code
+// and comment disagreeing with a green suite is precisely the defect class
+// #6716 itself was — the package header already documented
+// "noiseLocalScope (9)" while no code assigned it.
+//
+// TestRankTierPatternBelowSchemaField already pins 8-below-7; this is the
+// adjacent rung, 9-below-8, that nothing held.
+//
+// The assertion is by ORDERING, not by comparing the two constants — reading
+// localScopeTier and the pattern tier and asserting `a > b` would restate the
+// source rather than observe it. The local binding is given the HIGHEST score
+// and placed FIRST in the input, so a stable sort leaves it ahead of every
+// other bucket unless its tier is strictly worse. Only the tier can move it.
+func TestRerank_LocalScopeSortsBelowEveryOtherNoiseBucket_6716(t *testing.T) {
+	buckets := []struct {
+		name string
+		e    *graph.Entity
+		want noiseKind
+	}{
+		{"noiseShadow", &graph.Entity{
+			Kind: "SCOPE.Operation", Name: "LoginViewSet.list", StartLine: 0,
+		}, noiseShadow},
+		{"noiseContainer", graph.EntityPtr(graph.Entity{
+			Kind: "SCOPE.Component", Name: "x.tsx", SourceFile: "x.tsx", StartLine: 0,
+		}.WithProperties(map[string]string{"subtype": "file"})), noiseContainer},
+		{"noiseSchemaField", &graph.Entity{
+			Kind: "SCOPE.Schema", Subtype: "field",
+			Name:       "DeficiencyCreateSerializer.amount",
+			SourceFile: "core/serializers/deficiency_serializer.py", StartLine: 12,
+		}, noiseSchemaField},
+		{"noiseProcess", &graph.Entity{
+			ID: "proc:11c264af58999ae9", Kind: "SCOPE.Process", Name: "Login \u2192 map",
+			SourceFile: "src/features/auth/login/index.tsx", StartLine: 0,
+		}, noiseProcess},
+		{"noisePattern", &graph.Entity{
+			Kind: "SCOPE.Pattern", Name: "error_handling:try_catch:19",
+			SourceFile: "src/api/handlers.go", StartLine: 42,
+		}, noisePattern},
+	}
+
+	for _, b := range buckets {
+		t.Run(b.name, func(t *testing.T) {
+			if got := classifyNoise(b.e); got != b.want {
+				t.Fatalf("fixture drift: classifyNoise = %d, want %d (%s)", got, b.want, b.name)
+			}
+			local := localBinding("counts", 48, 100)
+			other := scored{hit: Hit{Entity: b.e, Score: 1}}
+			// Local first and far ahead on score: only a strictly worse tier
+			// can demote it past the other bucket.
+			got := rerank([]scored{local, other})
+			if got[0].hit.Entity != b.e {
+				t.Fatalf("a local binding sorted at or above %s despite a worse-or-equal tier; "+
+					"noiseLocalScope must rank strictly below every other noise bucket (#6716). order: %v",
+					b.name, names(got))
+			}
+		})
+	}
+}
