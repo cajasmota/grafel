@@ -78,6 +78,17 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	source := string(file.Content)
 	var out []types.EntityRecord
 
+	// #6741 arm 5 — the actor and send entities below used to carry an inert
+	// `edge_kind: "CONSUMES"` / `"PRODUCES"` property. It was removed rather
+	// than left as redundant metadata, because in Python those two kinds are
+	// not merely un-emitted by this pass: they are never emitted for this
+	// language at all. Arm 4 settled the dramatiq producer hop onto ENQUEUES
+	// (internal/engine/scheduled_jobs_edges.go), since ADR-0028 §3 allows one
+	// pair per hop and an actor is a plain function, not a job class; PRODUCES
+	// stays the scheduler-style form used by Java Quartz and C# Hangfire /
+	// Quartz.NET. CONSUMES is emitted by nothing anywhere in the tree.
+	// `pattern_type` already discriminates every entity this pass mints.
+
 	// 1. Consumer: @dramatiq.actor decorated function
 	for _, idx := range allMatchesIndex(dmActorDecoratorRe, source) {
 		funcName := source[idx[2]:idx[3]]
@@ -88,7 +99,6 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"framework":    "dramatiq",
 				"pattern_type": "actor",
 				"task_id":      taskID,
-				"edge_kind":    "CONSUMES",
 				"provenance":   "INFERRED_FROM_DRAMATIQ_ACTOR",
 			}))
 	}
@@ -104,7 +114,6 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"pattern_type": "send",
 				"actor_ref":    actorRef,
 				"task_id":      "task:dramatiq:" + actorRef,
-				"edge_kind":    "PRODUCES",
 				"provenance":   "INFERRED_FROM_DRAMATIQ_SEND",
 			}))
 	}
@@ -120,7 +129,6 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"pattern_type": "send_with_options",
 				"actor_ref":    actorRef,
 				"task_id":      "task:dramatiq:" + actorRef,
-				"edge_kind":    "PRODUCES",
 				"provenance":   "INFERRED_FROM_DRAMATIQ_SEND_WITH_OPTIONS",
 			}))
 	}

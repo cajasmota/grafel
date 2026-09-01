@@ -1,7 +1,7 @@
 {
   "fixture_name": "csharp-hangfire-mini",
   "language": "csharp",
-  "description": "Minimal Hangfire project with IBackgroundJob consumers, BackgroundJob.Enqueue producers, RecurringJob.AddOrUpdate, and [AutomaticRetry]. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for Hangfire.",
+  "description": "Minimal Hangfire project with IBackgroundJob consumers, BackgroundJob.Enqueue producers, RecurringJob.AddOrUpdate, and [AutomaticRetry]. Gates the Hangfire entity set — job_class consumers, the task_enqueue / recurring_job dispatch sites, the retry_policy pattern — together with the CONTAINS / CALLS / IMPORTS shape around them. Since #6741 arm 3 the pass ALSO emits real PRODUCES edges (dispatch site -> the type it names, carrying task:hangfire:<Type>.<Method>, or task:hangfire:recurring:<id> for the RecurringJob form); three are emitted here. But this fixture's dispatch sites name EmailService / CleanupService / IEmailService, none of which it declares, so only one binds and no PRODUCES row is graded must_exist — csharp-quartz-net-mini is where a BOUND PRODUCES edge is pinned. Deliberately no CONSUMES: as of #6741 arm 5 nothing in the tree emits that kind, in any language (known gap, recorded in ADR-0028).",
   "expected_entities": [
     { "name": "EmailJob", "kind": "SCOPE.Service", "source_file": "jobs/EmailJob.cs", "must_exist": true, "note": "Hangfire IBackgroundJob consumer." },
     { "name": "CleanupJob", "kind": "SCOPE.Service", "source_file": "jobs/EmailJob.cs", "must_exist": true, "note": "Hangfire IBackgroundJob consumer with AutomaticRetry." },
@@ -74,6 +74,6 @@
     { "from_name": "OrderController.PlaceOrder", "from_kind": "SCOPE.Operation", "from_file": "api/OrderController.cs",
       "kind": "PRODUCES", "to_name": "EmailJob", "to_kind": "SCOPE.Service", "to_file": "jobs/EmailJob.cs",
       "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING, and the sharpest one in this fixture: its description says it exists \"to verify PRODUCES/CONSUMES edge emission for Hangfire\", and the graph contains ZERO PRODUCES and ZERO CONSUMES edges. Producer call sites and consumer job classes are two disconnected islands. Kept nice_to_have because binding an Enqueue lambda to the job class that services it is genuinely unimplemented, not merely mis-targeted." }
+      "note": "#6490 arm B FINDING, and the sharpest one in this fixture. It USED to read: the description claims this fixture verifies PRODUCES/CONSUMES emission, and the graph contains ZERO of both. #6741 arm 3 made the producer half real: the pass now emits three PRODUCES edges here. This row still does not bind, and cannot as the source stands — OrderController.cs dispatches EmailService / CleanupService / IEmailService, and names EmailJob nowhere, so no PRODUCES edge from PlaceOrder can reach EmailJob without fabricating source. Kept nice_to_have for that reason. The CONSUMES half remains unbuilt everywhere in the tree (ADR-0028)." }
   ]
 }

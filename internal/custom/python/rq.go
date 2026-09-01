@@ -88,6 +88,17 @@ func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	// from generic Queue/Worker class names in non-RQ code).
 	hasRQImport := rqImportRe.MatchString(source)
 
+	// #6741 arm 5 — the producer and Worker entities below used to carry an
+	// inert `edge_kind: "PRODUCES"` / `"CONSUMES"` property. Removed, not kept
+	// as redundant metadata: neither kind is ever emitted for Python. The RQ
+	// producer hop is already covered, hop for hop, by the ENQUEUES edges
+	// synthesizeRQEnqueueEdges builds from these very call sites, and ADR-0028
+	// §3 forbids a second pair beside it; CONSUMES is emitted by nothing
+	// anywhere in the tree, so the Worker below is genuinely edge-less on the
+	// consumption axis (a known gap, recorded in ADR-0028 and in
+	// internal/quality/golden/python-rq-mini/expected.json).
+	// `pattern_type` already discriminates every entity this pass mints.
+
 	var out []types.EntityRecord
 
 	// 1. Producer: queue.enqueue(callable, ...)
@@ -103,7 +114,6 @@ func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 				"queue_var":    queueVar,
 				"callable":     callable,
 				"task_id":      taskID,
-				"edge_kind":    "PRODUCES",
 				"provenance":   "INFERRED_FROM_RQ_ENQUEUE",
 			}))
 	}
@@ -121,7 +131,6 @@ func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 				"queue_var":    queueVar,
 				"callable":     fnName,
 				"task_id":      taskID,
-				"edge_kind":    "PRODUCES",
 				"provenance":   "INFERRED_FROM_RQ_ENQUEUE_CALL",
 			}))
 	}
@@ -139,7 +148,6 @@ func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 				"queue_var":    queueVar,
 				"callable":     callable,
 				"task_id":      taskID,
-				"edge_kind":    "PRODUCES",
 				"provenance":   "INFERRED_FROM_RQ_ENQUEUE_CALL_REF",
 			}))
 	}
@@ -168,7 +176,6 @@ func (e *rqExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 					"framework":    "rq",
 					"pattern_type": "worker",
 					"queues":       queues,
-					"edge_kind":    "CONSUMES",
 					"provenance":   "INFERRED_FROM_RQ_WORKER",
 				}))
 		}

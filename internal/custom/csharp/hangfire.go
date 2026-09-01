@@ -469,7 +469,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"job_type", typeName,
 			"job_method", methodName,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE",
 		)
 		resolvedCalls[idx[0]] = true
@@ -489,7 +488,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"job_type", typeName,
 			"job_method", methodName,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE_TYPED",
 		)
 		resolvedCalls[idx[0]] = true
@@ -510,7 +508,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"job_type", typeName,
 			"job_method", methodName,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_RECURRING",
 		)
 		hfApplySchedule(&ent, hfStatementTail(src, idx[1]))
@@ -532,7 +529,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"job_type", typeName,
 			"job_method", methodName,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_RECURRING_TYPED",
 		)
 		hfApplySchedule(&ent, hfStatementTail(src, idx[1]))
@@ -553,7 +549,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"job_type", typeName,
 			"job_method", methodName,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_SCHEDULE",
 		)
 		resolvedCalls[idx[0]] = true
@@ -575,7 +570,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"job_type", typeName,
 			"job_method", methodName,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE_METHOD_GROUP",
 		)
 		resolvedCalls[idx[0]] = true
@@ -610,7 +604,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"framework", "hangfire",
 			"pattern_type", "recurring_dynamic",
 			"resolution", resolution,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_RECURRING_DYNAMIC",
 		)
 		if jobID != "" {
@@ -634,7 +627,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"pattern_type", "enqueue_dynamic",
 			"resolution", "unresolved",
 			"job_op", op,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE_DYNAMIC",
 		)
 		add(ent)
@@ -650,7 +642,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"framework", "hangfire",
 			"pattern_type", "job_class",
 			"task_id", taskID,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_HANGFIRE_IJOB",
 		)
 		add(ent)
@@ -663,7 +654,6 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		setProps(&ent,
 			"framework", "hangfire",
 			"pattern_type", "automatic_retry",
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_HANGFIRE_AUTOMATIC_RETRY",
 		)
 		add(ent)
@@ -674,14 +664,16 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	// #6741 arm 3. Like quartz_net.go, this pass emitted ZERO relationships and
 	// recorded the intent as an inert `edge_kind: "PRODUCES"` entity property,
 	// while csharp-hangfire-mini's description claimed it existed "to verify
-	// PRODUCES/CONSUMES edge emission for Hangfire".
+	// PRODUCES/CONSUMES edge emission for Hangfire". #6741 arm 5 deleted that
+	// property from this pass: on a resolved dispatch site the edge below now
+	// carries the fact, and on an unresolved one (sections 8 and 9) the property
+	// claimed an edge that is deliberately never emitted. Nothing read it.
 	//
 	// SCOPE — the LOAD-BEARING guard is `job_type != ""`. Sections 8 and 9 mint
 	// honest UNRESOLVED producers (`BackgroundJob.Enqueue(work)`, a captured-
-	// variable job id) with the SAME subtypes and the SAME `edge_kind` property,
-	// and those name no type at all; keying on the inert property, or on the
-	// subtype alone, would fabricate an edge out of a call site whose target
-	// this pass explicitly declined to resolve.
+	// variable job id) with the SAME subtypes, and those name no type at all;
+	// keying on the subtype alone would fabricate an edge out of a call site
+	// whose target this pass explicitly declined to resolve.
 	// TestHangfireDynamicProducerEmitsNoProduces is the mutant that pins it.
 	// The subtype check in front is redundant today (no consumer entity this
 	// pass mints sets `job_type`) and is kept as the statement of intent.

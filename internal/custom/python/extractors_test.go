@@ -2505,7 +2505,7 @@ def send_email(to, subject):
 	ents := extract(t, "python_dramatiq", src)
 	found := false
 	for _, e := range ents {
-		if e.Name == "send_email" && e.Kind == "SCOPE.Service" && e.Props["framework"] == "dramatiq" && e.Props["edge_kind"] == "CONSUMES" {
+		if e.Name == "send_email" && e.Kind == "SCOPE.Service" && e.Props["framework"] == "dramatiq" && e.Props["pattern_type"] == "actor" {
 			found = true
 		}
 	}
@@ -2537,7 +2537,7 @@ func TestDramatiq_Send(t *testing.T) {
 	ents := extract(t, "python_dramatiq", src)
 	found := false
 	for _, e := range ents {
-		if e.Name == "send_email.send" && e.Props["edge_kind"] == "PRODUCES" && e.Props["actor_ref"] == "send_email" {
+		if e.Name == "send_email.send" && e.Props["pattern_type"] == "send" && e.Props["actor_ref"] == "send_email" {
 			found = true
 		}
 	}
@@ -2552,7 +2552,7 @@ func TestDramatiq_SendWithOptions(t *testing.T) {
 	ents := extract(t, "python_dramatiq", src)
 	found := false
 	for _, e := range ents {
-		if e.Name == "charge_card.send_with_options" && e.Props["edge_kind"] == "PRODUCES" {
+		if e.Name == "charge_card.send_with_options" && e.Props["pattern_type"] == "send_with_options" {
 			found = true
 		}
 	}
@@ -2599,7 +2599,7 @@ q.enqueue(charge_card, user_id=42)
 	ents := extract(t, "python_rq", src)
 	found := false
 	for _, e := range ents {
-		if e.Props["framework"] == "rq" && e.Props["callable"] == "charge_card" && e.Props["edge_kind"] == "PRODUCES" {
+		if e.Props["framework"] == "rq" && e.Props["callable"] == "charge_card" && e.Props["pattern_type"] == "enqueue" {
 			found = true
 		}
 	}
@@ -2638,7 +2638,7 @@ worker.work()
 	ents := extract(t, "python_rq", src)
 	found := false
 	for _, e := range ents {
-		if e.Props["framework"] == "rq" && e.Props["pattern_type"] == "worker" && e.Props["edge_kind"] == "CONSUMES" {
+		if e.Props["framework"] == "rq" && e.Props["pattern_type"] == "worker" && e.Kind == "SCOPE.Service" {
 			found = true
 		}
 	}

@@ -8,7 +8,7 @@
 
 ## Context
 
-Five golden fixtures — `csharp-hangfire-mini`, `csharp-quartz-net-mini`, `java-quartz-mini`, `python-dramatiq-mini`, `python-rq-mini` — carry the identical sentence at `expected.json:4`: *"Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for …"*. `docs/coverage/detail/msg.hangfire-recurring.md` marks Producer extraction **full**, asserting "All PRODUCES carrying `task:hangfire:<Type>.<Method>`".
+Five golden fixtures — `csharp-hangfire-mini`, `csharp-quartz-net-mini`, `java-quartz-mini`, `python-dramatiq-mini`, `python-rq-mini` — carried the identical sentence at `expected.json:4`: *"Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for …"*, and `docs/coverage/detail/msg.hangfire-recurring.md` marked Producer extraction **full**, asserting "All PRODUCES carrying `task:hangfire:<Type>.<Method>`". (Arm 5 rewrote all six; see the amendment at the end of this ADR.)
 
 None of it was true. Grounding for #6741 established:
 
@@ -80,3 +80,66 @@ These are the constraints those arms are written against:
 - **Keep `PRODUCES` as an entity property and teach consumers to read it** — rejected: four consumers already traverse it as an *edge kind*, edges are what reachability, `find_callers` and the topology dashboard walk, and a property on one endpoint cannot express a two-node relationship at all.
 - **Reuse `ENQUEUES`/`TRIGGERS` for every queue framework and never declare `PRODUCES`** — genuinely tempting, and it would have been the smaller change. Rejected because one emitter already ships `PRODUCES` edges, four consumers hard-code both strings, five fixtures and a coverage doc promise them, and `ENQUEUES` is documented as targeting `SCOPE.ScheduledJob` specifically, which is not the entity the message-broker and Hangfire-style passes mint. Renaming the shipped edge is a migration with no payoff over declaring the kind that already exists in the tree.
 - **Add `CONSUMES_QUEUE`, `TRIGGERS_LAMBDA`, `READS_TABLE`, `WRITES_TABLE` so ADR-0003 reads true** — rejected; §4.
+
+## What actually shipped (Arms 2-5, 2026-09-02) — the language split, and the CONSUMES gap
+
+This section is the amendment Arm 5 owes a reader who sees `PRODUCES` in Java and `ENQUEUES` in Python
+and wants to know whether that is deliberate. It is. Measured against the tree at Arm 5, not asserted
+from the plan above.
+
+### The split
+
+| Dispatch shape | Target | Edge pair | Emitters |
+|---|---|---|---|
+| **Scheduler-style** — a builder/dispatch site names a job **class** | the job class | `PRODUCES` (one-hop degenerate form, §1) | `internal/custom/java/quartz.go` (Quartz Java), `internal/custom/csharp/hangfire.go` + `quartz_net.go` via `csJobProducesEdge` (Hangfire, Quartz.NET) |
+| **Queue-style** — an enqueue site names a **function** | the function | `ENQUEUES` (+ `TRIGGERS` where a `SCOPE.ScheduledJob` exists) | `internal/engine/scheduled_jobs_edges.go` (Python RQ and dramatiq, Sidekiq, Resque, Go asynq) |
+
+The line is the **target**, not the language. §3 is what forces the choice: one hop gets one pair, so a
+hop already covered by `ENQUEUES` may not also carry `PRODUCES`. Arm 4 found that RQ's producer regexes
+scan the *same call sites* `synthesizeRQEnqueueEdges` already walks, hop for hop, and that a dramatiq
+actor is a plain function — so both Python frameworks settle on `ENQUEUES`, and **no `PRODUCES` edge is
+emitted for Python at all**. Arms 2 and 3 checked the same question for Java and C# and found no
+`ENQUEUES` on those hops, so `PRODUCES` is free there.
+
+A new framework pass picks its side by asking what its dispatch site names — a class, or a function —
+and by checking `scheduled_jobs_edges.go` for an existing `ENQUEUES` on that hop before adding anything.
+
+### `CONSUMES` is declared and emitted by nothing. That is a known gap, not an oversight.
+
+`RelationshipKindConsumes` is declared (`internal/types/kinds.go:751`), registered in
+`AllRelationshipKinds()` (`:1642`), and read by four consumers (`internal/mcp/dead_code.go`,
+`internal/mcp/flow_tools.go`, `internal/dashboard/topology_compound.go`, `internal/links/reachability.go`).
+**No producer emits it**, in any language. Verified at Arm 5 by grepping the string across `internal/` and `cmd/`: outside `kinds.go`, those four
+consumers and test files, every occurrence was an entity *property*, and Arm 5 deleted the ones in the
+five passes behind #6741's fixtures.
+
+It was left unbuilt deliberately. The one-hop degenerate form Arms 2-3 emit has no work-unit node for a
+`CONSUMES` edge to originate from, so emitting it needs the two-hop form of §1 — minting work-unit
+entities that do not exist today, across two language families, plus re-baselining both fixture sets.
+That is a modelling change, and it should be motivated by wanting a queue-hop node in the graph, not by
+wanting a sentence to read true. Retiring the kind instead was considered and rejected: it forecloses the
+two-hop model, and `CONSUMES` is the more useful half for *"what handles this queue?"*.
+
+Consequences a reader should expect while the gap stands:
+
+- A queue-only handler is reachable from its producer **only** via `PRODUCES`/`ENQUEUES`/`TRIGGERS`. The
+  `CONSUMES` entry in the reachability and dead-code edge sets is inert.
+- `internal/quality/golden/python-rq-mini` keeps its `Worker … CONSUMES … send_email` row as
+  `nice_to_have`, deliberately **unmet**, so the gap stays visible in the benchmark rather than
+  disappearing from it. Deleting that row would re-create the defect #6741 is about.
+
+### The inert `edge_kind` entity property (Arm 5)
+
+Arms 2-4's passes stamped `edge_kind: "PRODUCES"` / `"CONSUMES"` as an entity property. Nothing ever read
+it, and it is what let two fixtures claim for months to verify an edge kind that did not exist. Arm 5
+removed it from the five passes behind #6741's five fixtures (`java/quartz.go`, `csharp/hangfire.go`,
+`csharp/quartz_net.go`, `python/dramatiq.go`, `python/rq.go`): false in Python and on unresolved C#
+producers, duplicative at best elsewhere. **A framework pass must not record an intended edge as an entity
+property.** Emit the edge, or record the gap in prose where a reader will find it.
+
+Still carrying the property, and outside #6741's scope: `csharp/coravel.go`, `csharp/masstransit.go`,
+`csharp/mediatr.go`, `csharp/wolverine.go`, `csharp/handle_messages.go` (`PRODUCES`/`CONSUMES`) and
+`python/dramatiq.go`'s routing entities (`ROUTES_TO`). Each of those five C# files contains zero
+relationship emissions, so their property names an edge that pass never produces; `ROUTES_TO` is a real
+edge kind emitted by several engine passes, but not by the dramatiq routing extractor. Same defect class,
+not fixed here — a follow-up should sweep them.

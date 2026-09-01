@@ -1,7 +1,7 @@
 {
   "fixture_name": "python-dramatiq-mini",
   "language": "python",
-  "description": "Minimal dramatiq project with two @dramatiq.actor consumers and producer call sites using .send() and .send_with_options(). Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for dramatiq.",
+  "description": "Minimal dramatiq project with two @dramatiq.actor consumers and producer call sites using .send() and .send_with_options(). Gates the two ENQUEUES edges #6741 arm 4 settled the dramatiq producer hop onto — process_checkout -> charge_card via .send(), process_checkout -> send_receipt via .send_with_options() — alongside the REFERENCES / CONTAINS / IMPORTS / CALLS shape. Python emits no PRODUCES for this hop and never CONSUMES, and that is deliberate: ADR-0028 §3 forbids a second pair on a hop ENQUEUES already covers, and a dramatiq actor is a plain function, so it takes the queue-style ENQUEUES pair rather than the scheduler-style PRODUCES that Java Quartz and C# Hangfire/Quartz.NET emit onto a job CLASS. Before arm 4 this hop was REFERENCES-only while the structurally identical python-rq-mini hop was ENQUEUES (#6490 arm B); the two now agree.",
   "expected_entities": [
     { "name": "charge_card", "kind": "SCOPE.Service", "source_file": "workers/billing.py", "must_exist": true, "note": "Dramatiq actor consumer." },
     { "name": "send_receipt", "kind": "SCOPE.Service", "source_file": "workers/billing.py", "must_exist": true, "note": "Bare @dramatiq.actor consumer." },
