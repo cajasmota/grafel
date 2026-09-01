@@ -370,8 +370,19 @@ func TestKnownRegressionsHaveNoDuplicates(t *testing.T) {
 // have to hand-roll every item in the gated list as a second formatter, which
 // can itself drift — precisely the failure this gate exists to prevent. It is
 // *driven* from Go so that it runs in the ordinary `go test
-// ./internal/quality/...` CI leg — .github/workflows/quality.yml, where the
-// ratchet itself runs, is dispatch-only and therefore gates no pull request.
+// ./internal/quality/...` CI leg.
+//
+// That last sentence used to carry a second clause: ".github/workflows/
+// quality.yml, where the ratchet itself runs, is dispatch-only and therefore
+// gates no pull request". #6231 made quality.yml always-on, so it is now false
+// and has been removed. Note what changed and what did not: the ORIGINAL
+// motive for driving this from Go — that otherwise nothing would run it on a
+// PR — no longer applies, because quality.yml would now run it too. The
+// placement is kept anyway, on the narrower ground that this check reads a
+// checked-in file and needs no built binary, so it belongs in the cheap
+// `go test` leg rather than behind a fixture-indexing job. Nothing this
+// function asserts ever depended on the dispatch-only property; the clause was
+// rationale, not premise.
 func runCanon(t *testing.T, path string) (int, string) {
 	t.Helper()
 	out, err := exec.Command("python3", ratchetScript(t), "canon", path).CombinedOutput()

@@ -21,9 +21,19 @@ import (
 //
 // so any binary already sitting at build/grafel was graded as-is, whatever
 // source it had been built from. build/grafel is gitignored and long-lived on a
-// developer machine, which is exactly where this gate runs: .github/workflows/
-// quality.yml is workflow_dispatch-only and, when dispatched, builds explicitly
-// and passes GRAFEL_BIN, so CI never hit this — only humans did.
+// developer machine, which is exactly where this gate ran: at the time,
+// .github/workflows/quality.yml was workflow_dispatch-only, and when dispatched
+// it built explicitly and passed GRAFEL_BIN — so CI never hit this, only humans
+// did.
+//
+// #6231 has since made quality.yml always-on (pull_request + push to main). CI
+// still does not hit the defect, for the unchanged reason: the workflow builds
+// into a fresh runner workspace and passes GRAFEL_BIN explicitly, so there is
+// never a stale binary to reuse. The dispatch-only property was never a premise
+// of anything below — it explained who was exposed, not what is asserted — and
+// the tests in this file are unaffected by the trigger change. The paragraph is
+// corrected rather than deleted because "only humans hit this" is still the
+// reason the defect survived as long as it did.
 //
 // Why it matters more than the two instrument bugs before it: this repo uses
 // mutation testing to detect vacuous tests, and a mutant that "survives" is
