@@ -15,21 +15,21 @@ import (
 // the must-have entity these three fixtures previously scored as satisfied
 // only by ormlink's thin MAPS_TO anchor (Refs #6277, #6275).
 //
-// java-spring-mini and elixir-phoenix-mini are FULLY FIXED by #6275: the
+// java-spring-mini and elixir-phoenix-mini were FULLY FIXED by #6275: the
 // must-have now binds to a real, content-ful entity (not the sentinel), and
 // entity_found/relationship_found are back at their historic highs.
-// python-django-mini's OWN "SCOPE.Component User" must-have is NOT fixed by
-// #6275 — it is a separate defect (#6276): the Django custom pass folds the
-// base class node into a bare "Model"-kind record (see
-// internal/engine/classfold.go's FrameworkClassKindPriority, which ranks
-// bare "Model" as a legitimate framework-typed survivor, not a #6104 twin),
-// so no non-sentinel record ever collides with the ormlink sentinel for
-// (SCOPE.Component, User, users/models.py) and there is nothing for #6275's
-// dedup fix to promote. python-django-mini's entity_found/relationship_found
-// DO move here (+1/+2) — an unrelated, legitimate side effect of #6275's
-// twin_of anchor-id fix (cmd/grafel/index.go's stampEntityIDs) repairing a
-// DIFFERENT symbol's resolution in the same fixture — verified by the
-// unchanged Found=false/MatchedID="" assertion on the User case below.
+//
+// python-django-mini's OWN "SCOPE.Component User" must-have was NOT fixed by
+// #6275 — it was a separate defect (#6276): the base class node folded into
+// Pass 2.5's bare "Model"-kind record (see internal/engine/classfold.go's
+// FrameworkClassKindPriority, which ranks bare "Model" as a legitimate
+// framework-typed survivor, not a #6104 twin), so no non-sentinel record ever
+// collided with the ormlink sentinel for (SCOPE.Component, User,
+// users/models.py) and there was nothing for #6275's dedup fix to promote.
+// #6276 fixed that at the FOLD, not at the dedup: a record named as some other
+// record's #6104 twin anchor is no longer an eligible fold SOURCE, so the base
+// class node survives and it is that node — not the sentinel — that the dedup
+// then keeps. All three cases now assert the same shape.
 //
 // WHY ABSOLUTE NUMBERS AND NAMED ENTITIES, and not "the ratchet is green":
 // scripts/quality/ratchet.py grades against
@@ -106,13 +106,21 @@ func TestPlaceholderAnchorIsNotCountedAsRecall_6277(t *testing.T) {
 		// against http_endpoint_definition, and the endpoint it targets was
 		// declared as a must-have entity (+1 to both entity figures).
 		//
-		// #6276, NOT #6275 — untouched. No non-sentinel record ever collides
-		// with ormlink's sentinel for SCOPE.Component/User/users/models.py
-		// (the base class folds into bare "Model" instead; see comment
-		// above), so nothing here for #6275's fix to promote. The +1/+2
-		// entity/relationship bump is an unrelated side effect of the
-		// twin_of anchor-id fix elsewhere in this fixture.
-		{"python-django-mini", "SCOPE.Component", "User", false, 26, 29, 8, 13},
+		// #6276 FIXED, by the mirror of #6275's fold rule: a record another
+		// record names as its #6104 merge-facet ANCHOR (grafel.twin_of) is no
+		// longer an eligible fold SOURCE either. The base SCOPE.Component User
+		// used to fold into Pass 2.5's bare "Model" record even though the
+		// Django custom pass's SCOPE.Schema/model facet was anchored on it,
+		// which left ormlink's sentinel as the only record wearing
+		// (SCOPE.Component, User, users/models.py) — the state the false
+		// below used to record. It now survives, so this row asserts the same
+		// thing the other two do: the must-have binds to a real, content-ful
+		// entity with a real span, never the sentinel. Both figures move,
+		// entity 26 -> 29 (100% must-have entity recall) and relationship
+		// 8 -> 12; the single remaining relationship miss is the
+		// `main --CALLS--> execute_from_command_line` bare-name FIXTURE ROW
+		// diff.go's #6476 diagnostic already explains.
+		{"python-django-mini", "SCOPE.Component", "User", true, 29, 29, 12, 13},
 	}
 
 	goldenDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "quality", "golden"))

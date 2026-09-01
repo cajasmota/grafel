@@ -311,9 +311,21 @@ func TestKnownRegressionsAgreeWithRecordedFloor(t *testing.T) {
 // note on that known_regressions entry in baseline.json for the full
 // re-diagnosis, including python-django-mini's ActiveUserManager, which WAS
 // #6275's mechanism and is fixed.
-var mustAnnotate = []struct{ fixture, metric string }{
-	{"python-django-mini", "entity_found"},
-}
+//
+// #6276 closed that last pair, so the list is now EMPTY. The fix is the mirror
+// of #6275's fold rule: a record that some other record names as its #6104
+// merge-facet anchor (grafel.twin_of) is no longer an eligible fold SOURCE, so
+// the base SCOPE.Component User can no longer be folded into the Pass 2.5
+// bare-"Model" record while the Django custom pass's SCOPE.Schema/model facet
+// is anchored on it. python-django-mini went 26/29 -> 29/29 entities and 8/13
+// -> 12/13 relationships; no other fixture's figures moved. Removing the pair
+// here is the same reviewable act the comment above describes.
+//
+// An empty list is a legitimate state, not a dormant one: the two tests below
+// still run, and TestEveryKnownRegressionIsAnnotated's loop is what a future
+// entry re-enters. Adding a bare floor below a previously-reached level without
+// adding its pair here is what the block exists to catch.
+var mustAnnotate = []struct{ fixture, metric string }{}
 
 // TestEveryKnownRegressionIsAnnotated fails if a tracked drop loses its
 // annotation, so the known_regressions block cannot be quietly emptied.
