@@ -1,7 +1,7 @@
 {
   "fixture_name": "csharp-quartz-net-mini",
   "language": "csharp",
-  "description": "Minimal Quartz.NET project with IJob consumers, [DisallowConcurrentExecution], JobBuilder.Create producers, TriggerBuilder, and scheduler.ScheduleJob. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for Quartz.NET.",
+  "description": "Minimal Quartz.NET project with IJob consumers, [DisallowConcurrentExecution], JobBuilder.Create producers, TriggerBuilder, and scheduler.ScheduleJob. Gates the two PRODUCES edges #6741 arm 3 made real for C#: JobBuilder.Create<ReportJob> and JobBuilder.Create<EmailJob> in Startup.cs each reach the IJob class THEY name in jobs/ReportJob.cs — carrying task:quartz.net:<Job> — rather than whichever job class the file declares first, and both bind to the real class entity. This is the only C# fixture where a PRODUCES edge is graded must_exist. Deliberately no CONSUMES: as of #6741 arm 5 nothing in the tree emits that kind, in any language (known gap, recorded in ADR-0028). The TRIGGERS rows below stay nice_to_have because no such edge is emitted here either.",
   "expected_entities": [
     { "name": "ReportJob", "kind": "SCOPE.Service", "source_file": "jobs/ReportJob.cs", "must_exist": true, "note": "Quartz.NET IJob consumer." },
     { "name": "EmailJob", "kind": "SCOPE.Service", "source_file": "jobs/ReportJob.cs", "must_exist": true, "note": "Quartz.NET IJob consumer." },
@@ -80,7 +80,7 @@
     { "from_name": "scheduler.ScheduleJob", "from_kind": "SCOPE.Operation", "from_file": "Startup.cs",
       "kind": "TRIGGERS", "to_name": "ReportJob", "to_kind": "SCOPE.Service", "to_file": "jobs/ReportJob.cs",
       "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING: `scheduler.ScheduleJob(reportJob, trigger)` registers ReportJob with the scheduler, and no edge of any kind connects the two. The graph contains zero PRODUCES/CONSUMES/TRIGGERS edges despite this fixture's description naming PRODUCES/CONSUMES as its purpose — contrast java-quartz-mini, which does emit a TRIGGERS edge for the same pattern in Java." },
+      "note": "#6490 arm B FINDING: `scheduler.ScheduleJob(reportJob, trigger)` registers ReportJob with the scheduler, and no edge of any kind connects the two. Since #6741 arm 3 the graph does contain the two PRODUCES edges above, emitted by the JobBuilder producers; TRIGGERS is still zero here, and CONSUMES is zero everywhere in the tree because nothing emits it (ADR-0028) — contrast java-quartz-mini, which does emit a TRIGGERS edge for the same pattern in Java." },
     { "from_name": "trigger:report-trigger", "from_kind": "SCOPE.Operation", "from_file": "Startup.cs",
       "kind": "TRIGGERS", "to_name": "ReportJob", "to_kind": "SCOPE.Service", "to_file": "jobs/ReportJob.cs",
       "must_exist": false, "nice_to_have": true,

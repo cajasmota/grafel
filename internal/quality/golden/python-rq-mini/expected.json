@@ -1,7 +1,7 @@
 {
   "fixture_name": "python-rq-mini",
   "language": "python",
-  "description": "Minimal RQ (Redis Queue) project with enqueue producers and a Worker consumer. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for RQ.",
+  "description": "Minimal RQ (Redis Queue) project with enqueue producers and a Worker consumer. Gates the two ENQUEUES edges that carry the RQ producer hop — notify_user -> send_email from queue.enqueue(callable), and request_report -> generate_report from queue.enqueue_call(func=\"workers.email.generate_report\"), where the target is a dotted STRING and still resolves — plus the CALLS / CONTAINS / IMPORTS shape. RQ emits no PRODUCES and never CONSUMES, and that is deliberate: #6741 arm 4 found rq.go's producer regexes scan the SAME call sites synthesizeRQEnqueueEdges already covers, so a PRODUCES edge would be the double pair ADR-0028 §3 forbids; queue-style dispatch onto a FUNCTION takes ENQUEUES, while the scheduler-style dispatch onto a job CLASS in Java Quartz and C# Hangfire/Quartz.NET takes PRODUCES. The Worker CONSUMES row below stays nice_to_have and is UNMET: nothing in the tree emits CONSUMES in any language (known gap, recorded in ADR-0028), so the Worker entity carries only the structural CONTAINS edge from its file and reaches no job it consumes.",
   "expected_entities": [
     { "name": "send_email.enqueue", "kind": "SCOPE.Operation", "source_file": "api/notifications.py", "must_exist": true, "note": "Producer: queue.enqueue(callable)." },
     { "name": "workers.email.generate_report.enqueue_call", "kind": "SCOPE.Operation", "source_file": "api/notifications.py", "must_exist": true, "note": "Producer: queue.enqueue_call(func=string)." },

@@ -148,7 +148,6 @@ func (e *quartzNetExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"framework", "quartz.net",
 			"pattern_type", "ijob_impl",
 			"task_id", taskID,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_QUARTZ_NET_IJOB",
 		)
 		add(ent)
@@ -161,7 +160,6 @@ func (e *quartzNetExtractor) Extract(ctx context.Context, file extractor.FileInp
 		setProps(&ent,
 			"framework", "quartz.net",
 			"pattern_type", "disallow_concurrent",
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_QUARTZ_NET_DISALLOW_CONCURRENT",
 		)
 		add(ent)
@@ -187,7 +185,6 @@ func (e *quartzNetExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"pattern_type", "job_builder",
 			"job_type", typeName,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_QUARTZ_NET_JOB_BUILDER",
 		)
 		if jobGroup != "" {
@@ -248,7 +245,6 @@ func (e *quartzNetExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"framework", "quartz.net",
 			"pattern_type", "trigger_builder",
 			"trigger_name", triggerName,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_QUARTZ_NET_TRIGGER_BUILDER",
 		)
 		if triggerGroup != "" {
@@ -278,7 +274,6 @@ func (e *quartzNetExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"framework", "quartz.net",
 			"pattern_type", "schedule_job",
 			"scheduler_var", schedulerVar,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_QUARTZ_NET_SCHEDULE_JOB",
 		)
 		add(ent)
@@ -290,10 +285,13 @@ func (e *quartzNetExtractor) Extract(ctx context.Context, file extractor.FileInp
 	// `edge_kind: "PRODUCES"` as an entity PROPERTY, which is inert metadata no
 	// consumer traverses, while the fixture csharp-quartz-net-mini claimed in
 	// its own description to exist "to verify PRODUCES/CONSUMES edge emission".
-	// Deleting that half of this extractor changed nothing observable.
+	// Deleting that half of this extractor changed nothing observable. #6741
+	// arm 5 removed the property itself: the edge below now carries the fact
+	// where it is true, and nothing read the property.
 	//
-	// SCOPE — why not `edge_kind == "PRODUCES"`. Three of this pass's entity
-	// kinds carry that inert property: job_builder, trigger and schedule_job.
+	// SCOPE — why the subtype, and not "every entity this pass calls a
+	// producer". Three of this pass's entity kinds used to carry the inert
+	// property: job_builder, trigger and schedule_job.
 	// Only `JobBuilder.Create<T>()` names a job type, so it is the only one with
 	// an honest target. `TriggerBuilder.Create()` names a trigger identity and
 	// `scheduler.ScheduleJob(job, trigger)` names local variables; pairing

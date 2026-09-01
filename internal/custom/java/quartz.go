@@ -82,7 +82,6 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				"framework":    "quartz",
 				"pattern_type": "ijob_impl",
 				"task_id":      taskID,
-				"edge_kind":    "CONSUMES",
 			},
 		})
 		jobClasses = append(jobClasses, jobClassInfo{className, m[0]})
@@ -108,7 +107,6 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				"pattern_type": "execute_method",
 				"class":        enclosing,
 				"task_id":      taskID,
-				"edge_kind":    "CONSUMES",
 			},
 		})
 	}
@@ -137,7 +135,6 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				"framework":    "quartz",
 				"pattern_type": "disallow_concurrent",
 				"job_class":    cls,
-				"edge_kind":    "CONSUMES",
 			},
 		})
 	}
@@ -170,7 +167,6 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				"job_class":    className,
 				"task_id":      taskID,
 				"job_name":     jobName,
-				"edge_kind":    "PRODUCES",
 			},
 		})
 	}
@@ -204,7 +200,6 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				"pattern_type": "new_job_static",
 				"job_class":    className,
 				"task_id":      taskID,
-				"edge_kind":    "PRODUCES",
 			},
 		})
 	}
@@ -232,7 +227,6 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				"framework":    "quartz",
 				"pattern_type": "trigger_builder",
 				"trigger_name": triggerName,
-				"edge_kind":    "PRODUCES",
 			},
 		})
 	}
@@ -252,7 +246,6 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				"framework":     "quartz",
 				"pattern_type":  "schedule_job",
 				"scheduler_var": schedulerVar,
-				"edge_kind":     "PRODUCES",
 			},
 		})
 	}
@@ -273,10 +266,12 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 	// The pairing stays keyed on the producer's OWN `job_class` in both arms.
 	// Matching any job class would mint edges between unrelated jobs. The scope
 	// is the `job_builder` subtype, which is load-bearing rather than cosmetic:
-	// the trigger and schedule_job entities also carry `edge_kind: PRODUCES`,
-	// and the @DisallowConcurrentExecution pattern entity also carries a
-	// `job_class` property, so a scope keyed on either of those would fire in a
-	// file that dispatches nothing.
+	// the @DisallowConcurrentExecution pattern entity also carries a `job_class`
+	// property, so a scope keyed on that property instead would fire in a file
+	// that dispatches nothing. (Until #6741 arm 5 this pass also stamped an
+	// inert `edge_kind: PRODUCES` property on the trigger and schedule_job
+	// entities; that property claimed an edge those entities never originate,
+	// and keying the scope on it would have been the same mistake. It is gone.)
 	//
 	// ADR-0028 §1 blesses this one-hop degenerate form (producer → job class,
 	// carrying the `task:quartz:<Class>` address as a property) and §3's

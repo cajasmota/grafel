@@ -1,7 +1,7 @@
 {
   "fixture_name": "java-quartz-mini",
   "language": "java",
-  "description": "Minimal Quartz Java project with two Job consumers (@DisallowConcurrentExecution on one), JobBuilder.newJob producers, TriggerBuilder.newTrigger, and scheduler.scheduleJob call sites. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for Quartz Java.",
+  "description": "Minimal Quartz Java project with two Job consumers (@DisallowConcurrentExecution on one), JobBuilder.newJob producers, TriggerBuilder.newTrigger, and scheduler.scheduleJob call sites. Gates the two PRODUCES edges #6741 arm 2 made reachable ACROSS FILES: each JobBuilder.newJob producer in src/AppScheduler.java reaches the Job class it names in src/jobs/SendEmailJob.java, carrying task:quartz:<Class>. Before arm 2 the emitter was same-file-only, so it could never fire here and the fixture graded nothing but the scheduled-job TRIGGERS chain, which it still gates alongside CONTAINS / IMPLEMENTS / THROWS / CALLS / IMPORTS. Deliberately no CONSUMES: as of #6741 arm 5 nothing in the tree emits that kind, in any language (known gap, recorded in ADR-0028).",
   "expected_entities": [
     { "name": "SendEmailJob", "kind": "SCOPE.Service", "source_file": "jobs/SendEmailJob.java", "must_exist": true, "note": "Quartz Job consumer (implements Job)." },
     { "name": "GenerateReportJob", "kind": "SCOPE.Service", "source_file": "jobs/SendEmailJob.java", "must_exist": true, "note": "Quartz Job consumer with @DisallowConcurrentExecution." },
