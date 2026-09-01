@@ -254,12 +254,17 @@ func isNoise(e *graph.Entity) bool { return classifyNoise(e) != noiseNone }
 //	6 — noiseProcess (array/string built-in Process node)
 //	7 — noiseSchemaField (SCOPE.Schema subtype=field member, #1712)
 //	8 — noisePattern (SCOPE.Pattern structural node, #1733)
+//	9 — noiseLocalScope (non-addressable function-body binding, #1748/#6716)
 func rankTier(e *graph.Entity) int { return tierFor(e, true) }
 
 // generatedTier is the tier assigned to machine-generated source. Named
 // because rerankScored has to be able to ask "is this hit demoted?" without
 // re-deriving the number.
 const generatedTier = 2
+
+// localScopeTier is the tier for noiseLocalScope (#6716) — the worst tier
+// there is. See the case in tierFor for why.
+const localScopeTier = 9
 
 // tierFor computes the tier. demoteGenerated is false only for the single
 // strongest-match exemption in rerankScored — see there for the argument.
@@ -278,6 +283,26 @@ func tierFor(e *graph.Entity, demoteGenerated bool) int {
 		// other noise tiers — they are structural enrichment signals, never
 		// direct answers to a user search query (#1733).
 		return 8
+	case noiseLocalScope:
+		// #6716. This case was MISSING, so a non-addressable function-body
+		// local fell through into the "Real entity." block below and was
+		// scored on the authored/lineless/generated tiers — classification
+		// said noise, ranking said real. Invisible on the default path
+		// (handleQueryGraph drops noise before ranking), wrong on the one
+		// path where the tier is used: include_noise:true.
+		//
+		// The tier is BELOW EVERY OTHER BUCKET, and that is the owner's
+		// decision on #6716, not an aesthetic ordering. Noise is opt-in
+		// context, never an answer: turning include_noise on may only ADD
+		// material at the bottom of the ranking, never displace or reorder a
+		// real entity. A local binding has no name a user can address, which
+		// makes it the least useful thing in the list — so it goes last, and
+		// the 4-8 numbering above is left untouched.
+		//
+		// Ranking it by the same signal as real entities was considered and
+		// rejected: it lets a heavily-referenced local push a real entity off
+		// the top, which is the harm the issue reports.
+		return localScopeTier
 	}
 	// Real entity. Lined entities (whether or not they carry a qualified_name)
 	// share the top tier so that BM25 relevance — not the mere presence of a
