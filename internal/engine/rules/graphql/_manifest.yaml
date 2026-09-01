@@ -1,7 +1,15 @@
+# Index of the non-rule documentation files at this language root. The loader
+# skips everything here (two path segments; see loader.go's LoadAllRulesFromFS
+# doc comment) — only frameworks/graphql_schema.yaml is engine input.
+#
+# The `server_frameworks:` / `client_tools:` entries that used to sit here
+# indexed 12 of the 14 files removed in #6393. Those files lived under
+# frameworks/, so the loader DID read them, and they parsed into zero-value
+# rules that drove nothing. They were also unwirable in place: Detect resolves
+# rule sets by file.Language, so a rule under rules/graphql/ can only ever apply
+# to .graphql files, never to the TypeScript/Go/Python/Elixir sources those
+# frameworks are written in. That extraction is implemented in Go and is green.
 detection: extras.yaml
 extraction_targets: extras.yaml
-server_frameworks: frameworks/ [apollo_server, hasura, aws_appsync, strawberry_python,
-  gqlgen_go, absinthe_elixir, graphql_yoga, relay_server]
-client_tools: frameworks/ [apollo_client, urql, graphql_request, relay_compiler_client]
 complexity_signals: complexity.yaml
 domain_roots: extras.yaml
