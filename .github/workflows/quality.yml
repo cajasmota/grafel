@@ -1,12 +1,57 @@
 name: quality
 
+# Closes #6231 — the always-on extraction-quality gate.
+#
+# THE GAP THIS FILLS
+# The golden fixtures in internal/quality/golden/ are NOT graded by `go test`.
+# `./internal/quality` checks fixture SHAPE only; actual recall grading runs
+# through the `grafel quality` CLI (cmd/grafel/quality.go), which runs in
+# exactly one place — this workflow. Confirmed twice by mutation: renaming a
+# `must_exist` row to `ZZZNoSuchEntity` left `go test` fully green, and a
+# producer emitting the wrong kind passed `./internal/quality` untouched. Only
+# `grafel quality` caught either.
+#
+# So while this workflow was workflow_dispatch-only, nothing on CI graded
+# extraction recall at all. Its last run before 2026-08-31 was 2026-05-20, and
+# all six runs that day failed — over three months of silence on the one signal
+# that says whether the extractors still find what they used to.
+#
+# WHAT THAT COST
+# Dispatched on 2026-08-31 against f0b77dfcd, it FAILED:
+#   kotlin-spring-mini: entity_found       REGRESSED 18 -> 13
+#                       relationship_found REGRESSED  7 -> 5
+# A real extraction regression that had shipped through three Kotlin PRs and 39
+# green CI legs, because no green leg was looking. It was fixed by #6499 arm 4
+# (f6734c8ec), after which a re-dispatch reported:
+#   quality ratchet OK — 26 gated fixtures held their baseline
+#                        (17 at 100% must-have recall)
+# That is the whole argument for this file being always-on: the gate can pass,
+# and the one time anybody ran it, it caught something no other check could.
+#
+# SCOPE: recall only. Red here means "this tree extracts less than the recorded
+# baseline", which is a fact about the extractors, not a flake.
+#
+# COST: the 2026-08-31 dispatch (run 33452887487) took 66s wall for the whole
+# job, 24s of it in the fixture step. Indexing 26 fixtures is not the expensive
+# thing it sounds like, and CI on this repo is free and unlimited (public,
+# standard runners).
+#
+# DO NOT make this dispatch-only again. Its previous header said "Dispatch-only
+# — so this is NOT a per-PR gate" and pointed at cross-platform-compile.yml and
+# windows-installers.yml as the always-on ones whose headers forbid the
+# reverse; this file now joins them, and that convention applies here too.
+# Reverting the trigger does not merely lose a leg — it restores a state in
+# which extraction recall is graded by nothing at all, which is the state that
+# let the Kotlin regression above sit on main through 39 green legs.
+
 on:
-  # Dispatch-only — so this is NOT a per-PR gate; run
-  # `scripts/quality/run.sh --runs 1 --ratchet` locally instead. That is a
-  # property of THIS workflow, not a repo convention: cross-platform-compile.yml
-  # and windows-installers.yml are deliberately always-on and their headers
-  # forbid making them dispatch-only. Whether quality should join them is open
-  # (#6231) — the ratchet makes it viable, since it can now actually pass.
+  # ALWAYS ON. See the header. Do not add a label gate, a path filter or a
+  # dispatch-only restriction: a path filter in particular would not have caught
+  # the regression above, which came in through producer code whose blast radius
+  # on the fixtures is not predictable from the diff.
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       mode:
@@ -17,6 +62,12 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  # Supersede in-flight runs for the same ref — same convention as
+  # cross-platform-compile.yml. Only the newest commit's recall is interesting.
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   quality:
@@ -36,13 +87,19 @@ jobs:
       # running it here would mean a permanently red workflow that nobody reads.
       # We run the ratchet instead: hold the per-fixture floor recorded in
       # internal/quality/golden/baseline.json. Set mode=strict on dispatch to
-      # see the full outstanding gap.
+      # see the full outstanding gap. Raising this job to strict is a separate
+      # decision and would land main red today.
+      #
+      # The `|| 'ratchet'` is load-bearing, not defensive: `inputs.mode` is
+      # empty on pull_request and push, and run-quality.sh reads an unset
+      # QUALITY_MODE as the STRICT gate (see its MODE_ARG resolution). Without
+      # the fallback, every PR run would silently select strict and fail.
       - name: Run extraction-quality fixtures (ratchet)
         run: scripts/verify2/run-quality.sh
         env:
           GRAFEL_BIN: ${{ github.workspace }}/build/grafel
           QUALITY_OUT_DIR: ${{ github.workspace }}/reports/quality
-          QUALITY_MODE: ${{ inputs.mode }}
+          QUALITY_MODE: ${{ inputs.mode || 'ratchet' }}
       - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4
