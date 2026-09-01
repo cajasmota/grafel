@@ -151,3 +151,48 @@ func TestChannelBindingKinds_Registered(t *testing.T) {
 		t.Error("BINDS_TOPIC must be a valid relationship kind (missing from AllRelationshipKinds)")
 	}
 }
+
+// TestProducesConsumesRelationshipKinds_Registered pins #6741 Arm 1.
+//
+// PRODUCES shipped as an undeclared literal string in
+// internal/custom/java/quartz.go, and four consumers (mcp/flow_tools.go,
+// mcp/dead_code.go, links/reachability.go, dashboard/topology_compound.go)
+// hard-code both PRODUCES and CONSUMES in their edge-kind tables. Neither was
+// in the vocabulary, so IsValidRelationshipKind reported them invalid — which
+// stayed harmless only because that validator has no non-test callers (#6757).
+//
+// Declaring the constant is not enough: the realistic mistake is adding the
+// constant and forgetting the AllRelationshipKinds entry, which leaves
+// IsValidRelationshipKind — and so #6757's enforcement — rejecting a kind the
+// graph really carries. This asserts both halves. Semantics: ADR-0028.
+func TestProducesConsumesRelationshipKinds_Registered(t *testing.T) {
+	wantValues := map[RelationshipKind]string{
+		RelationshipKindProduces: "PRODUCES",
+		RelationshipKindConsumes: "CONSUMES",
+	}
+	for k, want := range wantValues {
+		if string(k) != want {
+			t.Errorf("RelationshipKind %v = %q, want %q", k, string(k), want)
+		}
+	}
+
+	inEnum := map[RelationshipKind]bool{}
+	for _, k := range AllRelationshipKinds() {
+		inEnum[k] = true
+	}
+	for k := range wantValues {
+		if !inEnum[k] {
+			t.Errorf("%q is declared but missing from AllRelationshipKinds(); "+
+				"IsValidRelationshipKind would reject an edge kind the graph emits", string(k))
+		}
+		if !IsValidRelationshipKind(string(k)) {
+			t.Errorf("IsValidRelationshipKind(%q) = false, want true (#6741 Arm 1)", string(k))
+		}
+	}
+
+	// Declaring CONSUMES must not smuggle in the never-implemented
+	// CONSUMES_QUEUE from ADR-0003's sketch; see ADR-0028.
+	if IsValidRelationshipKind("CONSUMES_QUEUE") {
+		t.Error("CONSUMES_QUEUE still has no producer; declaring CONSUMES must not make it valid")
+	}
+}
