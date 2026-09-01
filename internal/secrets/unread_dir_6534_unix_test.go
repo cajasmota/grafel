@@ -89,6 +89,110 @@ func TestScanPathDoesNotCountUnreadableFileAsUnreadDir(t *testing.T) {
 	}
 }
 
+// TestScanPathCountsUnreadableRoot covers the case the sibling test cannot
+// reach: the scan root ITSELF is unopenable.
+//
+// It was found by probing filepath.WalkDir rather than by reading it. When
+// LSTAT(root) fails, WalkDir calls fn ONCE with d == nil and then returns
+// whatever fn returned — and this callback returns nil, so WalkDir returns
+// nil too. Before #6534's d == nil arm, ScanPath handed a caller an empty
+// ScanResult and a nil error for a repo it had not read one byte of: the
+// #6534 defect with the root standing in for the subtree, and strictly worse
+// because NOTHING was scanned.
+//
+// The root is caged by making its PARENT non-searchable, which is what makes
+// the lstat itself fail; chmod 0o000 on the root directory takes the ReadDir
+// path instead and is covered above.
+//
+// Killing mutant: narrow the gate back to `d != nil && d.IsDir() && ...`.
+func TestScanPathCountsUnreadableRoot(t *testing.T) {
+	requireModeBitsHonoured(t)
+	cage := t.TempDir()
+	root := filepath.Join(cage, "repo")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "package p\n\nconst k = \"AKIAIOSFODNN7EXAMPLE\"\n"
+	if err := os.WriteFile(filepath.Join(root, "creds.go"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cage, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cage, 0o755) })
+	if _, err := os.Lstat(root); err == nil {
+		t.Skip("this filesystem still permits lstat through a mode-000 parent")
+	}
+
+	res, err := ScanPath(root, 0)
+	if err != nil {
+		// A caller that checks err is already safe; the defect is the path
+		// where err is nil, which is what WalkDir actually does here.
+		t.Skipf("ScanPath surfaced the error directly (%v); the silent-clean "+
+			"path this test guards is not reachable on this platform", err)
+	}
+	if len(res.Findings) != 0 {
+		t.Fatalf("precondition failed: the caged repo was read; findings=%+v", res.Findings)
+	}
+	if res.UnreadCount() != 1 {
+		t.Fatalf("UnreadCount() = %d, want 1: ScanPath returned a nil error and an "+
+			"empty result for a repo it never opened — a completely unscanned "+
+			"repo must not render as clean (%+v)", res.UnreadCount(), res.Unread)
+	}
+	if res.Complete() {
+		t.Error("Complete() = true for a scan that read nothing at all")
+	}
+	if got := res.Unread[0].Path; got != root {
+		t.Errorf("Unread[0].Path = %q, want the root %q", got, root)
+	}
+}
+
+// TestScanPathUnreadableFileNeverReachesTheWalkErrorArm is the honest record
+// of an EQUIVALENT MUTANT, in the shape #6737 established.
+//
+// Dropping `d.IsDir()` from ScanPath's walk-error gate leaves this package
+// green, and that is CORRECT rather than a hole: fs.WalkDirFunc's contract
+// enumerates exactly two cases in which fn sees a non-nil err — root Stat
+// failure (d nil) and a directory's ReadDir failure (d describes the
+// DIRECTORY) — so `d != nil && !d.IsDir()` cannot co-occur with an error.
+// The conjunct is defence in depth against a future walk change, NOT a live
+// discriminator, and no fixture can kill its removal today.
+//
+// What this test CAN pin is the premise that makes the argument true: a
+// mode-000 file lstats fine and never reaches the walk-error arm at all; it
+// fails later, inside scanFile. If that premise ever breaks — a walker that
+// stats eagerly, an fs.FS-backed walk — this test goes red and the conjunct
+// stops being decorative, which is exactly when the next reader needs to know.
+func TestScanPathUnreadableFileNeverReachesTheWalkErrorArm(t *testing.T) {
+	requireModeBitsHonoured(t)
+	root := t.TempDir()
+	locked := filepath.Join(root, "locked.go")
+	if err := os.WriteFile(locked, []byte("package p\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.Open(locked); err == nil {
+		f.Close()
+		t.Skip("this filesystem ignores mode 0o000")
+	}
+
+	var sawErrorEntry []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil && d != nil && !d.IsDir() {
+			sawErrorEntry = append(sawErrorEntry, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WalkDir: %v", err)
+	}
+	if len(sawErrorEntry) != 0 {
+		t.Errorf("WalkDir called the error arm with a NON-DIRECTORY entry (%v); "+
+			"the d.IsDir() conjunct in ScanPath is no longer defence in depth "+
+			"but a live discriminator, and dropping it is no longer an "+
+			"equivalent mutant — the comment there must be updated", sawErrorEntry)
+	}
+}
+
 // requireModeBitsHonoured skips when mode bits cannot make anything
 // unreadable — running as root, or on a filesystem that ignores them.
 func requireModeBitsHonoured(t *testing.T) {

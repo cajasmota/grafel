@@ -502,21 +502,46 @@ func ScanPath(root string, maxFileBytes int64) (ScanResult, error) {
 			// is not a reason to report nothing — it is a reason to report
 			// the directory and let Complete() carry the verdict.
 			//
-			// Two gates keep it from becoming the permanent, unactionable
-			// noise the old comment feared:
+			// The fs.ErrPermission gate is the one that carries weight: it
+			// keeps the ordinary mid-walk ENOENT silent (files and dirs
+			// vanish under a live tree all the time), which is what stops
+			// this becoming the permanent, unactionable noise the old
+			// comment feared.
 			//
-			//   - fs.ErrPermission only, so the ordinary mid-walk ENOENT
-			//     (files and dirs vanish under a live tree all the time)
-			//     stays silent.
-			//   - directories only. An unreadable FILE stays excluded exactly
-			//     as before: it is one file, the closed Skip vocabulary
-			//     deliberately excludes EACCES, and
-			//     TestScanPathDoesNotReportUnreadableFileAsSkip pins it.
+			// The `d == nil || d.IsDir()` half is DEFENCE IN DEPTH, not a
+			// live discriminator, and the next reader should not mistake it
+			// for one. fs.WalkDirFunc's contract enumerates exactly two
+			// cases in which fn is called with a non-nil err:
 			//
-			// d is nil only when the LSTAT of root itself failed, in which
-			// case there is no tree to talk about and WalkDir's error is
-			// returned to the caller anyway.
-			if d != nil && d.IsDir() && errors.Is(err, fs.ErrPermission) {
+			//   1. the initial Stat/Lstat of root fails — "d set to nil";
+			//   2. a directory's ReadDir fails — "d set to a DirEntry
+			//      describing the DIRECTORY".
+			//
+			// There is no third case, so `d != nil && !d.IsDir()` cannot
+			// co-occur with a non-nil err, and dropping `d.IsDir()` from
+			// this condition is an EQUIVALENT MUTANT under the current
+			// suite — measured, not assumed: a mode-000 FILE lstats fine and
+			// never reaches this callback with an error at all (it fails
+			// later, inside scanFile's safeio.Open, which is where
+			// TestScanPathDoesNotReportUnreadableFileAsSkip observes it).
+			// Dangling symlinks and symlinks into an unreadable directory
+			// were probed too and produce no error callback either, because
+			// WalkDir does not follow symlinks. The conjunct is kept so that
+			// a future walk change, or a caller passing a different
+			// fs.FS-backed walker, cannot silently start counting files as
+			// directories — the claim "this counts DIRECTORIES, not files"
+			// stays true by construction rather than by the callers' good
+			// behaviour.
+			//
+			// The d == nil arm, by contrast, IS live and is its own bug fix.
+			// When LSTAT(root) fails with EACCES — a repo inside a
+			// non-searchable parent — WalkDir calls fn once with d nil and
+			// then returns whatever fn returned. Since this callback returns
+			// nil, WalkDir returns nil, and before this arm existed ScanPath
+			// handed back an empty ScanResult and a nil error: a completely
+			// unscanned repo rendering as clean, which is the #6534 defect
+			// with the root standing in for the subtree.
+			if errors.Is(err, fs.ErrPermission) && (d == nil || d.IsDir()) {
 				rel, relErr := filepath.Rel(root, path)
 				if relErr != nil {
 					rel = path
