@@ -104,8 +104,8 @@
     "python-dramatiq-mini": {
       "entity_found": 4,
       "entity_expected": 4,
-      "relationship_found": 11,
-      "relationship_expected": 11
+      "relationship_found": 13,
+      "relationship_expected": 13
     },
     "python-fastapi-mini": {
       "entity_found": 5,
