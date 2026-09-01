@@ -257,7 +257,33 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 		})
 	}
 
-	// PRODUCES→CONSUMES cross-edges: link job builders to job class consumers
+	// PRODUCES cross-edges: link job builders to the job class they dispatch.
+	//
+	// #6741 arm 2 — this loop used to consider ONLY consumers in `result`, i.e.
+	// job classes declared in the same file as the builder. Quartz projects put
+	// the scheduler and the Job implementations in different files (as does
+	// java-quartz-mini), so the repo's one real PRODUCES emitter could never
+	// fire. When the file declares no matching `job_class`, fall back to the
+	// resolvable class stub `Class:<Name>` (javaClassRef) — the established Java
+	// cross-file convention: the resolver's byName fallback binds it to the
+	// separately-extracted class entity wherever it is declared, the same way
+	// the JPA/Bean-Validation field-target REFERENCES edges reach their target
+	// type (#4367, orm_helpers.go).
+	//
+	// The pairing stays keyed on the producer's OWN `job_class` in both arms.
+	// Matching any job class would mint edges between unrelated jobs. The scope
+	// is the `job_builder` subtype, which is load-bearing rather than cosmetic:
+	// the trigger and schedule_job entities also carry `edge_kind: PRODUCES`,
+	// and the @DisallowConcurrentExecution pattern entity also carries a
+	// `job_class` property, so a scope keyed on either of those would fire in a
+	// file that dispatches nothing.
+	//
+	// ADR-0028 §1 blesses this one-hop degenerate form (producer → job class,
+	// carrying the `task:quartz:<Class>` address as a property) and §3's
+	// one-hop-one-pair rule is satisfied: the Java Quartz path emits no
+	// ENQUEUES for this hop — internal/engine/scheduled_jobs_edges.go's quartz
+	// branch mints a SCOPE.ScheduledJob plus TRIGGERS, and its ENQUEUES
+	// emitters are Sidekiq/Resque/RQ/Celery/asynq only.
 	for _, producer := range result.Entities {
 		if producer.Subtype != "job_builder" {
 			continue
@@ -266,8 +292,10 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 		if jobClass == "" {
 			continue
 		}
+		sameFile := false
 		for _, consumer := range result.Entities {
 			if consumer.Subtype == "job_class" && consumer.Name == jobClass {
+				sameFile = true
 				addRel(&result, seenRels, Relationship{
 					SourceRef:        producer.Ref,
 					TargetRef:        consumer.Ref,
@@ -276,6 +304,20 @@ func ExtractQuartzJava(ctx PatternContext) PatternResult {
 				})
 			}
 		}
+		if sameFile {
+			continue
+		}
+		addRel(&result, seenRels, Relationship{
+			SourceRef:        producer.Ref,
+			TargetRef:        javaClassRef(jobClass),
+			RelationshipType: "PRODUCES",
+			Properties: map[string]string{
+				"framework":  "quartz",
+				"task_id":    "task:quartz:" + jobClass,
+				"job_class":  jobClass,
+				"provenance": "INFERRED_FROM_QUARTZ_JOB_BUILDER_CROSS_FILE",
+			},
+		})
 	}
 
 	_ = quartzJavaFrameworks // prevent unused var compile error; gate used at call sites if needed
