@@ -24,7 +24,24 @@
 // time, in a file nothing builds, that would silently drift out of step with
 // the root go.mod on every grammar bump.
 //
+// Neither of those properties — no requirements, nothing exported — is observed
+// by `go mod tidy`, which is satisfied by this package merely existing. They are
+// enforced instead by TestSwiftShimModuleHasNoRequirements and
+// TestSwiftShimExportsNothing in internal/treesitter (this is a nested module,
+// so `go test ./...` from the repo root never reaches it).
+//
+// KNOWN LEAK. `go install` ignores the main module's `replace` directives, so
+// `go install github.com/cajasmota/grafel/cmd/grafel@<version>` would try to
+// resolve the placeholder require at v0.0.0-00010101000000-000000000000 and
+// fail. No documented route uses that form — docs/install.md and
+// docs/quickstart.md both `go install ./cmd/grafel` from a clone, and
+// release.yml builds from the checkout, which is why the v0.3.1 platform
+// binaries were unaffected — but anyone who reaches for the `@version` form
+// will hit it, with no hint as to why.
+//
 // Nothing in grafel imports this package, and nothing should. If it ever
-// becomes unnecessary — an upstream sync that fixes the test import — delete
-// this directory and the matching `replace` in the root go.mod together.
+// becomes unnecessary — an upstream sync that fixes the test import — the
+// removal is four edits, not two: delete this file and go.mod, then drop BOTH
+// the `replace` and the `// indirect` require for
+// github.com/tree-sitter/tree-sitter-swift from the root go.mod.
 package tree_sitter_swift
