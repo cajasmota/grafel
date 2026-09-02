@@ -7,9 +7,11 @@ import (
 )
 
 // emitFieldMembers returns one SCOPE.Schema/field EntityRecord per property,
-// public field, and record positional parameter of the type named ownerName,
-// plus the bare base-type names declared in the type's base_list (for EXTENDS,
-// resolved against in-file types by the caller).
+// public field, and record positional parameter of the type named ownerName.
+//
+// Issue #6742 moved base-list parsing out of here into hierarchy.go, which
+// emits the EXTENDS / IMPLEMENTS edges for every supertype rather than only
+// the in-file ones.
 //
 // Issue #4854 — before this pass C# class/record/struct members were consumed
 // for receiver resolution (collectFieldTypes) but only the endpoint/DTO-bound
@@ -31,9 +33,9 @@ func emitFieldMembers(
 	body ts.Node,
 	src []byte,
 	ownerName, filePath string,
-) ([]types.EntityRecord, []string) {
+) []types.EntityRecord {
 	if ownerName == "" {
-		return nil, nil
+		return nil
 	}
 
 	var fields []types.EntityRecord
@@ -126,74 +128,5 @@ func emitFieldMembers(
 		}
 	}
 
-	return fields, csBaseTypeNames(node, src)
-}
-
-// csBaseTypeNames returns the bare base-type names from a class/record/struct
-// declaration's base_list (used for EXTENDS, restricted to in-file types by the
-// caller). C# does not distinguish base class from implemented interfaces in
-// the grammar's base_list, so we return all of them; the in-file filter keeps
-// only types we actually modeled.
-func csBaseTypeNames(node ts.Node, src []byte) []string {
-	if node == nil {
-		return nil
-	}
-	bl := findChildByType(node, "base_list")
-	if bl == nil {
-		return nil
-	}
-	var out []string
-	for i := 0; i < int(bl.ChildCount()); i++ {
-		ch := bl.Child(i)
-		if ch == nil {
-			continue
-		}
-		if name := leafTypeName(ch, src); name != "" {
-			out = append(out, name)
-		}
-	}
-	return out
-}
-
-// attachCsharpExtends emits class→base EXTENDS edges from each owner's stashed
-// Metadata "base_candidates", restricted to base types declared in this same
-// file so the dashboard shape walker can recurse into inherited members
-// (mirrors the Go embedded-field / cpp base-class EXTENDS policy). Interfaces
-// the class merely implements are dropped automatically — only in-file types we
-// actually modeled survive the filter.
-func attachCsharpExtends(records []types.EntityRecord) []types.EntityRecord {
-	known := make(map[string]bool)
-	for i := range records {
-		if records[i].Kind == "SCOPE.Component" {
-			known[records[i].Name] = true
-		}
-	}
-	for i := range records {
-		if records[i].Kind != "SCOPE.Component" || records[i].Metadata == nil {
-			continue
-		}
-		cands, _ := records[i].Metadata["base_candidates"].([]string)
-		if len(cands) == 0 {
-			continue
-		}
-		owner := records[i].Name
-		for _, base := range cands {
-			if base == "" || base == owner || !known[base] {
-				continue
-			}
-			dup := false
-			for _, ex := range records[i].Relationships {
-				if ex.Kind == "EXTENDS" && ex.ToID == base {
-					dup = true
-					break
-				}
-			}
-			if !dup {
-				records[i].Relationships = append(records[i].Relationships,
-					types.RelationshipRecord{FromID: owner, ToID: base, Kind: "EXTENDS"})
-			}
-		}
-		delete(records[i].Metadata, "base_candidates")
-	}
-	return records
+	return fields
 }

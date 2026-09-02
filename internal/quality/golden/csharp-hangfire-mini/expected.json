@@ -1,7 +1,7 @@
 {
   "fixture_name": "csharp-hangfire-mini",
   "language": "csharp",
-  "description": "Minimal Hangfire project with IBackgroundJob consumers, BackgroundJob.Enqueue producers, RecurringJob.AddOrUpdate, and [AutomaticRetry]. Gates the Hangfire entity set — job_class consumers, the task_enqueue / recurring_job dispatch sites, the retry_policy pattern — together with the CONTAINS / CALLS / IMPORTS shape around them. Since #6741 arm 3 the pass ALSO emits real PRODUCES edges (dispatch site -> the type it names, carrying task:hangfire:<Type>.<Method>, or task:hangfire:recurring:<id> for the RecurringJob form); three are emitted here. But this fixture's dispatch sites name EmailService / CleanupService / IEmailService, none of which it declares, so only one binds and no PRODUCES row is graded must_exist — csharp-quartz-net-mini is where a BOUND PRODUCES edge is pinned. Deliberately no CONSUMES: as of #6741 arm 5 nothing in the tree emits that kind, in any language (known gap, recorded in ADR-0028).",
+  "description": "Minimal Hangfire project with IBackgroundJob consumers, BackgroundJob.Enqueue producers, RecurringJob.AddOrUpdate, and [AutomaticRetry]. api/JobSelector.cs carries no Hangfire content at all: it is #6742 over-fire bait — a generic constraint, an enum storage type and a ternary, three colons that are not base lists — graded by the forbidden_relationships rows. Gates the Hangfire entity set — job_class consumers, the task_enqueue / recurring_job dispatch sites, the retry_policy pattern — together with the CONTAINS / CALLS / IMPLEMENTS / IMPORTS shape around them. Since #6741 arm 3 the pass ALSO emits real PRODUCES edges (dispatch site -> the type it names, carrying task:hangfire:<Type>.<Method>, or task:hangfire:recurring:<id> for the RecurringJob form); three are emitted here. But this fixture's dispatch sites name EmailService / CleanupService / IEmailService, none of which it declares, so only one binds and no PRODUCES row is graded must_exist — csharp-quartz-net-mini is where a BOUND PRODUCES edge is pinned. Deliberately no CONSUMES: as of #6741 arm 5 nothing in the tree emits that kind, in any language (known gap, recorded in ADR-0028).",
   "expected_entities": [
     { "name": "EmailJob", "kind": "SCOPE.Service", "source_file": "jobs/EmailJob.cs", "must_exist": true, "note": "Hangfire IBackgroundJob consumer." },
     { "name": "CleanupJob", "kind": "SCOPE.Service", "source_file": "jobs/EmailJob.cs", "must_exist": true, "note": "Hangfire IBackgroundJob consumer with AutomaticRetry." },
@@ -69,11 +69,33 @@
       "note": "#6490 arm B FINDING: the TRIGGERS edge IS emitted, but its target is the bare name `Run` — the receiver `CleanupService` is dropped from `() => CleanupService.Run()`. A one-word target collides with every other `Run` in a real repo, which is the #6499 class-qualification defect in the Hangfire producer path." },
     { "from_name": "EmailJob", "from_kind": "SCOPE.Service", "from_file": "jobs/EmailJob.cs",
       "kind": "IMPLEMENTS", "to_bare_name": "IBackgroundJob",
-      "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING: `class EmailJob : IBackgroundJob` emits no IMPLEMENTS edge — C# emits no class-hierarchy edges at all here (same gap as csharp-aspnet-core-mini's UserService : IUserService)." },
+      "must_exist": true,
+      "note": "#6742: `class EmailJob : IBackgroundJob`. Promoted from nice_to_have when C# class-hierarchy extraction landed. IBackgroundJob is a Hangfire type this fixture does not declare, so the target stays a bare name — the point of the row is that the edge exists AND that its kind is IMPLEMENTS, the same kind java-quartz-mini's `SendEmailJob implements Job` carries. The job-class SCOPE.Service twin carries the edge alongside the SCOPE.Component view." },
+    { "from_name": "CleanupJob", "from_kind": "SCOPE.Component", "from_file": "jobs/EmailJob.cs",
+      "kind": "IMPLEMENTS", "to_bare_name": "IBackgroundJob",
+      "must_exist": true,
+      "note": "#6742: the SECOND class in the same file must get its own edge. Held constant against the row above: same file, same supertype, same kind — the axis varied is which declaration in the file owns the edge, so a pass that hoisted every base list onto the file's first type would cross these two rows." },
     { "from_name": "OrderController.PlaceOrder", "from_kind": "SCOPE.Operation", "from_file": "api/OrderController.cs",
       "kind": "PRODUCES", "to_name": "EmailJob", "to_kind": "SCOPE.Service", "to_file": "jobs/EmailJob.cs",
       "must_exist": false, "nice_to_have": true,
       "note": "#6490 arm B FINDING, and the sharpest one in this fixture. It USED to read: the description claims this fixture verifies PRODUCES/CONSUMES emission, and the graph contains ZERO of both. #6741 arm 3 made the producer half real: the pass now emits three PRODUCES edges here. This row still does not bind, and cannot as the source stands — OrderController.cs dispatches EmailService / CleanupService / IEmailService, and names EmailJob nowhere, so no PRODUCES edge from PlaceOrder can reach EmailJob without fabricating source. Kept nice_to_have for that reason. The CONSUMES half remains unbuilt everywhere in the tree (ADR-0028)." }
+  ],
+  "forbidden_relationships": [
+    { "from_name": "JobSelector", "from_kind": "SCOPE.Component", "from_file": "api/JobSelector.cs",
+      "kind": "IMPLEMENTS", "to_bare_name": "IJobFilter",
+      "must_exist": false,
+      "note": "#6742 OVER-FIRE GUARD. `class JobSelector<T> where T : IJobFilter, new()` has no base list at all — the colon belongs to a generic constraint, which constrains a TYPE PARAMETER and says nothing about JobSelector's own supertypes. Recall is structurally blind to this direction: a base-list predicate widened to match a constraint clause loses no expected edge, so every must_exist row above stays green while the graph fills with fictional hierarchy. This row and the three below are what actually grade it. They live in api/, while the positive `EmailJob : IBackgroundJob` case lives in jobs/, so a regression scoped to one file cannot green both halves." },
+    { "from_name": "JobSelector", "from_kind": "SCOPE.Component", "from_file": "api/JobSelector.cs",
+      "kind": "EXTENDS", "to_bare_name": "IJobFilter",
+      "must_exist": false,
+      "note": "#6742: the same constraint clause under the other kind. Forbidding only IMPLEMENTS would leave a widened predicate free to emit EXTENDS instead and score clean." },
+    { "from_name": "JobPriority", "from_kind": "SCOPE.Schema", "from_file": "api/JobSelector.cs",
+      "kind": "EXTENDS", "to_bare_name": "byte",
+      "must_exist": false,
+      "note": "#6742: `enum JobPriority : byte` DOES parse as a base_list, holding a predefined_type, and the enum IS routed into the hierarchy pass — csharp.go stashes an enum declaration's base list exactly like a class's — so the node-type allow-list in csBaseTypeNames is genuinely the only thing keeping `byte` out. VERIFIED BY MUTATION, not asserted: adding \"predefined_type\" to that allow-list raises this fixture's forbidden hits from 0 to 1 while recall stays 15/15 at 100%, which is also the cleanest demonstration on the fixture of why a forbidden row and not a must-have grades this direction. #6742's first cut made this same claim while `enum_declaration` was a branch of walk() that never stashed a base list at all: the enum never reached csBaseTypeNames, so this row, the TestCsharpHierarchy_EnumUnderlyingTypeIsNotABase unit case and the doc comment were all three vacuous and the mutant survived. from_kind is SCOPE.Schema because buildEnumEntity emits the declaration as SCOPE.Schema/enum; the SCOPE.Enum JobPriority in the graph is the separate value-set node, which carries no base list." },
+    { "from_name": "JobSelector", "from_kind": "SCOPE.Component", "from_file": "api/JobSelector.cs",
+      "kind": "EXTENDS", "to_bare_name": "Ascending",
+      "must_exist": false,
+      "note": "#6742: `mode > 0 ? Ascending : Descending` puts an identifier on each side of a colon inside a method body. A text-level colon scan — as opposed to reading the grammar's base_list node — would mint a supertype out of a ternary branch." }
   ]
 }

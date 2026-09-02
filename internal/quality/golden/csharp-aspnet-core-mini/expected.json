@@ -85,15 +85,29 @@
 
     { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
       "kind": "IMPLEMENTS", "to_name": "IUserService", "to_kind": "SCOPE.Class", "to_file": "Controllers/UsersController.cs",
-      "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING, tracked under #6370's family: `public class UserService : IUserService` emits no IMPLEMENTS edge. C# emits no class-hierarchy edge at all in this fixture — see also the ControllerBase row below. Held nice_to_have rather than deleted so the expectation stays visible; promote it when C# hierarchy extraction lands." },
+      "must_exist": true,
+      "note": "#6742: `public class UserService : IUserService`. Promoted from nice_to_have when C# class-hierarchy extraction landed. The interface is not declared in UserService.cs, which is precisely the case the pre-#6742 in-file-only pass could never reach; the edge binds CROSS-FILE to the IUserService entity the DI pass mints in Controllers/UsersController.cs." },
     { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
       "kind": "EXTENDS", "to_bare_name": "ControllerBase",
-      "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING: `public class UsersController : ControllerBase` emits no EXTENDS edge, not even to an external stub." },
+      "must_exist": true,
+      "note": "#6742: `public class UsersController : ControllerBase`. The BASE-CLASS half of the pair, held constant against the IMPLEMENTS row above — same fixture, same C# base_list syntax, same position (first and only entry). The axis varied is what the supertype IS: an interface (IMPLEMENTS) versus a class (EXTENDS). A fix that emitted one kind for every base list would satisfy exactly one of these two rows. from_kind is `Controller` because the ASP.NET pass RE-KINDS the class entity in place; the edge rides on the same entity." },
     { "from_name": "UsersController.GetById", "from_kind": "SCOPE.Operation", "from_file": "Controllers/UsersController.cs",
       "kind": "CALLS", "to_name": "UserService.GetByIdAsync", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
       "must_exist": false, "nice_to_have": true,
       "note": "#6490 arm B FINDING: `await _userService.GetByIdAsync(id)` resolves only to the dangling bare name `IUserService.GetByIdAsync`. The constructor-injected field is not bound to the interface's single in-repo implementation, so the controller→service call is invisible. Java does resolve the equivalent (java-spring-mini's UserController.listUsers → UserService.listAll)." }
+  ],
+  "forbidden_relationships": [
+    { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
+      "kind": "IMPLEMENTS", "to_bare_name": "ControllerBase",
+      "must_exist": false,
+      "note": "#6742 KIND GUARD. ControllerBase is a CLASS. Emitting IMPLEMENTS as well as (or instead of) EXTENDS costs nothing in recall — the must_exist EXTENDS row above still binds — so the exclusivity has to be asserted here or the class/interface distinction is ungraded in the permissive direction." },
+    { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
+      "kind": "EXTENDS", "to_name": "IUserService", "to_kind": "SCOPE.Class", "to_file": "Controllers/UsersController.cs",
+      "must_exist": false,
+      "note": "#6742: the mirror image of the row above. IUserService is an interface, so EXTENDS is wrong here for the same reason IMPLEMENTS is wrong there. Together the two forbidden rows pin the DISCRIMINATION, which the two must_exist rows alone cannot: a predicate that emitted both kinds for every base list would score 2/2 on recall and 2 forbidden hits here." },
+    { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
+      "kind": "IMPLEMENTS", "to_bare_name": "Task",
+      "must_exist": false,
+      "note": "#6742: `public async Task<User> GetByIdAsync(int id)` — a return type, not a base list. A supertype harvested from anywhere but the declaration's base_list node lands here." }
   ]
 }

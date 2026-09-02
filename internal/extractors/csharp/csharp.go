@@ -85,8 +85,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// THROWS / CATCHES edges to a shared SCOPE.ExceptionType node, matching the
 	// Java / Python / Go / JS flagship error_flow model.
 	emitExceptionFlowEdges(root, file.Content, &entities)
-	// Issue #4854 — in-file base-class EXTENDS for field-membership recursion.
-	entities = attachCsharpExtends(entities)
+	// Issue #6742 — class-hierarchy edges: EXTENDS for a base class, IMPLEMENTS
+	// for an implemented interface, for EVERY supertype rather than only the
+	// ones declared in this same file (which is all #4854 ever emitted, and
+	// always as EXTENDS).
+	entities = attachCsharpHierarchy(entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "csharp")
 	extractor.TagEntitiesLanguage(entities, "csharp")
@@ -202,25 +205,42 @@ func walk(
 		// (folds with the endpoint-bound DTO members in #4715 when the Kind
 		// matches too — MergeWithCustom keys on (SourceFile, Kind, Name)
 		// since #6104, not on Name alone).
-		fieldEnts, baseNames := emitFieldMembers(node, body, file.Content, rec.Name, file.Path)
+		fieldEnts := emitFieldMembers(node, body, file.Content, rec.Name, file.Path)
 		for _, fe := range fieldEnts {
 			toID := extractor.BuildSchemaFieldStructuralRef("csharp", file.Path, fe.Name)
 			(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 				types.RelationshipRecord{ToID: toID, Kind: "CONTAINS"})
 		}
 		*out = append(*out, fieldEnts...)
-		// Stash base-type candidates for the in-file EXTENDS post-pass.
-		if len(baseNames) > 0 {
+		// Issue #6742 — stash the ordered base list and the declaration
+		// keyword for the hierarchy post-pass, which needs every type in the
+		// file on the table before it can tell a base class from an interface.
+		if baseNames := csBaseTypeNames(node, file.Content); len(baseNames) > 0 {
 			if (*out)[classIdx].Metadata == nil {
 				(*out)[classIdx].Metadata = map[string]interface{}{}
 			}
-			(*out)[classIdx].Metadata["base_candidates"] = baseNames
+			(*out)[classIdx].Metadata["hierarchy_bases"] = baseNames
+			(*out)[classIdx].Metadata["hierarchy_decl"] = csDeclKeyword(node.Type())
 		}
 		return
 
 	case "enum_declaration":
 		if rec, ok := buildEnumEntity(node, file); ok {
 			stampNamespace(&rec, ns)
+			// Issue #6742 — an enum IS routed through the hierarchy pass,
+			// deliberately. `enum E : byte` really does parse as a base_list,
+			// and the ONLY thing that stops `byte` becoming a supertype is
+			// csBaseTypeNames' node-type allow-list. Skipping enums here
+			// instead would suppress the edge one level earlier and leave that
+			// allow-list ungraded for the case its own doc names — which is
+			// exactly the state #6742's first cut shipped in.
+			if baseNames := csBaseTypeNames(node, file.Content); len(baseNames) > 0 {
+				if rec.Metadata == nil {
+					rec.Metadata = map[string]interface{}{}
+				}
+				rec.Metadata["hierarchy_bases"] = baseNames
+				rec.Metadata["hierarchy_decl"] = csDeclKeyword(node.Type())
+			}
 			*out = append(*out, rec)
 		}
 		// Value-carrying SCOPE.Enum value-set node (data-model, epic #3628).
