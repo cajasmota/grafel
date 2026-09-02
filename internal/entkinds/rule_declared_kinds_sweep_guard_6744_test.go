@@ -12,16 +12,35 @@ package entkinds_test
 // SourcePattern.EntityType straight into types.EntityRecord.Kind with no
 // validation, so a rule file can mint any string it likes.
 //
-// The live scan of the rule tree finds 28 distinct declared values. Exactly TWO
-// of them are valid entity kinds — `Module` (which is valid only because
-// types.EntityKindModule is itself un-prefixed) and `SCOPE.IngressHost` (added
-// by this change). The other 26 are ledgered below.
+// The live scan of the rule tree finds 532 declaration sites and 27 distinct
+// values. Exactly TWO of them are valid entity kinds — `Module` (valid only
+// because types.EntityKindModule is itself un-prefixed) and `SCOPE.IngressHost`
+// (added by this change). The other 25 are ledgered below.
+//
+// # Bound and unbound, and why the two halves of #6744 are not equal
+//
+// The issue's collision had one live side and one inert one, and the fix reads
+// as more than it is unless that is said out loud:
+//
+//   - electron.yaml's three sites are under source_patterns[].entity_type,
+//     which schema.go binds and detector.go copies into EntityRecord.Kind.
+//     This is the ONLY site in the change whose graph output moves, and it is
+//     therefore the one place a newly-invented kind would have been worst. It
+//     uses `Module`, already the rule layer's spelling for this shape
+//     (trpc.yaml:42, ktor.yaml:74) and already in the enum.
+//   - kubernetes/extras.yaml's three sites are under entity_extraction and
+//     k8s_resource_types, keys schema.go binds nowhere. They reach no code.
+//     Renaming them to SCOPE.IngressHost aligns the documentation with #6451
+//     and changes no graph.
+//
+// TestExternalAPICollisionIsSeparated asserts that asymmetry from the scan, so
+// this paragraph cannot quietly go stale.
 //
 // # The namespace question, answered
 //
 // The issue asked whether the rule layer's un-prefixed names are a deliberate
 // separate namespace or an accident. The scan settles it: it is an ACCIDENT,
-// and a systemic one. 26 of 28 declared values are outside the enum, and there
+// and a systemic one. 25 of 27 declared values are outside the enum, and there
 // is no code anywhere that treats `Route` differently from `SCOPE.Route` — they
 // are simply written into EntityRecord.Kind and land in the graph as-is, which
 // is why `Module` validates by coincidence rather than by design. Nothing
@@ -78,7 +97,7 @@ import (
 // ruleDeclaredFamily.
 //
 // Every entry was produced by the live scan, not transcribed from the issue —
-// the issue named three sites and the scan found 532, of which 26 distinct
+// the issue named three sites and the scan found 532, of which 25 distinct
 // values are invalid. This list must only ever SHRINK, and that is ENFORCED.
 var ruleDeclaredKindsDeferred = map[string]string{
 	"Component":      "rule_namespace", // 25 sites in 14 files; e.g. ansible/frameworks/ansible_core.yaml:63
@@ -106,10 +125,6 @@ var ruleDeclaredKindsDeferred = map[string]string{
 	"TestClass":      "rule_namespace", // python/frameworks/pytest.yaml:60
 	"TestConfig":     "rule_namespace", // python/frameworks/pytest.yaml:48
 	"View":           "rule_namespace", // 9 sites in 5 files; e.g. csharp/frameworks/net_maui.yaml:62
-
-	// The electron half of the #6744 collision split. It replaces a site that
-	// declared `ExternalAPI`, so the ledger did not grow.
-	"NativeModule": "collision_split_6744", // 3 sites; javascript_typescript/frameworks/electron.yaml:79
 }
 
 // ruleDeclaredKindsDeferredMax is the RATCHET on ruleDeclaredKindsDeferred: the
@@ -126,7 +141,7 @@ var ruleDeclaredKindsDeferred = map[string]string{
 //   - SHRINKS (a kind was declared or removed, which is the point) → this fires
 //     and requires the constant to come down with it, so the bar is never left
 //     slack for a later append to slip under.
-const ruleDeclaredKindsDeferredMax = 26
+const ruleDeclaredKindsDeferredMax = 25
 
 // ruleDeclaredFamily explains each family tag. A ledger entry without a stated
 // reason is not a decision, it is a silence.
@@ -141,14 +156,6 @@ var ruleDeclaredFamily = map[string]struct {
 			"types.EntityRecord.Kind with no validation, so the string reaches the graph exactly " +
 			"as spelled. The un-prefixed spelling is an accident, not a namespace — see the file " +
 			"header. Fixing it is a ~530-site migration filed separately.",
-	},
-	"collision_split_6744": {
-		Origin: entkinds.OriginRuleYAML,
-		Why: "minted by #6744 to separate the two meanings that shared the name `ExternalAPI` in " +
-			"the rule layer, the same collision #6451 split on the Go side. The kubernetes half " +
-			"reuses #6451's SCOPE.IngressHost (valid, hence not ledgered); the electron half is " +
-			"native C++ addon loaders, which neither SCOPE.ExternalEndpoint nor SCOPE.IngressHost " +
-			"describes, so it gets its own name in the rule layer's spelling.",
 	},
 }
 
@@ -291,6 +298,12 @@ func TestRuleDeclaredKindsRatchetOnlyShrinks(t *testing.T) {
 //
 // It asserts the two comparisons by OPERATOR and OPERAND: an identifier walk
 // would be satisfied by `_ = ruleDeclaredKindsDeferredMax`.
+//
+// KNOWN RESIDUAL WEAKNESS: this checks that the comparison EXISTS, not that it
+// does anything. An empty-bodied `if len(ruleDeclaredKindsDeferred) > ruleDeclaredKindsDeferredMax {}`
+// placed in any Test in this file satisfies both arms while the real ratchet is
+// gutted. Closing it means asserting the comparison guards a t.Fatal/t.Error in
+// the same branch. Left open deliberately and recorded rather than discovered.
 func TestRuleDeclaredKindsRatchetIsWired(t *testing.T) {
 	const self = "rule_declared_kinds_sweep_guard_6744_test.go"
 	_, here, _, ok := runtime.Caller(0)
@@ -462,10 +475,10 @@ func TestYAMLHalfObservesDeclaredKinds(t *testing.T) {
 	sentinels := []struct {
 		Origin, Kind, FileHint, Where string
 	}{
-		{entkinds.OriginRuleYAML, "Module", "",
-			"the one rule-declared kind that was already valid, in file_conventions / source_patterns"},
+		{entkinds.OriginRuleYAML, "Module", "internal/engine/rules/javascript_typescript/frameworks/electron.yaml",
+			"the BOUND half of the #6744 separation — the only site whose graph output changed"},
 		{entkinds.OriginRuleYAML, "SCOPE.IngressHost", "internal/engine/rules/kubernetes/extras.yaml",
-			"the kubernetes half of the #6744 collision split"},
+			"the unbound half of the #6744 separation, in k8s_resource_types / entity_extraction"},
 		{entkinds.OriginGo, "SCOPE.Function", "",
 			"the most-emitted Go entity kind in the tree"},
 		{entkinds.OriginGo, "SCOPE.ExternalEndpoint", "",
@@ -562,9 +575,12 @@ func TestExternalAPICollisionIsSeparated(t *testing.T) {
 		t.Errorf("%s no longer declares SCOPE.IngressHost. Its LoadBalancer / ExternalName / "+
 			"Ingress rows are the hostname dialect #6451 minted that kind for.", k8sFile)
 	}
-	if !electron["NativeModule"] {
-		t.Errorf("%s no longer declares NativeModule for its native C++ addon loaders "+
-			"(bindings, node-gyp-build, *.node).", electronFile)
+	if !electron["Module"] {
+		t.Errorf("%s no longer declares Module for its native C++ addon loaders "+
+			"(bindings, node-gyp-build, *.node). This is the BOUND half of the separation and the "+
+			"only site in #6744 whose graph output changed, so it is also the one place the "+
+			"replacement had to be a kind types.AllEntityKinds() declares rather than a new mint.",
+			electronFile)
 	}
 
 	// The separation itself: neither file may declare the OTHER's half. A
@@ -577,15 +593,44 @@ func TestExternalAPICollisionIsSeparated(t *testing.T) {
 		t.Errorf("%s declares SCOPE.IngressHost. That kind is #6451's Kubernetes ingress HOSTNAME "+
 			"dialect; an Electron surface on it re-creates the collision #6744 removed.", electronFile)
 	}
-	if k8s["NativeModule"] {
-		t.Errorf("%s declares NativeModule. That kind is the Electron native-C++-addon family; a "+
-			"Kubernetes resource on it re-creates the collision #6744 removed.", k8sFile)
-	}
 	for _, shared := range []string{"ExternalAPI", "SCOPE.ExternalAPI", "SCOPE.ExternalEndpoint"} {
 		if electron[shared] && k8s[shared] {
 			t.Errorf("%s and %s both declare %q — the one-kind-two-meanings shape #6451 split and "+
 				"#6744 removed from the rule layer.", electronFile, k8sFile, shared)
 		}
+	}
+
+	// The ASYMMETRY, asserted rather than described. "We separated the
+	// collision" overstates the change if it is not stated that only one side
+	// was ever live: the electron sites are bound (detector.go copies
+	// source_patterns[].entity_type into EntityRecord.Kind), the kubernetes
+	// ones are not (nothing in Go reads entity_extraction or
+	// k8s_resource_types). Pinning it here means the claim in the commit
+	// message, the two rule files' comments and this package's doc are all
+	// checked against the scan instead of being repeated prose.
+	boundBy := func(file, kind string) (bound, unbound int) {
+		for _, s := range res.Sites {
+			if s.File != file || s.Kind != kind {
+				continue
+			}
+			if s.Bound {
+				bound++
+			} else {
+				unbound++
+			}
+		}
+		return bound, unbound
+	}
+	if b, u := boundBy(electronFile, "Module"); b != 3 || u != 0 {
+		t.Errorf("electron's Module sites are %d bound / %d unbound, want 3/0. This is the half "+
+			"that reaches EntityRecord.Kind; if it stopped being bound, #6744's only live effect "+
+			"is gone and every description of the change is now wrong.", b, u)
+	}
+	if b, u := boundBy(k8sFile, "SCOPE.IngressHost"); b != 0 || u != 3 {
+		t.Errorf("kubernetes' SCOPE.IngressHost sites are %d bound / %d unbound, want 0/3. If "+
+			"internal/engine/schema.go has learned to bind entity_extraction or "+
+			"k8s_resource_types, these rows became live producers and the \"documentation only\" "+
+			"notes in extras.yaml are now false.", b, u)
 	}
 }
 
@@ -637,35 +682,74 @@ func TestBoundPathsMirrorEngineSchema(t *testing.T) {
 		return strings.Split(rest[:j], ",")[0]
 	}
 
-	// Walk FrameworkRule's fields; for each slice-of-struct field whose element
-	// type declares an `entity_type` yaml tag, the bound path is
-	// "<outer tag>[].<inner tag>".
+	// Walk FrameworkRule's fields and derive, for each one that can carry an
+	// entity kind, the YAML path that kind would sit at.
+	//
+	// The derivation is an ALLOW-LIST of field shapes, and an unrecognised
+	// shape is a FATAL, not a skip. That is the whole point: an earlier
+	// version understood only `[]Ident`, so binding a new rule block as
+	// `[]*Probe`, `map[string]Probe` or a plain struct derived nothing, left
+	// `want` equal to the unchanged mirror, and kept this test green while a
+	// live producer was described as inert — the exact failure the message
+	// below names.
 	root, ok := structs["FrameworkRule"]
 	if !ok {
 		t.Fatalf("internal/engine/schema.go no longer declares FrameworkRule; entkinds' boundPaths " +
 			"mirror is anchored to it")
 	}
+
+	// shapeOf reduces a field type to (element type name, path suffix).
+	// Suffix "[]" marks a collection step, matching entkinds' path spelling;
+	// "" marks a direct struct field. ok=false means the shape is one this
+	// deriver does not understand, and the caller fatals rather than skipping.
+	var shapeOf func(ast.Expr) (name, suffix string, ok bool)
+	shapeOf = func(e ast.Expr) (string, string, bool) {
+		switch t := e.(type) {
+		case *ast.Ident:
+			return t.Name, "", true
+		case *ast.StarExpr:
+			return shapeOf(t.X)
+		case *ast.ArrayType:
+			n, _, ok := shapeOf(t.Elt)
+			return n, "[]", ok
+		case *ast.MapType:
+			n, _, ok := shapeOf(t.Value)
+			return n, "[]", ok
+		case *ast.SelectorExpr:
+			// A type from another package. schema.go declares its rule structs
+			// locally today; a cross-package one would not be in `structs`, so
+			// it lands in the not-a-local-struct branch below with its real
+			// name rather than being silently reduced to nothing.
+			return t.Sel.Name, "", true
+		}
+		return "", "", false
+	}
+
 	var want []string
 	for _, fld := range root.Fields.List {
 		outer := yamlTag(fld)
 		if outer == "" {
 			continue
 		}
-		arr, ok := fld.Type.(*ast.ArrayType)
+		elem, suffix, ok := shapeOf(fld.Type)
 		if !ok {
-			continue
+			t.Fatalf("FrameworkRule field with yaml tag %q has type shape %T, which this deriver "+
+				"does not understand. Teach shapeOf about it — do NOT let it fall through. A "+
+				"skipped shape derives no path, leaves `want` matching the unchanged mirror, and "+
+				"passes this test while the producer it binds is reported as inert.",
+				outer, fld.Type)
 		}
-		id, ok := arr.Elt.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		inner, ok := structs[id.Name]
-		if !ok {
+		inner, isStruct := structs[elem]
+		if !isStruct {
+			// A named non-struct: a string, a bool, a defined scalar. It has
+			// no fields, so it declares no entity_type. This is the only
+			// legitimate skip, and it is keyed on schema.go's own type
+			// declarations rather than on the syntax of the field.
 			continue
 		}
 		for _, ifld := range inner.Fields.List {
 			if tag := yamlTag(ifld); tag == "entity_type" || tag == "entity_mapping" {
-				want = append(want, outer+"[]."+tag)
+				want = append(want, outer+suffix+"."+tag)
 			}
 		}
 	}

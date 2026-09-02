@@ -45,6 +45,14 @@
 // computed at run time is reported as unresolved rather than guessed at. The
 // YAML scan reads scalars only; a sequence or an empty value is unresolved.
 //
+// A MULTI-DOCUMENT YAML file is read only as far as its first document.
+// yaml.Unmarshal decodes one document, so a kind declared after a `---`
+// separator is invisible to this scan. That is not a hole the rule tree can
+// currently fall through: internal/engine/loader.go:142 has the same
+// limit, so a second document declares nothing that reaches the graph either.
+// It becomes a hole the moment the loader learns to read them, and it is
+// recorded here rather than discovered then.
+//
 // _test.go files and testdata/ are out of reach on purpose: fixtures
 // legitimately emit invented kinds, and folding them in would make the
 // population meaningless.

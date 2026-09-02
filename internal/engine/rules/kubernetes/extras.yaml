@@ -272,6 +272,13 @@ k8s_resource_types:
     - spec.ports[].protocol
     - spec.externalName
     - spec.clusterIP
+    # #6744: SCOPE.IngressHost replaces `ExternalAPI`, the kind #6451 retired for
+    # carrying two meanings. NOTE: internal/engine/schema.go binds entity_type on
+    # exactly two structs (FileConvention, SourcePattern) and nothing in Go reads
+    # `k8s_resource_types`, so this mapping is DOCUMENTATION — it reaches no code
+    # and no graph entity today. internal/entkinds scans it regardless (Site.Bound
+    # is false here), because an unread declaration is how the collision survived
+    # the #6451 rename in the first place.
     entity_mapping: SCOPE.IngressHost
     notes: 'LoadBalancer type Services signal external traffic entry points. ExternalName
       Services signal external dependency aliasing (DNS CNAME). ClusterIP with clusterIP:
@@ -297,6 +304,13 @@ k8s_resource_types:
     - spec.rules[].http.paths[].pathType
     - spec.rules[].http.paths[].backend.service.name
     - spec.rules[].http.paths[].backend.service.port.number
+    # #6744: SCOPE.IngressHost replaces `ExternalAPI`, the kind #6451 retired for
+    # carrying two meanings. NOTE: internal/engine/schema.go binds entity_type on
+    # exactly two structs (FileConvention, SourcePattern) and nothing in Go reads
+    # `k8s_resource_types`, so this mapping is DOCUMENTATION — it reaches no code
+    # and no graph entity today. internal/entkinds scans it regardless (Site.Bound
+    # is false here), because an unread declaration is how the collision survived
+    # the #6451 rename in the first place.
     entity_mapping: SCOPE.IngressHost
     notes: 'Ingress rules define public API surface. Extract hostname + path combinations
       as SCOPE.IngressHost endpoints. TLS hosts signal public-facing domains. Ingress annotations
@@ -806,6 +820,10 @@ entity_extraction:
   - k8s_kinds:
     - Service
     - Ingress
+    # #6744: see the k8s_resource_types note above — `entity_extraction` is not
+    # bound by internal/engine/schema.go either, so this row is documentation.
+    # The electron half of the same collision IS bound, and is the only site in
+    # #6744 whose graph output changed.
     entity_type: SCOPE.IngressHost
     extraction_rationale: 'Service resources of type LoadBalancer or ExternalName,
       and all Ingress resources, define the external-facing API surface of the cluster.
