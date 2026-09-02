@@ -11,11 +11,10 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/flatbuffers v25.12.19+incompatible
+	github.com/google/uuid v1.6.0
 	github.com/knights-analytics/hugot v0.7.3
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
-	github.com/lib/pq v1.12.3
 	github.com/mark3labs/mcp-go v0.52.0
-	github.com/nats-io/nats.go v1.52.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
@@ -43,11 +42,9 @@ require (
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
-	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a
 	golang.org/x/sys v0.44.0
 	golang.org/x/term v0.43.0
 	gonum.org/v1/gonum v0.17.0
-	google.golang.org/grpc v1.81.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -77,9 +74,7 @@ require (
 	github.com/gomlx/gomlx v0.27.3 // indirect
 	github.com/gomlx/onnx-gomlx v0.4.2 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/knights-analytics/ortgenai v0.3.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -90,12 +85,11 @@ require (
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
-	github.com/nats-io/nkeys v0.4.15 // indirect
-	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
+	github.com/tree-sitter/tree-sitter-swift v0.0.0-00010101000000-000000000000 // indirect
 	github.com/viant/afs v1.30.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
@@ -104,13 +98,17 @@ require (
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
 	golang.org/x/image v0.40.0 // indirect
-	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 )
 
 replace github.com/tree-sitter/tree-sitter-elixir v0.3.4 => github.com/elixir-lang/tree-sitter-elixir v0.3.4
+
+// Not a real dependency: nothing in grafel imports this module. It gives a home
+// to the phantom test-only import inside the Swift grammar that made
+// `go mod tidy` abort (#6732). Details in third_party/tree-sitter-swift.
+replace github.com/tree-sitter/tree-sitter-swift => ./third_party/tree-sitter-swift
