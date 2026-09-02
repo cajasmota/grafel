@@ -1,0 +1,80 @@
+name: module hygiene
+
+# Closes #6732 — the always-on `go mod tidy` gate.
+#
+# THE GAP THIS FILLS
+# `go mod tidy` could not COMPLETE on `main`. The Swift grammar we pin
+# (alex-pinkus/tree-sitter-swift, `with-generated-files` branch) carries a
+# test-only import of github.com/tree-sitter/tree-sitter-swift/bindings/go, a
+# package that has never existed — that module is archived and its last commit
+# predates Go bindings. `go mod tidy` loads test imports, so it aborted.
+#
+# No CI leg noticed, because nothing else on CI needs tidy to work:
+#   - `go build ./...` ignores test files entirely.
+#   - `go vet ./...` (cross-platform-compile.yml) type-checks the packages we
+#     import; it never resolves an upstream module's own test imports.
+#   - test.yml runs tests; it does not tidy.
+# The cost was that go.mod/go.sum stopped being machine-checkable. #6731 had to
+# hand-move a `require` line out of the indirect block because `go get` +
+# `go mod tidy` — the normal loop — could not run. Hand-editing the one file
+# whose correctness `go mod tidy` exists to verify is a slow-acting trap.
+#
+# SCOPE: module-graph hygiene only. Red here means one of exactly two facts:
+#   1. `go mod tidy` cannot complete — an unresolvable import somewhere in the
+#      package graph, including the test imports of our dependencies; or
+#   2. it completes but would rewrite go.mod / go.sum — i.e. the checked-in
+#      files are not what tidy produces.
+# Both are facts about this tree, not flakes. Keep it that way: do not add a
+# step here that can fail for any other reason.
+#
+# ALWAYS ON, and deliberately its own workflow. The two existing always-on legs
+# (cross-platform-compile.yml, quality.yml) each declare a single purpose and
+# forbid unrelated steps in their headers; pre-merge.yml is the topical home for
+# hygiene checks but is `workflow_dispatch`-only, and a gate nobody dispatches is
+# the state #6732 was already in. One ubuntu runner for well under a minute is
+# the cheapest honest answer, and CI here is free (public repo).
+#
+# IF THIS GOES RED because an upstream module added a bad test import: do NOT
+# switch the gate to `go mod tidy -e`, which would tolerate exactly the defect
+# this file exists to catch. Give the phantom import path a home under
+# third_party/ and `replace` it, the way third_party/tree-sitter-swift does.
+
+on:
+  # ALWAYS ON. See the header. Do not add a label gate, a path filter or a
+  # dispatch-only restriction: a path filter on go.mod/go.sum in particular
+  # would not have caught #6732, which arrived through an upstream module's
+  # contents at an unchanged pinned version, with no diff in this repo at all.
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module-hygiene-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go-mod-tidy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      # `-diff` does not write anything: it exits non-zero if go.mod/go.sum
+      # would change, and it still fails outright — the #6732 mode — when the
+      # package graph cannot be loaded at all.
+      - name: go mod tidy -diff
+        run: |
+          if ! go mod tidy -diff; then
+            echo "::error::go mod tidy is not clean. Either it could not complete"
+            echo "::error::(an unresolvable import in the package graph, including"
+            echo "::error::test imports of dependencies — see #6732), or it would"
+            echo "::error::rewrite go.mod/go.sum. Run 'go mod tidy' and commit."
+            exit 1
+          fi
