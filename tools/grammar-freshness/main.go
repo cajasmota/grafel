@@ -1,16 +1,22 @@
 // Command grammar-freshness is the A2 freshness alarm (epic #5359, milestone
-// 0.1.4). It reads the committed grammars.lock manifest and, for each
-// grammar-backed language, queries its upstream tree-sitter grammar repo's
-// latest release/tag (falling back to the default-branch latest commit) and
-// reports which grammars have moved ahead of the bundled smacker snapshot.
+// 0.1.4). It reads the committed grammars.lock manifest, resolves each
+// grammar's ACTUAL bundled version from this repo, queries that grammar's
+// upstream repo for its latest release/commit, and reports which grammars have
+// genuinely fallen behind.
 //
-// Why per-grammar and not per-dependency: the smacker/go-tree-sitter binding
-// that bundles every grammar is unmaintained (at its own upstream HEAD since
-// 2024-08-27, see docs/grammar-freshness-audit.md). Renovate on the dep (A1)
-// therefore finds nothing newer. This tool tracks each upstream
-// tree-sitter/tree-sitter-<lang> repo INDEPENDENTLY of the dead binding, so it
-// is THE freshness alarm. It is expected to report most/all 28 grammars stale
-// until the B2 migration lands — that is correct and intended.
+// Where "bundled" comes from (#6749). It used to be a single constant: the
+// pinned_date of a smacker/go-tree-sitter binding that is no longer a
+// dependency of this repo at all. Every row therefore reported the same date,
+// so the verdict could not change no matter what anyone upgraded — kotlin was
+// reported ~23 months behind while pinned at the newest upstream release. The
+// bundled version is now derived per grammar from go.mod (applying replace
+// directives) and from the vendored provenance headers under
+// internal/treesitter/ts/grammars/. A grammar whose pin cannot be resolved is
+// reported UNKNOWN; it is never defaulted to a constant.
+//
+// Comparison shape. A module version like v0.23.6 is a RELEASE, not a date, so
+// release pins are compared release-to-release. Only a pseudo-version or branch
+// pin (which is a commit) falls back to a commit-date comparison.
 //
 // Standalone dev tool: zero imports from internal/ packages; net/http + stdlib
 // only. The upstream-version source is injected so tests never hit the network.
@@ -47,6 +53,9 @@ func run(argv []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("grammar-freshness", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	lockPath := fs.String("lock", "grammars.lock", "path to the grammars.lock manifest")
+	goModPath := fs.String("gomod", "go.mod", "path to go.mod, the source of per-grammar module pins")
+	vendorRoot := fs.String("vendored", "internal/treesitter/ts/grammars",
+		"root of the vendored grammar packages, the source of vendored pins")
 	format := fs.String("format", "table", "output format: table | markdown")
 	timeoutS := fs.Int("timeout", 30, "per-request HTTP timeout in seconds")
 	if err := fs.Parse(argv); err != nil {
@@ -58,13 +67,24 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("read manifest: %w", err)
 	}
 
+	// A declared bundling module that is not a dependency is the #6749 defect
+	// itself; refuse to run rather than report its date as every grammar's.
+	if err := validateBinding(lock.Binding, *goModPath); err != nil {
+		return err
+	}
+
+	pins, err := loadPins(*goModPath, *vendorRoot)
+	if err != nil {
+		return fmt.Errorf("resolve bundled versions: %w", err)
+	}
+
 	src := &githubSource{
 		client: &http.Client{Timeout: time.Duration(*timeoutS) * time.Second},
 		token:  firstEnv("GITHUB_TOKEN", "GH_TOKEN"),
 	}
 
 	ctx := context.Background()
-	report := check(ctx, lock, src)
+	report := check(ctx, lock, pins, src)
 
 	switch *format {
 	case "table":

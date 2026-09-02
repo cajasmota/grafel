@@ -8,12 +8,20 @@ freshness alarm (A1/A2) and doing the catch-up bump (B1).
 
 ## 1. The binding dependency
 
-- **Dep:** `github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82`
-  (`go.mod` line 18).
+> **Historical — superseded by the B2 cutover.** Everything in this section
+> describes the state at the 2026-06-23 audit. `smacker/go-tree-sitter` is no
+> longer a dependency: it appears zero times in `go.mod` and zero times in
+> `go.sum`. Treating this section as current is exactly what produced #6749 —
+> the freshness checker used the pinned date below as every grammar's bundled
+> version long after the dep was gone. For the current setup see §2.
+
+- **Dep (removed):** `github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82`
+  (`go.mod` line 18, at audit time).
 - **Pinned commit `dd81d9e9be82` — date 2024-08-27** (~22 months stale at filing).
 - **No `replace` directive, no fork.** The audit explicitly confirmed there is no
-  `replace`-to-a-fork already freshening grammars. `go.mod` has zero `replace`
-  directives.
+  `replace`-to-a-fork already freshening grammars. `go.mod` had zero `replace`
+  directives at audit time; it now carries one, re-homing
+  `tree-sitter/tree-sitter-elixir` onto `elixir-lang/tree-sitter-elixir`.
 - **CRITICAL FINDING — the binding is at upstream HEAD and unmaintained.**
   `gh api compare/dd81d9e9be82...master` on `smacker/go-tree-sitter` returns
   `ahead_by: 0, status: identical`. The pinned commit *is* the current HEAD of
@@ -35,7 +43,13 @@ freshness alarm (A1/A2) and doing the catch-up bump (B1).
 ## 2. Grammar-backed vs heuristic-only languages
 
 Authoritative source: the `languageRegistry` in
-`internal/treesitter/parser.go` (28 grammars loaded via smacker imports).
+`internal/treesitter/parser.go`. The smacker binding this audit was written
+against is **gone**: grammars now come from the official
+`tree-sitter/go-tree-sitter` runtime plus per-language grammar modules in
+`go.mod` (21 of them, applying the `replace` for elixir), and vendored C
+sources under `internal/treesitter/ts/grammars/<lang>/` for the rest (kotlin,
+hcl, sql, groovy, proto, dockerfile), each carrying its upstream ref in the
+package doc comment.
 
 **Grammar-backed (28):** bash (alias shell), c, cpp, css, csharp, dockerfile,
 elixir, go, groovy, hcl (alias terraform), html, java, javascript, kotlin, lua,
@@ -50,21 +64,26 @@ is pure-stdlib even though a markdown grammar is loaded in the registry.
 
 ## 3. Per-grammar staleness (spot-check of the high-value four)
 
-The smacker bundle vendors grammar C sources with **no per-grammar version
-provenance** — only ABI `LANGUAGE_VERSION` numbers in each `parser.h`, not the
-upstream grammar semver. So the bundled version is recorded as the binding
-snapshot date (2024-08-27); upstream-latest is queried live. Full table in
-`grammars.lock`.
+> **Corrected (#6749).** This section previously said the bundled version "is
+> recorded as the binding snapshot date (2024-08-27)" for every grammar. That
+> was the defect, not a limitation: the checker read that one constant for all
+> 27 rows, so its verdict could not change no matter what anyone upgraded — it
+> reported kotlin ~23 months behind while kotlin was pinned at the newest
+> upstream release. There is no snapshot date any more. Each grammar's bundled
+> version is read from its own `go.mod` require (a pseudo-version decoding to a
+> commit date) or its vendored provenance header, and a grammar whose pin cannot
+> be resolved is reported `UNKNOWN` rather than defaulted.
 
-| Language | Upstream repo | Bundled (smacker snapshot) | Upstream latest release | Upstream last commit |
+| Language | Upstream repo | Bundled (real pin) | Upstream latest release | Verdict |
 |---|---|---|---|---|
-| Java | tree-sitter/tree-sitter-java | 2024-08-27 | v0.23.5 | 2025-09-15 |
-| C# | tree-sitter/tree-sitter-c-sharp | 2024-08-27 | v0.23.5 | 2026-06-02 |
-| Python | tree-sitter/tree-sitter-python | 2024-08-27 | v0.25.0 | 2025-09-15 |
-| TypeScript | tree-sitter/tree-sitter-typescript | 2024-08-27 | v0.23.2 | 2025-01-30 |
+| Java | tree-sitter/tree-sitter-java | v0.23.5 (`go.mod`) | v0.23.5 | CURRENT |
+| C# | tree-sitter/tree-sitter-c-sharp | v0.23.1 (`go.mod`) | v0.23.5 | STALE |
+| Python | tree-sitter/tree-sitter-python | v0.23.6 (`go.mod`) | v0.25.0 | STALE |
+| TypeScript | tree-sitter/tree-sitter-typescript | v0.23.2 (`go.mod`) | v0.23.2 | CURRENT |
 
-All four (and every grammar-backed language) have moved materially ahead of the
-2024-08-27 snapshot. C3 backfill targets flagged in `grammars.lock`:
+Two of the high-value four are current; the previous table called all four
+stale. Run the checker for the live set. C3 backfill targets flagged in
+`grammars.lock`:
 C# primary constructors + collection expressions, Java sealed types + record
 patterns, Python 3.12+ PEP 695 type params, TS const type params.
 
@@ -99,9 +118,11 @@ The freshness alarm is live as a scheduled GitHub Action plus a small Go tool.
   It reads `grammars.lock`, and for each grammar-backed language queries the
   upstream `source` repo's latest **release/tag** via the GitHub API, falling
   back to the **default-branch latest commit date** when a repo has no releases.
-  It compares the upstream commit date to the bundled smacker snapshot
-  (`2024-08-27`) and reports each grammar as `STALE`, `CURRENT`, or `UNKNOWN`
-  (unreachable). Run it locally:
+  It resolves each grammar's own bundled version from `go.mod` and the vendored
+  provenance headers, compares **release-to-release** where both sides name a
+  release (falling back to commit dates only for pseudo-version or branch pins),
+  and reports each grammar as `STALE`, `CURRENT`, `UNKNOWN` (pin unresolvable)
+  or `UNREACHABLE` (upstream lookup failed). Run it locally:
 
   ```sh
   GITHUB_TOKEN=$(gh auth token) go run ./tools/grammar-freshness            # human table
@@ -123,13 +144,18 @@ The freshness alarm is live as a scheduled GitHub Action plus a small Go tool.
   the last-checked date. Re-runs edit the same issue rather than spamming new
   ones.
 
-- **How to read the tracking issue:** the table lists every grammar whose
-  upstream has moved ahead of the bundled snapshot, with the upstream latest
-  release/commit and an approximate months-behind figure. Because the smacker
-  binding is unmaintained, expect **most/all 28 grammars to show stale** — that
-  is the intended signal motivating the B1 catch-up bump and the B2 decoupling.
-  A dry run at audit time flagged **24 of 28** stale (the 4 current — lua,
-  proto, toml, yaml — have upstreams that genuinely predate the snapshot).
+- **How to read the tracking issue:** the table lists every grammar whose own
+  pin is behind its upstream, with the version gap (or months, for a date-basis
+  row) and which basis decided it, plus a lock/`go.mod` reconciliation naming
+  any grammar present in one and not the other.
+
+  Do **not** expect "most/all grammars stale" — that expectation is what let
+  #6749 hide for months, because a report that is always alarming is never
+  read. The first true run (2026-09-02) was **16 stale, 10 current, 1 unknown**:
+  cpp, dockerfile, html, java, kotlin, proto, ruby, toml, typescript and yaml
+  are current, and groovy is `UNKNOWN` because its vendored header records only
+  `(HEAD, 2024)`. A number that cannot move is a broken alarm, not a known-bad
+  baseline.
 
 - **`last_verified` refresh:** the manifest's `last_verified` / upstream-latest
   columns are refreshed manually when a maintainer reconciles the tracking issue

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Lock mirrors the parts of grammars.lock that A2 consumes. Unknown fields are
@@ -15,11 +16,40 @@ type Lock struct {
 	Grammars      []GrammarSpec `json:"grammars"`
 }
 
-// Binding records the smacker snapshot the grammars are bundled from.
+// Binding is the LEGACY "everything is bundled via one module" declaration.
+//
+// It is expected to be absent. It exists only so that reintroducing it is a
+// hard error rather than a silent regression: #6749 was caused by this block
+// naming github.com/smacker/go-tree-sitter — a module with zero occurrences in
+// go.mod — and the checker using its pinned_date as EVERY grammar's bundled
+// version. Bundled versions are now derived per grammar (see bundled.go).
 type Binding struct {
 	Module     string `json:"module"`
 	Version    string `json:"version"`
 	PinnedDate string `json:"pinned_date"`
+}
+
+// validateBinding refuses a lock that declares a bundling module the repo does
+// not actually depend on. A binding naming a real go.mod module is allowed; no
+// binding at all is the expected steady state.
+func validateBinding(b Binding, goModPath string) error {
+	if b.Module == "" {
+		return nil
+	}
+	src, err := os.ReadFile(goModPath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", goModPath, err)
+	}
+	for _, line := range strings.Split(string(src), "\n") {
+		for _, f := range strings.Fields(stripLineComment(line)) {
+			if f == b.Module {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("grammars.lock declares binding module %q (pinned_date %q) but it does not appear in %s: "+
+		"a bundling module that is not a dependency cannot be any grammar's bundled version (#6749)",
+		b.Module, b.PinnedDate, goModPath)
 }
 
 // GrammarSpec is one grammar-backed language's entry.
@@ -27,7 +57,6 @@ type GrammarSpec struct {
 	Language              string   `json:"language"`
 	Aliases               []string `json:"aliases"`
 	Source                string   `json:"source"` // owner/repo on GitHub
-	BundledVia            string   `json:"bundled_via"`
 	UpstreamLatestRelease string   `json:"upstream_latest_release"`
 	UpstreamLatestCommit  string   `json:"upstream_latest_commit_date"`
 	HighValue             bool     `json:"high_value"`
