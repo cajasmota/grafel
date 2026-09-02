@@ -66,16 +66,25 @@ source_patterns:
   # Native addon loaders used from the Electron main process: `bindings(...)`,
   # node-gyp-build, and direct `.node` addon requires. These are the genuine
   # native-module boundary (compiled C++ addons), distinct from JS deps.
+  #
+  # #6744: these carried `entity_type: ExternalAPI` until the kind was split.
+  # That name meant something else entirely in kubernetes/extras.yaml (an
+  # externally-reachable cluster endpoint — a hostname), which is the same
+  # one-kind-two-meanings collision #6451 separated on the Go side into
+  # SCOPE.ExternalEndpoint and SCOPE.IngressHost. Neither of those fits here:
+  # a compiled C++ addon is not an outbound HTTP call target and not an
+  # ingress hostname. Electron's actual HTTP/IPC surface is the `Endpoint`
+  # patterns above, so this family gets its own name.
   - pattern: "require\\s*\\(\\s*['\"`]bindings['\"`]\\s*\\)"
-    entity_type: ExternalAPI
+    entity_type: NativeModule
     name_group: 0
     scope: file
   - pattern: "require\\s*\\(\\s*['\"`]node-gyp-build['\"`]\\s*\\)"
-    entity_type: ExternalAPI
+    entity_type: NativeModule
     name_group: 0
     scope: file
   - pattern: "require\\s*\\(\\s*['\"`]([^'\"`\\n\\r]+\\.node)['\"`]\\s*\\)"
-    entity_type: ExternalAPI
+    entity_type: NativeModule
     name_group: 1
     scope: file
 
