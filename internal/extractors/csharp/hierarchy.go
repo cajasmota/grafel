@@ -105,10 +105,27 @@ func csBaseTypeNames(node ts.Node, src []byte) []string {
 		switch ch.Type() {
 		case "qualified_name", "alias_qualified_name":
 			// `Microsoft.AspNetCore.Mvc.ControllerBase` — the supertype is
-			// the RIGHTMOST segment. leafTypeName's qualified_name branch
-			// walks with findAllNodes, whose stack traversal does not return
-			// identifiers in source order, so it is not usable here.
-			name = csQualifiedLeaf(nodeText(ch, src))
+			// the RIGHTMOST segment. #6742 could not use leafTypeName here
+			// because its qualified_name branch walked with findAllNodes,
+			// whose stack traversal does not return identifiers in source
+			// order, and worked around it with a local csQualifiedLeaf.
+			// #6771 fixed leafTypeName at the source — it now takes the
+			// grammar's own `name` field — so the workaround is gone and
+			// this call site shares the one implementation again.
+			//
+			// alias_qualified_name changes behaviour HERE, and it changes
+			// it in the opposite direction from the other 14 callers:
+			// csQualifiedLeaf's blocklist contained ":", so `class C :
+			// global::Foo` yielded "" and NO edge at all on main, while the
+			// other callers got `global::Foo` verbatim. leafTypeName now
+			// resolves it to `Foo`, so this site gains a supertype it should
+			// always have had and they gain a resolvable receiver type.
+			// Scope any claim about this call site to this call site — the
+			// previous cut generalised from it and regressed the other 14.
+			// Both directions are described at leafTypeName's
+			// alias_qualified_name branch and pinned by
+			// qualified_type_6771_test.go.
+			fallthrough
 		case "identifier", "generic_name", "nullable_type":
 			name = leafTypeName(ch, src)
 		case "primary_constructor_base_type":
@@ -135,24 +152,6 @@ func csBaseTypeNames(node ts.Node, src []byte) []string {
 		}
 	}
 	return out
-}
-
-// csQualifiedLeaf reduces a dotted type reference to its rightmost segment and
-// strips any generic type-argument list: `A.B.Base<T>` → "Base". An empty
-// string is returned when the result is not a plain identifier.
-func csQualifiedLeaf(raw string) string {
-	s := strings.TrimSpace(raw)
-	if i := strings.Index(s, "<"); i >= 0 {
-		s = s[:i]
-	}
-	if i := strings.LastIndex(s, "."); i >= 0 {
-		s = s[i+1:]
-	}
-	s = strings.TrimSpace(s)
-	if s == "" || strings.ContainsAny(s, " <>[]?,.:()") {
-		return ""
-	}
-	return s
 }
 
 // csLooksLikeInterfaceName reports whether name follows the .NET interface
