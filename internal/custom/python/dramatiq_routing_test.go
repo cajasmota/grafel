@@ -48,8 +48,8 @@ func TestDramatiq_TaskRouting_GoldenFixture(t *testing.T) {
 	if emails.Props["actor"] != "send_email" {
 		t.Errorf("actor: got %q", emails.Props["actor"])
 	}
-	if emails.Props["edge_kind"] != "ROUTES_TO" {
-		t.Errorf("edge_kind: got %q", emails.Props["edge_kind"])
+	if _, ok := emails.Props["edge_kind"]; ok {
+		t.Errorf("task_routing still stamps the inert edge_kind property (#6767)")
 	}
 	if emails.Kind != "SCOPE.Pattern" {
 		t.Errorf("kind: got %q", emails.Kind)

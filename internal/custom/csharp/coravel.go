@@ -45,11 +45,28 @@
 //	task_id          — "task:coravel:<Invocable>" — the join key between the
 //	                   Schedule<T>()/QueueInvocable<T>() producer and the X :
 //	                   IInvocable consumer (mirrors task:quartz.net:<T>).
-//	edge_kind        — CONSUMES (invocable) | PRODUCES (schedule / queue / mail).
 //
 // Honest-partial: schedules / invocables behind variables or config are recorded
 // without the resolved cadence. A Schedule<T>() with no recognised frequency
 // token records schedule_type unresolved (omitted) rather than guessing.
+//
+// EDGES (#6767). A dispatch site that NAMES its work unit — Schedule<T>(),
+// QueueInvocable<T>(), Send(new XMailable()) — emits a real PRODUCES
+// relationship to that type (`Class:<T>`), the same one-hop form
+// hangfire.go / quartz_net.go emit (ADR-0028 §1).
+//
+// The two ANONYMOUS forms — Schedule(() => ...) and QueueAsyncTask(...) — emit
+// NOTHING. They name no invocable, so there is no target; an honest unresolved
+// producer entity is recorded and left edgeless rather than pointed at whichever
+// invocable happens to sit nearby. Until #6767 they carried
+// `edge_kind: "PRODUCES"`, which was not redundant metadata but a false claim:
+// no such edge existed for them, and still does not.
+//
+// The IInvocable consumer half is likewise edgeless. CONSUMES is emitted by
+// nothing in the tree — a repo-wide fact recorded
+// in ADR-0028, verified there by grep, and NOT re-verified by the tests here,
+// which pin only that THIS pass emits none. The honest form needs the two-hop
+// work-unit node #6741 declined to build; `task_id` remains the join key.
 //
 // Closes #5075 (Coravel half).
 package csharp
@@ -213,7 +230,6 @@ func (e *coravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"pattern_type", "invocable",
 			"invocable", name,
 			"task_id", "task:coravel:"+name,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_CORAVEL_IINVOCABLE",
 		)
 		add(ent)
@@ -229,9 +245,11 @@ func (e *coravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"pattern_type", "schedule",
 			"invocable", inv,
 			"task_id", "task:coravel:"+inv,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_CORAVEL_SCHEDULE",
 		)
+		ent.Relationships = append(ent.Relationships, csJobProducesEdge(
+			"coravel", inv, "task:coravel:"+inv, "INFERRED_FROM_CORAVEL_SCHEDULE",
+		))
 		parseCoravelSchedule(&ent, coravelChain(src, m[1]))
 		add(ent)
 	}
@@ -243,7 +261,6 @@ func (e *coravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 		setProps(&ent,
 			"framework", "coravel",
 			"pattern_type", "schedule",
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_CORAVEL_SCHEDULE_ANON",
 		)
 		parseCoravelSchedule(&ent, coravelChain(src, m[0]))
@@ -260,9 +277,11 @@ func (e *coravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"pattern_type", "queue",
 			"invocable", inv,
 			"task_id", "task:coravel:"+inv,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_CORAVEL_QUEUE",
 		)
+		ent.Relationships = append(ent.Relationships, csJobProducesEdge(
+			"coravel", inv, "task:coravel:"+inv, "INFERRED_FROM_CORAVEL_QUEUE",
+		))
 		add(ent)
 	}
 
@@ -273,7 +292,6 @@ func (e *coravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 		setProps(&ent,
 			"framework", "coravel",
 			"pattern_type", "queue",
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_CORAVEL_QUEUE_TASK",
 		)
 		add(ent)
@@ -293,9 +311,17 @@ func (e *coravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"framework", "coravel",
 			"pattern_type", "mail",
 			"mailable", mailable,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_CORAVEL_MAIL",
 		)
+		// The mailer reaches the same `.Send(new T())` bytes the three C# service
+		// buses do, so it defers to whichever of them owns the file (#6767); and
+		// it carries no task_id, because nothing mints a Mailable-side entity for
+		// one to join with.
+		if csSharedDispatchVerbOwner(src) == "" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"coravel", mailable, "", "INFERRED_FROM_CORAVEL_MAIL",
+			))
+		}
 		add(ent)
 	}
 

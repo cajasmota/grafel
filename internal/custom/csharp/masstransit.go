@@ -36,8 +36,27 @@ func init() {
 //   - class XStateMachine : MassTransitStateMachine<TState>
 //
 // Each message type is normalised to a task_id (masstransit:message:<T>) so the
-// publish/send (PRODUCES) site and the consumer (CONSUMES) site converge by
-// message contract, exactly as the MediatR extractor converges by task_id.
+// publish/send site and the consumer site converge by message contract, exactly
+// as the MediatR extractor converges by task_id.
+//
+// EDGES (#6767). Every dispatch site emits a real PRODUCES relationship to the
+// message contract it names (`Class:<T>`, the cross-file C# convention). Until
+// #6767 this pass emitted ZERO relationships and recorded the intent as an
+// inert `edge_kind` entity PROPERTY — metadata nothing read, and on the
+// consumer side a claim about an edge that does not exist in the tree.
+//
+// The edge fires only when csSharedDispatchVerbOwner names THIS pass as the
+// owner of the shared `.Publish(new T())` / `.Send(new T())` verbs in the file.
+// The signal gate below is not enough on its own: MediatR's producer regexes
+// are byte-identical to this pass's, so a consumer that also dispatches through
+// IMediator satisfies both gates and would emit two PRODUCES for one hop.
+//
+// The consumer half is deliberately EDGELESS: CONSUMES is declared, read by
+// four consumers, and emitted by nothing, because the honest form needs the
+// two-hop work-unit node ADR-0028 §1 describes and #6741 declined to build.
+// The consumer entity still carries `task_id`, so the join is available to
+// anything that wants it — what it no longer carries is a claim that an edge
+// already models it.
 type massTransitExtractor struct{}
 
 func (e *massTransitExtractor) Language() string { return "custom_csharp_masstransit" }
@@ -108,9 +127,14 @@ func (e *massTransitExtractor) Extract(ctx context.Context, file extractor.FileI
 			"pattern_type", "publish",
 			"message_type", msgType,
 			"task_id", "masstransit:message:"+msgType,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_MASSTRANSIT_PUBLISH",
 		)
+		if csSharedDispatchVerbOwner(src) == "masstransit" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"masstransit", msgType, "masstransit:message:"+msgType,
+				"INFERRED_FROM_MASSTRANSIT_PUBLISH",
+			))
+		}
 		add(ent)
 	}
 
@@ -124,9 +148,14 @@ func (e *massTransitExtractor) Extract(ctx context.Context, file extractor.FileI
 			"pattern_type", "send",
 			"message_type", msgType,
 			"task_id", "masstransit:message:"+msgType,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_MASSTRANSIT_SEND",
 		)
+		if csSharedDispatchVerbOwner(src) == "masstransit" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"masstransit", msgType, "masstransit:message:"+msgType,
+				"INFERRED_FROM_MASSTRANSIT_SEND",
+			))
+		}
 		add(ent)
 	}
 
@@ -141,7 +170,6 @@ func (e *massTransitExtractor) Extract(ctx context.Context, file extractor.FileI
 			"pattern_type", "consumer",
 			"message_type", msgType,
 			"task_id", "masstransit:message:"+msgType,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_MASSTRANSIT_CONSUMER",
 		)
 		add(ent)
@@ -155,7 +183,6 @@ func (e *massTransitExtractor) Extract(ctx context.Context, file extractor.FileI
 		setProps(&ent,
 			"framework", "masstransit",
 			"pattern_type", "saga",
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_MASSTRANSIT_SAGA",
 		)
 		add(ent)
@@ -171,7 +198,6 @@ func (e *massTransitExtractor) Extract(ctx context.Context, file extractor.FileI
 			"framework", "masstransit",
 			"pattern_type", "state_machine",
 			"message_type", stateType,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_MASSTRANSIT_STATE_MACHINE",
 		)
 		add(ent)

@@ -36,8 +36,8 @@ public class SendNewsletter : IInvocable
 	if got := inv.Properties["task_id"]; got != "task:coravel:SendNewsletter" {
 		t.Errorf("task_id = %q, want task:coravel:SendNewsletter", got)
 	}
-	if got := inv.Properties["edge_kind"]; got != "CONSUMES" {
-		t.Errorf("edge_kind = %q, want CONSUMES", got)
+	if _, ok := inv.Properties["edge_kind"]; ok {
+		t.Errorf("invocable still stamps the inert edge_kind property (#6767)")
 	}
 	if inv.Kind != "SCOPE.Service" {
 		t.Errorf("kind = %q, want SCOPE.Service", inv.Kind)
@@ -68,8 +68,8 @@ scheduler.Schedule<SendNewsletter>().EveryMinute();
 	if got := s.Properties["task_id"]; got != "task:coravel:SendNewsletter" {
 		t.Errorf("task_id = %q, want task:coravel:SendNewsletter", got)
 	}
-	if got := s.Properties["edge_kind"]; got != "PRODUCES" {
-		t.Errorf("edge_kind = %q, want PRODUCES", got)
+	if _, ok := s.Properties["edge_kind"]; ok {
+		t.Errorf("schedule still stamps the inert edge_kind property (#6767)")
 	}
 }
 

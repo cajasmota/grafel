@@ -43,16 +43,16 @@ func TestHandleMessagesConverge(t *testing.T) {
 	if pub == nil {
 		t.Fatal("expected publish 'Publish OrderPlaced'")
 	}
-	if pub.Properties["edge_kind"] != "PRODUCES" {
-		t.Errorf("publish edge_kind = %q, want PRODUCES", pub.Properties["edge_kind"])
+	if _, ok := pub.Properties["edge_kind"]; ok {
+		t.Errorf("publish still stamps the inert edge_kind property (#6767)")
 	}
 
 	h := findBySub(ents, "message_handler", "OrderPlacedHandler")
 	if h == nil {
 		t.Fatal("expected message_handler 'OrderPlacedHandler'")
 	}
-	if h.Properties["edge_kind"] != "CONSUMES" {
-		t.Errorf("handler edge_kind = %q, want CONSUMES", h.Properties["edge_kind"])
+	if _, ok := h.Properties["edge_kind"]; ok {
+		t.Errorf("handler still stamps the inert edge_kind property (#6767)")
 	}
 	if h.Properties["task_id"] != pub.Properties["task_id"] {
 		t.Errorf("handler task_id %q != publish task_id %q",

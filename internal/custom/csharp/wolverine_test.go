@@ -48,8 +48,8 @@ func TestWolverinePublishHandlerConverge(t *testing.T) {
 	if pub == nil {
 		t.Fatal("expected publish 'PublishAsync OrderPlaced'")
 	}
-	if pub.Properties["edge_kind"] != "PRODUCES" {
-		t.Errorf("publish edge_kind = %q, want PRODUCES", pub.Properties["edge_kind"])
+	if _, ok := pub.Properties["edge_kind"]; ok {
+		t.Errorf("publish still stamps the inert edge_kind property (#6767)")
 	}
 	if pub.Properties["task_id"] != "wolverine:message:OrderPlaced" {
 		t.Errorf("publish task_id = %q", pub.Properties["task_id"])
@@ -62,8 +62,8 @@ func TestWolverinePublishHandlerConverge(t *testing.T) {
 	if h.Kind != "SCOPE.Service" {
 		t.Errorf("handler kind = %q, want SCOPE.Service", h.Kind)
 	}
-	if h.Properties["edge_kind"] != "CONSUMES" {
-		t.Errorf("handler edge_kind = %q, want CONSUMES", h.Properties["edge_kind"])
+	if _, ok := h.Properties["edge_kind"]; ok {
+		t.Errorf("handler still stamps the inert edge_kind property (#6767)")
 	}
 	if h.Properties["message_type"] != "OrderPlaced" {
 		t.Errorf("handler message_type = %q, want OrderPlaced", h.Properties["message_type"])
@@ -90,8 +90,8 @@ func TestWolverineConsumeConventionHandler(t *testing.T) {
 	if send == nil {
 		t.Fatal("expected send 'SendAsync ProcessOrder'")
 	}
-	if send.Properties["edge_kind"] != "PRODUCES" {
-		t.Errorf("send edge_kind = %q, want PRODUCES", send.Properties["edge_kind"])
+	if _, ok := send.Properties["edge_kind"]; ok {
+		t.Errorf("send still stamps the inert edge_kind property (#6767)")
 	}
 	if send.Properties["task_id"] != h.Properties["task_id"] {
 		t.Errorf("send task_id %q != handler task_id %q",
@@ -106,8 +106,8 @@ func TestWolverineInvokeRequestResponse(t *testing.T) {
 	if inv == nil {
 		t.Fatal("expected invoke 'InvokeAsync GetTotal'")
 	}
-	if inv.Properties["edge_kind"] != "PRODUCES" {
-		t.Errorf("invoke edge_kind = %q, want PRODUCES", inv.Properties["edge_kind"])
+	if _, ok := inv.Properties["edge_kind"]; ok {
+		t.Errorf("invoke still stamps the inert edge_kind property (#6767)")
 	}
 	if inv.Properties["task_id"] != "wolverine:message:GetTotal" {
 		t.Errorf("invoke task_id = %q, want wolverine:message:GetTotal", inv.Properties["task_id"])
@@ -136,7 +136,10 @@ public class SomeButton
 }
 
 // Convergence sanity: every emitted entity carries a wolverine:message:<T>
-// task_id and a PRODUCES/CONSUMES edge_kind, so the graph can link them.
+// task_id, so the graph can link the dispatch and handler halves. Since #6767
+// the dispatch half ALSO carries a real PRODUCES edge; the handler half stays
+// edgeless (CONSUMES is emitted by nothing) and neither half stamps the inert
+// edge_kind property any more.
 func TestWolverineAllEntitiesConverge(t *testing.T) {
 	ents := extractFull(t, "custom_csharp_wolverine", fi("Orders.cs", "csharp", wolverineSrc))
 	if len(ents) == 0 {
@@ -147,9 +150,16 @@ func TestWolverineAllEntitiesConverge(t *testing.T) {
 		if tid == "" || tid[:len("wolverine:message:")] != "wolverine:message:" {
 			t.Errorf("entity %s %s has bad task_id %q", e.Subtype, e.Name, tid)
 		}
-		ek := e.Properties["edge_kind"]
-		if ek != "PRODUCES" && ek != "CONSUMES" {
-			t.Errorf("entity %s %s has bad edge_kind %q", e.Subtype, e.Name, ek)
+		if ek, ok := e.Properties["edge_kind"]; ok {
+			t.Errorf("entity %s %s still stamps edge_kind %q (#6767)", e.Subtype, e.Name, ek)
+		}
+		wantEdges := 0
+		if e.Subtype == "publish" || e.Subtype == "send" || e.Subtype == "invoke" {
+			wantEdges = 1
+		}
+		if len(e.Relationships) != wantEdges {
+			t.Errorf("entity %s %s has %d relationships, want %d",
+				e.Subtype, e.Name, len(e.Relationships), wantEdges)
 		}
 	}
 }
