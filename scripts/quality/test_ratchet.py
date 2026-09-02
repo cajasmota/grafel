@@ -1745,6 +1745,54 @@ class AnOverrideCannotVouchForItself(unittest.TestCase):
             self.assertEqual(err.getvalue(), "")
 
 
+class ForbiddenEntityHitsAreFatal(unittest.TestCase):
+    """#6488 arm B. `check` reads forbidden_entity_hits from its own key.
+
+    Folding it into `forbidden_hits` was rejected because that key means
+    "false-positive EDGES" to every recorded baseline. The cost of the separate
+    key is that a second read has to exist, and a read that does not exist
+    fails silently and forever: the report would carry the hit, the ratchet
+    would print OK, and the fixture would be graded on recall alone — which is
+    precisely the blindness the field was added to remove.
+    """
+
+    def _run_check(self, report_extra):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            golden, reports, baseline = make_fixture(root)
+            with open(os.path.join(reports, "demo-mini.json")) as fh:
+                rep = json.load(fh)
+            rep.update(report_extra)
+            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                json.dump(rep, fh)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = ratchet.check(golden, reports, baseline)
+            return rc, err.getvalue()
+
+    def test_a_clean_report_still_passes(self):
+        """The negative control. Without it a check that failed unconditionally
+        would score identically on the test below."""
+        rc, err = self._run_check({"forbidden_entity_hits": 0})
+        self.assertEqual(rc, 0, f"a clean report was failed: {err}")
+
+    def test_a_forbidden_entity_hit_fails_the_ratchet(self):
+        rc, err = self._run_check({"forbidden_entity_hits": 2})
+        self.assertEqual(
+            rc, 2,
+            "a report carrying 2 forbidden ENTITY hits passed the ratchet — "
+            "entity over-emission is gated by nothing else")
+        self.assertIn("forbidden entity hit", err)
+
+    def test_a_report_predating_the_field_is_not_a_failure(self):
+        """Absent means zero, not "unknown". Every baseline recorded before
+        this key existed omits it, and a check that treated absence as a hit
+        would fail the whole corpus on a schema change."""
+        rc, err = self._run_check({})
+        self.assertEqual(rc, 0, f"a report with no forbidden_entity_hits key failed: {err}")
+
+
 if __name__ == "__main__":
     if subprocess.call(["git", "--version"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) != 0:

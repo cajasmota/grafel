@@ -21,15 +21,37 @@ type JSONReport struct {
 	RelationshipRecall         float64 `json:"relationship_recall"`
 	RelationshipExtractedTotal int     `json:"relationship_extracted_total"`
 	ForbiddenHits              int     `json:"forbidden_hits"`
-	NiceEntityFound            int     `json:"nice_entity_found"`
-	NiceEntityTotal            int     `json:"nice_entity_total"`
-	NiceRelFound               int     `json:"nice_relationship_found"`
-	NiceRelTotal               int     `json:"nice_relationship_total"`
+	// ForbiddenEntityHits is the entity analogue (#6488 arm B), counted under
+	// its own key rather than folded into forbidden_hits: the existing key
+	// means "false-positive EDGES" to every baseline and dashboard that reads
+	// it, and widening its meaning in place would move a number nobody asked
+	// to move. Not omitempty — a consumer must be able to tell "zero hits"
+	// from "this report predates the field".
+	ForbiddenEntityHits int `json:"forbidden_entity_hits"`
+	NiceEntityFound     int `json:"nice_entity_found"`
+	NiceEntityTotal     int `json:"nice_entity_total"`
+	NiceRelFound        int `json:"nice_relationship_found"`
+	NiceRelTotal        int `json:"nice_relationship_total"`
 
 	// Per-item details so a human can see WHICH expectations missed.
 	MissingEntities      []missingEntity       `json:"missing_entities,omitempty"`
 	MissingRelationships []missingRelationship `json:"missing_relationships,omitempty"`
 	Forbidden            []missingRelationship `json:"forbidden,omitempty"`
+	ForbiddenEntities    []forbiddenEntity     `json:"forbidden_entities,omitempty"`
+}
+
+// forbiddenEntity is the serialised shape of a ForbiddenEntityHit. It reports
+// the row's axes AND the offending entity's own name/file/subtype, because a
+// row may narrow on fewer axes than the entity carries — "a forbidden entity
+// was found" is not a diagnosis anyone can act on.
+type forbiddenEntity struct {
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	File       string `json:"source_file,omitempty"`
+	Subtype    string `json:"subtype,omitempty"`
+	GotName    string `json:"got_name,omitempty"`
+	GotFile    string `json:"got_source_file,omitempty"`
+	GotSubtype string `json:"got_subtype,omitempty"`
 }
 
 type missingEntity struct {
@@ -83,6 +105,7 @@ func (r *Report) ToJSON() *JSONReport {
 		RelationshipRecall:         r.RelationshipRecall(),
 		RelationshipExtractedTotal: r.RelExtractedN,
 		ForbiddenHits:              len(r.ForbiddenHits),
+		ForbiddenEntityHits:        len(r.ForbiddenEntityHits),
 		NiceEntityFound:            r.NiceEntityFound,
 		NiceEntityTotal:            r.NiceEntityTotal,
 		NiceRelFound:               r.NiceRelFound,
@@ -134,6 +157,17 @@ func (r *Report) ToJSON() *JSONReport {
 			ToKind:   fh.Expected.ToKind,
 		})
 	}
+	for _, fh := range r.ForbiddenEntityHits {
+		jr.ForbiddenEntities = append(jr.ForbiddenEntities, forbiddenEntity{
+			Name:       fh.Expected.Name,
+			Kind:       fh.Expected.Kind,
+			File:       fh.Expected.SourceFile,
+			Subtype:    fh.Expected.Subtype,
+			GotName:    fh.MatchedName,
+			GotFile:    fh.MatchedSourceFile,
+			GotSubtype: fh.MatchedSubtype,
+		})
+	}
 	return jr
 }
 
@@ -147,6 +181,8 @@ func (r *Report) WriteHuman(w io.Writer) {
 	fmt.Fprintf(w, "  relationships: %d / %d expected  (recall=%s)  [extracted total: %d]\n",
 		r.RelFound, r.RelExpected, pct(r.RelationshipRecall()), r.RelExtractedN)
 	fmt.Fprintf(w, "  forbidden hits: %d  (false-positive edges; target=0)\n", len(r.ForbiddenHits))
+	fmt.Fprintf(w, "  forbidden entity hits: %d  (false-positive entities; target=0)\n",
+		len(r.ForbiddenEntityHits))
 	if r.NiceEntityTotal+r.NiceRelTotal > 0 {
 		fmt.Fprintf(w, "  nice-to-have:  entities %d/%d, relationships %d/%d\n",
 			r.NiceEntityFound, r.NiceEntityTotal, r.NiceRelFound, r.NiceRelTotal)
@@ -249,6 +285,25 @@ func (r *Report) WriteHuman(w io.Writer) {
 			}
 			fmt.Fprintf(w, "    - %s --[%s]--> %s%s\n",
 				rr.Expected.FromName, rr.Expected.Kind, to, diag)
+		}
+	}
+
+	if len(r.ForbiddenEntityHits) > 0 {
+		fmt.Fprintln(w, "  FORBIDDEN entities present (extractor false-positives):")
+		for _, fh := range r.ForbiddenEntityHits {
+			// The OFFENDING entity, not the row: a row narrowing on fewer axes
+			// than the entity carries would otherwise leave the reader
+			// guessing which of several candidates fired.
+			sub := ""
+			if fh.MatchedSubtype != "" {
+				sub = " subtype=" + fh.MatchedSubtype
+			}
+			loc := ""
+			if fh.MatchedSourceFile != "" {
+				loc = " in " + fh.MatchedSourceFile
+			}
+			fmt.Fprintf(w, "    - %s [%s]%s%s (id=%s)\n",
+				fh.MatchedName, fh.MatchedKind, loc, sub, fh.MatchedID)
 		}
 	}
 

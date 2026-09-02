@@ -4,9 +4,9 @@
 # writing one JSON report per fixture into reports/quality/.
 #
 # Exit status:
-#   0 — every fixture met its must-have recall + 0 forbidden hits
+#   0 — every fixture met its must-have recall + 0 forbidden hits (edge+entity)
 #   1 — runner setup / build error
-#   2 — at least one fixture regressed (must-have miss or forbidden hit)
+#   2 — at least one fixture regressed (must-have miss or forbidden edge/entity hit)
 #   3 — at least one fixture directory produced NO measurement at all, so the
 #       run is incomplete and no verdict is available for it (Refs #6273)
 #
@@ -47,7 +47,8 @@
 #
 # Flag:
 #   --runs N   Run each fixture N times and take the median entity_recall,
-#              relationship_recall, and forbidden_hits before deciding pass/fail.
+#              relationship_recall, forbidden_hits and forbidden_entity_hits
+#              before deciding pass/fail.
 #              N=1 restores single-shot behaviour.  Default: 5.
 #              Short-circuit: once 3+ runs finish, if entity_recall and
 #              relationship_recall are all within 0.5pp across those runs the
@@ -419,6 +420,7 @@ base = reports[-1]
 median_entity_recall       = med("entity_recall")
 median_relationship_recall = med("relationship_recall")
 median_forbidden_hits      = med_int("forbidden_hits")
+median_forbidden_ent_hits  = med_int("forbidden_entity_hits")
 runs_executed              = len(reports)
 
 merged = dict(base)
@@ -431,6 +433,7 @@ merged["relationship_recall_min"]        = min(float(r.get("relationship_recall"
 merged["relationship_recall_max"]        = max(float(r.get("relationship_recall", 0)) for r in reports)
 merged["relationship_found"]             = med_int("relationship_found")
 merged["forbidden_hits"]                 = median_forbidden_hits
+merged["forbidden_entity_hits"]          = median_forbidden_ent_hits
 merged["runs_executed"]                  = runs_executed
 # Freshness stamp — ratchet.py rejects reports not carrying the current run's
 # stamp, so a stale file left in $OUT can never be graded as a live result.
@@ -440,7 +443,8 @@ with open(out_path, "w") as fh:
     json.dump(merged, fh, indent=2)
     fh.write("\n")
 
-# Gate on median — any must-have miss OR any forbidden hit fails the fixture.
+# Gate on median — any must-have miss OR any forbidden hit (edge or entity)
+# fails the fixture.
 entity_expected = int(base.get("entity_expected", 0))
 rel_expected    = int(base.get("relationship_expected", 0))
 regressed = False
@@ -449,6 +453,11 @@ if entity_expected > 0 and med_int("entity_found") < entity_expected:
 if rel_expected > 0 and med_int("relationship_found") < rel_expected:
     regressed = True
 if median_forbidden_hits > 0:
+    regressed = True
+# #6488 arm B: a forbidden ENTITY hit is fatal on the same terms as a forbidden
+# edge. It is checked separately because it is a separate key — folding it into
+# forbidden_hits would move the meaning of a number every baseline records.
+if median_forbidden_ent_hits > 0:
     regressed = True
 if regressed:
     sys.exit(2)

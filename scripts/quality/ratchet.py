@@ -491,6 +491,14 @@ def check(golden_dir, reports_dir, baseline_path):
         forbidden = int(rep.get("forbidden_hits", 0))
         if forbidden > 0:
             failures.append(f"{name}: {forbidden} forbidden relationship hit(s) — always fatal")
+        # #6488 arm B. Forbidden ENTITY hits are fatal on the same terms, and
+        # are read from their own key: `forbidden_hits` counts edges only, and
+        # a report written before this field existed simply reports 0 here.
+        forbidden_entities = int(rep.get("forbidden_entity_hits", 0))
+        if forbidden_entities > 0:
+            failures.append(
+                f"{name}: {forbidden_entities} forbidden entity hit(s) — always fatal"
+            )
 
         for metric in ("entity_found", "relationship_found"):
             want, got = int(base.get(metric, 0)), obs[metric]

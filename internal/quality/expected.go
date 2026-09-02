@@ -39,6 +39,28 @@ type Fixture struct {
 	ExpectedEntities       []ExpectedEntity       `json:"expected_entities"`
 	ExpectedRelationships  []ExpectedRelationship `json:"expected_relationships"`
 	ForbiddenRelationships []ExpectedRelationship `json:"forbidden_relationships,omitempty"`
+	// ForbiddenEntities is the entity analogue of ForbiddenRelationships
+	// (#6488 arm B): each row names an entity that must NOT be in the graph,
+	// and a match is a hard quality regression exactly as a forbidden edge is.
+	//
+	// It exists because recall is structurally incapable of seeing entity
+	// OVER-emission. Recall counts what was found against what was asked for,
+	// so a graph that grows a near-duplicate of every entity it already has
+	// scores the same 100% as one that does not — the same one-directional
+	// blindness forbidden_relationships was added to close on the edge side.
+	//
+	// Rows reuse ExpectedEntity so a fixture author learns one shape and one
+	// matcher: name/kind, optionally narrowed by source_file, qualified_name
+	// or subtype, resolved by the same resolveEntity the recall path uses.
+	// `must_exist` and `nice_to_have` are recall-only concepts and are
+	// rejected at load rather than silently ignored.
+	//
+	// Subtype semantics, stated because both readings are defensible: a row
+	// that STATES a subtype forbids that subtype and no other, and a row that
+	// omits it forbids the named entity whatever subtype it wears. That is the
+	// same "empty means don't care" rule an expected row has carried since
+	// #6488 arm A, read in the forbidding direction.
+	ForbiddenEntities []ExpectedEntity `json:"forbidden_entities,omitempty"`
 	// AssertsNoRelationships is the explicit, named opt-in that exempts a
 	// fixture from the must-have relationship floor (#6490 arm A). It is a
 	// positive claim on purpose: only `true` exempts, so neither the absent
@@ -168,11 +190,48 @@ func LoadFixture(dir string) (*Fixture, error) {
 	// Scoped to qualified_name deliberately: `match_by: source_file` (and the
 	// empty default) both go THROUGH the file-narrowed lookup, so source_file
 	// there is honoured, not ignored, and there is nothing to reject.
-	for i, ee := range f.ExpectedEntities {
-		if ee.MatchBy == "qualified_name" && ee.SourceFile != "" {
-			return nil, fmt.Errorf("%s: expected_entities[%d] (%q): match_by "+
-				"\"qualified_name\" ignores source_file %q — drop one of the two so the "+
-				"row states a single intent", p, i, ee.Name, ee.SourceFile)
+	//
+	// forbidden_entities rows go through the SAME resolveEntity, so they carry
+	// the same ambiguity and are checked in the same loop rather than left to
+	// be discovered later — a forbidden row that silently ignores its
+	// source_file is worse than an expected one, because it fires on an entity
+	// in a file the author did not name.
+	rejectAmbiguousMatchBy := func(key string, rows []ExpectedEntity) error {
+		for i, ee := range rows {
+			if ee.MatchBy == "qualified_name" && ee.SourceFile != "" {
+				return fmt.Errorf("%s: %s[%d] (%q): match_by "+
+					"\"qualified_name\" ignores source_file %q — drop one of the two so the "+
+					"row states a single intent", p, key, i, ee.Name, ee.SourceFile)
+			}
+		}
+		return nil
+	}
+	if err := rejectAmbiguousMatchBy("expected_entities", f.ExpectedEntities); err != nil {
+		return nil, err
+	}
+	if err := rejectAmbiguousMatchBy("forbidden_entities", f.ForbiddenEntities); err != nil {
+		return nil, err
+	}
+	// #6488 arm B. Two ways a forbidden entity row can be decorative, both
+	// rejected at load because neither is visible in a green report:
+	//
+	//   - must_exist / nice_to_have are recall-only fields inherited from the
+	//     shared ExpectedEntity shape. A forbidden row setting either states a
+	//     contradiction ("this must exist and must not exist"), and the
+	//     forbidden path ignores them, so the row does not mean what it says.
+	//   - a row with neither name nor qualified_name resolves nothing on every
+	//     path, so it can never fire. It is the entity-side vacuity trap this
+	//     arm exists to avoid reproducing.
+	for i, fe := range f.ForbiddenEntities {
+		if fe.MustExist || fe.NiceToHave {
+			return nil, fmt.Errorf("%s: forbidden_entities[%d] (%q): must_exist / "+
+				"nice_to_have are recall fields and are ignored on a forbidden row — a "+
+				"row cannot both be required and be forbidden; drop the key", p, i, fe.Name)
+		}
+		if fe.Name == "" && fe.QualifiedName == "" {
+			return nil, fmt.Errorf("%s: forbidden_entities[%d]: a forbidden entity row "+
+				"needs a name (or a qualified_name with match_by \"qualified_name\") — a "+
+				"nameless row resolves nothing and can never fire", p, i)
 		}
 	}
 	// #6490 arm A, second half. Declaring the key is not yet an assertion: a
