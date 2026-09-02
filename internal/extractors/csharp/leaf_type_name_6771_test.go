@@ -107,9 +107,21 @@ func TestLeafTypeName_QualifiedTypeResolvesToItsRightmostSegment(t *testing.T) {
 		{"StringBuilder", "StringBuilder"},
 		{"int", "int"},
 		{"List<string>", "List"},
+		// #6771 REVIEW. These reached the OLD blocklist last resort, whose
+		// set `" <>[]?,"` contains neither ":" nor "*", so main returned
+		// them VERBATIM as type names. The first cut of this fix dropped
+		// them to "" and the callers fell back to a bare method name — a
+		// precision regression, since a bare name joins the resolver's
+		// bare-name class. Both shapes now resolve to the leaf.
+		{"global::Foo", "Foo"},         // alias_qualified_name
+		{"global::G<int>", "G"},        // alias over a generic name
+		{"global::A.B.Deep", "Deep"},   // alias inside a QUALIFIER
+		{"Ns.Widget*", "Widget"},       // pointer_type over a qualified name
+		{"int**", "int"},               // pointer_type nests
+		{"global::Ns.Thing*", "Thing"}, // pointer over an alias-rooted qualifier
 	}
 	for _, tc := range cases {
-		src := "class C { private " + tc.decl + " f; }"
+		src := "unsafe class C { private " + tc.decl + " f; }"
 		typ, b := fieldTypeNode(t, src)
 		if got := leafTypeName(typ, b); got != tc.want {
 			t.Errorf("leafTypeName(%q) = %q, want %q", tc.decl, got, tc.want)
@@ -146,7 +158,15 @@ func TestLeafTypeName_ColonTokenIsNotAType(t *testing.T) {
 // INDEPENDENT oracle regexp for a C# identifier, rather than hand-picking
 // attack tokens. Every string the guard admits must be identifier-shaped, and
 // every identifier-shaped string must be admitted — both directions, so a
-// guard made either too permissive or too strict fails here.
+// guard made either too permissive or too strict at those lengths fails here.
+//
+// KNOWN BOUND, stated because it was over-claimed once: the enumeration stops
+// at TWO characters. A loosening that only bites at index >= 2 — accepting
+// `.` or `*` there, say — is invisible to it. Those are caught by the longhand
+// negatives in TestCsIdentifierText_RejectsNonIdentifierShapes, which include
+// "System.Text.StringBuilder" and "Ns.Widget*". Widening the enumeration to
+// three characters is ~857k cases and was not judged worth the runtime; the
+// longhand list is the compensating control.
 func TestCsIdentifierText_PrintableASCIISpaceIsEnumerated(t *testing.T) {
 	// Independent spec: optional `@` verbatim prefix, then a letter or
 	// underscore, then letters/digits/underscores.
@@ -180,6 +200,9 @@ func TestCsIdentifierText_RejectsNonIdentifierShapes(t *testing.T) {
 		":", "::", "=>", "(", ")", "{", "}", ";", ",", // punctuation
 		"List<T>", "int[]", "int?", // type syntax, not a bare identifier
 		"a$b", "a#b", "a!b", "a'b", "a\"b",
+		// Index >= 2 loosenings, which the 2-character enumeration cannot
+		// see. These are the compensating control for its bound.
+		"Ns.Widget*", "ab.c", "ab*", "global::Foo", "ab:c", "abc def",
 	} {
 		if isCsIdentifierText(bad) {
 			t.Errorf("isCsIdentifierText(%q) = true; %q is not a C# identifier", bad, bad)

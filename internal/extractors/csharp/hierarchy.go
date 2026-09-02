@@ -113,11 +113,18 @@ func csBaseTypeNames(node ts.Node, src []byte) []string {
 			// grammar's own `name` field — so the workaround is gone and
 			// this call site shares the one implementation again.
 			//
-			// alias_qualified_name (`global::Foo`) has no qualified_name
-			// branch and falls to leafTypeName's identifier-shape last
-			// resort, which rejects `global::Foo` and yields "" — exactly
-			// what csQualifiedLeaf returned for it, so no base list changes
-			// meaning.
+			// alias_qualified_name changes behaviour HERE, and it changes
+			// it in the opposite direction from the other 14 callers:
+			// csQualifiedLeaf's blocklist contained ":", so `class C :
+			// global::Foo` yielded "" and NO edge at all on main, while the
+			// other callers got `global::Foo` verbatim. leafTypeName now
+			// resolves it to `Foo`, so this site gains a supertype it should
+			// always have had and they gain a resolvable receiver type.
+			// Scope any claim about this call site to this call site — the
+			// previous cut generalised from it and regressed the other 14.
+			// Both directions are described at leafTypeName's
+			// alias_qualified_name branch and pinned by
+			// qualified_type_6771_test.go.
 			fallthrough
 		case "identifier", "generic_name", "nullable_type":
 			name = leafTypeName(ch, src)

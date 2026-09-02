@@ -1133,14 +1133,27 @@ func leafTypeName(typ ts.Node, src []byte) string {
 		if first := typ.NamedChild(0); first != nil {
 			return leafTypeName(first, src)
 		}
-	case "array_type":
+	case "array_type", "pointer_type":
+		// `T[]` and `T*` both wrap the element type in a `type` field, and
+		// pointer_type NESTS (`int**` is pointer_type(pointer_type(int))),
+		// which the recursion unwinds.
+		//
+		// pointer_type was added by #6771 review. It is a BEHAVIOUR CHANGE
+		// from main, not a no-op: `Ns.Widget* p` used to reach the old
+		// blocklist last resort, whose character set `" <>[]?,"` contains
+		// neither `*` nor `:`, so `Ns.Widget*` was returned VERBATIM as a
+		// type name and produced the unresolvable CALLS target
+		// `Ns.Widget*.Delta`. Dropping it to a bare `Delta` would be worse
+		// than either — a bare name falls into the resolver's bare-name
+		// class and can be rewritten to any unrelated `Delta` — so the leaf
+		// is resolved properly instead.
 		if elem := typ.ChildByFieldName("type"); elem != nil {
 			return leafTypeName(elem, src)
 		}
 		if first := typ.NamedChild(0); first != nil {
 			return leafTypeName(first, src)
 		}
-	case "qualified_name":
+	case "qualified_name", "alias_qualified_name":
 		// `System.Text.StringBuilder` — the leaf is the rightmost SEGMENT,
 		// which the grammar hands over directly as the `name` field of
 		// qualified_name{qualifier, ".", name}. Taking it from the node
@@ -1154,21 +1167,44 @@ func leafTypeName(typ ts.Node, src []byte) string {
 		//
 		// `name` is a _simple_name, so it can be a generic_name
 		// (`A.B.Handler<int>`); recursing strips the type-argument list.
-		// A `name`-less fallback was tried and DELETED: the field is
-		// mandatory in the grammar, no parse could be found that omits it,
-		// and the branch survived every mutant as unreachable code. When the
-		// field is absent the switch falls through to the identifier-shape
-		// last resort below, which rejects the dotted raw text.
+		//
+		// alias_qualified_name shares this branch: `global::Foo` is
+		// alias{global} "::" name{Foo}, the same `name` field. Only the
+		// SINGLE-segment form is an alias_qualified_name — `global::A.B.Foo`
+		// parses as a qualified_name whose qualifier happens to contain one,
+		// so it was already handled.
+		//
+		// alias_qualified_name was added by #6771 review, and it is a
+		// BEHAVIOUR CHANGE from main, not a no-op. csQualifiedLeaf's
+		// blocklist contained ":" so csBaseTypeNames dropped `global::Foo`,
+		// but csBaseTypeNames was its ONLY caller; the other 14 sites reached
+		// leafTypeName's old blocklist, whose set `" <>[]?,"` has no ":", so
+		// they returned `global::Foo` VERBATIM (`global::Foo.Alpha`). Leaving
+		// it to the new identifier guard would drop it to a bare `Alpha`,
+		// which is worse than either: a bare name joins the resolver's
+		// bare-name class and can be rewritten to any unrelated `Alpha`.
+		//
+		// A `name`-less fallback was written and DELETED: the field is
+		// mandatory in both grammars and no parse omitting it could be
+		// constructed (`using A.;` yields a zero-width MISSING identifier and
+		// exits via the `identifier` case, never reaching here), so the
+		// branch was unreachable and survived every mutant.
 		if leaf := typ.ChildByFieldName("name"); leaf != nil {
 			return leafTypeName(leaf, src)
 		}
 	}
 	// Last resort — use the raw text, but only when it is actually shaped
-	// like a C# identifier. This is an ALLOW-list on purpose. The previous
-	// guard rejected a blocklist of characters (`" <>[]?,"`), which admitted
-	// every punctuation token nobody thought to enumerate: `:` — the
-	// anonymous separator of a base list — contains none of them and was
-	// returned as a type name. An allow-list has no such residue.
+	// like a C# identifier. This is an ALLOW-list on purpose: the previous
+	// guard rejected a BLOCKLIST of characters (`" <>[]?,"`), which admitted
+	// every punctuation token nobody thought to enumerate — `:` contains none
+	// of them and was returned as a type name.
+	//
+	// This is HARDENING, not the fix for an observed bug. No path from the 15
+	// call sites is known to hand a bare punctuation node to this branch:
+	// csBaseTypeNames walks NamedChild with `default: continue`, so the
+	// anonymous ":" never reaches it, and every other site passes a
+	// declaration's `type` field. What the allow-list buys is that the guard
+	// no longer depends on that being true of every future caller.
 	raw := strings.TrimSpace(string(src[typ.StartByte():typ.EndByte()]))
 	if !isCsIdentifierText(raw) {
 		return ""
@@ -1182,10 +1218,13 @@ func leafTypeName(typ ts.Node, src []byte) string {
 //
 // Everything else is rejected, including the shapes a blocklist guard used to
 // let through: punctuation (`:`, `::`, `=>`), operators, dotted qualified
-// names, leading digits, and anything containing whitespace. The whole
-// printable-ASCII single- and two-character token space is enumerated against
-// an independent oracle in leaf_type_name_6771_test.go, in BOTH directions, so
-// a guard loosened OR tightened from this spec fails there.
+// names, leading digits, and anything containing whitespace.
+//
+// leaf_type_name_6771_test.go enumerates the printable-ASCII token space
+// against an independent oracle in BOTH directions, but that enumeration is
+// BOUNDED AT TWO CHARACTERS: a loosening that only bites at index >= 2 (say,
+// accepting `.` or `*` there) is invisible to it and is caught instead by the
+// longhand negatives beside it, which include `"System.Text.StringBuilder"`.
 func isCsIdentifierText(s string) bool {
 	if s == "" {
 		return false

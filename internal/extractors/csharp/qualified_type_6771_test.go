@@ -137,3 +137,98 @@ namespace App
 		}
 	}
 }
+
+// TestCsharpQualifiedTypes_AliasAndPointerTypes6771 pins the two shapes the
+// #6771 review caught the first cut silently REGRESSING, and it pins them at
+// NON-hierarchy call sites — a field, a parameter and an object-creation
+// receiver — because that is where the regression lived and where nothing
+// looked. csBaseTypeNames was csQualifiedLeaf's only caller; the other 14
+// sites reached leafTypeName's old blocklist, whose set `" <>[]?,"` contains
+// neither ":" nor "*", so both shapes were returned VERBATIM:
+//
+//	main                first cut    now
+//	global::Foo.Alpha   Alpha        Foo.Alpha
+//	global::Baz.Gamma   Gamma        Baz.Gamma   (+ construction edge restored)
+//	Ns.Widget*.Delta    Delta        Widget.Delta
+//
+// A bare `Alpha` is not merely "less information": it joins the resolver's
+// bare-name CALLS class, where it can be rewritten to any unrelated `Alpha` in
+// the graph. So the first cut was a PRECISION regression as well as a recall
+// loss, and neither direction was observed by any test.
+func TestCsharpQualifiedTypes_AliasAndPointerTypes6771(t *testing.T) {
+	src := `
+namespace App
+{
+    public unsafe class Svc
+    {
+        private global::Foo _f;
+        private Ns.Widget* _p;
+        private global::A.B.Deep _q;
+        private global::G<int> _g;
+        private int** _pp;
+
+        public void Run(global::Bar param)
+        {
+            _f.Alpha();
+            _p->Delta();
+            _q.Eps();
+            _g.Zeta();
+            param.Beta();
+            var made = new global::Baz();
+            made.Gamma();
+        }
+    }
+}
+`
+	got := csCallTargets(csExtract(t, src, "Svc.cs"), "Svc.Run")
+	for _, want := range []string{
+		"Foo.Alpha",    // alias-qualified FIELD type
+		"Bar.Beta",     // alias-qualified PARAMETER type
+		"Baz.Gamma",    // alias-qualified OBJECT-CREATION target via a local
+		"Baz",          // the construction edge itself, which the first cut lost
+		"Widget.Delta", // pointer field over a qualified type
+		"Deep.Eps",     // alias inside a qualifier — unaffected, pinned as a control
+		"G.Zeta",       // alias over a generic name: type-argument list stripped
+	} {
+		found := false
+		for _, g := range got {
+			if g == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing CALLS target %q; got %v", want, got)
+		}
+	}
+	// Over-fire direction. Two distinct failures are excluded here: falling
+	// back to a BARE name (the first cut), and leaking the raw alias/pointer
+	// punctuation into the target (main). Neither is observable from the
+	// positive assertions above.
+	for _, g := range got {
+		for _, bad := range []string{"Alpha", "Beta", "Gamma", "Delta", "Eps", "Zeta"} {
+			if g == bad {
+				t.Errorf("CALLS target %q lost its receiver type and fell into the bare-name class", g)
+			}
+		}
+		if strings.ContainsAny(g, ":*") {
+			t.Errorf("CALLS target %q leaks alias/pointer punctuation", g)
+		}
+		if g == "global" || strings.HasPrefix(g, "global.") {
+			t.Errorf("CALLS target %q resolved to the `global` alias, not the type", g)
+		}
+	}
+}
+
+// TestCsharpQualifiedTypes_AliasBaseNowEmitsAnEdge6771 backs the claim in
+// hierarchy.go that this ONE call site gains a supertype it never had:
+// csQualifiedLeaf's blocklist contained ":", so `class C : global::Foo`
+// produced no edge at all on main.
+func TestCsharpQualifiedTypes_AliasBaseNowEmitsAnEdge6771(t *testing.T) {
+	src := `public class C : global::Ns.BaseThing, global::IThing { }`
+	got := csHierarchyEdges(csExtract(t, src, "C.cs"), "C")
+	for _, want := range []string{"EXTENDS->BaseThing", "IMPLEMENTS->IThing"} {
+		if !hasEdgeStr(got, want) {
+			t.Errorf("missing %s; got %v", want, got)
+		}
+	}
+}
