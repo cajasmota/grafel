@@ -150,6 +150,20 @@ var (
 	callBareRE = regexp.MustCompile(
 		`\b([a-z_][A-Za-z0-9_]+)\s*\(`,
 	)
+	// callTypeRE matches a CAPITALISED name applied to a parenthesised group.
+	// It is deliberately NOT folded into callBareRE by widening that pattern's
+	// character class: the same shape covers an explicit type conversion
+	// (`IERC20(token)`), a struct literal (`Point(1, 2)`), an event emission
+	// (`emit Transfer(x)`) and a custom-error revert
+	// (`revert InsufficientBalance(x)`), and only the first is a call. The
+	// receiver test in collectCallsFromBody is what separates them (#6425).
+	callTypeRE = regexp.MustCompile(
+		`\b([A-Z][A-Za-z0-9_]*)\s*\(`,
+	)
+	// solAssemblyRE finds the `assembly` keyword that opens an inline-assembly
+	// block. `assembly` is reserved in Solidity, so a word-boundary match on a
+	// comment-and-string-scrubbed body cannot hit a user identifier.
+	solAssemblyRE = regexp.MustCompile(`\bassembly\b`)
 )
 
 // solidityKeywords is the set of tokens to exclude from CALLS edges.
@@ -1014,7 +1028,19 @@ func collectCallsFromBody(body, callerName string) []types.RelationshipRecord {
 	if body == "" || callerName == "" {
 		return nil
 	}
-	scrubbed := stripCommentsAndStrings(body)
+	// Inline assembly is Yul, a different language nested inside Solidity, and
+	// Yul cannot call a Solidity function — it reaches variables and
+	// `.selector`/`.address`, never a function body. So no true Solidity CALLS
+	// edge lives inside an `assembly { … }` block, and every regex hit in one
+	// is noise: EVM opcodes (`mstore`, `sload`, `add`, …) and Yul-local
+	// functions, none of which names a Solidity entity (#6425).
+	//
+	// Excluding the block rather than denylisting opcodes is deliberate. Yul's
+	// builtin set is versioned and grows with every EVM fork (`tload`/`tstore`
+	// /`mcopy` arrived with Cancun), so a hand-written list would go stale;
+	// exclusion needs no list. It is also strictly wider: a Yul-LOCAL function
+	// is a user-written name, so no opcode list could ever have caught it.
+	scrubbed := blankAssemblyBlocks(stripCommentsAndStrings(body))
 	seen := make(map[string]bool)
 	var out []types.RelationshipRecord
 
@@ -1084,7 +1110,140 @@ func collectCallsFromBody(body, callerName string) []types.RelationshipRecord {
 		}
 		addCall(scrubbed[m[2]:m[3]])
 	}
+	// The under-fire arm (#6425). callBareRE requires a lowercase initial, so
+	// `IERC20(token).transfer(…)` names no interface. Widening its class to
+	// `[A-Za-z_]` was measured and rejected — it also mints struct literals,
+	// `emit`s and `revert`s as calls. The discriminator here is RECEIVER
+	// context: a capitalised name is a call target only when the group it
+	// applies to is followed by `.`, which is exactly the explicit-conversion-
+	// then-call shape. A struct literal, an `emit` and a `revert` are each a
+	// complete statement, so no `.` follows any of them.
+	//
+	// This answers the design question the issue left open — an explicit type
+	// conversion in receiver position IS a call — for the capitalised case
+	// only. Every builtin Solidity type name is lowercase (`uint256`,
+	// `bytes32`, `address`), so a capitalised receiver-form conversion always
+	// names a user-defined contract, interface or library, and the edge is a
+	// real cross-contract dependency. `uint256(v)` is untouched and its status
+	// stays undecided.
+	for _, m := range callTypeRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) < 4 || m[2] < 0 {
+			continue
+		}
+		// The leaf of a dotted expression (`lib.Wrap(x).f()`) is callDotRE's
+		// job; it applies the root keyword checks this loop does not.
+		if solQualifierBefore(scrubbed, m[2]) != "" {
+			continue
+		}
+		closeParen := solMatchParen(scrubbed, m[1]-1)
+		if closeParen < 0 {
+			continue
+		}
+		i := closeParen + 1
+		for i < len(scrubbed) && isSolSpace(scrubbed[i]) {
+			i++
+		}
+		if i >= len(scrubbed) || scrubbed[i] != '.' {
+			continue
+		}
+		addCall(scrubbed[m[2]:m[3]])
+	}
 	return out
+}
+
+// isSolSpace reports whether c is Solidity inter-token whitespace.
+func isSolSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+// solMatchParen returns the index of the ')' matching the '(' at open, or -1
+// when the group is unterminated. s is comment- and string-scrubbed, so a
+// parenthesis inside a literal cannot skew the count.
+func solMatchParen(s string, open int) int {
+	if open < 0 || open >= len(s) || s[open] != '(' {
+		return -1
+	}
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// blankAssemblyBlocks replaces every `assembly … { … }` block — the keyword,
+// any `("memory-safe")` flag list, and the braced body — with spaces, keeping
+// newlines and the byte length of the input intact so that callers' offsets
+// (solQualifierBefore walks backwards through them) stay valid.
+//
+// The keyword itself is blanked, not just its body, because the flagged form
+// `assembly ("memory-safe") { … }` is the one place where `assembly` is
+// followed by `(` and so matches callBareRE on its own.
+//
+// s must already be comment- and string-scrubbed: the brace matching here is a
+// plain depth count, exactly as in braceDepths, and relies on that.
+func blankAssemblyBlocks(s string) string {
+	locs := solAssemblyRE.FindAllStringIndex(s, -1)
+	if len(locs) == 0 {
+		return s
+	}
+	b := []byte(s)
+	for _, loc := range locs {
+		// An inner `assembly` nested in an outer block was blanked when the
+		// outer one was handled; matches arrive outermost-first.
+		if b[loc[0]] != 'a' {
+			continue
+		}
+		i := loc[1]
+		for i < len(b) && isSolSpace(b[i]) {
+			i++
+		}
+		if i < len(b) && b[i] == '(' {
+			closeParen := solMatchParen(string(b), i)
+			if closeParen < 0 {
+				continue
+			}
+			i = closeParen + 1
+			for i < len(b) && isSolSpace(b[i]) {
+				i++
+			}
+		}
+		if i >= len(b) || b[i] != '{' {
+			// `assembly` not opening a block — leave the source alone rather
+			// than guessing at an extent.
+			continue
+		}
+		depth, end := 0, -1
+		for j := i; j < len(b); j++ {
+			if b[j] == '{' {
+				depth++
+			} else if b[j] == '}' {
+				depth--
+				if depth == 0 {
+					end = j
+					break
+				}
+			}
+		}
+		if end < 0 {
+			// Unterminated block: it runs to the end of the body by
+			// construction, so blank the remainder.
+			end = len(b) - 1
+		}
+		for j := loc[0]; j <= end; j++ {
+			if b[j] != '\n' {
+				b[j] = ' '
+			}
+		}
+	}
+	return string(b)
 }
 
 // solQualifierBefore returns the identifier qualifying the token that starts at
