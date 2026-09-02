@@ -84,9 +84,9 @@ entity-lookup form would match nothing and be vacuous. Measured with the
 paren-skip removed from `modifierUsages`, the row fires and the grade goes to
 `forbidden hits: 1`.
 
-The single remaining gap is the `nice_to_have`
-`Vault.sweep --[CALLS]--> IERC20` (`relationships 0/1` in the nice-to-have
-counters), which is #6425's design question and deliberately not a must-have.
+There is no remaining gap. `Vault.sweep --[CALLS]--> IERC20` was the last
+`nice_to_have`; #6425 made the decision it was parked on and promoted it to a
+must-have, so the nice-to-have counters are now empty rather than `0/1`.
 
 ## THIS FIXTURE WAS RED ON PURPOSE
 
@@ -188,8 +188,18 @@ Yul `function` sits two braces deep — inside `assembly {}` inside a function
 body — so the same guard removes it. Measured: the binary built at `9a13a26b4`
 scores that row as `forbidden hits: 1`; the fixed one scores 0, and the graph
 loses exactly one entity (`Vault.helper`) and its four edges. The residual
-`Vault.roundUp --[CALLS]--> helper` now dangles as a bare name, which is the
-honest state — it names nothing in the Solidity surface.
+`Vault.roundUp --[CALLS]--> helper` dangled as a bare name — the honest state at
+the time, since it names nothing in the Solidity surface.
+
+**That residual is now gone too.** #6425 took the same depth argument one layer
+down: `collectCallsFromBody` was still scanning straight through `assembly {}`,
+so besides `helper` it minted the EVM opcodes `add` (here) and `add`/`mstore`
+(in `ShortStrings.toString`) as calls to user code. Assembly blocks are now
+blanked out of the call scan entirely — Yul cannot call a Solidity function, so
+the exclusion loses no true edge, and unlike an opcode denylist it also catches
+the user-written Yul-local `helper`. Three forbidden `to_bare_name` rows pin it
+(`Vault.roundUp -> helper`, `Vault.roundUp -> add`, `ShortStrings.toString ->
+mstore`); measured, the binary at `278301296` scores `forbidden hits: 3`.
 
 The other two rows fired at the time this section was written. The run confirmed
 `Vault.ceiling --[CALLS]--> type` and `Vault.fingerprint --[CALLS]--> encode`,
@@ -235,16 +245,23 @@ earlier, by the #6423 review; it passes.)
 
 The opposite error in the same scan — `callBareRE` requiring a lowercase first
 character, so `IERC20(token).transfer(...)` yields no edge to `IERC20` — is
-present in `Vault.sweep` and asserted as **`nice_to_have`**, not as a must-have.
-Whether an explicit type conversion is a call is a genuine design question, and
-a fixture is not entitled to settle it; #6425 should. `nice_to_have` makes the
-decision visible in the report's own counters (`relationships 0/1`) instead of
-invisible.
+present in `Vault.sweep` and was asserted as **`nice_to_have`** while the design
+question — is an explicit type conversion a call? — was open.
 
-**This half is still open.** The over-fire arm of #6425 landed without touching
-it, on purpose: implementing either side of the type-conversion question would
-answer it by fiat. The counter to watch is unchanged — `relationships 0/1` in
-the nice-to-have line.
+**This half is now closed, and the row is a must-have.** #6425 answered: yes,
+but only in RECEIVER position, `Name(expr).member(...)` where the parenthesised
+group is followed by `.`. The discriminator matters, because simply widening
+`callBareRE`'s character class to `[A-Za-z_]` recovers `IERC20` and also mints
+struct construction (`Point(1, 2)`), `emit Transfer(...)` and
+`revert InsufficientBalance(...)` as calls — measured on this issue. A struct
+literal, an `emit` and a `revert` are each a complete statement, so no `.`
+follows them and the receiver test excludes all three structurally.
+
+The answer is scoped to CAPITALISED names on purpose: every builtin Solidity
+type is lowercase, so a capitalised receiver-form conversion always names a
+user-defined contract, interface or library, and the edge is a real
+cross-contract dependency. `uint256(v)` is untouched and its status stays
+undecided — nothing here settles the lowercase case.
 
 ## A note on `to_bare_name` — **read this before writing the next fixture**
 

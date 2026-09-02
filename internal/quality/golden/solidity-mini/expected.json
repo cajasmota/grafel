@@ -429,9 +429,8 @@
       "to_name": "IERC20",
       "to_kind": "SCOPE.Component",
       "to_file": "Vault.sol",
-      "must_exist": false,
-      "nice_to_have": true,
-      "note": "NICE-TO-HAVE, not a must-have, and deliberately so. `IERC20(token).transfer(to, total)` names the interface at the call site, and callBareRE (#6425) requires a LOWERCASE first character, so every capitalised bare target is dropped -- the under-fire half of the same call scan that over-fires on `type` and `abi.encode`. It is nice_to_have rather than must_exist because whether an explicit type conversion IS a call is a genuine design question, not a defect this fixture is entitled to settle; #6425 should decide it. What the entry does buy is that the decision becomes visible in the nice-to-have counters instead of invisible."
+      "must_exist": true,
+      "note": "PROMOTED from nice_to_have to must_exist by #6425, which made the decision this row was parked on. `IERC20(token).transfer(to, total)` names the interface at the call site, and callBareRE requires a LOWERCASE first character, so the capitalised target was dropped. The open question was whether an explicit type conversion IS a call; the answer taken is yes, but ONLY in receiver position -- `Name(expr).member(...)`, where the parenthesised group is followed by `.`. That discriminator is what makes the promotion safe: widening callBareRE's character class instead would have recovered this row while minting struct literals, `emit`s and `revert`s as calls (see the forbidden rows for Vault.roundUp and ShortStrings.toString for the sibling arm). Scoped to capitalised names on purpose: every builtin Solidity type is lowercase, so a capitalised receiver-form conversion always names a user-defined contract, interface or library. `uint256(v)` is untouched and stays undecided. Measured: the binary built at 278301296 scores this row 0, the fixed one 1, and the resolver folds the bare `IERC20` onto the interface entity in Vault.sol."
     }
   ],
   "forbidden_relationships": [
@@ -514,6 +513,55 @@
       "to_bare_name": "abi.encode",
       "must_exist": false,
       "note": "#6425, the dotted half of the same expression, and NOT one of the two rows NOTICE.md pre-specified. Added because those two alone leave a hole: a fix that suppressed only the bare `encode` would score them both while `Vault.fingerprint --[CALLS]--> abi.encode` stayed in the graph. `to_bare_name`, not `to_name` + `to_kind`, and measured rather than assumed: NOTICE.md:243-247 counts `abi.encode` among the 26 relationships that still carry a raw string ToID, so it never became an entity and an entity-lookup form would be silently vacuous."
+    },
+    {
+      "from_name": "Vault.roundUp",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_bare_name": "helper",
+      "must_exist": false,
+      "note": "#6425, the Yul arm, at the CALLS layer. `helper` is a Yul function declared inside `assembly {}` in Vault.roundUp. The CONTAINS row above already guards it against being minted as a contract MEMBER (fixed by #6423), but the call scan was still depth-blind and kept the name alive as a dangling call target -- the same phantom, one layer down. Fixed by excluding assembly blocks from the call scan entirely, which is what a Yul-opcode denylist could never have done: `helper` is user-written, so no builtin list contains it. `to_bare_name` rather than `to_name` + `to_kind`, measured: the parent binary emits this edge while entity count stays at 59, so the target never folded into an external node and an entity-lookup form would be silently vacuous."
+    },
+    {
+      "from_name": "Vault.roundUp",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "to_bare_name": "add",
+      "must_exist": false,
+      "note": "#6425, the Yul arm: `add(x, 1)` is an EVM opcode, not a Solidity function. Paired with the `helper` row above on purpose -- they are the two halves the exclusion has to catch at once (a builtin name and a user-written Yul-local name), and a fix that only denylisted opcodes would score this row while leaving `helper` in the graph. `to_bare_name` for the same measured reason."
+    },
+    {
+      "from_name": "ShortStrings.toString",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "ShortStrings.sol",
+      "kind": "CALLS",
+      "to_bare_name": "mstore",
+      "must_exist": false,
+      "note": "#6425, the Yul arm, in a SECOND file and a second contract, so the exclusion is not pinned only where the fixture happens to declare a Yul function. `mstore` is an EVM opcode. This block is also the `/// @solidity memory-safe-assembly` form, which the fix must not treat differently from a bare `assembly {`. `to_bare_name` for the same measured reason as the rows above."
+    },
+    {
+      "from_name": "Vault.deposit",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "Vault.sol",
+      "kind": "CALLS",
+      "must_exist": false,
+      "note": "#6425, the guard on the under-fire FIX rather than on the defect. Recovering `Vault.sweep --[CALLS]--> IERC20` requires reading CAPITALISED names, and the cheap way to do that -- widening callBareRE's character class -- mints `emit Deposited(...)` as a call. The fix instead requires RECEIVER position (the parenthesised group followed by `.`), which an `emit` statement never has. Added because the whole graded suite was blind to this: measured, dropping the receiver test greens every must-have and every forbidden row this fixture had before these two entries, while quietly adding 10 phantom CALLS edges and one SCOPE.External node. `to_name` + `to_kind`, not `to_bare_name`, and measured rather than assumed: the bare target `Deposited` RESOLVES onto the contract-qualified event entity `Vault.Deposited`, so a `to_bare_name` form matches nothing and is silently vacuous -- it was tried first and scored 0 hits under the live mutant. Pairs with the ShortStrings row below: `emit` and `revert` are different keywords in different files, so neither alone pins the class.",
+      "to_name": "Vault.Deposited",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "Vault.sol"
+    },
+    {
+      "from_name": "ShortStrings.toShortString",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "ShortStrings.sol",
+      "kind": "CALLS",
+      "must_exist": false,
+      "note": "#6425, the second half of the guard above: `revert StringTooLong(str)` is a custom-error revert, not an invocation of a function called `StringTooLong`. Different keyword, different file and different contract from the `emit` row, so a fix that special-cased one keyword cannot score both. `to_name` + `to_kind` for the same measured reason -- the bare `StringTooLong` resolves onto the contract-qualified error entity. The `new` and struct-literal shapes of the same class are pinned in the unit test (TestSolidity_6425_CapitalisedNonReceiversAreNotCalls); this fixture's source contains neither, and editing graded source to manufacture them is not worth it.",
+      "to_name": "ShortStrings.StringTooLong",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "ShortStrings.sol"
     }
   ]
 }
