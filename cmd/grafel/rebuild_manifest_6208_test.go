@@ -36,6 +36,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -366,8 +367,8 @@ func TestRebuild_GraphWriteFailureLeavesManifestUntouched(t *testing.T) {
 	}
 
 	prevWriter := writeGraphGen
-	writeGraphGen = func(dir string, doc *graph.Document) (string, error) {
-		return "", errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
+	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.UndeclaredKindReport, error) {
+		return "", fbwriter.UndeclaredKindReport{}, errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
 	}
 	t.Cleanup(func() { writeGraphGen = prevWriter })
 

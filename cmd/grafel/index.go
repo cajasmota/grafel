@@ -981,6 +981,12 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		}
 	}
 
+	// #6757 arm C — the undeclared-relationship-kind report from the graph
+	// write, carried down to the sidecar build below. Zero-valued when the
+	// build-document pass is skipped, which is correct: no relationship was
+	// written, so the write path observed nothing.
+	var undeclaredKinds fbwriter.UndeclaredKindReport
+
 	if !skipSet[PassBuildDocument] {
 		// Issue #481 — belt-and-braces final sort. Even with every fan-in
 		// already sorted, external.Synthesize appends placeholders and Pass 4
@@ -993,7 +999,17 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// #5891 gen layout: write a NEW graph.<gen>.fb + flip the `current`
 		// pointer instead of overwriting a fixed graph.fb. fbPath is the gen
 		// file actually written (used below for the identical-mtime stamp).
-		fbPath, fbErr := writeGraphGen(filepath.Dir(outPath), doc)
+		fbPath, undeclaredRep, fbErr := writeGraphGen(filepath.Dir(outPath), doc)
+		// #6757 arm C — the write path is the only place a runtime-valued
+		// relationship kind is visible, so it is the only place the true
+		// undeclared population can be counted. Nothing was dropped and the
+		// index does not fail; this reports what was written. The durable
+		// half goes into graph-stats.json below (buildStatsSidecar), because
+		// this stderr line is invisible to MCP, the dashboard and `doctor`.
+		undeclaredKinds = undeclaredRep
+		if sum := undeclaredRep.Summary(); sum != "" {
+			fmt.Fprintf(os.Stderr, "grafel: undeclared relationship kinds written: %s\n", sum)
+		}
 		if fbErr != nil {
 			fmt.Fprintf(os.Stderr, "grafel: graph.fb write failed: %v\n", fbErr)
 			// Non-fatal — we still try to write graph.json so the system
@@ -1098,7 +1114,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// never zero out real algorithm data that a previous full build
 		// computed.
 		prior, _ := graph.LoadSidecar(filepath.Dir(outPath))
-		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt(), renameStats, idx.stats.unsupportedExt.Counts())
+		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt(), renameStats, idx.stats.unsupportedExt.Counts(), undeclaredKinds)
 		if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
 			fmt.Fprintf(os.Stderr, "grafel: sidecar write failed: %v\n", err)
 		}
@@ -1134,7 +1150,7 @@ var capturedStats io.Writer
 // graph write FAIL — the failure this file's manifest ordering exists to
 // survive (#6207). The write is non-fatal by design, so there is no error
 // return to inject through and no other way to reach that branch.
-var writeGraphGen = fbwriter.WriteGraphGen
+var writeGraphGen = fbwriter.WriteGraphGenReport
 
 // osStat and osReadFile are the extraction worker's stat and read behind vars,
 // so a test can make a working-tree write land at a precise point INSIDE the

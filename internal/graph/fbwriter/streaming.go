@@ -98,6 +98,10 @@ type StreamingWriter struct {
 	relOffsets    []flatbuffers.UOffsetT
 	outPath       string // empty when used in-memory (streamingMarshal)
 	closed        bool
+	// tally counts relationships whose kind is not in
+	// types.AllRelationshipKinds() (#6757 arm C). Observation only — nothing
+	// is dropped and no write fails because of it.
+	tally *undeclaredKindTally
 }
 
 // NewStreamingWriter creates a StreamingWriter that will eventually write to
@@ -116,6 +120,7 @@ func NewStreamingWriter(outPath string) (*StreamingWriter, error) {
 	return &StreamingWriter{
 		b:       b,
 		outPath: outPath,
+		tally:   &undeclaredKindTally{},
 	}, nil
 }
 
@@ -138,9 +143,17 @@ func (sw *StreamingWriter) WriteRelationship(r *graph.Relationship) error {
 	if sw.closed {
 		return fmt.Errorf("fbwriter.StreamingWriter: WriteRelationship called after Close")
 	}
-	off := buildRelationship(sw.b, r)
+	off := buildRelationship(sw.b, r, sw.tally)
 	sw.relOffsets = append(sw.relOffsets, off)
 	return nil
+}
+
+// UndeclaredKinds reports the relationship kinds this writer serialized that
+// are absent from types.AllRelationshipKinds() (#6757 arm C). Safe to call
+// before or after Close. Nothing was dropped: every relationship handed to
+// WriteRelationship was written, undeclared kind or not.
+func (sw *StreamingWriter) UndeclaredKinds() UndeclaredKindReport {
+	return sw.tally.report()
 }
 
 // Close finalizes the FlatBuffers buffer by building the three top-level
@@ -304,7 +317,7 @@ func (sw *StreamingWriter) RelationshipCount() int { return len(sw.relOffsets) }
 // production builds.
 var marshalPanicHook func()
 
-func streamingMarshal(doc *graph.Document) (out []byte, err error) {
+func streamingMarshal(doc *graph.Document) (out []byte, tally *undeclaredKindTally, err error) {
 	// Issue #5726 — fail-soft on oversized graphs. The flatbuffers builder
 	// panics with "cannot grow buffer beyond 2 gigabytes" once serialization
 	// crosses the library's hard 2-GiB cap. That panic originates in the
@@ -321,7 +334,7 @@ func streamingMarshal(doc *graph.Document) (out []byte, err error) {
 	}()
 
 	if doc == nil {
-		return nil, fmt.Errorf("nil document")
+		return nil, nil, fmt.Errorf("nil document")
 	}
 
 	// Test seam (#5726): simulate the flatbuffers 2-GiB builder panic that
@@ -334,21 +347,23 @@ func streamingMarshal(doc *graph.Document) (out []byte, err error) {
 	sw := &StreamingWriter{
 		b:       flatbuffers.NewBuilder(1 << 20),
 		outPath: "",
+		tally:   &undeclaredKindTally{},
 	}
+	tally = sw.tally
 
 	for i := range doc.Entities {
 		if err := sw.WriteEntity(&doc.Entities[i]); err != nil {
-			return nil, err
+			return nil, tally, err
 		}
 	}
 	for i := range doc.Relationships {
 		if err := sw.WriteRelationship(&doc.Relationships[i]); err != nil {
-			return nil, err
+			return nil, tally, err
 		}
 	}
 
 	sw.closed = true // prevent double-finalize via Close
-	return sw.finalize(GraphMetadata{
+	out = sw.finalize(GraphMetadata{
 		Repo:           doc.Repo,
 		GeneratedAt:    doc.GeneratedAt,
 		IndexedRef:     doc.IndexedRef,
@@ -357,5 +372,6 @@ func streamingMarshal(doc *graph.Document) (out []byte, err error) {
 		CoverageStatus: doc.CoverageStatus,
 		AlgorithmStats: doc.AlgorithmStats,
 		Communities:    doc.Communities,
-	}), nil
+	})
+	return out, tally, err
 }

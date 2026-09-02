@@ -73,6 +73,17 @@ func WriteAtomic(outPath string, doc *graph.Document) error {
 // to the directory-keyed sidecar writer (graph.WriteSidecar keys on
 // filepath.Dir), so graph-stats.json still lands beside the graph.
 func WriteGraphGen(stateDir string, doc *graph.Document) (genPath string, err error) {
+	genPath, _, err = WriteGraphGenReport(stateDir, doc)
+	return genPath, err
+}
+
+// WriteGraphGenReport is WriteGraphGen plus the undeclared-relationship-kind
+// report the write path observed (#6757 arm C). Callers that surface index
+// results — cmd/grafel's indexer — use this form so the kinds nothing declared
+// are visible to a user or an agent instead of being written and forgotten.
+// Nothing is dropped and no undeclared kind fails the index; the report is a
+// measurement, not a gate.
+func WriteGraphGenReport(stateDir string, doc *graph.Document) (genPath string, rep UndeclaredKindReport, err error) {
 	// #5902 flag-gated producer. When GRAFEL_STREAM_SEGMENTS is ON, route
 	// through the bounded SegmentedWriter (a single flat file when the graph
 	// fits under the threshold, a graph.<gen>/ segment set otherwise). OFF by
@@ -80,7 +91,7 @@ func WriteGraphGen(stateDir string, doc *graph.Document) (genPath string, err er
 	// change. Gating here wires every producer call site (full-index,
 	// incremental, links, enrichment write-back) through one switch.
 	if StreamSegmentsEnabled() {
-		return WriteGraphGenSegmented(stateDir, doc)
+		return writeGraphGenSegmented(stateDir, doc)
 	}
 	return writeGraphGenFlat(stateDir, doc)
 }
@@ -93,13 +104,14 @@ func WriteGraphGen(stateDir string, doc *graph.Document) (genPath string, err er
 // #5974 — the canonical sort runs here as well as in WriteGraphGenSegmented so
 // the two writers cannot emit different orders for the same document. It is
 // idempotent: producers already sort before calling.
-func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, err error) {
+func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, rep UndeclaredKindReport, err error) {
 	graph.SortDocumentForEmission(doc)
-	buf, err := Marshal(doc)
+	buf, rep, err := marshalWithReport(doc)
 	if err != nil {
-		return "", fmt.Errorf("fbwriter: marshal: %w", err)
+		return "", rep, fmt.Errorf("fbwriter: marshal: %w", err)
 	}
-	return graph.WriteGenGraph(stateDir, buf)
+	genPath, err = graph.WriteGenGraph(stateDir, buf)
+	return genPath, rep, err
 }
 
 // Marshal serializes doc into a FlatBuffers byte slice. Exported so the
@@ -112,7 +124,15 @@ func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, er
 // Internally delegates to streamingMarshal (streaming.go) so both paths
 // exercise identical serialization code.
 func Marshal(doc *graph.Document) ([]byte, error) {
-	return streamingMarshal(doc)
+	buf, _, err := streamingMarshal(doc)
+	return buf, err
+}
+
+// marshalWithReport is Marshal plus the undeclared-kind report observed while
+// serializing (#6757 arm C).
+func marshalWithReport(doc *graph.Document) ([]byte, UndeclaredKindReport, error) {
+	buf, tally, err := streamingMarshal(doc)
+	return buf, tally.report(), err
 }
 
 // buildEntity serializes a single entity table and returns its offset.
@@ -233,7 +253,17 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	return fb.EntityEnd(b)
 }
 
-func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship) flatbuffers.UOffsetT {
+// buildRelationship is the sole FlatBuffers serialization leaf for
+// relationships: StreamingWriter.WriteRelationship, WriteGraphGenSegmented and
+// the segment path all funnel through it, and nothing constructs a
+// relationship FlatBuffer outside it.
+//
+// tally (#6757 arm C) observes every kind that reaches disk, including the
+// runtime-valued ones a static scan cannot see. It is nil-safe, and it only
+// OBSERVES: this function is per-edge, hot, and returns no error, so it can
+// count but it cannot reject. Nothing is dropped here.
+func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship, tally *undeclaredKindTally) flatbuffers.UOffsetT {
+	tally.observe(r.Kind)
 	// from_id/to_id are relationship ENDPOINTS — the same entity ID string is
 	// referenced once per incident edge, so on a real corpus (avg node
 	// degree ~8.7x) these are the single highest-leverage interning target:

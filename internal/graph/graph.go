@@ -622,6 +622,35 @@ type GraphStatsSidecar struct {
 	// full extractor coverage carries no key at all and its consumers print
 	// nothing.
 	UnsupportedExtensions map[string]int `json:"unsupported_extensions,omitempty"`
+
+	// UndeclaredRelationshipEdges is how many relationships this index WROTE
+	// whose kind is absent from types.AllRelationshipKinds() (#6757 arm C).
+	//
+	// The relationship vocabulary is enforced by nothing —
+	// types.IsValidRelationshipKind had zero non-test callers — so the enum
+	// described an intention, not a constraint. A static scan of the source
+	// proved 22 such kinds exist (arm B), but 87 relationship-kind fields
+	// repo-wide resolve to a RUNTIME value, so 22 is a floor. Only the write
+	// path can see the true population, and only if it says so: the same
+	// reasoning as RenameDetectTruncated above — the stderr line is invisible
+	// to MCP, the dashboard and `grafel doctor`, which read the graph.
+	//
+	// Nothing is dropped and no index fails because of this. It is a
+	// measurement, taken so a later decision about declaring or rejecting
+	// these kinds rests on evidence.
+	UndeclaredRelationshipEdges int `json:"undeclared_relationship_edges,omitempty"`
+	// UndeclaredRelationshipKindCount is the number of DISTINCT undeclared
+	// kinds. Never capped, so it may exceed len(UndeclaredRelationshipKinds).
+	UndeclaredRelationshipKindCount int `json:"undeclared_relationship_kind_count,omitempty"`
+	// UndeclaredRelationshipKinds maps each distinct undeclared kind to the
+	// number of edges that carried it. A bare count would only say something
+	// is wrong; the names say what. Truncated to the busiest
+	// fbwriter.UndeclaredKindListCap kinds so a pathological graph cannot
+	// bloat this file — the two counts above stay exact.
+	//
+	// omitempty, and never written with zero-valued entries, so a repo whose
+	// every kind is declared carries no key at all.
+	UndeclaredRelationshipKinds map[string]int `json:"undeclared_relationship_kinds,omitempty"`
 }
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.

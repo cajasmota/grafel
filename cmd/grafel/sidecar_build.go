@@ -6,6 +6,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/algorithms"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 )
 
 // buildStatsSidecar constructs the graph-stats.json payload for the index
@@ -35,6 +36,7 @@ func buildStatsSidecar(
 	computedAt time.Time,
 	renameStats algorithms.RenameStats,
 	unsupportedExt map[string]int,
+	undeclared fbwriter.UndeclaredKindReport,
 ) *graph.GraphStatsSidecar {
 	side := &graph.GraphStatsSidecar{
 		Version:            1,
@@ -63,6 +65,21 @@ func buildStatsSidecar(
 	// here was measured to be dead — omitempty already elides an empty map —
 	// and removed.)
 	side.UnsupportedExtensions = unsupportedExt
+
+	// #6757 arm C — always from THIS run, never carried forward: it describes
+	// the relationships this write path actually serialized, including the
+	// runtime-valued kinds no static scan can see. A clean run leaves all three
+	// fields zero and omitempty drops them, so a repo with a fully declared
+	// vocabulary carries no key at all.
+	side.UndeclaredRelationshipEdges = undeclared.Edges
+	side.UndeclaredRelationshipKindCount = undeclared.DistinctKinds
+	if len(undeclared.Kinds) > 0 {
+		kinds := make(map[string]int, len(undeclared.Kinds))
+		for _, k := range undeclared.Kinds {
+			kinds[k.Kind] = k.Edges
+		}
+		side.UndeclaredRelationshipKinds = kinds
+	}
 
 	if doc.AlgorithmStats != nil {
 		side.Communities = doc.AlgorithmStats.NumCommunities

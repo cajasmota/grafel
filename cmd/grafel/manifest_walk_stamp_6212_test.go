@@ -31,6 +31,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 )
 
@@ -66,7 +67,7 @@ func TestFallbackIndex_WriteAfterTheWalkIsNotStampedAsIndexed(t *testing.T) {
 	// saving a file lands exactly here.
 	var midWriteHash string
 	prevWriter := writeGraphGen
-	writeGraphGen = func(dir string, doc *graph.Document) (string, error) {
+	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.UndeclaredKindReport, error) {
 		writeFixtureFile(t, repo, victim, "package svc\n\nfunc Thing() int { return 12345 }\n\nfunc AddedMidIndex() {}\n")
 		midWriteHash = sha256OfFile(t, victimAbs)
 		return prevWriter(dir, doc)
@@ -141,7 +142,7 @@ func TestCommitManifest_PerformsNoHashSweep(t *testing.T) {
 	var atSeam int64
 	var seamFired bool
 	prevWriter := writeGraphGen
-	writeGraphGen = func(dir string, doc *graph.Document) (string, error) {
+	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.UndeclaredKindReport, error) {
 		atSeam = diff.HashCallCount()
 		seamFired = true
 		return prevWriter(dir, doc)
