@@ -62,10 +62,11 @@
 // `edge_kind: "PRODUCES"`, which was not redundant metadata but a false claim:
 // no such edge existed for them, and still does not.
 //
-// The IInvocable consumer half is likewise edgeless: CONSUMES is emitted by
-// nothing in any language — the honest form needs the two-hop work-unit node
-// ADR-0028 §1 describes, which #6741 declined to build. `task_id` remains the
-// join key between the two halves.
+// The IInvocable consumer half is likewise edgeless. CONSUMES is emitted by
+// nothing in the tree — a repo-wide fact recorded
+// in ADR-0028, verified there by grep, and NOT re-verified by the tests here,
+// which pin only that THIS pass emits none. The honest form needs the two-hop
+// work-unit node #6741 declined to build; `task_id` remains the join key.
 //
 // Closes #5075 (Coravel half).
 package csharp
@@ -312,9 +313,15 @@ func (e *coravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"mailable", mailable,
 			"provenance", "INFERRED_FROM_CORAVEL_MAIL",
 		)
-		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
-			"coravel", mailable, "mail:coravel:"+mailable, "INFERRED_FROM_CORAVEL_MAIL",
-		))
+		// The mailer reaches the same `.Send(new T())` bytes the three C# service
+		// buses do, so it defers to whichever of them owns the file (#6767); and
+		// it carries no task_id, because nothing mints a Mailable-side entity for
+		// one to join with.
+		if csSharedDispatchVerbOwner(src) == "" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"coravel", mailable, "", "INFERRED_FROM_CORAVEL_MAIL",
+			))
+		}
 		add(ent)
 	}
 

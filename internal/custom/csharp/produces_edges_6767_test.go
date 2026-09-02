@@ -16,9 +16,11 @@ package csharp_test
 //   - Where a dispatch site names no type (Coravel's anonymous
 //     `Schedule(() => ...)` / `QueueAsyncTask(...)`), NOTHING is emitted. An
 //     honest unresolved producer is not an edge.
-//   - CONSUMES is emitted by nothing in any language — the owner declined to
-//     build the two-hop work-unit form under #6741. So consumer entities carry
-//     no relationship and, critically, no property claiming one.
+//   - CONSUMES is emitted by nothing in the tree — the owner declined to build
+//     the two-hop work-unit form under #6741. That repo-wide fact is recorded
+//     and grep-verified in ADR-0028; what the tests BELOW pin is the narrower
+//     claim that these five passes emit none. So consumer entities carry no
+//     relationship and, critically, no property claiming one.
 
 import (
 	"os"
@@ -26,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	extreg "github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -102,27 +105,277 @@ public class Startup
 	assertNoEdgeKindProperty(t, "coravel", ents)
 }
 
-func TestCoravelScheduleProducesEdgeCarriesTheTaskAddress(t *testing.T) {
+// TestCoravelProducesEdgesCarryTheirAddresses grades EVERY Coravel PRODUCES
+// edge, not the first one it finds. The earlier version of this test returned
+// after the first edge, so `task:coravel:` could be corrupted on the queue and
+// mail edges with the whole package still green — two of the three addresses
+// were ungraded.
+func TestCoravelProducesEdgesCarryTheirAddresses(t *testing.T) {
 	src := `
 using Coravel;
-app.Services.UseScheduler(scheduler => scheduler.Schedule<SendNewsletter>().Hourly());
+
+public class Bootstrap
+{
+    public void Configure(IServiceProvider services, IQueue queue, IMailer mailer)
+    {
+        services.UseScheduler(scheduler => scheduler.Schedule<SendNewsletter>().Hourly());
+        queue.QueueInvocable<CleanupInvocable>();
+        mailer.Send(new WelcomeMailable());
+    }
+}
 `
 	ents := extractFull(t, "custom_csharp_coravel", fi("Program.cs", "csharp", src))
+
+	// want maps each producer entity to the task_id its edge must carry. The
+	// mail edge carries NONE: `task_id` is a join key, and nothing in the tree
+	// mints a Mailable-side entity for one to join with, so inventing a
+	// `mail:coravel:` namespace would be a key with one end.
+	want := map[string]string{
+		"Schedule<SendNewsletter>":         "task:coravel:SendNewsletter",
+		"QueueInvocable<CleanupInvocable>": "task:coravel:CleanupInvocable",
+		"Send<WelcomeMailable>":            "",
+	}
+	seen := map[string]bool{}
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind != string(types.RelationshipKindProduces) {
 				continue
 			}
-			if got := r.Properties.Get("task_id"); got != "task:coravel:SendNewsletter" {
-				t.Errorf("task_id on PRODUCES = %q, want task:coravel:SendNewsletter", got)
+			wantTask, known := want[e.Name]
+			if !known {
+				t.Errorf("unexpected PRODUCES from %q -> %s", e.Name, r.ToID)
+				continue
+			}
+			seen[e.Name] = true
+			if got := r.Properties.Get("task_id"); got != wantTask {
+				t.Errorf("%s: task_id on PRODUCES = %q, want %q", e.Name, got, wantTask)
 			}
 			if got := r.Properties.Get("framework"); got != "coravel" {
-				t.Errorf("framework on PRODUCES = %q, want coravel", got)
+				t.Errorf("%s: framework on PRODUCES = %q, want coravel", e.Name, got)
 			}
-			return
+			if got := r.Properties.Get("provenance"); got == "" {
+				t.Errorf("%s: PRODUCES carries no provenance", e.Name)
+			}
 		}
 	}
-	t.Fatal("no PRODUCES edge emitted for scheduler.Schedule<SendNewsletter>()")
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("no PRODUCES edge emitted for %s", name)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-pass: one hop, one PRODUCES edge (ADR-0028 §3)
+// ---------------------------------------------------------------------------
+
+// csharpPassesThatProduce lists every registered C# custom pass that can emit a
+// PRODUCES edge. Every cross-pass test below runs ALL of them over ONE source,
+// which is the axis the per-pass tests structurally cannot see: each of those
+// calls extractFull with a single pass name, so a second pass emitting the same
+// edge for the same call site is invisible to them by construction.
+var csharpPassesThatProduce = []string{
+	"custom_csharp_masstransit",
+	"custom_csharp_mediatr",
+	"custom_csharp_nservicebus",
+	"custom_csharp_wolverine",
+	"custom_csharp_coravel",
+	"custom_csharp_hangfire",
+	"custom_csharp_quartz_net",
+}
+
+// producesAcrossPasses runs every producing C# pass over one source and returns
+// each PRODUCES edge as "<from> -> <toID>" mapped to the framework property of
+// every pass that emitted it.
+func producesAcrossPasses(t *testing.T, path, src string) map[string][]string {
+	t.Helper()
+	got := map[string][]string{}
+	for _, pass := range csharpPassesThatProduce {
+		ents := extractFull(t, pass, fi(path, "csharp", src))
+		for _, e := range ents {
+			for _, r := range e.Relationships {
+				if r.Kind != string(types.RelationshipKindProduces) {
+					continue
+				}
+				key := e.Name + " -> " + r.ToID
+				got[key] = append(got[key], pass+"/"+r.Properties.Get("framework"))
+			}
+		}
+	}
+	return got
+}
+
+// assertOneEdgePerHop fails naming every hop that more than one pass claimed.
+func assertOneEdgePerHop(t *testing.T, got map[string][]string) {
+	t.Helper()
+	for hop, by := range got {
+		if len(by) > 1 {
+			t.Errorf("ADR-0028 §3 double edge: hop %q emitted %d times, by %v", hop, len(by), by)
+		}
+	}
+}
+
+// TestSharedDispatchVerbsEmitOnePRODUCESPerHop is the regression pin for the
+// defect this file's first version shipped. `.Publish(new T())` and
+// `.Send(new T())` are spelled identically by MassTransit, MediatR and
+// NServiceBus/Rebus — mtSendRe and mxSendRe are the same regex, byte for byte —
+// and MediatR had no signal gate at all, so on an NServiceBus handler that
+// merely calls `context.Publish(new OrderConfirmed())` BOTH passes emitted a
+// PRODUCES edge for the one hop.
+func TestSharedDispatchVerbsEmitOnePRODUCESPerHop(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want map[string]string // hop -> the pass that must own it
+	}{
+		{
+			name: "nservicebus handler dispatching with the shared Publish verb",
+			src: `
+using NServiceBus;
+
+public class OrderPlacedHandler : IHandleMessages<OrderPlaced>
+{
+    public Task Handle(OrderPlaced message, IMessageHandlerContext context)
+    {
+        return context.Publish(new OrderConfirmed());
+    }
+}
+`,
+			want: map[string]string{
+				"Publish OrderConfirmed -> Class:OrderConfirmed": "custom_csharp_nservicebus/nservicebus",
+			},
+		},
+		{
+			// The case a signal gate alone does NOT fix, and the reason
+			// csSharedDispatchVerbOwner exists: both gates pass truthfully.
+			name: "masstransit consumer dispatching through IMediator",
+			src: `
+using MassTransit;
+using MediatR;
+
+public class OrderSubmittedConsumer : IConsumer<OrderSubmitted>
+{
+    private readonly IMediator _mediator;
+    private readonly IPublishEndpoint _publishEndpoint;
+
+    public async Task Consume(ConsumeContext<OrderSubmitted> context)
+    {
+        await _mediator.Send(new CreateOrder());
+        await _publishEndpoint.Publish(new OrderConfirmed());
+    }
+}
+`,
+			want: map[string]string{
+				"Send CreateOrder -> Class:CreateOrder":          "custom_csharp_masstransit/masstransit",
+				"Publish OrderConfirmed -> Class:OrderConfirmed": "custom_csharp_masstransit/masstransit",
+			},
+		},
+		{
+			// Coravel's mailer matches the same `.Send(new T())` bytes whenever
+			// the type ends in Mailable, so it defers to the bus that owns the
+			// file. Without the deferral this hop gets two edges.
+			name: "coravel mailable inside a masstransit surface",
+			src: `
+using MassTransit;
+using Coravel;
+
+public class Notifier
+{
+    private readonly IPublishEndpoint _publishEndpoint;
+    private readonly IMailer _mailer;
+
+    public async Task Go()
+    {
+        await _mailer.Send(new WelcomeMailable());
+    }
+}
+`,
+			want: map[string]string{
+				"Send WelcomeMailable -> Class:WelcomeMailable": "custom_csharp_masstransit/masstransit",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := producesAcrossPasses(t, "Case.cs", tc.src)
+			assertOneEdgePerHop(t, got)
+			for hop, owner := range tc.want {
+				by, ok := got[hop]
+				if !ok {
+					t.Errorf("hop %q got no PRODUCES edge at all; edges present: %v", hop, got)
+					continue
+				}
+				if by[0] != owner {
+					t.Errorf("hop %q owned by %q, want %q", hop, by[0], owner)
+				}
+			}
+			if len(got) != len(tc.want) {
+				t.Errorf("got %d hops %v, want %d", len(got), got, len(tc.want))
+			}
+		})
+	}
+}
+
+// TestMediatROnlyFileStillKeepsItsEdge is the under-firing control for the
+// arbitration above. MediatR is LAST in the precedence, so it would be easy to
+// silence it everywhere and still pass every double-edge assertion; a file with
+// no competing bus signal must still get its edge.
+func TestMediatROnlyFileStillKeepsItsEdge(t *testing.T) {
+	src := `
+using MediatR;
+
+public class OrdersController
+{
+    private readonly IMediator _mediator;
+
+    public Task Post() => _mediator.Send(new CreateOrder());
+}
+`
+	got := producesAcrossPasses(t, "OrdersController.cs", src)
+	assertOneEdgePerHop(t, got)
+	by, ok := got["Send CreateOrder -> Class:CreateOrder"]
+	if !ok {
+		t.Fatalf("a MediatR-only file lost its PRODUCES edge; edges present: %v", got)
+	}
+	if by[0] != "custom_csharp_mediatr/mediatr" {
+		t.Errorf("owner = %q, want custom_csharp_mediatr/mediatr", by[0])
+	}
+}
+
+// TestCoravelOnlyFileStillKeepsItsMailEdge is the same control for Coravel's
+// mailer: it defers to a bus, but with no bus in the file it must still fire.
+func TestCoravelOnlyFileStillKeepsItsMailEdge(t *testing.T) {
+	src := `
+using Coravel;
+
+public class Notifier
+{
+    private readonly IMailer _mailer;
+
+    public Task Go() => _mailer.Send(new WelcomeMailable());
+}
+`
+	got := producesAcrossPasses(t, "Notifier.cs", src)
+	assertOneEdgePerHop(t, got)
+	by, ok := got["Send<WelcomeMailable> -> Class:WelcomeMailable"]
+	if !ok {
+		t.Fatalf("a Coravel-only file lost its mail PRODUCES edge; edges present: %v", got)
+	}
+	if by[0] != "custom_csharp_coravel/coravel" {
+		t.Errorf("owner = %q, want custom_csharp_coravel/coravel", by[0])
+	}
+}
+
+// TestEveryProducingPassIsRegistered keeps csharpPassesThatProduce honest — a
+// renamed or dropped pass must fail loudly rather than silently shrink the
+// cross-pass sweep to the passes that still exist.
+func TestEveryProducingPassIsRegistered(t *testing.T) {
+	for _, pass := range csharpPassesThatProduce {
+		if _, ok := extreg.Get(pass); !ok {
+			t.Errorf("%s is not registered — csharpPassesThatProduce is stale", pass)
+		}
+	}
 }
 
 // TestCoravelAnonymousDispatchEmitsNoProduces is the over-firing mutant. The

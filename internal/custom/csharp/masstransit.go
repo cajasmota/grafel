@@ -43,7 +43,13 @@ func init() {
 // message contract it names (`Class:<T>`, the cross-file C# convention). Until
 // #6767 this pass emitted ZERO relationships and recorded the intent as an
 // inert `edge_kind` entity PROPERTY — metadata nothing read, and on the
-// consumer side a claim about an edge that does not exist in any language.
+// consumer side a claim about an edge that does not exist in the tree.
+//
+// The edge fires only when csSharedDispatchVerbOwner names THIS pass as the
+// owner of the shared `.Publish(new T())` / `.Send(new T())` verbs in the file.
+// The signal gate below is not enough on its own: MediatR's producer regexes
+// are byte-identical to this pass's, so a consumer that also dispatches through
+// IMediator satisfies both gates and would emit two PRODUCES for one hop.
 //
 // The consumer half is deliberately EDGELESS: CONSUMES is declared, read by
 // four consumers, and emitted by nothing, because the honest form needs the
@@ -123,10 +129,12 @@ func (e *massTransitExtractor) Extract(ctx context.Context, file extractor.FileI
 			"task_id", "masstransit:message:"+msgType,
 			"provenance", "INFERRED_FROM_MASSTRANSIT_PUBLISH",
 		)
-		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
-			"masstransit", msgType, "masstransit:message:"+msgType,
-			"INFERRED_FROM_MASSTRANSIT_PUBLISH",
-		))
+		if csSharedDispatchVerbOwner(src) == "masstransit" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"masstransit", msgType, "masstransit:message:"+msgType,
+				"INFERRED_FROM_MASSTRANSIT_PUBLISH",
+			))
+		}
 		add(ent)
 	}
 
@@ -142,10 +150,12 @@ func (e *massTransitExtractor) Extract(ctx context.Context, file extractor.FileI
 			"task_id", "masstransit:message:"+msgType,
 			"provenance", "INFERRED_FROM_MASSTRANSIT_SEND",
 		)
-		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
-			"masstransit", msgType, "masstransit:message:"+msgType,
-			"INFERRED_FROM_MASSTRANSIT_SEND",
-		))
+		if csSharedDispatchVerbOwner(src) == "masstransit" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"masstransit", msgType, "masstransit:message:"+msgType,
+				"INFERRED_FROM_MASSTRANSIT_SEND",
+			))
+		}
 		add(ent)
 	}
 

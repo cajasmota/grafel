@@ -44,10 +44,17 @@ func init() {
 // emitted ZERO relationships and recorded the intent as an inert `edge_kind`
 // entity PROPERTY.
 //
-// The handler and pipeline-behavior halves are deliberately EDGELESS: CONSUMES
-// is emitted by nothing in any language — the honest form needs the two-hop
-// work-unit node ADR-0028 §1 describes, which #6741 declined to build. They
-// keep `task_id` as the join key; they no longer claim an edge uses it.
+// The edge fires only when csSharedDispatchVerbOwner names THIS pass as the
+// owner of the shared `.Send(new T())` / `.Publish(new T())` verbs in the file.
+// MediatR is last in that precedence, so a MassTransit or NServiceBus file that
+// also dispatches through IMediator yields the bus's edge and not this one —
+// deliberate under-reporting in preference to the ADR-0028 §3 double edge.
+//
+// The handler and pipeline-behavior halves are deliberately EDGELESS.
+// CONSUMES is emitted by nothing in the tree — a repo-wide fact recorded
+// in ADR-0028, verified there by grep, and NOT re-verified by the tests here,
+// which pin only that THIS pass emits none. The honest form needs the two-hop
+// work-unit node #6741 declined to build; `task_id` remains the join key.
 type mediatrExtractor struct{}
 
 func (e *mediatrExtractor) Language() string { return "custom_csharp_mediatr" }
@@ -84,7 +91,20 @@ var (
 	// Guards so handler declarations are not mis-claimed as message contracts.
 	mtRequestHandlerWordRe      = regexp.MustCompile(`\bIRequestHandler\b`)
 	mtNotificationHandlerWordRe = regexp.MustCompile(`\bINotificationHandler\b`)
+
+	// mtSignalRe gates the file (#6767). Until then this pass had NO gate at
+	// all — the only one of the four C# bus passes without one — so its
+	// `.Send(new T())` / `.Publish(new T())` regexes, which are byte-identical
+	// to MassTransit's, fired on every C# file in the corpus that used those
+	// two extremely common verb spellings. On an NServiceBus handler that
+	// merely calls `context.Publish(new OrderConfirmed())` it minted a second,
+	// mediatr-labelled copy of that dispatch site.
+	mtSignalRe = regexp.MustCompile(
+		`(?m)\b(?:using\s+MediatR|IMediator\b|IRequestHandler\s*<|INotificationHandler\s*<|` +
+			`IPipelineBehavior\s*<|IRequest\b|INotification\b)`)
 )
+
+func mtHasSignal(src string) bool { return mtSignalRe.MatchString(src) }
 
 func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("grafel/custom/csharp")
@@ -102,6 +122,12 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 	}
 
 	src := string(file.Content)
+	// Cheap signal gate: only pay the regex cost on files that actually touch
+	// MediatR, so unrelated C# (incl. MassTransit- and NServiceBus-only files
+	// that spell the same Send/Publish verbs) is not mis-attributed (#6767).
+	if !mtHasSignal(src) {
+		return nil, nil
+	}
 	var out []types.EntityRecord
 	seen := make(map[string]bool)
 
@@ -127,9 +153,11 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"task_id", taskID,
 			"provenance", "INFERRED_FROM_MEDIATR_SEND",
 		)
-		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
-			"mediatr", msgType, taskID, "INFERRED_FROM_MEDIATR_SEND",
-		))
+		if csSharedDispatchVerbOwner(src) == "mediatr" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"mediatr", msgType, taskID, "INFERRED_FROM_MEDIATR_SEND",
+			))
+		}
 		add(ent)
 	}
 
@@ -146,9 +174,11 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"task_id", taskID,
 			"provenance", "INFERRED_FROM_MEDIATR_PUBLISH",
 		)
-		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
-			"mediatr", msgType, taskID, "INFERRED_FROM_MEDIATR_PUBLISH",
-		))
+		if csSharedDispatchVerbOwner(src) == "mediatr" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"mediatr", msgType, taskID, "INFERRED_FROM_MEDIATR_PUBLISH",
+			))
+		}
 		add(ent)
 	}
 

@@ -41,9 +41,11 @@ func init() {
 // EDGES (#6767). All three dispatch verbs emit a real PRODUCES relationship to
 // the message contract they name (`Class:<T>`). Before #6767 this pass emitted
 // ZERO relationships and recorded the intent as an inert `edge_kind` entity
-// PROPERTY. The convention-handler half is deliberately EDGELESS: CONSUMES is
-// emitted by nothing in any language (ADR-0028 §1's two-hop form, which #6741
-// declined to build). The handler keeps `task_id` as the join key.
+// PROPERTY. The convention-handler half is deliberately EDGELESS.
+// CONSUMES is emitted by nothing in the tree — a repo-wide fact recorded
+// in ADR-0028, verified there by grep, and NOT re-verified by the tests here,
+// which pin only that THIS pass emits none. The honest form needs the two-hop
+// work-unit node #6741 declined to build; `task_id` remains the join key.
 type wolverineExtractor struct{}
 
 func (e *wolverineExtractor) Language() string { return "custom_csharp_wolverine" }

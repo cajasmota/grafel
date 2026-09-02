@@ -151,9 +151,22 @@ target SHAPE, not by framework: `PRODUCES` for dispatch onto a **class**, `ENQUE
 **function**. Every site in these five passes names a class — a Coravel `IInvocable`, or a message
 contract constructed inline (`Publish(new OrderSubmitted{…})`) — so all five take `PRODUCES`, emitted via
 `csJobProducesEdge` (job-class target, `job_class` property) or its new sibling `csMessageProducesEdge`
-(message-contract target, `message_type` property). §3 has nothing to double here: no engine synthesis
-mentions MassTransit / MediatR / Wolverine / NServiceBus / Coravel, and `csharp/redis.go`'s
-`PUBLISHES_TO` requires a string-literal channel argument, so `.Publish(new T())` cannot reach it.
+(message-contract target, `message_type` property).
+
+**§3's double came from the passes themselves, not from the engine.** No engine synthesis mentions
+MassTransit / MediatR / Wolverine / NServiceBus / Coravel (zero hits), and `csharp/redis.go`'s
+`PUBLISHES_TO` needs a string-literal channel argument, so `.Publish(new T())` cannot reach it. But
+MassTransit, MediatR and NServiceBus/Rebus spell `.Publish(new T())` and `.Send(new T())` identically —
+`mtSendRe` and `mxSendRe` are the same regex, byte for byte — MediatR had **no signal gate at all**, and
+Coravel's mailer matches the same bytes for a `Mailable`-suffixed type. The first cut of #6767 therefore
+turned duplicate inert entities into duplicate edges: two `PRODUCES` for one hop, on an ordinary
+NServiceBus handler. Per-pass signal gates are necessary but **not sufficient** — a MassTransit consumer
+that dispatches through `IMediator` satisfies both gates truthfully. `csSharedDispatchVerbOwner` names one
+owner per file (NServiceBus > MassTransit > MediatR > Coravel's mailer, most specific marker first), and
+it deliberately under-reports the MediatR hop in a mixed file: an absent edge is a gap a reader can see,
+while a doubled edge silently corrupts any traversal that counts hops. Graded by
+`TestSharedDispatchVerbsEmitOnePRODUCESPerHop`, which runs **every** producing C# pass over one source —
+the axis the per-pass tests cannot see, since each of those drives a single pass.
 
 **Two Coravel forms emit nothing, deliberately.** `Schedule(() => …)` and `QueueAsyncTask(…)` name no
 invocable. They keep their honest unresolved producer entity and take no edge — the same guard

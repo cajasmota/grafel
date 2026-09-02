@@ -37,9 +37,15 @@ func init() {
 // EDGES (#6767). `Publish`/`Send` emit a real PRODUCES relationship to the
 // message contract they name (`Class:<T>`). Before #6767 this pass emitted ZERO
 // relationships and recorded the intent as an inert `edge_kind` entity
-// PROPERTY. The handler / saga-initiator half is deliberately EDGELESS:
-// CONSUMES is emitted by nothing in any language (ADR-0028 §1's two-hop form,
-// which #6741 declined to build). They keep `task_id` as the join key.
+// PROPERTY. The edge fires only when csSharedDispatchVerbOwner names THIS pass
+// as the owner of those two shared verbs in the file; IHandleMessages<> is the
+// most specific marker of the three, so this pass wins the arbitration wherever
+// it appears.
+//
+// The handler / saga-initiator half is deliberately EDGELESS. CONSUMES is emitted by nothing in the tree — a repo-wide fact recorded
+// in ADR-0028, verified there by grep, and NOT re-verified by the tests here,
+// which pin only that THIS pass emits none. The honest form needs the two-hop
+// work-unit node #6741 declined to build; `task_id` remains the join key.
 type handleMessagesExtractor struct{}
 
 func (e *handleMessagesExtractor) Language() string { return "custom_csharp_nservicebus" }
@@ -139,9 +145,11 @@ func (e *handleMessagesExtractor) Extract(ctx context.Context, file extractor.Fi
 			"task_id", "msgbus:message:"+msgType,
 			"provenance", "INFERRED_FROM_NSERVICEBUS_PUBLISH",
 		)
-		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
-			"nservicebus", msgType, "msgbus:message:"+msgType, "INFERRED_FROM_NSERVICEBUS_PUBLISH",
-		))
+		if csSharedDispatchVerbOwner(src) == "nservicebus" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"nservicebus", msgType, "msgbus:message:"+msgType, "INFERRED_FROM_NSERVICEBUS_PUBLISH",
+			))
+		}
 		add(ent)
 	}
 
@@ -157,9 +165,11 @@ func (e *handleMessagesExtractor) Extract(ctx context.Context, file extractor.Fi
 			"task_id", "msgbus:message:"+msgType,
 			"provenance", "INFERRED_FROM_NSERVICEBUS_SEND",
 		)
-		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
-			"nservicebus", msgType, "msgbus:message:"+msgType, "INFERRED_FROM_NSERVICEBUS_SEND",
-		))
+		if csSharedDispatchVerbOwner(src) == "nservicebus" {
+			ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+				"nservicebus", msgType, "msgbus:message:"+msgType, "INFERRED_FROM_NSERVICEBUS_SEND",
+			))
+		}
 		add(ent)
 	}
 
