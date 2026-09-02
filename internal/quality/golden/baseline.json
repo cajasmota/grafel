@@ -14,20 +14,20 @@
     "csharp-aspnet-core-mini": {
       "entity_found": 4,
       "entity_expected": 5,
-      "relationship_found": 11,
-      "relationship_expected": 11
+      "relationship_found": 13,
+      "relationship_expected": 13
     },
     "csharp-hangfire-mini": {
       "entity_found": 5,
       "entity_expected": 5,
-      "relationship_found": 13,
-      "relationship_expected": 13
+      "relationship_found": 15,
+      "relationship_expected": 15
     },
     "csharp-quartz-net-mini": {
       "entity_found": 5,
       "entity_expected": 5,
-      "relationship_found": 14,
-      "relationship_expected": 14
+      "relationship_found": 16,
+      "relationship_expected": 16
     },
     "elixir-phoenix-mini": {
       "entity_found": 22,

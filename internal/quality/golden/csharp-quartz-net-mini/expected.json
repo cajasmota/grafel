@@ -75,8 +75,12 @@
       "note": "#6490 arm B FINDING: the fixture asserts a `scheduler.ScheduleJob` schedule_job ENTITY (and it is extracted), but nothing points at it — the CALLS from the enclosing method goes to the bare name `IScheduler.ScheduleJob` instead. The schedule_job entity is a graph orphan." },
     { "from_name": "ReportJob", "from_kind": "SCOPE.Service", "from_file": "jobs/ReportJob.cs",
       "kind": "IMPLEMENTS", "to_bare_name": "IJob",
-      "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING: `public class ReportJob : IJob` emits no IMPLEMENTS edge. Java's equivalent (java-quartz-mini's SendEmailJob implements Job) DOES emit one, so this is a C#-specific hierarchy gap, not a framework one." },
+      "must_exist": true,
+      "note": "#6742: `public class ReportJob : IJob`. Promoted from nice_to_have when C# class-hierarchy extraction landed. This is the C# half of the language-parity pair — java-quartz-mini asserts `SendEmailJob IMPLEMENTS Job` for the structurally identical declaration, and internal/extractors/hierarchy_parity_6742_test.go fails if the two languages ever disagree on the KIND." },
+    { "from_name": "EmailJob", "from_kind": "SCOPE.Component", "from_file": "jobs/ReportJob.cs",
+      "kind": "IMPLEMENTS", "to_bare_name": "IJob",
+      "must_exist": true,
+      "note": "#6742: the second job class in the same file gets its own edge. Held constant against the row above: same file, same supertype, same kind — the axis varied is the owning declaration, which is what a base list hoisted onto the file's first type would get wrong." },
     { "from_name": "scheduler.ScheduleJob", "from_kind": "SCOPE.Operation", "from_file": "Startup.cs",
       "kind": "TRIGGERS", "to_name": "ReportJob", "to_kind": "SCOPE.Service", "to_file": "jobs/ReportJob.cs",
       "must_exist": false, "nice_to_have": true,
@@ -85,5 +89,15 @@
       "kind": "TRIGGERS", "to_name": "ReportJob", "to_kind": "SCOPE.Service", "to_file": "jobs/ReportJob.cs",
       "must_exist": false, "nice_to_have": true,
       "note": "#6490 arm B FINDING: the `report-trigger` entity is extracted with no edges at all. `TriggerBuilder.Create().WithIdentity(\"report-trigger\")` is passed to ScheduleJob alongside reportJob; the trigger→job association is in the source and absent from the graph." }
+  ],
+  "forbidden_relationships": [
+    { "from_name": "ReportJob", "from_kind": "SCOPE.Component", "from_file": "jobs/ReportJob.cs",
+      "kind": "EXTENDS", "to_bare_name": "IJob",
+      "must_exist": false,
+      "note": "#6742 KIND GUARD. IJob is an interface, so the edge is IMPLEMENTS. Recall cannot see this: emitting BOTH kinds, or the wrong one alongside the right one, still satisfies every must_exist row above. Only a forbidden row grades the kind exclusively — and the kind is the whole point of the parity with java-quartz-mini." },
+    { "from_name": "Startup", "from_kind": "SCOPE.Component", "from_file": "Startup.cs",
+      "kind": "EXTENDS", "to_bare_name": "IScheduler",
+      "must_exist": false,
+      "note": "#6742: `class Startup` has NO base list. `Task ConfigureScheduler(IScheduler scheduler)` names IScheduler as a parameter type only. A predicate that reached for any type mentioned near a declaration rather than for the base_list node would land here." }
   ]
 }
