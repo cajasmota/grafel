@@ -6,6 +6,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/algorithms"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 )
 
 // buildStatsSidecar constructs the graph-stats.json payload for the index
@@ -35,6 +36,7 @@ func buildStatsSidecar(
 	computedAt time.Time,
 	renameStats algorithms.RenameStats,
 	unsupportedExt map[string]int,
+	nonEnumKinds fbwriter.NonEnumKindReport,
 ) *graph.GraphStatsSidecar {
 	side := &graph.GraphStatsSidecar{
 		Version:            1,
@@ -63,6 +65,14 @@ func buildStatsSidecar(
 	// here was measured to be dead — omitempty already elides an empty map —
 	// and removed.)
 	side.UnsupportedExtensions = unsupportedExt
+
+	// #6757 arm C — always from THIS run, never carried forward: it describes
+	// the relationships this write path actually serialized, including the
+	// runtime-valued kinds no static scan can see. The conversion lives in
+	// ApplyToSidecar so this and the incremental writer cannot drift; a
+	// zero-valued report records "not scanned", which is what a failed or
+	// skipped graph write leaves behind.
+	nonEnumKinds.ApplyToSidecar(side)
 
 	if doc.AlgorithmStats != nil {
 		side.Communities = doc.AlgorithmStats.NumCommunities

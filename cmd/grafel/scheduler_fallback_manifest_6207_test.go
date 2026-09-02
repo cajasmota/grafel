@@ -44,6 +44,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 )
 
@@ -376,8 +377,8 @@ func TestSchedulerFallbackIndex_GraphWriteFailureLeavesManifestUntouched(t *test
 	}
 
 	prevWriter := writeGraphGen
-	writeGraphGen = func(dir string, doc *graph.Document) (string, error) {
-		return "", errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
+	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.NonEnumKindReport, error) {
+		return "", fbwriter.NonEnumKindReport{}, errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
 	}
 	t.Cleanup(func() { writeGraphGen = prevWriter })
 

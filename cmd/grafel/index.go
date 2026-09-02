@@ -981,6 +981,13 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		}
 	}
 
+	// #6757 arm C — the non-enum-relationship-kind report from the graph
+	// write, carried down to the sidecar build below. It stays zero-valued
+	// (Scanned=false) when the build-document pass is skipped OR the graph
+	// write failed, which is correct in both cases: no graph was written that
+	// this tally describes.
+	var nonEnumKinds fbwriter.NonEnumKindReport
+
 	if !skipSet[PassBuildDocument] {
 		// Issue #481 — belt-and-braces final sort. Even with every fan-in
 		// already sorted, external.Synthesize appends placeholders and Pass 4
@@ -993,13 +1000,34 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// #5891 gen layout: write a NEW graph.<gen>.fb + flip the `current`
 		// pointer instead of overwriting a fixed graph.fb. fbPath is the gen
 		// file actually written (used below for the identical-mtime stamp).
-		fbPath, fbErr := writeGraphGen(filepath.Dir(outPath), doc)
+		fbPath, writtenNonEnumKinds, fbErr := writeGraphGen(filepath.Dir(outPath), doc)
 		if fbErr != nil {
 			fmt.Fprintf(os.Stderr, "grafel: graph.fb write failed: %v\n", fbErr)
 			// Non-fatal — we still try to write graph.json so the system
 			// remains functional. If both fail, the error from graph.json
 			// propagates below.
 		} else {
+			// #6757 arm C — surfaced ONLY on a successful write, and this is
+			// the whole reason it sits inside the success branch: on a write
+			// failure (the #5726 oversized-graph fail-soft, EPERM, a failed
+			// gen-flip) the graph on disk is still the PREVIOUS generation,
+			// which this tally does not describe. Publishing a partial count
+			// against a graph that was never persisted would make the sidecar
+			// describe a file that does not exist — and a zeroed partial is
+			// indistinguishable from clean. The report therefore stays
+			// zero-valued (Scanned=false, i.e. "not scanned") on that path,
+			// which is the honest record.
+			//
+			// The write path is the only place a runtime-valued relationship
+			// kind is visible, so it is the only place this population can be
+			// counted. Nothing was dropped and the index does not fail. The
+			// durable half goes into graph-stats.json below via
+			// buildStatsSidecar, because this stderr line is invisible to
+			// MCP, the dashboard and `doctor`, which read the graph.
+			nonEnumKinds = writtenNonEnumKinds
+			if sum := nonEnumKinds.Summary(); sum != "" {
+				fmt.Fprintf(os.Stderr, "grafel: relationship kinds not in the enum: %s\n", sum)
+			}
 			fmt.Fprintf(os.Stderr, "grafel: wrote %s\n", fbPath)
 			// #6207 — the manifest is committed HERE, and only here: the graph
 			// it describes is now durably on disk and the `current` pointer has
@@ -1098,7 +1126,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// never zero out real algorithm data that a previous full build
 		// computed.
 		prior, _ := graph.LoadSidecar(filepath.Dir(outPath))
-		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt(), renameStats, idx.stats.unsupportedExt.Counts())
+		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt(), renameStats, idx.stats.unsupportedExt.Counts(), nonEnumKinds)
 		if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
 			fmt.Fprintf(os.Stderr, "grafel: sidecar write failed: %v\n", err)
 		}
@@ -1134,7 +1162,7 @@ var capturedStats io.Writer
 // graph write FAIL — the failure this file's manifest ordering exists to
 // survive (#6207). The write is non-fatal by design, so there is no error
 // return to inject through and no other way to reach that branch.
-var writeGraphGen = fbwriter.WriteGraphGen
+var writeGraphGen = fbwriter.WriteGraphGenReport
 
 // osStat and osReadFile are the extraction worker's stat and read behind vars,
 // so a test can make a working-tree write land at a precise point INSIDE the

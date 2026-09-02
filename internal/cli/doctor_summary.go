@@ -57,6 +57,20 @@ type DoctorRepoHealth struct {
 	// (never replacing) the OK/STALE/MISSING status above, because the graph
 	// itself is fresh and fine — only the rename edges are partial.
 	RenameTruncated bool
+
+	// KindsNotInEnum is the per-kind edge count for relationship kinds this
+	// repo's last index WROTE that are absent from the relationship-kind enum
+	// (#6757 arm C). Like UnsupportedExt and RenameTruncated above, the
+	// sidecar is the ONLY source: nothing in the graph itself marks an edge
+	// as carrying an unrecognised kind, so a consumer traversing it cannot
+	// tell. Nothing was dropped — these edges are all in the graph.
+	KindsNotInEnum map[string]int
+	// EdgesKindNotInEnum is the total edge count behind KindsNotInEnum
+	// (uncapped, unlike the map, which the writer truncates).
+	EdgesKindNotInEnum int
+	// DistinctKindsNotInEnum is the uncapped number of distinct such kinds;
+	// it may exceed len(KindsNotInEnum).
+	DistinctKindsNotInEnum int
 	// RenameAddedSkipped is how many added entities that truncated pass never
 	// examined. Only meaningful when RenameTruncated is true.
 	RenameAddedSkipped int
@@ -247,6 +261,16 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 			// from "nothing was renamed".
 			rh.RenameTruncated = side.RenameDetectTruncated
 			rh.RenameAddedSkipped = side.RenameDetectAddedSkipped
+			// #6757 arm C — the ONLY source, same as the two above. Read only
+			// when the write path actually ran the tally: with omitempty an
+			// unscanned sidecar and a clean one are the same bytes, and
+			// reporting "no unrecognised kinds" off a graph nothing counted
+			// is the failure this arm exists to avoid.
+			if side.RelationshipKindsScanned {
+				rh.KindsNotInEnum = side.RelationshipKindsNotInEnum
+				rh.EdgesKindNotInEnum = side.RelationshipEdgesKindNotInEnum
+				rh.DistinctKindsNotInEnum = side.RelationshipDistinctKindsNotInEnum
+			}
 			if !side.ComputedAt.IsZero() {
 				rh.LastIndexed = side.ComputedAt
 				rh.LastIndexedAge = formatTimeSince(side.ComputedAt)
@@ -469,6 +493,13 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 			if r.RenameTruncated {
 				fmt.Fprintf(w, "    %-*s  ⚠ rename detection TRUNCATED: RENAMED_FROM edges are INCOMPLETE (%s added entities never examined) — reindex to complete the scan\n",
 					maxSlugLen, "", fmtInt(r.RenameAddedSkipped))
+			}
+			// #6757 arm C — additive and INFORMATIONAL: these edges are all in
+			// the graph and nothing failed, so this never changes the repo
+			// status. It is printed because the count is otherwise invisible:
+			// the kinds are absent from the enum every consumer traverses by.
+			if line := KindsNotInEnumLine(r.EdgesKindNotInEnum, r.DistinctKindsNotInEnum, r.KindsNotInEnum); line != "" {
+				fmt.Fprintf(w, "    %-*s  %s\n", maxSlugLen, "", line)
 			}
 		}
 

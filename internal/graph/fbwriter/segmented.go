@@ -122,8 +122,15 @@ func envTruthy(v string) bool {
 // single-file case, or the graph.<gen>/ dir for a segment-set (filepath.Dir of
 // either is stateDir, so directory-keyed sidecar writers land correctly).
 func WriteGraphGenSegmented(stateDir string, doc *graph.Document) (string, error) {
+	genPath, _, err := writeGraphGenSegmented(stateDir, doc)
+	return genPath, err
+}
+
+// writeGraphGenSegmented is WriteGraphGenSegmented plus the undeclared-kind
+// report the write observed (#6757 arm C).
+func writeGraphGenSegmented(stateDir string, doc *graph.Document) (string, NonEnumKindReport, error) {
 	if doc == nil {
-		return "", fmt.Errorf("fbwriter: nil document")
+		return "", NonEnumKindReport{}, fmt.Errorf("fbwriter: nil document")
 	}
 	sortDocForSegments(doc)
 	threshold := segmentThresholdBytes()
@@ -161,7 +168,10 @@ func graphFitsSingleBuilder(doc *graph.Document, threshold int) bool {
 		}
 	}
 	for i := range doc.Relationships {
-		buildRelationship(b, &doc.Relationships[i])
+		// nil tally (#6757): this builder is thrown away and the same
+		// relationships are re-serialized by the real write below, so a tally
+		// here would double-count every edge it walked.
+		buildRelationship(b, &doc.Relationships[i], nil)
 		if int(b.Offset()) >= threshold {
 			return false
 		}
@@ -175,12 +185,13 @@ func graphFitsSingleBuilder(doc *graph.Document, threshold int) bool {
 // manifest + pointer flip + GC. Peak builder memory is bounded by the flush
 // threshold: each segment builder is finalized, written, and dropped before
 // the next is allocated, so no single builder ever holds the whole graph.
-func writeSegments(stateDir string, doc *graph.Document, threshold int) (string, error) {
+func writeSegments(stateDir string, doc *graph.Document, threshold int) (string, NonEnumKindReport, error) {
+	tally := &nonEnumKindTally{}
 	gen := graph.NextGen(stateDir)
 	genDirName := graph.GenDirName(gen)
 	genDir := filepath.Join(stateDir, genDirName)
 	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		return "", fmt.Errorf("fbwriter: mkdir gen dir %s: %w", genDir, err)
+		return "", tally.report(), fmt.Errorf("fbwriter: mkdir gen dir %s: %w", genDir, err)
 	}
 
 	fullMeta := graphMetaFromDoc(doc)
@@ -245,12 +256,12 @@ func writeSegments(stateDir string, doc *graph.Document, threshold int) (string,
 		maxKey = e.ID // last appended (== largest so far) id in this segment
 		if int(eb.Offset()) >= threshold {
 			if err := flushEntities(); err != nil {
-				return "", err
+				return "", tally.report(), err
 			}
 		}
 	}
 	if err := flushEntities(); err != nil {
-		return "", err
+		return "", tally.report(), err
 	}
 
 	// ── relationship segments (independent cadence) ──────────────────────
@@ -286,15 +297,15 @@ func writeSegments(stateDir string, doc *graph.Document, threshold int) (string,
 		if rb == nil {
 			rb = flatbuffers.NewBuilder(segInitBuilderSize)
 		}
-		rOffs = append(rOffs, buildRelationship(rb, r))
+		rOffs = append(rOffs, buildRelationship(rb, r, tally))
 		if int(rb.Offset()) >= threshold {
 			if err := flushRels(); err != nil {
-				return "", err
+				return "", tally.report(), err
 			}
 		}
 	}
 	if err := flushRels(); err != nil {
-		return "", err
+		return "", tally.report(), err
 	}
 
 	// Defensive: an empty graph should have taken the single-file fast path;
@@ -306,13 +317,13 @@ func writeSegments(stateDir string, doc *graph.Document, threshold int) (string,
 
 	m := &graph.Manifest{FormatVersion: graph.ManifestFormatVersion, Segments: metas}
 	if err := graph.WriteManifest(genDir, m); err != nil {
-		return "", fmt.Errorf("fbwriter: write manifest: %w", err)
+		return "", tally.report(), fmt.Errorf("fbwriter: write manifest: %w", err)
 	}
 	if err := graph.WriteCurrentPointerRaw(stateDir, genDirName); err != nil {
-		return "", fmt.Errorf("fbwriter: flip pointer to %s: %w", genDirName, err)
+		return "", tally.report(), fmt.Errorf("fbwriter: flip pointer to %s: %w", genDirName, err)
 	}
 	graph.GCStaleGens(stateDir, gen) // best-effort; never fails the write
-	return genDir, nil
+	return genDir, tally.report(), nil
 }
 
 // writeSegmentFile writes buf as genDir/name via a sibling .tmp + rename. The

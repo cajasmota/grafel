@@ -1,9 +1,12 @@
 package extractors
 
-import "github.com/cajasmota/grafel/internal/graph"
+import (
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
+)
 
-// GraphGenWriter is the signature of fbwriter.WriteGraphGen.
-type GraphGenWriter = func(stateDir string, doc *graph.Document) (string, error)
+// GraphGenWriter is the signature of fbwriter.WriteGraphGenReport.
+type GraphGenWriter = func(stateDir string, doc *graph.Document) (string, fbwriter.NonEnumKindReport, error)
 
 // SwapWriteGraphGen replaces the graph-write seam and returns both a restore
 // func and the previous writer, so a test can wrap the real one rather than

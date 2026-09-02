@@ -622,6 +622,47 @@ type GraphStatsSidecar struct {
 	// full extractor coverage carries no key at all and its consumers print
 	// nothing.
 	UnsupportedExtensions map[string]int `json:"unsupported_extensions,omitempty"`
+
+	// RelationshipKindsScanned records that the write path that produced this
+	// sidecar actually tallied the relationship kinds it serialized (#6757
+	// arm C). It is the difference between "counted, found none" and "never
+	// counted": with omitempty alone those two are the same bytes, and a
+	// consumer reading "no problem" off a graph nothing looked at is the
+	// #6534 failure exactly. A sidecar written before this field existed, or
+	// by a pass whose graph write FAILED, carries false.
+	//
+	// The three fields below are meaningless unless this is true.
+	RelationshipKindsScanned bool `json:"relationship_kinds_scanned,omitempty"`
+
+	// RelationshipEdgesKindNotInEnum is how many relationships this index
+	// WROTE whose kind is absent from types.AllRelationshipKinds().
+	//
+	// The relationship vocabulary is enforced by nothing —
+	// types.IsValidRelationshipKind had zero non-test callers — so the enum
+	// described an intention, not a constraint. Only the write path can see
+	// the kinds that resolve at RUNTIME, and only if it says so: the same
+	// reasoning as RenameDetectTruncated above — the stderr line is invisible
+	// to MCP, the dashboard and `grafel doctor`, which read the graph.
+	//
+	// "Not in the enum" is NOT the same as "undeclared": an engine rule YAML
+	// can declare a kind the Go enum omits (DECORATES, in
+	// internal/engine/rules/python/frameworks/fastapi.yaml), and such a kind
+	// is counted here. The field names say enum because the enum is what was
+	// checked.
+	//
+	// Nothing is dropped and no index fails because of this. It is a
+	// measurement, taken so a later decision about declaring or rejecting
+	// these kinds rests on evidence.
+	RelationshipEdgesKindNotInEnum int `json:"relationship_edges_kind_not_in_enum,omitempty"`
+	// RelationshipDistinctKindsNotInEnum is the number of DISTINCT such
+	// kinds. Never capped, so it may exceed len(RelationshipKindsNotInEnum).
+	RelationshipDistinctKindsNotInEnum int `json:"relationship_distinct_kinds_not_in_enum,omitempty"`
+	// RelationshipKindsNotInEnum maps each distinct kind to the number of
+	// edges that carried it. A bare count would only say something is wrong;
+	// the names say what. Truncated to the busiest
+	// fbwriter.NonEnumKindListCap kinds so a pathological graph cannot bloat
+	// this file — the two counts above stay exact.
+	RelationshipKindsNotInEnum map[string]int `json:"relationship_kinds_not_in_enum,omitempty"`
 }
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.
