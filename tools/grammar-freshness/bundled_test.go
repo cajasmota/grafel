@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,8 +138,11 @@ func TestParseVendoredPins_ReadsTheRefHeader(t *testing.T) {
 	}
 }
 
-// TestLoadPins_RealRepo is the anti-vacuity anchor: the real repo must resolve a
-// bundled version for every grammar the lock names, from the real files.
+// TestLoadPins_RealRepo is the anti-vacuity anchor: the pins below are read from
+// the real go.mod and the real vendored headers, not from fixtures. It does NOT
+// claim every lock language resolves — groovy does not, because its header
+// records only "(HEAD, 2024)"; that case is pinned by
+// TestParseVendoredPins_UnreadableRefIsQuotedNotDenied.
 func TestLoadPins_RealRepo(t *testing.T) {
 	pins, err := loadPins("../../go.mod", "../../internal/treesitter/ts/grammars")
 	if err != nil {
@@ -168,6 +172,119 @@ func TestLoadPins_RealRepo(t *testing.T) {
 	}
 }
 
+// TestParseVendoredPins_DateShapedTagIsNotARelease is the guard for the worst
+// under-reporting path: a header whose version token is a dotted date. Read as
+// a release it becomes [2024,5,9], which beats every real tree-sitter tag, so
+// the grammar reports CURRENT no matter how far behind it is.
+func TestParseVendoredPins_DateShapedTagIsNotARelease(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "datey", "datey.go"), `// Package datey ...
+//	source: github.com/example/tree-sitter-datey
+//	ref:    abc123 (2024.05.09)
+package datey
+`)
+	pins, err := parseVendoredPins(root)
+	if err != nil {
+		t.Fatalf("parseVendoredPins: %v", err)
+	}
+	p := pins["example/tree-sitter-datey"]
+	if p.Release != "" {
+		t.Errorf("a dotted date was accepted as release %q — it outranks every real tag", p.Release)
+	}
+	if p.Date != "2024-05-09" {
+		t.Errorf("date = %q, want it normalised to 2024-05-09", p.Date)
+	}
+
+	// End to end: such a pin must never read CURRENT against a newer upstream.
+	lock := &Lock{Grammars: []GrammarSpec{{Language: "datey", Source: "example/tree-sitter-datey"}}}
+	rep := check(context.Background(), lock, Pins{bySource: pins}, fakeSource{data: map[string]Upstream{
+		"example/tree-sitter-datey": {Release: "v0.24.2", CommitDate: "2026-04-22", Kind: "release"},
+	}})
+	if !rep.Grammars[0].Stale {
+		t.Errorf("a 2024 pin against a 2026 upstream must be STALE, got %+v", rep.Grammars[0])
+	}
+}
+
+// TestParseVendoredPins_AcceptsRealHeaderVariants covers header shapes that are
+// well-formed but not byte-identical to the commonest one. Dropping them is bad;
+// dropping them and then reporting "records no release or commit date" is worse.
+func TestParseVendoredPins_AcceptsRealHeaderVariants(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "forky", "forky.go"), `// Package forky ...
+//	source: github.com/example/tree-sitter-forky (fork)
+//	ref:    abc123 (v0.2.0, 2024-05-09)
+package forky
+`)
+	writeFile(t, filepath.Join(root, "labelled", "labelled.go"), `// Package labelled ...
+//	source: github.com/example/tree-sitter-labelled
+//	ref:    abc123 (tag v0.2.0, date 2024-05-09)
+package labelled
+`)
+	writeFile(t, filepath.Join(root, "spaced", "spaced.go"), `// Package spaced ...
+//	source: github.com/example/tree-sitter-spaced
+//	ref:    abc123 (v0.2.0 2024-05-09)
+package spaced
+`)
+
+	pins, err := parseVendoredPins(root)
+	if err != nil {
+		t.Fatalf("parseVendoredPins: %v", err)
+	}
+	for _, slug := range []string{
+		"example/tree-sitter-forky",
+		"example/tree-sitter-labelled",
+		"example/tree-sitter-spaced",
+	} {
+		p, ok := pins[slug]
+		if !ok {
+			t.Errorf("%s was dropped entirely; got %v", slug, sortedKeys(pins))
+			continue
+		}
+		if p.Release != "v0.2.0" {
+			t.Errorf("%s release = %q, want v0.2.0", slug, p.Release)
+		}
+		if p.Date != "2024-05-09" {
+			t.Errorf("%s date = %q, want 2024-05-09", slug, p.Date)
+		}
+	}
+}
+
+// TestParseVendoredPins_UnreadableRefIsQuotedNotDenied: when a ref genuinely
+// carries no version, the diagnostic must quote it rather than claim the file
+// records nothing.
+func TestParseVendoredPins_UnreadableRefIsQuotedNotDenied(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "branchy", "branchy.go"), `// Package branchy ...
+//	source: github.com/example/tree-sitter-branchy
+//	ref:    abc123 (HEAD, 2024)
+package branchy
+`)
+	pins, err := parseVendoredPins(root)
+	if err != nil {
+		t.Fatalf("parseVendoredPins: %v", err)
+	}
+	p := pins["example/tree-sitter-branchy"]
+	if p.Release != "" || p.Date != "" {
+		t.Errorf("a branch name and a bare year are neither release nor date, got %+v", p)
+	}
+	if p.RawRef != "HEAD, 2024" {
+		t.Errorf("RawRef = %q, want the header text verbatim", p.RawRef)
+	}
+
+	lock := &Lock{Grammars: []GrammarSpec{{Language: "branchy", Source: "example/tree-sitter-branchy"}}}
+	rep := check(context.Background(), lock, Pins{bySource: pins}, fakeSource{})
+	r := rep.Grammars[0]
+	if !r.Unknown {
+		t.Fatalf("want UNKNOWN, got %+v", r)
+	}
+	if !strings.Contains(r.Reason, "HEAD, 2024") {
+		t.Errorf("reason must quote the recorded ref, got %q", r.Reason)
+	}
+	if strings.Contains(r.Reason, "records no release or commit date") {
+		t.Errorf("reason asserts the file records nothing, but it records %q: %q", p.RawRef, r.Reason)
+	}
+}
+
 func TestCompareRelease(t *testing.T) {
 	cases := []struct {
 		a, b string
@@ -181,6 +298,17 @@ func TestCompareRelease(t *testing.T) {
 		{"v0.25.0", "v0.9.0", 1, true},  // numeric, not lexical: 25 > 9
 		{"initial", "v0.1.0", 0, false}, // not a release identifier
 		{"v0.23.6", "HEAD", 0, false},
+		// A pre-release compares EQUAL to its release: under-reports, never over.
+		{"v0.25.0-rc1", "v0.25.0", 0, true},
+		{"v0.25.0", "v0.25.0-rc1", 0, true},
+		{"v0.24.0-rc1", "v0.25.0", -1, true},
+		// Dates are NOT releases, in either separator, on either side. A dotted
+		// date parses as [2024,5,9] and would outrank every real tag, silently
+		// turning a behind grammar into CURRENT (#6749's direction).
+		{"2024.05.09", "v0.24.2", 0, false},
+		{"2024-05-09", "v0.1.0", 0, false},
+		{"v0.24.2", "2026.04.22", 0, false},
+		{"2024-08-27", "2026-09-01", 0, false},
 	}
 	for _, c := range cases {
 		got, ok := compareRelease(c.a, c.b)

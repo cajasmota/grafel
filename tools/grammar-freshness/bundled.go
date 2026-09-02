@@ -39,6 +39,10 @@ type Pin struct {
 	Date string
 	// Origin says where the pin was read from, so a wrong row can be traced.
 	Origin string
+	// RawRef is the provenance text a vendored header recorded, verbatim. It
+	// exists so a diagnostic can quote what the file actually says instead of
+	// asserting the file records nothing — the failure class of #6749 itself.
+	RawRef string
 }
 
 // String renders the pin for the BUNDLED column.
@@ -236,11 +240,45 @@ func moduleSlug(mod string) string {
 //	source: github.com/fwcd/tree-sitter-kotlin
 //	ref:    e1a2d5ad... (0.3.8, 2024-08-03)
 var (
-	vendoredSource = regexp.MustCompile(`^//\s*source:\s*(\S+)\s*$`)
+	// The source line may carry trailing prose ("(fork)", "— vendored"); the
+	// slug is the first field. Anchoring to end-of-line dropped the WHOLE
+	// grammar over a trailing note, ref line and all.
+	vendoredSource = regexp.MustCompile(`^//\s*source:\s*(\S+)`)
 	vendoredRef    = regexp.MustCompile(`^//\s*ref:\s*\S+\s*\(([^)]*)\)`)
-	fullDate       = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-	releaseTag     = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?`)
+	// fullDate accepts a dash- or dot-separated calendar date; normaliseDate
+	// converts it to the canonical dashed form.
+	fullDate   = regexp.MustCompile(`^(\d{4})[-.](\d{1,2})[-.](\d{1,2})$`)
+	releaseTag = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?`)
 )
+
+// dateShaped reports whether s is a calendar date rather than a version.
+//
+// This guard is load-bearing. A dotted date like "2024.05.09" satisfies every
+// "looks like a version" test, parses as [2024,5,9], and therefore compares
+// GREATER than every real tree-sitter tag (v0.2x, v1.x) — so a grammar that is
+// genuinely behind would be reported CURRENT. That is #6749's exact direction:
+// an alarm that cannot report staleness, only harder to notice. A date is never
+// a release identifier here.
+func dateShaped(s string) bool {
+	return fullDate.MatchString(strings.TrimSpace(s))
+}
+
+// normaliseDate renders a dash- or dot-separated date as YYYY-MM-DD, or ""
+// if s is not a date.
+func normaliseDate(s string) string {
+	m := fullDate.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return ""
+	}
+	y, mo, d := m[1], m[2], m[3]
+	if len(mo) == 1 {
+		mo = "0" + mo
+	}
+	if len(d) == 1 {
+		d = "0" + d
+	}
+	return y + "-" + mo + "-" + d
+}
 
 // parseVendoredPins reads the provenance headers of the vendored grammar
 // packages under root. A grammar with no readable header simply yields no pin —
@@ -285,11 +323,17 @@ func parseVendoredFile(path string) (Pin, bool, error) {
 			continue
 		}
 		if m := vendoredRef.FindStringSubmatch(line); m != nil {
-			for _, tok := range strings.Split(m[1], ",") {
-				tok = strings.TrimSpace(tok)
+			pin.RawRef = strings.TrimSpace(m[1])
+			// Split on commas AND whitespace, so "(tag v0.2.0, date 2024-05-09)"
+			// and "(v0.2.0 2024-05-09)" are read as well as "(0.3.8, 2024-08-03)".
+			// Each word is classified independently; unrecognised words (labels
+			// like "tag", branch names like "HEAD") are simply not used.
+			for _, tok := range strings.FieldsFunc(m[1], func(r rune) bool {
+				return r == ',' || r == ' ' || r == '\t'
+			}) {
 				switch {
-				case fullDate.MatchString(tok):
-					pin.Date = tok
+				case dateShaped(tok):
+					pin.Date = normaliseDate(tok)
 				case releaseTag.MatchString(tok):
 					pin.Release = tok
 				}
@@ -338,12 +382,21 @@ func compareRelease(a, b string) (int, bool) {
 // releaseParts splits "v0.23.6" / "0.3.8" into numeric components. Anything
 // that is not a dotted numeric version is rejected.
 func releaseParts(s string) ([]int, bool) {
-	s = strings.TrimPrefix(strings.TrimSpace(s), "v")
+	s = strings.TrimSpace(s)
+	// A calendar date is not a release. Rejected BEFORE the suffix trim below,
+	// which would otherwise reduce "2024-05-09" to the bare year "2024" and
+	// rank it above every real tag.
+	if dateShaped(s) {
+		return nil, false
+	}
+	s = strings.TrimPrefix(s, "v")
 	if s == "" {
 		return nil, false
 	}
-	// Drop any pre-release / build suffix; equal cores compare equal, which is
-	// conservative (it never invents staleness).
+	// Drop any pre-release / build suffix, so v0.25.0-rc1 compares EQUAL to
+	// v0.25.0. This under-reports rather than over-reports: a pin sitting on a
+	// release candidate of the latest tag reads CURRENT, never STALE. Pinned by
+	// TestCompareRelease's prerelease cases.
 	if i := strings.IndexAny(s, "-+"); i >= 0 {
 		s = s[:i]
 	}

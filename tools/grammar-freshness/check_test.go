@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -260,6 +261,88 @@ func TestMarkdown_ShowsRealPinsAndReconciliation(t *testing.T) {
 	if strings.Contains(out, "fwcd/tree-sitter-kotlin") {
 		t.Errorf("kotlin is current and must not be listed as stale\n%s", out)
 	}
+}
+
+// TestReport_SummaryCountsPartitionTheRows asserts the summary arithmetic
+// directly. The counts are the first thing a maintainer reads, and a
+// constant-offset lie there ("27 grammars: 16 stale, 11 current, 1 unknown" —
+// 28 rows out of 27) is invisible to any before/after diff of the table, which
+// is why the non-vacuity test cannot catch it.
+func TestReport_SummaryCountsPartitionTheRows(t *testing.T) {
+	rep := check(context.Background(), newLock(), newPins(), newUpstream())
+
+	sum := rep.StaleCount + rep.CurrentCount() + rep.UnknownCount + rep.Errored
+	if sum != len(rep.Grammars) {
+		t.Errorf("stale(%d)+current(%d)+unknown(%d)+unreachable(%d) = %d, want %d rows",
+			rep.StaleCount, rep.CurrentCount(), rep.UnknownCount, rep.Errored, sum, len(rep.Grammars))
+	}
+
+	// Independently recount from the rows themselves, so the buckets cannot all
+	// drift together.
+	var stale, current, unknown, errored int
+	for _, g := range rep.Grammars {
+		switch {
+		case g.Err != nil:
+			errored++
+		case g.Unknown:
+			unknown++
+		case g.Stale:
+			stale++
+		default:
+			current++
+		}
+	}
+	if stale != rep.StaleCount || current != rep.CurrentCount() ||
+		unknown != rep.UnknownCount || errored != rep.Errored {
+		t.Errorf("summary (%d,%d,%d,%d) disagrees with the rows (%d,%d,%d,%d)",
+			rep.StaleCount, rep.CurrentCount(), rep.UnknownCount, rep.Errored,
+			stale, current, unknown, errored)
+	}
+
+	// And the rendered line must carry those same numbers.
+	var sb strings.Builder
+	writeTable(&sb, rep)
+	want := fmt.Sprintf("%d grammars: %d stale, %d current, %d unknown, %d unreachable",
+		len(rep.Grammars), stale, current, unknown, errored)
+	if !strings.Contains(sb.String(), want) {
+		t.Errorf("table summary line missing %q\n%s", want, sb.String())
+	}
+}
+
+// TestCheck_StaleRowsSortByGapNotAlphabetically pins the documented ordering:
+// release-basis rows carry no date, so without a release-distance key they all
+// tie at Behind==0 and the "biggest gap first" claim is inert.
+func TestCheck_StaleRowsSortByGapNotAlphabetically(t *testing.T) {
+	lock := &Lock{Grammars: []GrammarSpec{
+		{Language: "aaa", Source: "example/tree-sitter-aaa"},
+		{Language: "zzz", Source: "example/tree-sitter-zzz"},
+	}}
+	pins := pinSet(
+		Pin{Source: "example/tree-sitter-aaa", Release: "v0.23.0", Origin: "go.mod"},
+		Pin{Source: "example/tree-sitter-zzz", Release: "v0.23.0", Origin: "go.mod"},
+	)
+	src := fakeSource{data: map[string]Upstream{
+		// aaa is one minor behind; zzz is three. zzz must sort FIRST despite
+		// losing alphabetically.
+		"example/tree-sitter-aaa": {Release: "v0.24.0", CommitDate: "2026-01-01", Kind: "release"},
+		"example/tree-sitter-zzz": {Release: "v0.26.0", CommitDate: "2026-01-01", Kind: "release"},
+	}}
+
+	rep := check(context.Background(), lock, pins, src)
+	if rep.StaleCount != 2 {
+		t.Fatalf("StaleCount = %d, want 2", rep.StaleCount)
+	}
+	if rep.Grammars[0].Language != "zzz" {
+		t.Errorf("order = %v, want the bigger release gap (zzz) first", names(rep.Grammars))
+	}
+}
+
+func names(rs []Result) []string {
+	out := make([]string, len(rs))
+	for i, r := range rs {
+		out[i] = r.Language
+	}
+	return out
 }
 
 func TestMonths(t *testing.T) {

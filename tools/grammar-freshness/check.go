@@ -44,6 +44,36 @@ type Result struct {
 	Err error
 }
 
+// releaseGap scores how far a release-basis pin is behind upstream, so the
+// report can order those rows by severity. It is 0 for any row without two
+// comparable releases (a date-basis row is ordered by Behind instead).
+func (r Result) releaseGap() int {
+	if r.Basis != basisRelease || !r.Stale {
+		return 0
+	}
+	a, aok := releaseParts(r.Bundled.Release)
+	b, bok := releaseParts(r.UpstreamRelease)
+	if !aok || !bok {
+		return 0
+	}
+	weights := []int{1000000, 1000, 1}
+	gap := 0
+	for i, w := range weights {
+		x, y := 0, 0
+		if i < len(a) {
+			x = a[i]
+		}
+		if i < len(b) {
+			y = b[i]
+		}
+		gap += (y - x) * w
+	}
+	if gap < 0 {
+		return 0
+	}
+	return gap
+}
+
 // Gap renders the distance from the pin to upstream for humans.
 func (r Result) Gap() string {
 	if !r.Stale {
@@ -68,6 +98,16 @@ type Report struct {
 	// tool exists to catch, so they are reported rather than reconciled away.
 	Unpinned []string
 	Unlocked []string
+}
+
+// CurrentCount is the number of grammars that are neither stale, unknown, nor
+// unreachable. Every row falls in exactly one of the four buckets, so
+// Stale+Current+Unknown+Errored == len(Grammars) — an invariant asserted by
+// TestReport_SummaryCountsPartitionTheRows, because the summary line is the
+// first number a maintainer reads and a constant-offset lie there is invisible
+// to any before/after diff.
+func (r Report) CurrentCount() int {
+	return len(r.Grammars) - r.StaleCount - r.UnknownCount - r.Errored
 }
 
 // check fans out over every grammar in the lock, resolving each upstream and
@@ -99,10 +139,18 @@ func check(ctx context.Context, lock *Lock, pins Pins, src UpstreamSource) Repor
 			// distinguished because they need different fixes — one is a missing
 			// dependency, the other a provenance header that records no version.
 			r.Unknown = true
-			if ok {
+			switch {
+			case ok && pin.RawRef != "":
+				// Quote what the header SAYS. Claiming it "records no version"
+				// when it records one we failed to read is the same class of
+				// false assertion this whole issue is about.
 				r.Bundled = pin
-				r.Reason = fmt.Sprintf("%s records no release or commit date for %s", pin.Origin, g.Source)
-			} else {
+				r.Reason = fmt.Sprintf("%s records ref %q, in which no token parses as a release or a commit date",
+					pin.Origin, pin.RawRef)
+			case ok:
+				r.Bundled = pin
+				r.Reason = fmt.Sprintf("%s names %s but records no ref line", pin.Origin, g.Source)
+			default:
 				r.Reason = fmt.Sprintf("no pin for %s in go.mod or the vendored grammars", g.Source)
 			}
 			rep.UnknownCount++
@@ -134,7 +182,10 @@ func check(ctx context.Context, lock *Lock, pins Pins, src UpstreamSource) Repor
 	}
 
 	// Stable order: stale first (biggest gap first), then current, then unknown,
-	// then unreachable.
+	// then unreachable. "Biggest gap" spans both bases: a date-basis row is
+	// ranked by elapsed time, a release-basis row by how many versions it is
+	// behind. Without the latter every go.mod release pin would tie at zero
+	// (they carry no date) and silently fall through to alphabetical order.
 	sort.SliceStable(rep.Grammars, func(i, j int) bool {
 		a, b := rep.Grammars[i], rep.Grammars[j]
 		rank := func(r Result) int {
@@ -154,6 +205,9 @@ func check(ctx context.Context, lock *Lock, pins Pins, src UpstreamSource) Repor
 		}
 		if a.Behind != b.Behind {
 			return a.Behind > b.Behind
+		}
+		if ga, gb := a.releaseGap(), b.releaseGap(); ga != gb {
+			return ga > gb
 		}
 		return a.Language < b.Language
 	})
@@ -228,9 +282,7 @@ func writeTable(w io.Writer, r Report) {
 	fmt.Fprintf(w, "grammar freshness (A2) — checked %s\n", r.CheckedAt.Format("2006-01-02"))
 	fmt.Fprintf(w, "bundled versions read per grammar from go.mod + internal/treesitter/ts/grammars\n")
 	fmt.Fprintf(w, "%d grammars: %d stale, %d current, %d unknown, %d unreachable\n\n",
-		len(r.Grammars), r.StaleCount,
-		len(r.Grammars)-r.StaleCount-r.UnknownCount-r.Errored,
-		r.UnknownCount, r.Errored)
+		len(r.Grammars), r.StaleCount, r.CurrentCount(), r.UnknownCount, r.Errored)
 
 	fmt.Fprintf(w, "%-12s %-10s %-22s %-24s %s\n", "LANGUAGE", "STATUS", "BUNDLED", "UPSTREAM", "DETAIL")
 	for _, g := range r.Grammars {
