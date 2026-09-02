@@ -93,3 +93,35 @@ var csharpPrimitives = map[string]bool{
 	"IEnumerable": true, "List": true, "IList": true, "Array": true,
 	"Ok": true, "NotFound": true, "BadRequest": true, "Unauthorized": true,
 }
+
+// csMessageProducesEdge builds the PRODUCES relationship a MESSAGE-BUS dispatch
+// site carries to the message contract it dispatches (#6767).
+//
+// Sibling of csJobProducesEdge, and the same one-hop degenerate form ADR-0028
+// §1 blesses: the producer entity → the type the call site names, carrying the
+// framework's `task_id` address as a property rather than minting a work-unit
+// node. It differs only in what the target IS — a message/event contract class
+// (`new OrderSubmitted{...}`) rather than a job class — which is recorded as
+// `message_type` instead of `job_class` so a reader can tell the two hops apart
+// without consulting the framework property.
+//
+// Why PRODUCES and not ENQUEUES: #6741's split is by TARGET SHAPE, not by
+// framework — PRODUCES for dispatch onto a CLASS, ENQUEUES for dispatch onto a
+// FUNCTION. Every site that reaches here names a class. Nothing else in the
+// repo emits an edge for these four C# buses (no engine synthesis mentions
+// MassTransit / MediatR / Wolverine / NServiceBus, and csharp/redis.go's
+// PUBLISHES_TO requires a string-literal channel argument, so `.Publish(new T())`
+// cannot reach it) — so there is no hop here for ADR-0028 §3 to double.
+func csMessageProducesEdge(framework, msgType, taskID, provenance string) types.RelationshipRecord {
+	return types.RelationshipRecord{
+		ToID: csClassRef(msgType),
+		Kind: string(types.RelationshipKindProduces),
+		// types.Props is binary-searched, so the keys must stay sorted.
+		Properties: types.Props{
+			{K: "framework", V: framework},
+			{K: "message_type", V: msgType},
+			{K: "provenance", V: provenance},
+			{K: "task_id", V: taskID},
+		},
+	}
+}

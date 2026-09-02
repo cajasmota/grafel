@@ -33,6 +33,13 @@ func init() {
 // extractor is gated on an IHandleMessages signal (the unambiguous marker for the
 // NServiceBus/Rebus family). Each message type is normalised to a task_id
 // (msgbus:message:<T>) so the dispatch site and the handler converge by contract.
+//
+// EDGES (#6767). `Publish`/`Send` emit a real PRODUCES relationship to the
+// message contract they name (`Class:<T>`). Before #6767 this pass emitted ZERO
+// relationships and recorded the intent as an inert `edge_kind` entity
+// PROPERTY. The handler / saga-initiator half is deliberately EDGELESS:
+// CONSUMES is emitted by nothing in any language (ADR-0028 §1's two-hop form,
+// which #6741 declined to build). They keep `task_id` as the join key.
 type handleMessagesExtractor struct{}
 
 func (e *handleMessagesExtractor) Language() string { return "custom_csharp_nservicebus" }
@@ -99,7 +106,6 @@ func (e *handleMessagesExtractor) Extract(ctx context.Context, file extractor.Fi
 			"pattern_type", "message_handler",
 			"message_type", msgType,
 			"task_id", "msgbus:message:"+msgType,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_HANDLE_MESSAGES",
 		)
 		add(ent)
@@ -116,7 +122,6 @@ func (e *handleMessagesExtractor) Extract(ctx context.Context, file extractor.Fi
 			"pattern_type", "saga_initiator",
 			"message_type", msgType,
 			"task_id", "msgbus:message:"+msgType,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_AM_INITIATED_BY",
 		)
 		add(ent)
@@ -132,9 +137,11 @@ func (e *handleMessagesExtractor) Extract(ctx context.Context, file extractor.Fi
 			"pattern_type", "publish",
 			"message_type", msgType,
 			"task_id", "msgbus:message:"+msgType,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_NSERVICEBUS_PUBLISH",
 		)
+		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+			"nservicebus", msgType, "msgbus:message:"+msgType, "INFERRED_FROM_NSERVICEBUS_PUBLISH",
+		))
 		add(ent)
 	}
 
@@ -148,9 +155,11 @@ func (e *handleMessagesExtractor) Extract(ctx context.Context, file extractor.Fi
 			"pattern_type", "send",
 			"message_type", msgType,
 			"task_id", "msgbus:message:"+msgType,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_NSERVICEBUS_SEND",
 		)
+		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+			"nservicebus", msgType, "msgbus:message:"+msgType, "INFERRED_FROM_NSERVICEBUS_SEND",
+		))
 		add(ent)
 	}
 

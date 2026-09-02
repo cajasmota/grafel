@@ -137,9 +137,41 @@ removed it from the five passes behind #6741's five fixtures (`java/quartz.go`, 
 producers, duplicative at best elsewhere. **A framework pass must not record an intended edge as an entity
 property.** Emit the edge, or record the gap in prose where a reader will find it.
 
-Still carrying the property, and outside #6741's scope: `csharp/coravel.go`, `csharp/masstransit.go`,
+### Completing the sweep (#6767)
+
+#6741 listed six more carriers as out of scope: `csharp/coravel.go`, `csharp/masstransit.go`,
 `csharp/mediatr.go`, `csharp/wolverine.go`, `csharp/handle_messages.go` (`PRODUCES`/`CONSUMES`) and
-`python/dramatiq.go`'s routing entities (`ROUTES_TO`). Each of those five C# files contains zero
-relationship emissions, so their property names an edge that pass never produces; `ROUTES_TO` is a real
-edge kind emitted by several engine passes, but not by the dramatiq routing extractor. Same defect class,
-not fixed here — a follow-up should sweep them.
+`python/dramatiq.go`'s routing entities (`ROUTES_TO`). #6767 swept them. The grounded population was
+**26 sites** — 24 across the five C# files and 2 in dramatiq — and the five files named in the issue were
+in fact the whole C# set. `internal/custom/csharp/produces_edges_6767_test.go` now walks all of
+`internal/custom` and fails on any re-introduction, in any language.
+
+**PRODUCES became real for every C# dispatch site that names its target.** The split #6741 settled is by
+target SHAPE, not by framework: `PRODUCES` for dispatch onto a **class**, `ENQUEUES` for dispatch onto a
+**function**. Every site in these five passes names a class — a Coravel `IInvocable`, or a message
+contract constructed inline (`Publish(new OrderSubmitted{…})`) — so all five take `PRODUCES`, emitted via
+`csJobProducesEdge` (job-class target, `job_class` property) or its new sibling `csMessageProducesEdge`
+(message-contract target, `message_type` property). §3 has nothing to double here: no engine synthesis
+mentions MassTransit / MediatR / Wolverine / NServiceBus / Coravel, and `csharp/redis.go`'s
+`PUBLISHES_TO` requires a string-literal channel argument, so `.Publish(new T())` cannot reach it.
+
+**Two Coravel forms emit nothing, deliberately.** `Schedule(() => …)` and `QueueAsyncTask(…)` name no
+invocable. They keep their honest unresolved producer entity and take no edge — the same guard
+`hangfire.go` applies to `enqueue_dynamic` / `recurring_dynamic`. Recall is structurally blind to an
+over-broad emitter, so the exclusion is pinned negatively, by
+`TestCoravelAnonymousDispatchEmitsNoProduces` — whose fixture deliberately DECLARES an `IInvocable`
+alongside the anonymous dispatch, so an emitter widened to "reach for the nearest invocable" is caught
+rather than merely finding nothing to reach for.
+
+**dramatiq's `ROUTES_TO` property is removed and no edge replaces it.** Section 7's call site
+(`actor.send_with_options(…)`) is already paired by a real `ENQUEUES` edge from
+`synthesizeDramatiqSendEdges`, so a second edge would be exactly the §3 double edge Arm 4 refused for this
+pass; section 6's decorator names no second node at all — the queue is a string, not an entity, and the
+routing entity is already named after the actor. The routing fact survives on `queue_name` + `actor`.
+
+**CONSUMES is still emitted by nothing**, so every consumer half of these five passes is now edgeless and
+says so, in the pass and in `docs/coverage/registry.json`. The property was not harmless redundancy on
+these carriers: of the 26 sites, **14 were outright false** — the 10 `CONSUMES`
+stamps, dramatiq's 2 `ROUTES_TO` stamps and the 2 anonymous-Coravel `PRODUCES` stamps all named an edge
+that existed nowhere in the tree. The other 12 were merely duplicative, and only became so once #6767
+made their edge real.

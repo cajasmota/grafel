@@ -161,6 +161,20 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 
 	// 6. Routing: queue_name on @dramatiq.actor(...) decorator — maps a queue
 	//    to the actor that consumes it. Issue #3193 (task_routing).
+	//
+	//    EDGELESS, deliberately (#6767). Both routing sites carried an inert
+	//    `edge_kind: "ROUTES_TO"` PROPERTY while this pass emitted zero
+	//    relationships. No ROUTES_TO edge replaces it: section 7's call site
+	//    (`actor.send_with_options(...)`) is ALREADY paired by a real edge —
+	//    internal/engine/scheduled_jobs_edges.go's synthesizeDramatiqSendEdges
+	//    emits ENQUEUES from the dispatching function to Function:<actor> for
+	//    exactly `.send(...)` / `.send_with_options(...)` — so adding one here
+	//    would be the ADR-0028 §3 double edge #6741 arm 4 refused for this very
+	//    pass. Section 6's decorator names no second node at all: the queue is a
+	//    string, not an entity, and the routing entity is already named after
+	//    the actor, so the "edge" would point a node at itself.
+	//
+	//    The routing FACT survives on `queue_name` + `actor` / `actor_ref`.
 	for _, m := range dmActorQueueNameRe.FindAllStringSubmatchIndex(source, -1) {
 		queueName := source[m[2]:m[3]]
 		funcName := source[m[4]:m[5]]
@@ -172,7 +186,6 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"queue_name":   queueName,
 				"actor":        funcName,
 				"task_id":      "task:dramatiq:" + funcName,
-				"edge_kind":    "ROUTES_TO",
 				"provenance":   "INFERRED_FROM_DRAMATIQ_ACTOR_QUEUE_NAME",
 			}))
 	}
@@ -190,7 +203,6 @@ func (e *dramatiqExtractor) Extract(ctx context.Context, file extractor.FileInpu
 				"queue_name":   queueName,
 				"actor_ref":    actorRef,
 				"task_id":      "task:dramatiq:" + actorRef,
-				"edge_kind":    "ROUTES_TO",
 				"provenance":   "INFERRED_FROM_DRAMATIQ_SEND_WITH_OPTIONS_QUEUE_NAME",
 			}))
 	}

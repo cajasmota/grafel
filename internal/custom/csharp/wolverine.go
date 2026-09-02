@@ -35,8 +35,15 @@ func init() {
 //   - public void Consume(OrderPlaced msg)
 //
 // Each message type is normalised to task_id wolverine:message:<T> so the
-// dispatch (PRODUCES) site and the convention handler (CONSUMES) site converge
-// by message contract, exactly as the MassTransit / NServiceBus extractors do.
+// dispatch site and the convention handler site converge by message contract,
+// exactly as the MassTransit / NServiceBus extractors do.
+//
+// EDGES (#6767). All three dispatch verbs emit a real PRODUCES relationship to
+// the message contract they name (`Class:<T>`). Before #6767 this pass emitted
+// ZERO relationships and recorded the intent as an inert `edge_kind` entity
+// PROPERTY. The convention-handler half is deliberately EDGELESS: CONSUMES is
+// emitted by nothing in any language (ADR-0028 §1's two-hop form, which #6741
+// declined to build). The handler keeps `task_id` as the join key.
 type wolverineExtractor struct{}
 
 func (e *wolverineExtractor) Language() string { return "custom_csharp_wolverine" }
@@ -113,9 +120,11 @@ func (e *wolverineExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"pattern_type", "publish",
 			"message_type", msgType,
 			"task_id", "wolverine:message:"+msgType,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_WOLVERINE_PUBLISH",
 		)
+		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+			"wolverine", msgType, "wolverine:message:"+msgType, "INFERRED_FROM_WOLVERINE_PUBLISH",
+		))
 		add(ent)
 	}
 
@@ -129,9 +138,11 @@ func (e *wolverineExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"pattern_type", "send",
 			"message_type", msgType,
 			"task_id", "wolverine:message:"+msgType,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_WOLVERINE_SEND",
 		)
+		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+			"wolverine", msgType, "wolverine:message:"+msgType, "INFERRED_FROM_WOLVERINE_SEND",
+		))
 		add(ent)
 	}
 
@@ -145,9 +156,11 @@ func (e *wolverineExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"pattern_type", "invoke",
 			"message_type", msgType,
 			"task_id", "wolverine:message:"+msgType,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_WOLVERINE_INVOKE",
 		)
+		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+			"wolverine", msgType, "wolverine:message:"+msgType, "INFERRED_FROM_WOLVERINE_INVOKE",
+		))
 		add(ent)
 	}
 
@@ -170,7 +183,6 @@ func (e *wolverineExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"pattern_type", "handler",
 			"message_type", msgType,
 			"task_id", "wolverine:message:"+msgType,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_WOLVERINE_HANDLER",
 		)
 		add(ent)

@@ -59,8 +59,8 @@ func TestMassTransitPublishConsumerConverge(t *testing.T) {
 	if pub == nil {
 		t.Fatal("expected publish 'Publish OrderSubmitted'")
 	}
-	if pub.Properties["edge_kind"] != "PRODUCES" {
-		t.Errorf("publish edge_kind = %q, want PRODUCES", pub.Properties["edge_kind"])
+	if _, ok := pub.Properties["edge_kind"]; ok {
+		t.Errorf("publish still stamps the inert edge_kind property (#6767)")
 	}
 	if pub.Properties["task_id"] != "masstransit:message:OrderSubmitted" {
 		t.Errorf("publish task_id = %q", pub.Properties["task_id"])
@@ -73,8 +73,8 @@ func TestMassTransitPublishConsumerConverge(t *testing.T) {
 	if cons.Kind != "SCOPE.Service" {
 		t.Errorf("consumer kind = %q, want SCOPE.Service", cons.Kind)
 	}
-	if cons.Properties["edge_kind"] != "CONSUMES" {
-		t.Errorf("consumer edge_kind = %q, want CONSUMES", cons.Properties["edge_kind"])
+	if _, ok := cons.Properties["edge_kind"]; ok {
+		t.Errorf("consumer still stamps the inert edge_kind property (#6767)")
 	}
 	if cons.Properties["task_id"] != pub.Properties["task_id"] {
 		t.Errorf("consumer task_id %q != publish task_id %q",
@@ -92,8 +92,8 @@ func TestMassTransitSend(t *testing.T) {
 	if send == nil {
 		t.Fatal("expected send 'Send ProcessOrder'")
 	}
-	if send.Properties["edge_kind"] != "PRODUCES" {
-		t.Errorf("send edge_kind = %q, want PRODUCES", send.Properties["edge_kind"])
+	if _, ok := send.Properties["edge_kind"]; ok {
+		t.Errorf("send still stamps the inert edge_kind property (#6767)")
 	}
 	if send.Properties["task_id"] != "masstransit:message:ProcessOrder" {
 		t.Errorf("send task_id = %q", send.Properties["task_id"])
@@ -107,8 +107,8 @@ func TestMassTransitSagaAndStateMachine(t *testing.T) {
 	if saga == nil {
 		t.Fatal("expected saga 'OrderSaga'")
 	}
-	if saga.Properties["edge_kind"] != "CONSUMES" {
-		t.Errorf("saga edge_kind = %q, want CONSUMES", saga.Properties["edge_kind"])
+	if _, ok := saga.Properties["edge_kind"]; ok {
+		t.Errorf("saga still stamps the inert edge_kind property (#6767)")
 	}
 
 	sm := findBySub(ents, "state_machine", "OrderStateMachine")

@@ -37,7 +37,17 @@ func init() {
 //   - class/record BarNotification : INotification  (notification message)
 //
 // Each request/notification name is normalised to a task_id so the dispatch
-// (PRODUCES) site and the handler (CONSUMES) site converge by message type.
+// site and the handler site converge by message type.
+//
+// EDGES (#6767). `Send`/`Publish` emit a real PRODUCES relationship to the
+// request/notification contract they name (`Class:<T>`). Before #6767 this pass
+// emitted ZERO relationships and recorded the intent as an inert `edge_kind`
+// entity PROPERTY.
+//
+// The handler and pipeline-behavior halves are deliberately EDGELESS: CONSUMES
+// is emitted by nothing in any language — the honest form needs the two-hop
+// work-unit node ADR-0028 §1 describes, which #6741 declined to build. They
+// keep `task_id` as the join key; they no longer claim an edge uses it.
 type mediatrExtractor struct{}
 
 func (e *mediatrExtractor) Language() string { return "custom_csharp_mediatr" }
@@ -115,9 +125,11 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"pattern_type", "send",
 			"message_type", msgType,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_MEDIATR_SEND",
 		)
+		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+			"mediatr", msgType, taskID, "INFERRED_FROM_MEDIATR_SEND",
+		))
 		add(ent)
 	}
 
@@ -132,9 +144,11 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"pattern_type", "publish",
 			"message_type", msgType,
 			"task_id", taskID,
-			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_MEDIATR_PUBLISH",
 		)
+		ent.Relationships = append(ent.Relationships, csMessageProducesEdge(
+			"mediatr", msgType, taskID, "INFERRED_FROM_MEDIATR_PUBLISH",
+		))
 		add(ent)
 	}
 
@@ -150,7 +164,6 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"pattern_type", "request_handler",
 			"message_type", msgType,
 			"task_id", taskID,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_MEDIATR_REQUEST_HANDLER",
 		)
 		add(ent)
@@ -168,7 +181,6 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 			"pattern_type", "notification_handler",
 			"message_type", msgType,
 			"task_id", taskID,
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_MEDIATR_NOTIFICATION_HANDLER",
 		)
 		add(ent)
@@ -182,7 +194,6 @@ func (e *mediatrExtractor) Extract(ctx context.Context, file extractor.FileInput
 		setProps(&ent,
 			"framework", "mediatr",
 			"pattern_type", "pipeline_behavior",
-			"edge_kind", "CONSUMES",
 			"provenance", "INFERRED_FROM_MEDIATR_PIPELINE_BEHAVIOR",
 		)
 		add(ent)

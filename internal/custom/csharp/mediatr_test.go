@@ -73,8 +73,8 @@ func TestMediatRSendPublishHandlersConverge(t *testing.T) {
 	if send == nil {
 		t.Fatal("expected request_dispatch 'Send GetUserQuery'")
 	}
-	if send.Properties["edge_kind"] != "PRODUCES" {
-		t.Errorf("Send edge_kind = %q, want PRODUCES", send.Properties["edge_kind"])
+	if _, ok := send.Properties["edge_kind"]; ok {
+		t.Errorf("Send still stamps the inert edge_kind property (#6767)")
 	}
 	if send.Properties["task_id"] != "mediatr:request:GetUserQuery" {
 		t.Errorf("Send task_id = %q, want mediatr:request:GetUserQuery", send.Properties["task_id"])
@@ -99,8 +99,8 @@ func TestMediatRSendPublishHandlersConverge(t *testing.T) {
 	if rh == nil {
 		t.Fatal("expected request_handler 'GetUserHandler'")
 	}
-	if rh.Properties["edge_kind"] != "CONSUMES" {
-		t.Errorf("handler edge_kind = %q, want CONSUMES", rh.Properties["edge_kind"])
+	if _, ok := rh.Properties["edge_kind"]; ok {
+		t.Errorf("handler still stamps the inert edge_kind property (#6767)")
 	}
 	if rh.Properties["task_id"] != send.Properties["task_id"] {
 		t.Errorf("request handler task_id %q != dispatch task_id %q",
