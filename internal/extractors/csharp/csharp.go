@@ -41,6 +41,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
@@ -1140,19 +1141,67 @@ func leafTypeName(typ ts.Node, src []byte) string {
 			return leafTypeName(first, src)
 		}
 	case "qualified_name":
-		// `System.String` — leaf is the rightmost identifier.
-		ids := findAllNodes(typ, "identifier")
-		if len(ids) > 0 {
-			n := ids[len(ids)-1]
-			return strings.TrimSpace(string(src[n.StartByte():n.EndByte()]))
+		// `System.Text.StringBuilder` — the leaf is the rightmost SEGMENT,
+		// which the grammar hands over directly as the `name` field of
+		// qualified_name{qualifier, ".", name}. Taking it from the node
+		// STRUCTURE is the whole point (#6771): the previous implementation
+		// flattened the node with findAllNodes and indexed the last element,
+		// but findAllNodes is a LIFO stack walk that visits the rightmost
+		// child FIRST, so on the grammar's left-nested `A.B.C` it accumulated
+		// [C, B, A] and returned `A` — the NAMESPACE ROOT — under a comment
+		// claiming the opposite. Never re-derive this from a flattened
+		// descendant list; that list's order is not source order.
+		//
+		// `name` is a _simple_name, so it can be a generic_name
+		// (`A.B.Handler<int>`); recursing strips the type-argument list.
+		// A `name`-less fallback was tried and DELETED: the field is
+		// mandatory in the grammar, no parse could be found that omits it,
+		// and the branch survived every mutant as unreachable code. When the
+		// field is absent the switch falls through to the identifier-shape
+		// last resort below, which rejects the dotted raw text.
+		if leaf := typ.ChildByFieldName("name"); leaf != nil {
+			return leafTypeName(leaf, src)
 		}
 	}
-	// Last resort — use the raw text if it looks like a single identifier.
+	// Last resort — use the raw text, but only when it is actually shaped
+	// like a C# identifier. This is an ALLOW-list on purpose. The previous
+	// guard rejected a blocklist of characters (`" <>[]?,"`), which admitted
+	// every punctuation token nobody thought to enumerate: `:` — the
+	// anonymous separator of a base list — contains none of them and was
+	// returned as a type name. An allow-list has no such residue.
 	raw := strings.TrimSpace(string(src[typ.StartByte():typ.EndByte()]))
-	if raw == "" || strings.ContainsAny(raw, " <>[]?,") {
+	if !isCsIdentifierText(raw) {
 		return ""
 	}
 	return raw
+}
+
+// isCsIdentifierText reports whether s is a single C# identifier: an optional
+// `@` verbatim prefix, then a letter or `_`, then letters, digits or `_`.
+// Unicode letters are accepted — C# identifiers are not restricted to ASCII.
+//
+// Everything else is rejected, including the shapes a blocklist guard used to
+// let through: punctuation (`:`, `::`, `=>`), operators, dotted qualified
+// names, leading digits, and anything containing whitespace. The whole
+// printable-ASCII single- and two-character token space is enumerated against
+// an independent oracle in leaf_type_name_6771_test.go, in BOTH directions, so
+// a guard loosened OR tightened from this spec fails there.
+func isCsIdentifierText(s string) bool {
+	if s == "" {
+		return false
+	}
+	if s[0] == '@' {
+		s = s[1:]
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || unicode.IsLetter(r):
+		case i > 0 && unicode.IsDigit(r):
+		default:
+			return false
+		}
+	}
+	return s != ""
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.

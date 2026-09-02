@@ -105,10 +105,20 @@ func csBaseTypeNames(node ts.Node, src []byte) []string {
 		switch ch.Type() {
 		case "qualified_name", "alias_qualified_name":
 			// `Microsoft.AspNetCore.Mvc.ControllerBase` — the supertype is
-			// the RIGHTMOST segment. leafTypeName's qualified_name branch
-			// walks with findAllNodes, whose stack traversal does not return
-			// identifiers in source order, so it is not usable here.
-			name = csQualifiedLeaf(nodeText(ch, src))
+			// the RIGHTMOST segment. #6742 could not use leafTypeName here
+			// because its qualified_name branch walked with findAllNodes,
+			// whose stack traversal does not return identifiers in source
+			// order, and worked around it with a local csQualifiedLeaf.
+			// #6771 fixed leafTypeName at the source — it now takes the
+			// grammar's own `name` field — so the workaround is gone and
+			// this call site shares the one implementation again.
+			//
+			// alias_qualified_name (`global::Foo`) has no qualified_name
+			// branch and falls to leafTypeName's identifier-shape last
+			// resort, which rejects `global::Foo` and yields "" — exactly
+			// what csQualifiedLeaf returned for it, so no base list changes
+			// meaning.
+			fallthrough
 		case "identifier", "generic_name", "nullable_type":
 			name = leafTypeName(ch, src)
 		case "primary_constructor_base_type":
@@ -135,24 +145,6 @@ func csBaseTypeNames(node ts.Node, src []byte) []string {
 		}
 	}
 	return out
-}
-
-// csQualifiedLeaf reduces a dotted type reference to its rightmost segment and
-// strips any generic type-argument list: `A.B.Base<T>` → "Base". An empty
-// string is returned when the result is not a plain identifier.
-func csQualifiedLeaf(raw string) string {
-	s := strings.TrimSpace(raw)
-	if i := strings.Index(s, "<"); i >= 0 {
-		s = s[:i]
-	}
-	if i := strings.LastIndex(s, "."); i >= 0 {
-		s = s[i+1:]
-	}
-	s = strings.TrimSpace(s)
-	if s == "" || strings.ContainsAny(s, " <>[]?,.:()") {
-		return ""
-	}
-	return s
 }
 
 // csLooksLikeInterfaceName reports whether name follows the .NET interface
