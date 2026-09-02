@@ -87,8 +87,21 @@ func sortedKeys[V any](m map[string]V) []string {
 func (p Pins) Sources() []string { return sortedKeys(p.bySource) }
 
 // loadPins resolves every grammar's bundled version from go.mod plus the
-// vendored grammar packages. go.mod wins where both exist: it is what actually
-// compiles into the binary for module-backed grammars.
+// vendored grammar packages.
+//
+// The two sources PARTITION the grammars; there is no precedence rule, because
+// there is nothing for one to win. Every language is reached through exactly one
+// internal/treesitter/ts/grammars/<lang> package, and that package either
+// imports a go.mod grammar binding (bash, c, java, ...) or cgo-compiles vendored
+// C (kotlin, hcl, sql, groovy, proto, dockerfile) — never both. On the real repo
+// the two maps are disjoint, asserted by TestLoadPins_SourcesPartitionGrammars.
+//
+// An earlier revision of this comment claimed "go.mod wins where both exist,
+// because it is what compiles". That tie-break was unobservable AND backwards:
+// if a grammar were vendored, the vendored C is what links, so preferring the
+// go.mod version would report a version the binary does not contain. Rather than
+// silently pick a side, an overlap is a hard error naming the grammar — it means
+// a migration is half-done and a human must say which source is real.
 func loadPins(goModPath, vendorRoot string) (Pins, error) {
 	vendored, err := parseVendoredPins(vendorRoot)
 	if err != nil {
@@ -99,8 +112,15 @@ func loadPins(goModPath, vendorRoot string) (Pins, error) {
 		return Pins{}, err
 	}
 	merged := make(map[string]Pin, len(vendored)+len(mod))
-	for k, v := range vendored {
-		merged[k] = v
+	for _, k := range sortedKeys(vendored) {
+		if m, both := mod[k]; both {
+			return Pins{}, fmt.Errorf(
+				"grammar %s is pinned twice — %s says %s and %s says %s; "+
+					"a grammar is either a go.mod module or vendored C, never both, "+
+					"so one of these is stale and no tie-break can be trusted",
+				k, mod[k].Origin, m.String(), vendored[k].Origin, vendored[k].String())
+		}
+		merged[k] = vendored[k]
 	}
 	for k, v := range mod {
 		merged[k] = v

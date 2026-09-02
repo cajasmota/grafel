@@ -285,6 +285,95 @@ package branchy
 	}
 }
 
+// TestLoadPins_SourcesPartitionGrammars asserts the property that replaced the
+// old (unobservable, and backwards) "go.mod wins" tie-break: on the real repo no
+// grammar is pinned by both sources. Each language is reached through exactly
+// one ts/grammars/<lang> package, which either imports a go.mod binding or
+// cgo-compiles vendored C.
+func TestLoadPins_SourcesPartitionGrammars(t *testing.T) {
+	mod, err := parseGoModPins("../../go.mod")
+	if err != nil {
+		t.Fatalf("parseGoModPins: %v", err)
+	}
+	vendored, err := parseVendoredPins("../../internal/treesitter/ts/grammars")
+	if err != nil {
+		t.Fatalf("parseVendoredPins: %v", err)
+	}
+	// Both sources must actually be populated, or "disjoint" is vacuous.
+	if len(mod) == 0 || len(vendored) == 0 {
+		t.Fatalf("need both sources populated, got %d go.mod and %d vendored", len(mod), len(vendored))
+	}
+	for _, slug := range sortedKeys(vendored) {
+		if _, both := mod[slug]; both {
+			t.Errorf("%s is pinned by BOTH go.mod and a vendored header; "+
+				"the sources are documented as partitioning the grammars", slug)
+		}
+	}
+	// The six vendored grammars are the ones with no Go module to depend on.
+	for _, slug := range []string{
+		"fwcd/tree-sitter-kotlin",
+		"tree-sitter-grammars/tree-sitter-hcl",
+		"DerekStride/tree-sitter-sql",
+		"murtaza64/tree-sitter-groovy",
+		"mitchellh/tree-sitter-proto",
+		"camdencheek/tree-sitter-dockerfile",
+	} {
+		if _, ok := vendored[slug]; !ok {
+			t.Errorf("%s should be a vendored pin; got vendored set %v", slug, sortedKeys(vendored))
+		}
+	}
+}
+
+// TestLoadPins_OverlapIsAHardError pins the replacement contract directly, with
+// fixtures that DO overlap: rather than silently preferring either side,
+// loadPins fails and names the grammar. A half-done migration is a human
+// decision, not a tie-break.
+func TestLoadPins_OverlapIsAHardError(t *testing.T) {
+	dir := t.TempDir()
+	gomod := filepath.Join(dir, "go.mod")
+	writeFile(t, gomod, `module example.com/x
+
+go 1.26
+
+require github.com/fwcd/tree-sitter-kotlin v0.4.0
+`)
+	vendorRoot := filepath.Join(dir, "grammars")
+	writeFile(t, filepath.Join(vendorRoot, "kotlin", "kotlin.go"), `// Package kotlin ...
+//	source: github.com/fwcd/tree-sitter-kotlin
+//	ref:    abc123 (0.3.8, 2024-08-03)
+package kotlin
+`)
+
+	_, err := loadPins(gomod, vendorRoot)
+	if err == nil {
+		t.Fatal("a grammar pinned by BOTH sources must be a hard error, not a silent tie-break")
+	}
+	for _, want := range []string{"fwcd/tree-sitter-kotlin", "v0.4.0", "0.3.8"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error must name %q so a human can adjudicate, got: %v", want, err)
+		}
+	}
+
+	// Sanity: without the overlap the same fixtures load fine, so the error
+	// above is caused by the overlap and not by the fixtures being unreadable.
+	writeFile(t, gomod, `module example.com/x
+
+go 1.26
+
+require github.com/tree-sitter/tree-sitter-java v0.23.5
+`)
+	pins, err := loadPins(gomod, vendorRoot)
+	if err != nil {
+		t.Fatalf("disjoint fixtures must load: %v", err)
+	}
+	if _, ok := pins.Get("fwcd/tree-sitter-kotlin"); !ok {
+		t.Error("vendored kotlin pin missing from the disjoint load")
+	}
+	if _, ok := pins.Get("tree-sitter/tree-sitter-java"); !ok {
+		t.Error("go.mod java pin missing from the disjoint load")
+	}
+}
+
 func TestCompareRelease(t *testing.T) {
 	cases := []struct {
 		a, b string
