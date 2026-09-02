@@ -377,8 +377,8 @@ func TestSchedulerFallbackIndex_GraphWriteFailureLeavesManifestUntouched(t *test
 	}
 
 	prevWriter := writeGraphGen
-	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.UndeclaredKindReport, error) {
-		return "", fbwriter.UndeclaredKindReport{}, errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
+	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.NonEnumKindReport, error) {
+		return "", fbwriter.NonEnumKindReport{}, errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
 	}
 	t.Cleanup(func() { writeGraphGen = prevWriter })
 

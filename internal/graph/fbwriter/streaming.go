@@ -101,7 +101,7 @@ type StreamingWriter struct {
 	// tally counts relationships whose kind is not in
 	// types.AllRelationshipKinds() (#6757 arm C). Observation only — nothing
 	// is dropped and no write fails because of it.
-	tally *undeclaredKindTally
+	tally *nonEnumKindTally
 }
 
 // NewStreamingWriter creates a StreamingWriter that will eventually write to
@@ -120,7 +120,7 @@ func NewStreamingWriter(outPath string) (*StreamingWriter, error) {
 	return &StreamingWriter{
 		b:       b,
 		outPath: outPath,
-		tally:   &undeclaredKindTally{},
+		tally:   &nonEnumKindTally{},
 	}, nil
 }
 
@@ -152,7 +152,7 @@ func (sw *StreamingWriter) WriteRelationship(r *graph.Relationship) error {
 // are absent from types.AllRelationshipKinds() (#6757 arm C). Safe to call
 // before or after Close. Nothing was dropped: every relationship handed to
 // WriteRelationship was written, undeclared kind or not.
-func (sw *StreamingWriter) UndeclaredKinds() UndeclaredKindReport {
+func (sw *StreamingWriter) NonEnumKinds() NonEnumKindReport {
 	return sw.tally.report()
 }
 
@@ -317,7 +317,7 @@ func (sw *StreamingWriter) RelationshipCount() int { return len(sw.relOffsets) }
 // production builds.
 var marshalPanicHook func()
 
-func streamingMarshal(doc *graph.Document) (out []byte, tally *undeclaredKindTally, err error) {
+func streamingMarshal(doc *graph.Document) (out []byte, tally *nonEnumKindTally, err error) {
 	// Issue #5726 — fail-soft on oversized graphs. The flatbuffers builder
 	// panics with "cannot grow buffer beyond 2 gigabytes" once serialization
 	// crosses the library's hard 2-GiB cap. That panic originates in the
@@ -347,7 +347,7 @@ func streamingMarshal(doc *graph.Document) (out []byte, tally *undeclaredKindTal
 	sw := &StreamingWriter{
 		b:       flatbuffers.NewBuilder(1 << 20),
 		outPath: "",
-		tally:   &undeclaredKindTally{},
+		tally:   &nonEnumKindTally{},
 	}
 	tally = sw.tally
 

@@ -367,8 +367,8 @@ func TestRebuild_GraphWriteFailureLeavesManifestUntouched(t *testing.T) {
 	}
 
 	prevWriter := writeGraphGen
-	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.UndeclaredKindReport, error) {
-		return "", fbwriter.UndeclaredKindReport{}, errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
+	writeGraphGen = func(dir string, doc *graph.Document) (string, fbwriter.NonEnumKindReport, error) {
+		return "", fbwriter.NonEnumKindReport{}, errors.New("injected: graph.fb write failed (disk full / EPERM / gen-flip)")
 	}
 	t.Cleanup(func() { writeGraphGen = prevWriter })
 

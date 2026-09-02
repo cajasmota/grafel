@@ -19,10 +19,10 @@ import (
 // wrong in the other direction.
 //
 // What must never happen is the third option: writing a sidecar with the
-// fields silently absent. That reports a graph full of undeclared kinds as
+// fields silently absent. That reports a graph full of kinds absent from the enum as
 // clean, having looked at nothing — the #6534 failure this arm exists to
 // avoid.
-func TestIncremental_SidecarReportsUndeclaredRelationshipKinds(t *testing.T) {
+func TestIncremental_SidecarReportsRelationshipKindsNotInEnum(t *testing.T) {
 	if types.IsValidRelationshipKind("OWNS") {
 		t.Skip("OWNS has since been declared; pick another undeclared kind for this probe")
 	}
@@ -62,16 +62,20 @@ func TestIncremental_SidecarReportsUndeclaredRelationshipKinds(t *testing.T) {
 	if side.ExtractMS <= 0 {
 		t.Fatalf("the sidecar was not refreshed by this pass (extract_ms=%d)", side.ExtractMS)
 	}
-	if side.UndeclaredRelationshipKinds["OWNS"] == 0 {
+	if !side.RelationshipKindsScanned {
+		t.Error("the incremental pass wrote a sidecar with relationship_kinds_scanned unset — a " +
+			"consumer cannot tell a clean graph from one nothing counted")
+	}
+	if side.RelationshipKindsNotInEnum["OWNS"] == 0 {
 		t.Fatalf("the incremental reindex rewrote a graph containing an OWNS edge and reported no "+
-			"undeclared kinds — the write path observed nothing (sidecar: edges=%d kinds=%v)",
-			side.UndeclaredRelationshipEdges, side.UndeclaredRelationshipKinds)
+			"kinds absent from the enum — the write path observed nothing (sidecar: edges=%d kinds=%v)",
+			side.RelationshipEdgesKindNotInEnum, side.RelationshipKindsNotInEnum)
 	}
-	if _, bad := side.UndeclaredRelationshipKinds["CALLS"]; bad {
-		t.Errorf("the DECLARED kind CALLS was reported as undeclared — the counter is counting every "+
-			"relationship, not only the undeclared ones (%v)", side.UndeclaredRelationshipKinds)
+	if _, bad := side.RelationshipKindsNotInEnum["CALLS"]; bad {
+		t.Errorf("the enum kind CALLS was reported as non-enum — the counter is counting every "+
+			"relationship, not only the undeclared ones (%v)", side.RelationshipKindsNotInEnum)
 	}
-	if side.UndeclaredRelationshipKindCount < 1 {
-		t.Errorf("UndeclaredRelationshipKindCount = %d, want at least 1", side.UndeclaredRelationshipKindCount)
+	if side.RelationshipDistinctKindsNotInEnum < 1 {
+		t.Errorf("UndeclaredRelationshipKindCount = %d, want at least 1", side.RelationshipDistinctKindsNotInEnum)
 	}
 }

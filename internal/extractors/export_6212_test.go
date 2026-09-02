@@ -6,7 +6,7 @@ import (
 )
 
 // GraphGenWriter is the signature of fbwriter.WriteGraphGenReport.
-type GraphGenWriter = func(stateDir string, doc *graph.Document) (string, fbwriter.UndeclaredKindReport, error)
+type GraphGenWriter = func(stateDir string, doc *graph.Document) (string, fbwriter.NonEnumKindReport, error)
 
 // SwapWriteGraphGen replaces the graph-write seam and returns both a restore
 // func and the previous writer, so a test can wrap the real one rather than

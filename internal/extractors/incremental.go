@@ -1648,7 +1648,7 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// mapped graph.fb (Windows ERROR_USER_MAPPED_FILE). fbPath is the gen
 	// file written, passed to the directory-keyed sidecar writer below.
 	endWrite := tr.span("graph-remarshal-write")
-	fbPath, undeclaredKinds, writeErr := writeGraphGen(stateDir, doc)
+	fbPath, nonEnumKinds, writeErr := writeGraphGen(stateDir, doc)
 	endWrite()
 	if writeErr != nil {
 		return fallback(t0, "write-graph-fb: "+writeErr.Error())
@@ -1678,17 +1678,11 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// #6757 arm C — FRESH, not carried forward (unlike UnsupportedExtensions
 	// below). This pass re-serializes the WHOLE document, so every
 	// relationship in the graph went back through the write path and this
-	// tally is complete for the graph just written. Leaving the fields unset
-	// would report a graph full of undeclared kinds as clean.
-	side.UndeclaredRelationshipEdges = undeclaredKinds.Edges
-	side.UndeclaredRelationshipKindCount = undeclaredKinds.DistinctKinds
-	if len(undeclaredKinds.Kinds) > 0 {
-		kinds := make(map[string]int, len(undeclaredKinds.Kinds))
-		for _, k := range undeclaredKinds.Kinds {
-			kinds[k.Kind] = k.Edges
-		}
-		side.UndeclaredRelationshipKinds = kinds
-	}
+	// tally is complete for the graph just written. Leaving it unset would
+	// report a graph full of non-enum kinds as clean. Same conversion helper
+	// as cmd/grafel's full-index writer — one place, so the "counts uncapped,
+	// name list capped" property cannot drift between the two.
+	nonEnumKinds.ApplyToSidecar(side)
 	// #6338 — CARRIED FORWARD, not recomputed. This pass only ever looks at
 	// the files that CHANGED, so it cannot know the repo-wide unsupported
 	// tally; writing a fresh struct would zero the full index's count and make

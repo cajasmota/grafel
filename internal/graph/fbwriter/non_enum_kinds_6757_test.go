@@ -12,7 +12,7 @@ import (
 // Issue #6757 arm C. The relationship-kind vocabulary is enforced by nothing:
 // IsValidRelationshipKind had zero non-test callers, so any string could be
 // written to the graph as a relationship kind. Arm B's STATIC ledger proved 22
-// undeclared kinds exist in source, but 87 relationship-kind fields repo-wide
+// kinds absent from the enum exist in source, but 87 relationship-kind fields repo-wide
 // resolve to a RUNTIME value, so 22 is a floor and no static scan can see the
 // rest.
 //
@@ -22,10 +22,10 @@ import (
 // it cannot validate and ADMITS it, naming the distinct kinds.
 //
 // These tests pin, in order:
-//   - only UNDECLARED kinds are counted (the permissive direction: a counter
+//   - only ABSENT FROM THE ENUM kinds are counted (the permissive direction: a counter
 //     that tallies every edge is useless and our suites are structurally
 //     blind to it);
-//   - the count is non-zero when undeclared kinds are written (a counter
+//   - the count is non-zero when kinds absent from the enum are written (a counter
 //     hard-wired to 0 reports "clean" the way #6534 did);
 //   - the distinct NAMES are surfaced, not just a total;
 //   - the list is capped while the counts are not (the internal/secrets
@@ -37,20 +37,20 @@ func relFixture(kind, from, to string) graph.Relationship {
 	return graph.Relationship{FromID: from, ToID: to, Kind: kind}
 }
 
-func TestStreamingWriterTalliesOnlyUndeclaredRelationshipKinds(t *testing.T) {
+func TestStreamingWriterTalliesOnlyRelationshipKindsAbsentFromTheEnum(t *testing.T) {
 	// Positive control: these MUST be declared, or the fixture proves nothing.
 	for _, declared := range []string{
 		string(types.RelationshipKindCalls),
 		string(types.RelationshipKindContains),
 	} {
 		if !types.IsValidRelationshipKind(declared) {
-			t.Fatalf("fixture is inert: %q is expected to be a DECLARED kind but IsValidRelationshipKind says otherwise", declared)
+			t.Fatalf("fixture is inert: %q is expected to be IN the enum but IsValidRelationshipKind says otherwise", declared)
 		}
 	}
 	// And these must NOT be, or "undeclared" is meaningless here.
 	for _, undeclared := range []string{"OWNS", "INDEXES"} {
 		if types.IsValidRelationshipKind(undeclared) {
-			t.Fatalf("fixture is inert: %q is expected to be UNDECLARED but IsValidRelationshipKind accepts it", undeclared)
+			t.Fatalf("fixture is inert: %q is expected to be ABSENT FROM THE ENUM but IsValidRelationshipKind accepts it", undeclared)
 		}
 	}
 
@@ -94,7 +94,7 @@ func TestStreamingWriterTalliesOnlyUndeclaredRelationshipKinds(t *testing.T) {
 	}
 	for _, declared := range []string{"CALLS", "CONTAINS"} {
 		if _, bad := got[declared]; bad {
-			t.Errorf("declared kind %q was reported as undeclared — the counter is counting every relationship, not only the undeclared ones", declared)
+			t.Errorf("enum kind %q was reported as non-enum — the counter is counting every relationship, not only the undeclared ones", declared)
 		}
 	}
 
@@ -103,15 +103,15 @@ func TestStreamingWriterTalliesOnlyUndeclaredRelationshipKinds(t *testing.T) {
 	sum := rep.Summary()
 	for _, want := range []string{"OWNS", "INDEXES"} {
 		if !strings.Contains(sum, want) {
-			t.Errorf("Summary() = %q, missing undeclared kind name %q", sum, want)
+			t.Errorf("Summary() = %q, missing non-enum kind name %q", sum, want)
 		}
 	}
 	if strings.Contains(sum, "CALLS") {
-		t.Errorf("Summary() = %q, names the DECLARED kind CALLS", sum)
+		t.Errorf("Summary() = %q, names the enum kind CALLS", sum)
 	}
 }
 
-func TestUndeclaredKindReportIsEmptyForAnAllDeclaredGraph(t *testing.T) {
+func TestNonEnumKindReportIsEmptyButSCANNEDForAnAllEnumGraph(t *testing.T) {
 	doc := &graph.Document{
 		Relationships: []graph.Relationship{
 			relFixture("CALLS", "a", "b"),
@@ -122,22 +122,48 @@ func TestUndeclaredKindReportIsEmptyForAnAllDeclaredGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshalWithReport: %v", err)
 	}
-	if !rep.Clean() || rep.Edges != 0 || rep.DistinctKinds != 0 || len(rep.Kinds) != 0 {
-		t.Fatalf("all-declared graph reported undeclared kinds: %+v", rep)
+	if rep.Edges != 0 || rep.DistinctKinds != 0 || len(rep.Kinds) != 0 {
+		t.Fatalf("all-enum graph reported non-enum kinds: %+v", rep)
+	}
+	// SCANNED and empty — not the same as never scanned. Clean() must require
+	// both, or "counted zero" and "never counted" collapse into one state and
+	// this arm reports exactly the false all-clear it exists to prevent.
+	if !rep.Scanned {
+		t.Error("a graph that WAS serialized reported Scanned=false")
+	}
+	if !rep.Clean() {
+		t.Error("Clean() = false for a scanned graph with zero non-enum edges")
+	}
+	var never NonEnumKindReport
+	if never.Clean() {
+		t.Error("Clean() = true for a report no write path ever produced — " +
+			"\"counted zero\" and \"never counted\" must not be the same answer (#6534)")
+	}
+	if never.Scanned {
+		t.Error("a zero-valued report claims Scanned")
+	}
+	// Same for the tally's own no-observer case: a nil tally is the one the
+	// discarded probe uses, and it must report "never counted", not "clean".
+	var noTally *nonEnumKindTally
+	if noTally.report().Scanned {
+		t.Error("a nil tally — one that observed nothing at all — reports Scanned=true")
+	}
+	if noTally.report().Clean() {
+		t.Error("a nil tally reports Clean(); nothing counted is not the same as counted zero")
 	}
 	if rep.Summary() != "" {
 		t.Errorf("Summary() = %q, want empty for a clean graph", rep.Summary())
 	}
 }
 
-func TestUndeclaredKindReportCapsTheListButNotTheCounts(t *testing.T) {
+func TestNonEnumKindReportCapsTheListButNotTheCounts(t *testing.T) {
 	// Follows internal/secrets ScanResult.Unread (#6752): the list is capped
 	// so a pathological graph cannot flood a summary line, but the totals are
 	// never capped, so the report stays honest about the size of the problem.
-	const distinct = UndeclaredKindListCap + 11
+	const distinct = NonEnumKindListCap + 11
 	doc := &graph.Document{}
 	for i := 0; i < distinct; i++ {
-		kind := fmt.Sprintf("ZZ_UNDECLARED_%03d", i)
+		kind := fmt.Sprintf("ZZ_NOT_IN_ENUM_%03d", i)
 		if types.IsValidRelationshipKind(kind) {
 			t.Fatalf("fixture is inert: %q is actually declared", kind)
 		}
@@ -153,8 +179,8 @@ func TestUndeclaredKindReportCapsTheListButNotTheCounts(t *testing.T) {
 	if rep.DistinctKinds != distinct {
 		t.Errorf("DistinctKinds = %d, want %d — the distinct count must NOT be capped", rep.DistinctKinds, distinct)
 	}
-	if len(rep.Kinds) != UndeclaredKindListCap {
-		t.Errorf("len(Kinds) = %d, want the cap %d", len(rep.Kinds), UndeclaredKindListCap)
+	if len(rep.Kinds) != NonEnumKindListCap {
+		t.Errorf("len(Kinds) = %d, want the cap %d", len(rep.Kinds), NonEnumKindListCap)
 	}
 	if !strings.Contains(rep.Summary(), "more") {
 		t.Errorf("Summary() = %q — a truncated list must say so", rep.Summary())
@@ -179,7 +205,7 @@ func TestWriteGraphGenReportWiresTheFlatProducerPath(t *testing.T) {
 		t.Fatal("fixture is inert: no gen path written, so no relationship was serialized")
 	}
 	if rep.Edges != 1 || rep.DistinctKinds != 1 || len(rep.Kinds) != 1 || rep.Kinds[0].Kind != "OWNS" {
-		t.Fatalf("flat producer path did not report the undeclared kind: %+v", rep)
+		t.Fatalf("flat producer path did not report the non-enum kind: %+v", rep)
 	}
 }
 
@@ -200,7 +226,7 @@ func TestWriteGraphGenReportWiresTheSegmentedProducerPath(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		doc.Entities = append(doc.Entities, graph.Entity{ID: fmt.Sprintf("e%02d", i), Kind: "SCOPE.Module"})
 	}
-	// The UNDECLARED edges sort FIRST (writeGraphGenSegmented sorts by
+	// The ABSENT FROM THE ENUM edges sort FIRST (writeGraphGenSegmented sorts by
 	// from,to,kind), so they are the ones the probe walks before it bails.
 	// Ordering them last would let a shared-tally mutant survive: the probe
 	// would only ever double-count declared edges, which are not tallied.
@@ -216,7 +242,7 @@ func TestWriteGraphGenReportWiresTheSegmentedProducerPath(t *testing.T) {
 		t.Fatal("fixture is inert: nothing was written")
 	}
 	if rep.DistinctKinds != 1 || len(rep.Kinds) != 1 || rep.Kinds[0].Kind != "OWNS" {
-		t.Fatalf("segmented producer path did not report the undeclared kind: %+v", rep)
+		t.Fatalf("segmented producer path did not report the non-enum kind: %+v", rep)
 	}
 	// Exactly 20 — not 40. A double count would mean the discarded probe
 	// builder's edges were tallied alongside the real write.
@@ -226,7 +252,7 @@ func TestWriteGraphGenReportWiresTheSegmentedProducerPath(t *testing.T) {
 	}
 }
 
-func TestUndeclaredKindsAreCountedNotDropped(t *testing.T) {
+func TestNonEnumKindsAreCountedNotDropped(t *testing.T) {
 	// Arm C counts and reports; it must NOT drop. Dropping would be the same
 	// "looked at nothing, reported clean" failure #6534 just fixed elsewhere.
 	dir := t.TempDir()

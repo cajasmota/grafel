@@ -128,9 +128,9 @@ func WriteGraphGenSegmented(stateDir string, doc *graph.Document) (string, error
 
 // writeGraphGenSegmented is WriteGraphGenSegmented plus the undeclared-kind
 // report the write observed (#6757 arm C).
-func writeGraphGenSegmented(stateDir string, doc *graph.Document) (string, UndeclaredKindReport, error) {
+func writeGraphGenSegmented(stateDir string, doc *graph.Document) (string, NonEnumKindReport, error) {
 	if doc == nil {
-		return "", UndeclaredKindReport{}, fmt.Errorf("fbwriter: nil document")
+		return "", NonEnumKindReport{}, fmt.Errorf("fbwriter: nil document")
 	}
 	sortDocForSegments(doc)
 	threshold := segmentThresholdBytes()
@@ -185,8 +185,8 @@ func graphFitsSingleBuilder(doc *graph.Document, threshold int) bool {
 // manifest + pointer flip + GC. Peak builder memory is bounded by the flush
 // threshold: each segment builder is finalized, written, and dropped before
 // the next is allocated, so no single builder ever holds the whole graph.
-func writeSegments(stateDir string, doc *graph.Document, threshold int) (string, UndeclaredKindReport, error) {
-	tally := &undeclaredKindTally{}
+func writeSegments(stateDir string, doc *graph.Document, threshold int) (string, NonEnumKindReport, error) {
+	tally := &nonEnumKindTally{}
 	gen := graph.NextGen(stateDir)
 	genDirName := graph.GenDirName(gen)
 	genDir := filepath.Join(stateDir, genDirName)

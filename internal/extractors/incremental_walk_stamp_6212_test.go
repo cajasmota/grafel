@@ -85,7 +85,7 @@ func TestIncremental_Success_DoesNotStampWritesThatLandAfterExtraction(t *testin
 	var seamFired bool
 	var prev extractors.GraphGenWriter
 	var restore func()
-	restore, prev = extractors.SwapWriteGraphGen(func(dir string, doc *graph.Document) (string, fbwriter.UndeclaredKindReport, error) {
+	restore, prev = extractors.SwapWriteGraphGen(func(dir string, doc *graph.Document) (string, fbwriter.NonEnumKindReport, error) {
 		seamFired = true
 		writeFile(t, repo, "victim.go", landedMidPass)
 		return prev(dir, doc)

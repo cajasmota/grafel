@@ -83,7 +83,7 @@ func WriteGraphGen(stateDir string, doc *graph.Document) (genPath string, err er
 // are visible to a user or an agent instead of being written and forgotten.
 // Nothing is dropped and no undeclared kind fails the index; the report is a
 // measurement, not a gate.
-func WriteGraphGenReport(stateDir string, doc *graph.Document) (genPath string, rep UndeclaredKindReport, err error) {
+func WriteGraphGenReport(stateDir string, doc *graph.Document) (genPath string, rep NonEnumKindReport, err error) {
 	// #5902 flag-gated producer. When GRAFEL_STREAM_SEGMENTS is ON, route
 	// through the bounded SegmentedWriter (a single flat file when the graph
 	// fits under the threshold, a graph.<gen>/ segment set otherwise). OFF by
@@ -104,7 +104,7 @@ func WriteGraphGenReport(stateDir string, doc *graph.Document) (genPath string, 
 // #5974 — the canonical sort runs here as well as in WriteGraphGenSegmented so
 // the two writers cannot emit different orders for the same document. It is
 // idempotent: producers already sort before calling.
-func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, rep UndeclaredKindReport, err error) {
+func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, rep NonEnumKindReport, err error) {
 	graph.SortDocumentForEmission(doc)
 	buf, rep, err := marshalWithReport(doc)
 	if err != nil {
@@ -130,7 +130,7 @@ func Marshal(doc *graph.Document) ([]byte, error) {
 
 // marshalWithReport is Marshal plus the undeclared-kind report observed while
 // serializing (#6757 arm C).
-func marshalWithReport(doc *graph.Document) ([]byte, UndeclaredKindReport, error) {
+func marshalWithReport(doc *graph.Document) ([]byte, NonEnumKindReport, error) {
 	buf, tally, err := streamingMarshal(doc)
 	return buf, tally.report(), err
 }
@@ -262,7 +262,7 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 // runtime-valued ones a static scan cannot see. It is nil-safe, and it only
 // OBSERVES: this function is per-edge, hot, and returns no error, so it can
 // count but it cannot reject. Nothing is dropped here.
-func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship, tally *undeclaredKindTally) flatbuffers.UOffsetT {
+func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship, tally *nonEnumKindTally) flatbuffers.UOffsetT {
 	tally.observe(r.Kind)
 	// from_id/to_id are relationship ENDPOINTS — the same entity ID string is
 	// referenced once per incident edge, so on a real corpus (avg node
