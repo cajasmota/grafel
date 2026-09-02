@@ -588,6 +588,39 @@ func semanticDigest6118(doc *graph.Document) string {
 // a regression from a good state.
 //
 // 147/286 encoded the bug. Re-pin approved by the maintainer on PR #6603.
+
+// #6742 RE-PIN — counts move 142/281 -> 142/287. Six added edges, nothing else.
+//
+// C# emitted no class-hierarchy edge for any base class or interface: the
+// extractor only ever looked at base types declared in the SAME FILE, and this
+// fixture declares every base type externally, so all seven C# classes shipped
+// with no supertype at all while Java's structurally identical `implements`
+// produced IMPLEMENTS. #6742 emits EXTENDS / IMPLEMENTS — the two kinds Java
+// already uses — for every base-list entry. The full delta:
+//
+//	ADDED R cs/OrdersController.cs     OrdersController     -[EXTENDS]->    ControllerBase
+//	ADDED R cs/ShopContext.cs          ShopContext          -[EXTENDS]->    DbContext
+//	ADDED R cs/OrderValidator.cs       OrderValidator       -[EXTENDS]->    AbstractValidator
+//	ADDED R cs/OrderCreatedConsumer.cs OrderCreatedConsumer -[IMPLEMENTS]-> IConsumer
+//	ADDED R cs/CreateOrderHandler.cs   CreateOrderHandler   -[IMPLEMENTS]-> IRequestHandler
+//	ADDED R cs/CleanupJob.cs           CleanupJob           -[IMPLEMENTS]-> IJob
+//
+// Six of the seven C# files declare a base type; cs/Startup.cs declares none and
+// correctly gains nothing. Three of the six are framework base CLASSES and three
+// are interfaces, and every kind here is decided by the ladder in
+// internal/extractors/csharp/hierarchy.go WITHOUT reaching its
+// naming-convention fallback: the generics are stripped to the bare leaf, and
+// `I`+PascalCase is consulted only for the three that genuinely are interfaces.
+// All six targets are external to the fixture, so all six are dangling
+// bare-name endpoints — the same shape the C# CALLS and IMPORTS edges already
+// use for out-of-repo types.
+//
+// NOTHING ELSE MOVED, which is the claim this re-pin rests on, and it was
+// verified by diffing the whole gate-OFF graph against itself with
+// attachCsharpHierarchy disabled: that variant reproduces gateOffDigest6601
+// EXACTLY (142/281, d073c83f…), and the diff against it is six added edge lines
+// and nothing else — no entity added, deleted, re-kinded or moved, no existing
+// edge rewired, no dangling count change beyond the six new endpoints.
 const (
 	gateOffDigest6118Base = "a0a6ede910d8d0465d901153f483b27b8a57a565bdd79dd0104bef53786d9ca1"
 	gateOffDigest6118     = "387a9c36cb585b4d73828afc997744dbe02e6df347e0860054adf69431996d46"
@@ -595,6 +628,7 @@ const (
 	gateOffDigest6152     = "774eaec1d5ad5d9731d2c043a6207fdb7b3882b9fdf0f37e4a6b9dbdc555662f"
 	gateOffDigest6485     = "3ed5d943639276cd687131418577904de2c0fdcb1de846bd87f3816046f43443"
 	gateOffDigest6601     = "d073c83f287b2f6b3b93c0479b7dc55887ee292760b00217ebad1de0ecc0dcdf"
+	gateOffDigest6742     = "cb82b3285e410ea566ccdb4a44260cd858c4d6df0c210120e9d00129535edafe"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -602,8 +636,19 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6601 {
+	if got == gateOffDigest6742 {
 		return
+	}
+	if got == gateOffDigest6601 {
+		t.Fatalf("gate-OFF graph reverted to the pre-#6742 baseline — C# class-hierarchy " +
+			"edges have stopped being emitted, so all seven C# classes in this fixture " +
+			"are back to having no supertype of any kind: `OrdersController : " +
+			"ControllerBase`, `ShopContext : DbContext` and `OrderValidator : " +
+			"AbstractValidator` emit no EXTENDS, and `OrderCreatedConsumer : IConsumer`, " +
+			"`CreateOrderHandler : IRequestHandler` and `CleanupJob : IJob` emit no " +
+			"IMPLEMENTS. Check that attachCsharpHierarchy is still wired into " +
+			"internal/extractors/csharp.Extract and that walk() still stashes " +
+			"hierarchy_bases on each declaration")
 	}
 	if got == gateOffDigest6485 {
 		t.Fatalf("gate-OFF graph reverted to the pre-#6601 baseline — the C# `using` " +
@@ -628,10 +673,10 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6601, gateOffDigest6485,
-		gateOffDigest6152, gateOffDigest6138, gateOffDigest6118, gateOffDigest6118Base,
-		len(off.Entities), len(off.Relationships))
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6742 %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6742, gateOffDigest6601,
+		gateOffDigest6485, gateOffDigest6152, gateOffDigest6138, gateOffDigest6118,
+		gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
 }
 
 // TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain pins the shape
@@ -654,12 +699,24 @@ func TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain(t *testing.T)
 	// (the Route self-IMPLEMENTS, two STEP_IN_PROCESS, one ENTRY_POINT_OF, one
 	// Module:_external CONTAINS) once a Route stopped being an eligible handler
 	// target (#6485, 147/286; then #6601 dropped the 7 C# import carriers →
-	// 142/281). Both real /orders endpoints and both real
-	// handler IMPLEMENTS edges are unaffected; see the block comment above the
-	// digest constants for the item-by-item delta.
+	// 142/281; then #6742 added the six C# class-hierarchy edges → 142/287).
+	// The six, one per C# file that declares a base type — cs/Startup.cs
+	// declares none and adds nothing, which is why it is six and not seven:
+	//
+	//	OrdersController     -[EXTENDS]->    ControllerBase
+	//	ShopContext          -[EXTENDS]->    DbContext
+	//	OrderValidator       -[EXTENDS]->    AbstractValidator
+	//	OrderCreatedConsumer -[IMPLEMENTS]-> IConsumer
+	//	CreateOrderHandler   -[IMPLEMENTS]-> IRequestHandler
+	//	CleanupJob           -[IMPLEMENTS]-> IJob
+	//
+	// Entities stay at 142: every supertype here is external to the fixture, so
+	// the six edges dangle on bare names and mint no node. Both real /orders
+	// endpoints and both real handler IMPLEMENTS edges are unaffected; see the
+	// block comment above the digest constants for the item-by-item delta.
 	const (
 		wantEntities = 142
-		wantRels     = 281
+		wantRels     = 287
 	)
 	if len(off.Entities) != wantEntities || len(off.Relationships) != wantRels {
 		t.Fatalf("gate-OFF graph size moved: entities=%d (want %d) relationships=%d (want %d) — "+
