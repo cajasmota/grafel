@@ -272,7 +272,14 @@ k8s_resource_types:
     - spec.ports[].protocol
     - spec.externalName
     - spec.clusterIP
-    entity_mapping: ExternalAPI
+    # #6744: SCOPE.IngressHost replaces `ExternalAPI`, the kind #6451 retired for
+    # carrying two meanings. NOTE: internal/engine/schema.go binds entity_type on
+    # exactly two structs (FileConvention, SourcePattern) and nothing in Go reads
+    # `k8s_resource_types`, so this mapping is DOCUMENTATION — it reaches no code
+    # and no graph entity today. internal/entkinds scans it regardless (Site.Bound
+    # is false here), because an unread declaration is how the collision survived
+    # the #6451 rename in the first place.
+    entity_mapping: SCOPE.IngressHost
     notes: 'LoadBalancer type Services signal external traffic entry points. ExternalName
       Services signal external dependency aliasing (DNS CNAME). ClusterIP with clusterIP:
       None is a headless service (DNS-based discovery for StatefulSets). Extract selector
@@ -297,9 +304,16 @@ k8s_resource_types:
     - spec.rules[].http.paths[].pathType
     - spec.rules[].http.paths[].backend.service.name
     - spec.rules[].http.paths[].backend.service.port.number
-    entity_mapping: ExternalAPI
+    # #6744: SCOPE.IngressHost replaces `ExternalAPI`, the kind #6451 retired for
+    # carrying two meanings. NOTE: internal/engine/schema.go binds entity_type on
+    # exactly two structs (FileConvention, SourcePattern) and nothing in Go reads
+    # `k8s_resource_types`, so this mapping is DOCUMENTATION — it reaches no code
+    # and no graph entity today. internal/entkinds scans it regardless (Site.Bound
+    # is false here), because an unread declaration is how the collision survived
+    # the #6451 rename in the first place.
+    entity_mapping: SCOPE.IngressHost
     notes: 'Ingress rules define public API surface. Extract hostname + path combinations
-      as ExternalAPI endpoints. TLS hosts signal public-facing domains. Ingress annotations
+      as SCOPE.IngressHost endpoints. TLS hosts signal public-facing domains. Ingress annotations
       encode ingress-controller-specific config (nginx.ingress.kubernetes.io/*, alb.ingress.kubernetes.io/*).
 
       '
@@ -771,6 +785,14 @@ entity_extraction:
   description: 'Maps Kubernetes resource kinds to grafel entity types. Extraction targets
     and SCOPE entity type mappings for the indexing pipeline.
 
+    #6744: the Service/Ingress row named ExternalAPI, the retired kind #6451 split
+    because one name carried two unrelated meanings under two address dialects. The
+    k8s half is the hostname dialect, so it now names SCOPE.IngressHost — the kind
+    #6451 minted for exactly this producer — rather than an invented synonym.
+    internal/engine/schema.go does not bind entity_extraction or k8s_resource_types,
+    so nothing here reaches EntityRecord.Kind today; internal/entkinds scans it
+    anyway, because an unread declaration is how the collision survived the rename.
+
     '
   mappings:
   - k8s_kinds:
@@ -798,20 +820,24 @@ entity_extraction:
   - k8s_kinds:
     - Service
     - Ingress
-    entity_type: ExternalAPI
+    # #6744: see the k8s_resource_types note above — `entity_extraction` is not
+    # bound by internal/engine/schema.go either, so this row is documentation.
+    # The electron half of the same collision IS bound, and is the only site in
+    # #6744 whose graph output changed.
+    entity_type: SCOPE.IngressHost
     extraction_rationale: 'Service resources of type LoadBalancer or ExternalName,
       and all Ingress resources, define the external-facing API surface of the cluster.
-      Extract hostname/path combinations as ExternalAPI endpoints. ClusterIP Services
-      are internal — extract as dependency edges between workloads, not as ExternalAPI
+      Extract hostname/path combinations as SCOPE.IngressHost endpoints. ClusterIP Services
+      are internal — extract as dependency edges between workloads, not as SCOPE.IngressHost
       entities.
 
       '
     mapping_rules:
-    - Service type=LoadBalancer → ExternalAPI (cloud load balancer endpoint)
-    - Service type=ExternalName → ExternalAPI (aliased external dependency)
-    - Service type=ClusterIP → internal dependency edge only (not ExternalAPI)
-    - Service type=NodePort → ExternalAPI if exposed outside cluster
-    - Ingress → ExternalAPI per host+path rule
+    - Service type=LoadBalancer → SCOPE.IngressHost (cloud load balancer endpoint)
+    - Service type=ExternalName → SCOPE.IngressHost (aliased external dependency)
+    - Service type=ClusterIP → internal dependency edge only (not SCOPE.IngressHost)
+    - Service type=NodePort → SCOPE.IngressHost if exposed outside cluster
+    - Ingress → SCOPE.IngressHost per host+path rule
     high_value_fields:
     - spec.rules[].host
     - spec.rules[].http.paths[].path
@@ -860,7 +886,7 @@ entity_extraction:
     - chart_name from Chart.yaml → Service entity (the chart is the deployable unit)
     - chart_dependencies from Chart.yaml → dependency edges to sub-charts
     - values.yaml top-level keys → Schema entity (configuration surface)
-    - templates/*.yaml rendered resource names → individual Service/ExternalAPI entities
+    - templates/*.yaml rendered resource names → individual Service/SCOPE.IngressHost entities
     notes: 'For Helm charts, the Chart.yaml name is the primary Service identity.
       Templated manifests are extracted at the template level (before rendering) to
       capture the static structure. Dynamic names ({{ .Release.Name }}-<suffix>) are

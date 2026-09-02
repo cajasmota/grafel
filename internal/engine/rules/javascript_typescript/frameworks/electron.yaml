@@ -66,16 +66,36 @@ source_patterns:
   # Native addon loaders used from the Electron main process: `bindings(...)`,
   # node-gyp-build, and direct `.node` addon requires. These are the genuine
   # native-module boundary (compiled C++ addons), distinct from JS deps.
+  #
+  # #6744: these carried `entity_type: ExternalAPI` until the collision was
+  # separated. That name meant something else entirely in
+  # kubernetes/extras.yaml (an externally-reachable cluster endpoint — a
+  # hostname), the same one-kind-two-meanings shape #6451 split on the Go side
+  # into SCOPE.ExternalEndpoint and SCOPE.IngressHost.
+  #
+  # The two halves are NOT symmetric, and saying "we separated the collision"
+  # overstates it. The kubernetes sites sit under `entity_extraction:` and
+  # `k8s_resource_types:`, keys internal/engine/schema.go does not bind, so
+  # they reach no code; THESE three are the only bound half — detector.go
+  # copies source_patterns[].entity_type straight into EntityRecord.Kind — so
+  # this is the only site whose graph output actually changes.
+  #
+  # Which is exactly why the replacement is `Module`, a kind
+  # types.AllEntityKinds() declares, and not a new invented name: the bug this
+  # change exists to fix is the rule layer minting kinds nothing has declared,
+  # and the one live producer in the change is the last place to do that
+  # again. The rule layer already spells this shape `Module` (trpc.yaml:42,
+  # ktor.yaml:74), and loading a compiled C++ addon is a module load.
   - pattern: "require\\s*\\(\\s*['\"`]bindings['\"`]\\s*\\)"
-    entity_type: ExternalAPI
+    entity_type: Module
     name_group: 0
     scope: file
   - pattern: "require\\s*\\(\\s*['\"`]node-gyp-build['\"`]\\s*\\)"
-    entity_type: ExternalAPI
+    entity_type: Module
     name_group: 0
     scope: file
   - pattern: "require\\s*\\(\\s*['\"`]([^'\"`\\n\\r]+\\.node)['\"`]\\s*\\)"
-    entity_type: ExternalAPI
+    entity_type: Module
     name_group: 1
     scope: file
 
