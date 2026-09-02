@@ -227,6 +227,20 @@ func walk(
 	case "enum_declaration":
 		if rec, ok := buildEnumEntity(node, file); ok {
 			stampNamespace(&rec, ns)
+			// Issue #6742 — an enum IS routed through the hierarchy pass,
+			// deliberately. `enum E : byte` really does parse as a base_list,
+			// and the ONLY thing that stops `byte` becoming a supertype is
+			// csBaseTypeNames' node-type allow-list. Skipping enums here
+			// instead would suppress the edge one level earlier and leave that
+			// allow-list ungraded for the case its own doc names — which is
+			// exactly the state #6742's first cut shipped in.
+			if baseNames := csBaseTypeNames(node, file.Content); len(baseNames) > 0 {
+				if rec.Metadata == nil {
+					rec.Metadata = map[string]interface{}{}
+				}
+				rec.Metadata["hierarchy_bases"] = baseNames
+				rec.Metadata["hierarchy_decl"] = csDeclKeyword(node.Type())
+			}
 			*out = append(*out, rec)
 		}
 		// Value-carrying SCOPE.Enum value-set node (data-model, epic #3628).

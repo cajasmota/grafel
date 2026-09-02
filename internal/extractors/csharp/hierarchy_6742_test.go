@@ -225,6 +225,16 @@ namespace App
 // TestCsharpHierarchy_EnumUnderlyingTypeIsNotABase — `enum E : byte` parses as
 // a base_list holding a predefined_type. It is the enum's storage type, not a
 // supertype, and must produce nothing.
+//
+// NON-VACUITY. This case asserts an ABSENCE, so it is only worth anything if
+// the code under test actually runs. It did not, at first: `enum_declaration`
+// was a branch of walk() that never stashed a base list, so the enum never
+// reached csBaseTypeNames and this test would have passed no matter what the
+// allow-list said — a reviewer's "accept predefined_type" mutant survived it.
+// The positive control below is the fix: it fails if the enum stopped being
+// parsed into an entity at all, which is the way an absence assertion goes
+// quietly vacuous. The mutant now dies here and on csharp-hangfire-mini's
+// `JobPriority EXTENDS byte` forbidden row.
 func TestCsharpHierarchy_EnumUnderlyingTypeIsNotABase(t *testing.T) {
 	src := `
 namespace App
@@ -232,8 +242,23 @@ namespace App
     public enum Status : byte { Active, Closed }
 }
 `
-	got := allCsHierarchyEdges(csExtract(t, src, "Status.cs"))
-	if len(got) != 0 {
+	ents := csExtract(t, src, "Status.cs")
+
+	// Positive control: the declaration this test is about must be in the
+	// record set, or the assertion below is grading an empty extraction.
+	var sawEnum bool
+	for _, e := range ents {
+		if e.Name == "Status" && e.Kind == "SCOPE.Enum" {
+			sawEnum = true
+			break
+		}
+	}
+	if !sawEnum {
+		t.Fatalf("positive control failed: no SCOPE.Enum entity named Status was " +
+			"extracted, so the absence assertion below grades nothing")
+	}
+
+	if got := allCsHierarchyEdges(ents); len(got) != 0 {
 		t.Fatalf("an enum's underlying type is not a supertype, got %v", got)
 	}
 }

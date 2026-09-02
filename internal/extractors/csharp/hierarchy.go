@@ -50,23 +50,43 @@ import (
 //  4. For the first entry of a class/record: if the type is declared in this
 //     same file, its own declaration keyword decides.
 //  5. Otherwise the .NET `I`+PascalCase interface naming convention decides.
-//     This is the only guess, and it is confined to first-position,
-//     out-of-file base types.
+//     This is the only guess, it is confined to first-position, out-of-file
+//     base types, and it is WRONG in both directions for the names that break
+//     the convention — see csLooksLikeInterfaceName for the two worked cases
+//     and for why the convention is kept anyway.
+//
+// An enum owner never reaches the ladder in practice: its only base-list entry
+// is a predefined_type, which csBaseTypeNames drops before the ladder runs.
 
 // csBaseTypeNames returns the ordered base-type leaf names of a class /
 // record / struct / interface declaration's base_list.
 //
-// It walks NAMED children only and accepts only type-shaped node kinds, which
-// is what keeps punctuation, base-constructor arguments and an enum's
-// underlying storage type out of the result:
+// It walks NAMED children only and accepts only type-shaped node kinds. The
+// NamedChild loop is what drops the anonymous ":" and "," tokens; the node-type
+// ALLOW-LIST below is what drops the named children that are not supertypes:
 //
 //	class P(int x) : B(x)   base_list = [identifier B, argument_list (x)]
 //	record R(int X) : Rb(X) base_list = [primary_constructor_base_type Rb(X)]
 //	enum E : byte           base_list = [predefined_type byte]
 //
-// leafTypeName's last-resort branch returns raw text whenever it contains none
-// of " <>[]?," — which the bare ":" token passes — so the type allow-list here
-// is load-bearing, not defensive.
+// ENUMS. An enum declaration reaches this function — csharp.go stashes its base
+// list like any other declaration's — and `predefined_type` being absent from
+// the allow-list is the ONE thing that stops `byte` becoming a supertype of
+// JobPriority. That claim is asserted three ways: this comment, the
+// TestCsharpHierarchy_EnumUnderlyingTypeIsNotABase unit case, and the
+// `JobPriority EXTENDS byte` forbidden row on csharp-hangfire-mini. All three
+// are LIVE — adding "predefined_type" to the case below makes the unit test
+// fail AND raises the fixture's forbidden-hit count. #6742's first cut made the
+// same three claims while `enum_declaration` never stashed a base list at all,
+// so all three were vacuous and that mutant survived review.
+//
+// A predefined type is never a supertype in ANY C# declaration — nothing can
+// derive from `int` — so the rejection is a language fact, not an enum special
+// case. The residual it does not cover: `using MyInt = int; enum E : MyInt`
+// parses the alias as an `identifier`, which the allow-list accepts, so that
+// spelling would mint a spurious EXTENDS. Left uncovered knowingly — resolving
+// an alias to its underlying type is the same cross-file type resolution this
+// pass deliberately does not do (see csLooksLikeInterfaceName).
 func csBaseTypeNames(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
@@ -143,6 +163,31 @@ func csQualifiedLeaf(raw string) string {
 // entry of a class or record base list whose type is not declared in this
 // file. Every other position is settled by a C# language rule or by the base
 // type's own in-file declaration keyword.
+//
+// IT IS A GUESS, AND IT IS WRONG IN BOTH DIRECTIONS. C# does not mark the
+// difference in the base list, so a name is all this function has, and a name
+// that breaks the convention breaks the result:
+//
+//	class RedisCache : Cacheable    → EXTENDS, should be IMPLEMENTS.
+//	                                  Legal C#: a class may implement an
+//	                                  interface with no base class, so the
+//	                                  interface sits at index 0 where the
+//	                                  convention is consulted.
+//	class BufferedStream : IOStream → IMPLEMENTS, should be EXTENDS.
+//	                                  A base CLASS whose name happens to start
+//	                                  I + capital.
+//
+// Java has no equivalent hole: `implements` and `extends` are keywords, so its
+// extractor never consults a name. That divergence is the ONE axis the
+// C#/Java parity test cannot grade, and it is recorded there explicitly by
+// TestHierarchyEdgeKindParityKnownDivergence6742 rather than left implicit.
+//
+// WHY KEEP IT. `I`-prefixing is near-universal in .NET, so the convention beats
+// defaulting every out-of-file base to one kind unconditionally, which would be
+// wrong for whichever half of the corpus it guessed against. The only real fix
+// is cross-file type resolution — knowing what `Cacheable` was DECLARED as,
+// which is what rule 4 already does for in-file types — and that is out of
+// scope for a per-file extractor pass.
 func csLooksLikeInterfaceName(name string) bool {
 	if len(name) < 2 || name[0] != 'I' {
 		return false
@@ -180,7 +225,15 @@ func attachCsharpHierarchy(records []types.EntityRecord) []types.EntityRecord {
 	}
 
 	for i := range records {
-		if records[i].Kind != "SCOPE.Component" || records[i].Metadata == nil {
+		// Ownership is gated on the STASH, not on the record's Kind. Only the
+		// two declaration branches of walk() ever write hierarchy_bases, so the
+		// key is already the precise selector, and a Kind allow-list on top of
+		// it can only ever be wrong: an enum is a SCOPE.Schema/enum record, not
+		// a SCOPE.Component, and a Kind filter that forgot it would suppress
+		// enum bases one level ABOVE csBaseTypeNames — leaving the allow-list
+		// its own doc calls the guard unreachable, which is exactly the vacuity
+		// #6742's first cut shipped. See the ENUMS note on csBaseTypeNames.
+		if records[i].Metadata == nil {
 			continue
 		}
 		bases, _ := records[i].Metadata["hierarchy_bases"].([]string)
@@ -222,6 +275,12 @@ func attachCsharpHierarchy(records []types.EntityRecord) []types.EntityRecord {
 // declared in the same file.
 func csHierarchyKind(ownerDecl string, pos int, base string, declKind map[string]string) string {
 	switch ownerDecl {
+	case "enum":
+		// Unreachable for well-formed C#: an enum-base is a predefined_type and
+		// csBaseTypeNames drops it. Present so the aliased-base residual that
+		// its doc records degrades to the inheritance-shaped kind rather than
+		// claiming the enum implements an interface.
+		return string(types.RelationshipKindExtends)
 	case "interface":
 		// An interface can only inherit interfaces, and that relation is
 		// `extends` — the same word Java uses for it.
