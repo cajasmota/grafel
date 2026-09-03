@@ -138,7 +138,11 @@ func marshalWithReport(doc *graph.Document) ([]byte, NonEnumKindReport, error) {
 // buildEntity serializes a single entity table and returns its offset.
 // Strings and the properties vector are built first (FlatBuffers requires
 // child offsets be created before opening the parent table).
-func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
+// tally observes e.Kind against types.AllEntityKinds() (#6776 arm A). A nil
+// tally is a no-op observer, which is how graphFitsSingleBuilder's throwaway
+// probe opts out of double-counting.
+func buildEntity(b *flatbuffers.Builder, e *graph.Entity, tally *nonEnumKindTally) flatbuffers.UOffsetT {
+	tally.observeEntity(e.Kind)
 	// idOff/qnOff/nameOff are genuinely unique per entity (or unique enough,
 	// in the case of QualifiedName/Name, that a shared-string hash lookup
 	// buys nothing) so they stay on plain CreateString. kind/module/

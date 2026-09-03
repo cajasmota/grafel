@@ -99,7 +99,8 @@ type StreamingWriter struct {
 	outPath       string // empty when used in-memory (streamingMarshal)
 	closed        bool
 	// tally counts relationships whose kind is not in
-	// types.AllRelationshipKinds() (#6757 arm C). Observation only — nothing
+	// types.AllRelationshipKinds() (#6757 arm C) and entities whose kind is
+	// not in types.AllEntityKinds() (#6776 arm A). Observation only — nothing
 	// is dropped and no write fails because of it.
 	tally *nonEnumKindTally
 }
@@ -131,7 +132,7 @@ func (sw *StreamingWriter) WriteEntity(e *graph.Entity) error {
 	if sw.closed {
 		return fmt.Errorf("fbwriter.StreamingWriter: WriteEntity called after Close")
 	}
-	off := buildEntity(sw.b, e)
+	off := buildEntity(sw.b, e, sw.tally)
 	sw.entityOffsets = append(sw.entityOffsets, off)
 	return nil
 }
@@ -148,10 +149,11 @@ func (sw *StreamingWriter) WriteRelationship(r *graph.Relationship) error {
 	return nil
 }
 
-// UndeclaredKinds reports the relationship kinds this writer serialized that
-// are absent from types.AllRelationshipKinds() (#6757 arm C). Safe to call
-// before or after Close. Nothing was dropped: every relationship handed to
-// WriteRelationship was written, undeclared kind or not.
+// NonEnumKinds reports the relationship kinds this writer serialized that are
+// absent from types.AllRelationshipKinds() (#6757 arm C) and the entity kinds
+// absent from types.AllEntityKinds() (#6776 arm A). Safe to call before or
+// after Close. Nothing was dropped: every entity and relationship handed to
+// WriteEntity/WriteRelationship was written, non-enum kind or not.
 func (sw *StreamingWriter) NonEnumKinds() NonEnumKindReport {
 	return sw.tally.report()
 }
