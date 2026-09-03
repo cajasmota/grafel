@@ -115,7 +115,15 @@
       "note": "#6490 arm B FINDING: `-include(\"cache.hrl\").` does emit an IMPORTS edge, but its FROM side is the raw string \"cache_server.erl\", which is not any entity's ID — so no expectation can address it and the edge dangles from nothing. Erlang has no file-component entity to anchor includes on, unlike every other language in the corpus." },
     { "from_name": "cache_server", "from_kind": "SCOPE.Component", "from_file": "cache_server.erl",
       "kind": "IMPLEMENTS", "to_bare_name": "gen_server",
-      "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING, and the one #6370 predicted: `-behaviour(gen_server).` is collected into a property, never an edge. cache_server/cache_sup/cache_app each declare a behaviour and none of the three produces an EXTENDS or IMPLEMENTS edge. This fixture asserting no must-have relationships is exactly why nothing objected." }
+      "must_exist": true,
+      "note": "#6370 FIXED: `-behaviour(gen_server).` now emits an IMPLEMENTS edge from the module entity to the bare behaviour atom, alongside the Properties[\"otp_behaviour\"] stamping it already did. Promoted from the nice_to_have row #6490 arm B left waiting." },
+    { "from_name": "cache_sup", "from_kind": "SCOPE.Component", "from_file": "cache_sup.erl",
+      "kind": "IMPLEMENTS", "to_bare_name": "supervisor",
+      "must_exist": true,
+      "note": "#6370: the second of the fixture's three -behaviour declarations. Held here so the edge is graded on more than the gen_server atom — a predicate hard-coded to gen_server would satisfy the row above and fail this one." },
+    { "from_name": "cache_app", "from_kind": "SCOPE.Component", "from_file": "cache_app.erl",
+      "kind": "IMPLEMENTS", "to_bare_name": "application",
+      "must_exist": true,
+      "note": "#6370: the third -behaviour declaration. All three modules in this fixture declare a behaviour, so all three are graded." }
   ]
 }

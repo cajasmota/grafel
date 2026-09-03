@@ -38,8 +38,8 @@
     "erlang-otp-mini": {
       "entity_found": 20,
       "entity_expected": 20,
-      "relationship_found": 22,
-      "relationship_expected": 22
+      "relationship_found": 25,
+      "relationship_expected": 25
     },
     "express-baseurl-mini": {
       "entity_found": 8,

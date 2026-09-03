@@ -14,6 +14,7 @@
 //   - CALLS   — Module:Function and bare Function invocations inside function bodies
 //   - CONTAINS — module entity links to each exported function
 //   - SUPERVISES — supervisor module → each child module named in its init/1 child spec list
+//   - IMPLEMENTS — module → each OTP behaviour it declares (-behaviour/-behavior), see hierarchy.go (#6370)
 //
 // No tree-sitter grammar for Erlang is available in smacker/go-tree-sitter.
 // This extractor uses line-oriented regex parsing, matching the Nim extractor
@@ -319,15 +320,14 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 	// ── 0. OTP behaviours ──────────────────────────────────────────────────
 	// -behaviour(gen_server). attributes declare the module as an OTP process.
 	// Collect them so the module entity (and its callbacks) can be stamped.
+	// #6370: the same declarations also become IMPLEMENTS edges on the module
+	// entity below — see hierarchy.go.
+	behaviourDecls := collectBehaviourDecls(src)
 	var behaviours []string
 	behaviourSet := make(map[string]bool)
-	for _, m := range behaviourRE.FindAllStringSubmatch(src, -1) {
-		b := m[1]
-		if behaviourSet[b] {
-			continue
-		}
-		behaviourSet[b] = true
-		behaviours = append(behaviours, b)
+	for _, d := range behaviourDecls {
+		behaviourSet[d.name] = true
+		behaviours = append(behaviours, d.name)
 	}
 	sort.Strings(behaviours)
 
@@ -376,6 +376,11 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 			for _, b := range behaviours {
 				modRec.Tags = append(modRec.Tags, "otp:"+b)
 			}
+			// #6370: turn the same declarations into hierarchy topology.
+			// The edge is anchored on the module (empty FromID), never on the
+			// file — see hierarchy.go.
+			modRec.Relationships = append(modRec.Relationships,
+				behaviourImplementsEdges(behaviourDecls, moduleName)...)
 		}
 		entities = append(entities, modRec)
 	}
