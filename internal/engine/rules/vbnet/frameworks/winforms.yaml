@@ -45,6 +45,9 @@
 #     does not block at all. Both are asserted by
 #     Test6666_TerminatorIsALiteralNotAScopeParser and
 #     Test6666_TerminatorIsCaseSensitive rather than left as claims.
+#     The guard also resumes its search only at LINE boundaries, so two Modules
+#     declared on one line would not both be considered. Legal VB, vanishingly
+#     rare, and asserted by Test6666_TerminatorResumptionIsLineGranular.
 
 frameworks:
   name: WinForms

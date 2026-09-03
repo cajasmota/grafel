@@ -2,7 +2,10 @@ package engine
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 )
@@ -437,5 +440,374 @@ func Test6666_TerminatorHandlesReversedCaptureOrder(t *testing.T) {
 		t.Errorf("the terminator lies between the captures — target first, source second — and "+
 			"the join was still emitted; the span is being taken in group-number order rather "+
 			"than textual order: %v", rels)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #6666 review round 2. Everything below exists because an adversarial review
+// found five ALIVE mutants on the guard internals and falsified the comment
+// that justified the resume rule. Each test names the defect it observes.
+// ---------------------------------------------------------------------------
+
+// midLineAnchoredYAML / midLineAnchoredNoTerminatorYAML: a `(?m)^`-anchored
+// rule whose accepted match ends MID-LINE.
+const midLineAnchoredYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "(?m)^Module (\\w+)[\\s\\S]{0,60}?New (\\w+)\\("
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 2
+    terminator: "ZZZ_NEVER_APPEARS_ZZZ"
+custom_extractors: []
+`
+
+const midLineAnchoredNoTerminatorYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "(?m)^Module (\\w+)[\\s\\S]{0,60}?New (\\w+)\\("
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 2
+custom_extractors: []
+`
+
+// Test6666_AbsentTerminatorIsIdenticalWhenMatchEndsMidLine is the D1
+// regression. The ACCEPT path used to resume at the raw match end, an
+// arbitrary mid-line offset; the next iteration re-sliced content there and
+// `(?m)^` then matched at a FAKE line start, emitting a match
+// FindAllStringSubmatch would never produce. So declaring a terminator that
+// never occurs did NOT leave behaviour unchanged — it ADDED an edge.
+//
+// VARIES: whether the rule declares a (never-occurring) terminator.
+// HELD CONSTANT: the pattern and a fixture whose accepted match ends mid-line
+// and is immediately followed, on that same line, by text that looks like the
+// start of a new match.
+//
+// Test6666_TerminatorThatNeverOccursChangesNothing asserts the same property
+// but on a fixture whose accepted match ends at a line END, which is exactly
+// the axis it left open.
+func Test6666_AbsentTerminatorIsIdenticalWhenMatchEndsMidLine(t *testing.T) {
+	const src = "Module A\nNew F(Module B\nNew G(\n"
+
+	with := terminatorRels(t, midLineAnchoredYAML, src)
+	without := terminatorRels(t, midLineAnchoredNoTerminatorYAML, src)
+
+	// `Module B` is not at a line start, so FindAllStringSubmatch cannot pair
+	// it with anything. Stated as a literal so the control is not merely
+	// "whatever the other one did".
+	want := []string{"Module:A -INSTANTIATES-> View:F"}
+
+	if len(without) != len(want) || !hasRel6666(without, want[0]) {
+		t.Fatalf("baseline (no terminator) is not what FindAllStringSubmatch produces; "+
+			"the fixture no longer isolates the accept-path resume: %v", without)
+	}
+	if len(with) != len(want) || !hasRel6666(with, want[0]) {
+		t.Errorf("declaring a terminator that never occurs changed the result: %v vs %v — the "+
+			"accept path is resuming mid-line, so `(?m)^` is matching a position that is not a "+
+			"line start", with, without)
+	}
+}
+
+// sameLineRuleYAML is deliberately NOT `^`-anchored, so two source constructs
+// can sit on one line.
+const sameLineRuleYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "BEGIN (\\w+)[\\s\\S]{0,60}?USE (\\w+)"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 2
+    terminator: "STOP"
+custom_extractors: []
+`
+
+// Test6666_TerminatorResumptionIsLineGranular observes the resume rule's
+// GRANULARITY, which no test observed before: the six-line comment justifying
+// it could be contradicted freely and everything stayed green.
+//
+// VARIES: whether the second source construct is on the SAME line as the
+// rejected one, or the next line.
+// HELD CONSTANT: the rule, the terminator, and the text of both constructs.
+//
+// Line-granularity is a real cost — the same-line candidate is LOST, not
+// merely reordered — and it is asserted here rather than described.
+func Test6666_TerminatorResumptionIsLineGranular(t *testing.T) {
+	const good = "Module:b -INSTANTIATES-> View:w"
+
+	// Positive control first: on separate lines the rescue works.
+	rels := terminatorRels(t, sameLineRuleYAML, "BEGIN a\nSTOP\nBEGIN b USE w\n")
+	if !hasRel6666(rels, good) {
+		t.Fatalf("positive control failed: a next-line second source was not rescued, so the "+
+			"same-line case below proves nothing: %v", rels)
+	}
+
+	// Same two constructs, now on ONE line. Resumption rounds up to the next
+	// line start, so `BEGIN b` is skipped and NOTHING is emitted.
+	rels = terminatorRels(t, sameLineRuleYAML, "BEGIN a STOP BEGIN b USE w\n")
+	if len(rels) != 0 {
+		t.Errorf("resumption is no longer line-granular (%v). If this is a deliberate change to "+
+			"byte-granular resumption, the accept path must be changed with it and "+
+			"Test6666_AbsentTerminatorIsIdenticalWhenMatchEndsMidLine will tell you why that is "+
+			"not free; the doc comment on findRelationshipMatches must be updated either way",
+			rels)
+	}
+}
+
+// captureNamesContainTerminatorYAML: the terminator literal "STOP" is a
+// substring of names the captures themselves can hold ("STOPPER").
+const captureNamesContainTerminatorYAML = sameLineRuleYAML
+
+// Test6666_TerminatorExcludesTheCaptureTextItself pins the exact ENDPOINTS of
+// the join span. `Test6666_TerminatorTestsTheSpanBetweenCaptures` only shows
+// the span is not the whole match; it cannot tell srcE from srcS, or tgtS from
+// tgtE, because its capture text never contains the terminator.
+//
+// VARIES: which capture's own text contains the terminator literal.
+// HELD CONSTANT: the rule and a join window that is clean in every case.
+func Test6666_TerminatorExcludesTheCaptureTextItself(t *testing.T) {
+	// The SOURCE capture's text contains "STOP". The window between the
+	// captures does not. Span must start at the END of the source capture.
+	rels := terminatorRels(t, captureNamesContainTerminatorYAML, "BEGIN STOPPER\nUSE widget\n")
+	if !hasRel6666(rels, "Module:STOPPER -INSTANTIATES-> View:widget") {
+		t.Errorf("the terminator occurs inside the SOURCE capture, not between the captures, and "+
+			"the join was blocked — the span starts at the source capture's START instead of its "+
+			"END and is swallowing the capture text: %v", rels)
+	}
+
+	// The TARGET capture's text contains "STOP". Span must end at the START of
+	// the target capture.
+	rels = terminatorRels(t, captureNamesContainTerminatorYAML, "BEGIN alpha\nUSE STOPPER\n")
+	if !hasRel6666(rels, "Module:alpha -INSTANTIATES-> View:STOPPER") {
+		t.Errorf("the terminator occurs inside the TARGET capture and the join was blocked — the "+
+			"span ends at the target capture's END instead of its START: %v", rels)
+	}
+
+	// Control: the same literal genuinely between the captures still blocks,
+	// so the two assertions above are not just "the guard never fires".
+	rels = terminatorRels(t, captureNamesContainTerminatorYAML, "BEGIN alpha\nSTOP\nUSE widget\n")
+	if hasRel6666(rels, "Module:alpha -INSTANTIATES-> View:widget") {
+		t.Errorf("control failed: a terminator squarely between the captures did not block, so "+
+			"the two cases above prove nothing: %v", rels)
+	}
+}
+
+// zeroWidthRuleYAML compiles to a regex that can match the empty string.
+const zeroWidthRuleYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "(x*)(y*)"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 2
+    terminator: "STOP"
+custom_extractors: []
+`
+
+// Test6666_TerminatorTerminatesOnZeroWidthMatches observes the anti-stall
+// guard, which nothing observed before: deleting it left every test green.
+// A zero-width match makes the accept path's resume point equal to the match
+// start, so without the +1 the walk never advances.
+//
+// VARIES: nothing — this is the existence test for termination itself.
+// HELD CONSTANT: a rule whose regex matches the empty string everywhere.
+func Test6666_TerminatorTerminatesOnZeroWidthMatches(t *testing.T) {
+	fsys := buildTestFS("vbnet", "zero", zeroWidthRuleYAML)
+	rules, err := LoadAllRulesFromFS(fsys, "rules")
+	if err != nil {
+		t.Fatalf("LoadAllRulesFromFS failed: %v", err)
+	}
+	det := New(rules)
+
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic: %v", r)
+			}
+		}()
+		_, derr := det.Detect(context.Background(), extractor.FileInput{
+			Path:     "src/Zero.vb",
+			Content:  []byte("abc\nabc\n"),
+			Language: "vbnet",
+		})
+		done <- derr
+	}()
+
+	select {
+	case derr := <-done:
+		if derr != nil {
+			t.Fatalf("Detect: %v", derr)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("Detect did not return within 20s on a regex that matches the empty string — " +
+			"the terminator walk is not advancing past a zero-width match")
+	}
+}
+
+// nonParticipatingGroupYAML: source_group 1 is inside an alternation and can
+// fail to participate, yielding offsets of (-1, -1).
+const nonParticipatingGroupYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "(?:BEGIN (\\w+)|OPEN (\\w+))[\\s\\S]{0,60}?USE (\\w+)"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 3
+    terminator: "STOP"
+custom_extractors: []
+`
+
+// outOfRangeGroupYAML names a capture group the pattern does not have.
+const outOfRangeGroupYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "BEGIN (\\w+)[\\s\\S]{0,60}?USE (\\w+)"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 9
+    target_group: 2
+    terminator: "STOP"
+custom_extractors: []
+`
+
+// Test6666_TerminatorSurvivesNonParticipatingAndOutOfRangeGroups makes the
+// negative-offset checks in joinSpanCrosses observable. They are PANIC guards,
+// not policy: the affected match is discarded downstream by extractGroup
+// either way, so the only reachable consequence of removing them is a slice
+// with a negative bound.
+//
+// VARIES: why a capture has no offsets — it did not participate, vs the rule
+// file named an index that does not exist.
+// HELD CONSTANT: a terminator is declared and the fixture contains it.
+func Test6666_TerminatorSurvivesNonParticipatingAndOutOfRangeGroups(t *testing.T) {
+	// Group 1 never participates (the OPEN branch matched).
+	rels := terminatorRels(t, nonParticipatingGroupYAML, "OPEN a\nSTOP\nUSE w\n")
+	if len(rels) != 0 {
+		t.Errorf("a match whose source capture did not participate produced an edge: %v", rels)
+	}
+
+	// Positive control: the branch that DOES populate group 1 still works, so
+	// the assertion above is about the absent group and not a dead rule.
+	rels = terminatorRels(t, nonParticipatingGroupYAML, "BEGIN a\nUSE w\n")
+	if !hasRel6666(rels, "Module:a -INSTANTIATES-> View:w") {
+		t.Fatalf("positive control failed: the participating branch emitted nothing: %v", rels)
+	}
+
+	// An index the pattern has no group for.
+	rels = terminatorRels(t, outOfRangeGroupYAML, "BEGIN a\nSTOP\nUSE w\n")
+	if len(rels) != 0 {
+		t.Errorf("an out-of-range source_group produced an edge: %v", rels)
+	}
+}
+
+// groupZeroTerminatorYAML is the combination that must be refused at load:
+// group 0 is the whole match, so the join window is empty by construction and
+// the guard could never fire. Note the fixture below contains STOP between the
+// two constructs — a working guard WOULD block it — so if the rule were
+// loaded, the edge would appear and the guard's uselessness would be invisible.
+const groupZeroTerminatorYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "func boot\\([\\s\\S]{0,200}?USE (\\w+)"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 0
+    target_group: 1
+    terminator: "STOP"
+custom_extractors: []
+`
+
+// groupZeroNoTerminatorYAML is the same rule WITHOUT a terminator. source_group
+// 0 on its own is a separate defect (#6788) and stays loadable.
+const groupZeroNoTerminatorYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "func boot\\([\\s\\S]{0,200}?USE (\\w+)"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 0
+    target_group: 1
+custom_extractors: []
+`
+
+// Test6666_TerminatorWithGroupZeroIsRejectedAtLoad is review defect D2.
+// With source_group 0 the source "capture" ends where the match ends, so the
+// span between the captures is inverted and joinSpanCrosses returns false
+// unconditionally — a guard that silently does nothing, with green tests.
+// `internal/engine/rules/swift/frameworks/vapor.yaml` is the one rule in the
+// tree with source_group 0, and it is a nominated terminator candidate.
+//
+// VARIES: whether the group-0 rule also declares a terminator.
+// HELD CONSTANT: pattern, fixture, and the presence of STOP between the two
+// constructs.
+func Test6666_TerminatorWithGroupZeroIsRejectedAtLoad(t *testing.T) {
+	const content = "func boot(routes)\nSTOP\nUSE widget\n"
+
+	rels := terminatorRels(t, groupZeroTerminatorYAML, content)
+	if len(rels) != 0 {
+		t.Errorf("a rule combining `terminator` with capture group 0 was loaded and fired (%v). "+
+			"Group 0 is the whole match, so its guard can never block anything — the rule must "+
+			"be refused at load rather than shipping a guard that does nothing", rels)
+	}
+
+	// Positive control: the SAME rule without a terminator still loads, so the
+	// rejection is aimed at the combination and is not a blanket ban on
+	// source_group 0 (#6788 owns that separately).
+	rels = terminatorRels(t, groupZeroNoTerminatorYAML, content)
+	if len(rels) == 0 {
+		t.Errorf("source_group 0 without a terminator no longer loads; the load-time rejection "+
+			"is too broad and has taken over #6788's territory: %v", rels)
+	}
+}
+
+// Test6666_TerminatorWorksWithoutATrailingNewline is review suspicion D5:
+// on rejection, "no line start remains" abandons the walk. It is only
+// reachable when the rejected match begins on a FINAL line with no trailing
+// newline, in which case every later source is on that same line and
+// line-granular resumption could not have reached it anyway.
+//
+// VARIES: whether the file ends with a newline.
+// HELD CONSTANT: the two-module VB source.
+func Test6666_TerminatorWorksWithoutATrailingNewline(t *testing.T) {
+	trimmed := strings.TrimRight(helperFirstSource, "\n")
+	if strings.HasSuffix(trimmed, "\n") {
+		t.Fatal("fixture setup failed: the trailing newline was not removed")
+	}
+	rels := terminatorRels(t, terminatorRuleYAML, trimmed)
+	if !hasRel6666(rels, "Module:Program -INSTANTIATES-> View:OrderEntryForm") {
+		t.Errorf("a file with no trailing newline lost the rescued edge — the walk is abandoning "+
+			"the search while line starts still remain: %v", rels)
+	}
+
+	// The one case where the walk really does stop early: the rejected match
+	// begins on the last line and there is no newline after it. Asserted so
+	// the limitation is observed, not merely described.
+	rels = terminatorRels(t, sameLineRuleYAML, "BEGIN a STOP BEGIN b USE w")
+	if len(rels) != 0 {
+		t.Errorf("expected nothing: the rejected match begins on a final line with no trailing "+
+			"newline, so no line start remains and the same-line candidate is out of reach by "+
+			"the documented line-granularity limit; got %v", rels)
 	}
 }

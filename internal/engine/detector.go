@@ -179,6 +179,20 @@ func (d *Detector) compile() {
 					log.Printf("engine: invalid relationship_rule regex in %s: %q: %v", lang, rr.Pattern, err)
 					continue
 				}
+				// #6666 review D2: capture group 0 is the WHOLE match, so a
+				// join window bounded by it is empty by construction and the
+				// terminator guard could never fire. Loading such a rule would
+				// ship a guard that silently does nothing and tests that stay
+				// green — the exact failure mode this feature exists to end.
+				// Reject it loudly instead. (source_group: 0 on its own is a
+				// separate defect, tracked in #6788, and is left alone here.)
+				if rr.Terminator != "" && (rr.SourceGroup == 0 || rr.TargetGroup == 0) {
+					log.Printf("engine: relationship_rule in %s declares terminator %q with "+
+						"source_group=%d target_group=%d; group 0 is the whole match, so the "+
+						"join window is empty and the guard can never fire — rule skipped: %q",
+						lang, rr.Terminator, rr.SourceGroup, rr.TargetGroup, rr.Pattern)
+					continue
+				}
 				cs.relationshipRules = append(cs.relationshipRules, compiledRelationshipRule{
 					regex:        re,
 					sourceType:   rr.SourceType,
@@ -1066,61 +1080,114 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 //     Anywhere else in the file — before the first capture, after the last —
 //     is irrelevant and must NOT block.
 //
-//  2. RESUME after a rejection from the line following the rejected match's
-//     start, not from its end. FindAllStringSubmatch returns non-overlapping
-//     matches, so the first (wrong) match consumes the target and the correct
-//     pairing becomes unreachable; simply dropping the bad match would trade a
-//     false edge for a missing one. Resuming lets a LATER source construct
-//     pair with the same target.
+//  2. RESUME after a rejection at the rejected match's own START rather than
+//     its end. FindAllStringSubmatch returns non-overlapping matches, so the
+//     first (wrong) match consumes the target and the correct pairing becomes
+//     unreachable; simply dropping the bad match would trade a false edge for
+//     a missing one. Rewinding lets a LATER source construct pair with the
+//     same target.
 //
-// Resuming at a line boundary keeps `(?m)^` honest: the slice handed to the
-// regex always begins immediately after a newline, so a `^` matching at slice
-// index 0 is matching a real line start. The cost is that two source
-// constructs on ONE line cannot both be considered.
+// Both resume points — the accept path's and the reject path's — are then
+// rounded UP to a line start, because the next iteration re-slices content and
+// hands the slice to the regex. `(?m)^` matches at slice index 0, so resuming
+// mid-line would let `^` match a position that is NOT a line start and emit
+// matches FindAllStringSubmatch would never produce (#6666 review, D1). This
+// is a real, measured behaviour difference, not a theoretical one, and it is
+// pinned by Test6666_AbsentTerminatorIsIdenticalWhenMatchEndsMidLine.
+//
+// The price of that rounding is stated exactly, and observed, rather than
+// assumed away:
+//
+//   - Resumption is LINE-granular in both directions. A second source
+//     construct beginning on the SAME line as a previous match's end (accept)
+//     or start (reject) is not considered. Pinned by
+//     Test6666_TerminatorResumptionIsLineGranular.
+//   - A pattern using `^` WITHOUT `(?m)` means "beginning of text", which
+//     re-slicing would make true at every resume point. No terminator-bearing
+//     rule may use one. `winforms.yaml`'s rule is `(?m)`-anchored.
+//   - When no line start remains — the match began on a final line with no
+//     trailing newline — the walk stops. Nothing is lost that line-granular
+//     resumption could have reached anyway; pinned by
+//     Test6666_TerminatorWorksWithoutATrailingNewline.
+//
+// Termination: every iteration advances pos by at least one byte. The accept
+// path's resume point is max(loc[1], loc[0]+1) — the +1 is what makes a
+// zero-width match advance — and the reject path's is loc[0]+1; both are then
+// only ever rounded up. Pinned by Test6666_TerminatorTerminatesOnZeroWidthMatches.
 func findRelationshipMatches(rr compiledRelationshipRule, content string) [][]string {
 	if rr.terminator == "" {
 		return rr.regex.FindAllStringSubmatch(content, -1)
 	}
 
 	var out [][]string
-	for pos := 0; pos <= len(content); {
+	for pos := 0; pos < len(content); {
 		rest := content[pos:]
 		loc := rr.regex.FindStringSubmatchIndex(rest)
 		if loc == nil {
 			break
 		}
 
+		// resumeFrom is the first offset of rest the next iteration may
+		// re-examine: past the match when it is accepted (what
+		// FindAllStringSubmatch would do), back to the match's own start when
+		// it is rejected.
+		resumeFrom := loc[1]
 		if joinSpanCrosses(rest, loc, rr.sourceGroup, rr.targetGroup, rr.terminator) {
-			// Rejected: resume on the line after this match began.
-			nl := strings.IndexByte(rest[loc[0]:], '\n')
-			if nl < 0 {
-				break
-			}
-			pos += loc[0] + nl + 1
-			continue
+			resumeFrom = loc[0]
+		} else {
+			out = append(out, submatchStrings(rest, loc))
+		}
+		if resumeFrom <= loc[0] {
+			resumeFrom = loc[0] + 1 // rewind, or a zero-width match: never stand still
 		}
 
-		out = append(out, submatchStrings(rest, loc))
-		if loc[1] <= loc[0] {
-			pos += loc[0] + 1 // zero-width match: never stand still
-			continue
+		next := resumeAtLineStart(rest, resumeFrom)
+		if next < 0 {
+			break
 		}
-		pos += loc[1]
+		pos += next
 	}
 	return out
 }
 
+// resumeAtLineStart returns the smallest offset >= from at which a line begins,
+// or -1 if no line start remains. from must be >= 1, which every caller
+// guarantees, so the returned offset is always >= from >= 1 and the walk in
+// findRelationshipMatches always advances.
+func resumeAtLineStart(s string, from int) int {
+	if from >= len(s) {
+		return -1
+	}
+	if s[from-1] == '\n' {
+		return from
+	}
+	nl := strings.IndexByte(s[from:], '\n')
+	if nl < 0 {
+		return -1
+	}
+	return from + nl + 1
+}
+
 // joinSpanCrosses reports whether term occurs in the text BETWEEN the two
 // capture groups of a match. The groups may appear in either textual order
-// (a rule may set source_group to the later capture), so the span is taken
-// from the end of whichever group comes first to the start of the other.
-// A missing, out-of-range or overlapping pair yields no span and never blocks.
+// (a rule may set source_group to the later capture), so the span runs from
+// the END of whichever group comes first to the START of the other — the
+// capture text itself is never part of the window, which
+// Test6666_TerminatorExcludesTheCaptureTextItself observes in both directions.
+//
+// The `lo < 0 || hi < 0` check is a PANIC guard, not policy: a group that did
+// not participate in the match yields (-1, -1) from groupSpan and would slice
+// with a negative bound. Such a match is discarded downstream anyway, because
+// extractGroup returns "" for the same index, so what this function returns
+// for it cannot be observed through the emitted edges — only through the panic
+// the check prevents. Test6666_TerminatorSurvivesNonParticipatingAndOutOfRangeGroups
+// is what exercises it. (An earlier `srcS < 0 || tgtS < 0` guard here was
+// removed as dead: every case it caught is already caught by `lo < 0 || hi < 0`,
+// and a mutant deleting it killed no test — redundant code that prose then
+// claimed credit for.)
 func joinSpanCrosses(s string, loc []int, srcGroup, tgtGroup int, term string) bool {
 	srcS, srcE := groupSpan(loc, srcGroup)
 	tgtS, tgtE := groupSpan(loc, tgtGroup)
-	if srcS < 0 || tgtS < 0 {
-		return false
-	}
 	lo, hi := srcE, tgtS
 	if tgtE <= srcS {
 		lo, hi = tgtE, srcS
@@ -1133,6 +1200,14 @@ func joinSpanCrosses(s string, loc []int, srcGroup, tgtGroup int, term string) b
 
 // groupSpan returns the [start, end) byte offsets of capture group g within a
 // FindStringSubmatchIndex result, or (-1, -1) if the group is absent.
+//
+// The out-of-range branch is a bounds check: without it, an index the rule
+// file got wrong indexes past loc and panics (a mutant deleting it dies in
+// Test6666_TerminatorSurvivesNonParticipatingAndOutOfRangeGroups). Which
+// sentinel it returns for that case is NOT observable, however: extractGroup
+// uses the same bound, so any match with an out-of-range group is discarded
+// before it can become an edge. A mutant returning (0, 0) here is equivalent,
+// and is expected to stay alive.
 func groupSpan(loc []int, g int) (int, int) {
 	if g < 0 || 2*g+1 >= len(loc) {
 		return -1, -1

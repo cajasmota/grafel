@@ -120,11 +120,10 @@ type RelationshipRule struct {
 	// correct pairing is never even reachable. RE2 has no negative lookahead,
 	// so "no intervening End Module" cannot be written in the pattern.
 	//
-	// When set, the join site rejects any match whose text between the end of
-	// the source capture and the start of the target capture contains this
-	// string, and RESUMES the search from the line after the rejected source
-	// (rather than after the whole match) so a later source can still pair
-	// with the same target.
+	// When set, the join site rejects any match whose text between the END of
+	// the earlier capture and the START of the later one contains this string,
+	// and RESUMES the search at the rejected match's own start rather than
+	// past it, so a later source can still pair with the same target.
 	//
 	// Deliberate limitations, each pinned by a test in
 	// relationship_terminator_6666_test.go:
@@ -135,11 +134,24 @@ type RelationshipRule struct {
 	//     terminators are explicit and non-nesting (VB `End Module`). Rules
 	//     whose boundary is a nesting `}` need real containment and are out of
 	//     scope here.
-	//   * Resumption is line-granular, so two source constructs on ONE line
-	//     cannot both be considered.
+	//   * Resumption is LINE-granular in both directions, so a second source
+	//     construct on the SAME line as a previous match's end or start is not
+	//     considered. This is not a free choice: resuming mid-line would let a
+	//     `(?m)^` in the pattern match a position that is not a line start.
+	//     See findRelationshipMatches.
+	//   * A pattern using `^` WITHOUT `(?m)` must not carry a terminator; that
+	//     `^` means beginning-of-text and re-slicing would make it true at
+	//     every resume point.
+	//   * source_group or target_group 0 is REFUSED at load in combination
+	//     with a terminator: group 0 is the whole match, so the join window is
+	//     empty and the guard could never fire. (source_group 0 on its own is
+	//     a separate defect, #6788.)
 	//
-	// Empty (the default) means no guard and byte-identical behaviour to
-	// before #6666 — this is opt-in per rule, asserted by
+	// Empty (the default) means no guard at all: the join site is then
+	// literally FindAllStringSubmatch. Opt-in per rule, asserted by
 	// Test6666_TerminatorBlocksCrossModuleJoin's no-terminator control leg.
+	// A terminator that never OCCURS is also behaviour-preserving, which is a
+	// separate and much easier property to break — see
+	// Test6666_AbsentTerminatorIsIdenticalWhenMatchEndsMidLine.
 	Terminator string `yaml:"terminator"`
 }
