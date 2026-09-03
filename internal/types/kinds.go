@@ -9,6 +9,44 @@ package types
 // layer strips the prefix when surfacing kinds to the agent (ADR-0003).
 type EntityKind string
 
+// KindVocabularyVersion is the version of the ENTITY-KIND VOCABULARY — the set
+// of kind strings a graph written by this build actually carries.
+//
+// It is deliberately a THIRD number, distinct from the two that already exist,
+// because all three change for different reasons (#6779):
+//
+//   - graph.SchemaVersion versions the SHAPE of graph.json.
+//   - fbversion.Version versions the FlatBuffers PAYLOAD FORMAT of graph.fb,
+//     and a bump there makes internal/graph's min-version gate REJECT the
+//     stored graph, which internal/daemon turns into an automatic reindex.
+//   - this versions the kind STRINGS inside an otherwise perfectly readable
+//     graph. Renaming a kind breaks no format and no schema: the old graph
+//     loads fine and simply answers queries about the new kind with silence.
+//
+// A rename must therefore NOT be expressed as an fbversion bump. That would
+// reindex every registered group behind the user's back, and reindexing a
+// large group is expensive enough that the user gets to choose when to pay for
+// it (the same call taken on #6757 arm C). Mismatch here is DETECTED AND
+// REPORTED — through `grafel doctor` — never auto-migrated and never
+// auto-reindexed.
+//
+// # Bump this whenever an entity kind is RENAMED or RETIRED
+//
+// Adding a brand-new kind does not require a bump: no already-stored entity
+// changes spelling, and a query for the new kind correctly finds nothing in an
+// older graph because nothing of that kind was ever extracted. Renaming or
+// retiring one DOES: entities already on disk keep the old spelling forever,
+// and every consumer filtering on the new spelling silently sees an empty
+// result set.
+//
+// Version 1 (#6779) — the mechanism's baseline. Graphs indexed before it
+// existed carry no stamp at all, decode as 0, and are correctly reported as
+// speaking an older vocabulary: v0.3.1 shipped exactly two such renames
+// (#6451 retired SCOPE.ExternalAPI in favour of SCOPE.ExternalEndpoint and
+// SCOPE.IngressHost; #6499 made Kotlin SCOPE.Operation names class-qualified)
+// with nothing but a release note to migrate them.
+const KindVocabularyVersion = 1
+
 const (
 	EntityKindOperation   EntityKind = "SCOPE.Operation"
 	EntityKindComponent   EntityKind = "SCOPE.Component"

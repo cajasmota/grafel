@@ -14,6 +14,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // DoctorRepoHealth summarizes the health of a single repo within a group.
@@ -74,6 +75,24 @@ type DoctorRepoHealth struct {
 	// RenameAddedSkipped is how many added entities that truncated pass never
 	// examined. Only meaningful when RenameTruncated is true.
 	RenameAddedSkipped int
+
+	// KindVocabulary is which entity-kind vocabulary this repo's stored graph
+	// speaks (#6779) — one of graph.KindVocabularyCurrent / ...Older /
+	// ...NoGraph. It is THREE-valued, and the third value is load-bearing:
+	// "current" and "nothing indexed here" are different facts, and reporting
+	// a never-indexed repo as speaking a stale vocabulary would be the same
+	// confident wrong answer this field exists to prevent.
+	//
+	// Unlike the sidecar-only fields above, this is NOT read straight off the
+	// sidecar: graph.KindVocabularyStateForDir combines the sidecar stamp with
+	// an independent check that a graph is actually stored, precisely so the
+	// two negative states cannot collapse into one another.
+	KindVocabulary graph.KindVocabularyState
+	// KindVocabularyStored is the version stamped on the stored graph. Zero
+	// means the graph predates the stamp (which is itself an older
+	// vocabulary — v0.3.1 renamed kinds under it). Meaningless when
+	// KindVocabulary is graph.KindVocabularyNoGraph.
+	KindVocabularyStored int
 }
 
 // loadGraphFromDir is an indirection over graph.LoadGraphFromDir so tests can
@@ -190,6 +209,21 @@ func ComputeDoctorHealth(groups []registry.GroupRef, deep bool) []*DoctorGroupHe
 					fmt.Sprintf("repo %s rename detection was TRUNCATED: RENAMED_FROM edges are INCOMPLETE (%s added entities never examined) — reindex to complete the scan",
 						rh.Slug, fmtInt(rh.RenameAddedSkipped)))
 			}
+
+			// #6779 — a graph indexed under an older entity-kind vocabulary
+			// makes the group DEGRADED, additively like the two above. The
+			// graph is fresh, complete and readable; its entities are simply
+			// spelled with kinds this build has renamed or retired, so a
+			// consumer filtering on the new spellings gets an empty result
+			// from a graph that looks healthy. Nothing is migrated and nothing
+			// is reindexed here — reindexing a large group is expensive and
+			// the user chooses when to pay for it.
+			if rh.KindVocabulary == graph.KindVocabularyOlder {
+				health.Healthy = false
+				health.IssuesFound = append(health.IssuesFound,
+					fmt.Sprintf("repo %s was indexed under an OLDER entity-kind vocabulary (graph v%d, this build speaks v%d): queries filtering on renamed kinds return EMPTY — reindex this repo to update it",
+						rh.Slug, rh.KindVocabularyStored, types.KindVocabularyVersion))
+			}
 		}
 
 		// Sort repos by slug for consistent output
@@ -242,6 +276,21 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 	}
 
 	stateDir := daemon.StateDirForRepo(r.Path)
+
+	// #6779 — which entity-kind vocabulary the stored graph speaks. Computed
+	// BEFORE (and independently of) the sidecar decode below, because it needs
+	// to know whether a graph exists at all: a state dir with a leftover
+	// sidecar and no graph is "nothing indexed", not "stale vocabulary".
+	//
+	// This does re-read graph-stats.json, which the block below reads again
+	// (and computeQualityMetrics a third time). Left deliberately unshared:
+	// the whole point of this call is that it does NOT trust the sidecar as
+	// its only input — it pairs the stamp with an independent graph-existence
+	// check — and threading a pre-decoded sidecar in would re-couple the two
+	// reads that must stay separate for the three states to survive. Each read
+	// is a small JSON file with no entity materialization; doctor already
+	// loads the full graph per repo on the deep path.
+	rh.KindVocabulary, rh.KindVocabularyStored = graph.KindVocabularyStateForDir(stateDir)
 
 	// Load graph-stats.json sidecar for basic counts
 	sidecarPath := filepath.Join(stateDir, "graph-stats.json")
@@ -493,6 +542,14 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 			if r.RenameTruncated {
 				fmt.Fprintf(w, "    %-*s  ⚠ rename detection TRUNCATED: RENAMED_FROM edges are INCOMPLETE (%s added entities never examined) — reindex to complete the scan\n",
 					maxSlugLen, "", fmtInt(r.RenameAddedSkipped))
+			}
+			// #6779 — additive, same shape as the rename warning above: the
+			// graph loaded fine, its KINDS are the stale part. Printed only
+			// for the older-vocabulary state, never for a current graph and
+			// never for a repo that has no graph at all.
+			if r.KindVocabulary == graph.KindVocabularyOlder {
+				fmt.Fprintf(w, "    %-*s  ⚠ indexed under an OLDER entity-kind vocabulary (graph v%d, this build speaks v%d): queries on renamed kinds return EMPTY — reindex this repo\n",
+					maxSlugLen, "", r.KindVocabularyStored, types.KindVocabularyVersion)
 			}
 			// #6757 arm C — additive and INFORMATIONAL: these edges are all in
 			// the graph and nothing failed, so this never changes the repo

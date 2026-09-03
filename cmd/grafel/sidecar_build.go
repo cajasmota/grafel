@@ -7,6 +7,7 @@ import (
 	"github.com/cajasmota/grafel/internal/algorithms"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // buildStatsSidecar constructs the graph-stats.json payload for the index
@@ -47,6 +48,13 @@ func buildStatsSidecar(
 		ExtractMS:          extractMS,
 		ParseErrorCanary:   canaryRaw,
 		ParseErrorSpike:    canarySpiked,
+
+		// #6779 — the vocabulary the entities just written are SPELLED in.
+		// Taken from this build, never carried forward from prior: it
+		// describes the graph being written now, and a stamp inherited from an
+		// older sidecar would claim a graph is current when its kinds came out
+		// of a binary that has since renamed them.
+		KindVocabularyVersion: types.KindVocabularyVersion,
 
 		// #6087 — rename-detection completeness, always taken from THIS run
 		// and never carried forward from prior: it describes the pass that
