@@ -101,6 +101,36 @@ class Status(StrEnum):
 	}
 }
 
+// TestEnumValueSet_PythonParenthesizedValue asserts a member value wrapped in
+// parentheses across lines (`NAME = (\n    "value"\n)`) still resolves to its
+// literal, while auto() stays empty-valued and a Django-style tuple still
+// resolves to its first element.
+func TestEnumValueSet_PythonParenthesizedValue(t *testing.T) {
+	src := `
+import enum
+
+class TransactionType(enum.StrEnum):
+    SHORT = "short"
+    A_VERY_LONG_MEMBER_NAME = (
+        "some-value"
+    )
+    AUTOD = enum.auto()
+    DJANGO_LIKE = ("db", "Label")
+`
+	ents := extractPy(t, src, "app/transaction.py")
+	en := findEnum(ents, "TransactionType")
+	if en == nil {
+		t.Fatal("SCOPE.Enum:TransactionType value-set node not found")
+	}
+	want := "SHORT=short, A_VERY_LONG_MEMBER_NAME=some-value, DJANGO_LIKE=db"
+	if got := en.Properties["values"]; got != want {
+		t.Fatalf("values = %q, want %q", got, want)
+	}
+	if got := en.Properties["member_count"]; got != "4" {
+		t.Fatalf("member_count = %q, want 4", got)
+	}
+}
+
 // TestEnumValueSet_NonEnumNoNode asserts an ordinary (non-enum) class emits NO
 // SCOPE.Enum node — the negative case.
 func TestEnumValueSet_NonEnumNoNode(t *testing.T) {
