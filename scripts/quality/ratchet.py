@@ -491,6 +491,24 @@ def check(golden_dir, reports_dir, baseline_path):
         forbidden = int(rep.get("forbidden_hits", 0))
         if forbidden > 0:
             failures.append(f"{name}: {forbidden} forbidden relationship hit(s) — always fatal")
+        # #6488 arm B. Forbidden ENTITY hits are fatal on the same terms, and
+        # are read from their own key: `forbidden_hits` counts edges only, and
+        # a report written before this field existed simply reports 0 here.
+        #
+        # The number counts ROWS THAT FIRED, not offending entities — one row
+        # satisfied by two identical offenders is 1. That is deliberate, and it
+        # matches forbidden_hits on the edge side, which also appends once per
+        # matching row. A count of entities would need the grader to enumerate
+        # every candidate rather than resolve one, which is a different (and
+        # looser) matcher than the recall path uses, and the two paths agreeing
+        # on what "this entity" means is the property arm B is built on. The
+        # wording says row so the number is not read as a headcount; the
+        # report's forbidden_entities array names each offender.
+        forbidden_entities = int(rep.get("forbidden_entity_hits", 0))
+        if forbidden_entities > 0:
+            failures.append(
+                f"{name}: {forbidden_entities} forbidden entity row(s) fired — always fatal"
+            )
 
         for metric in ("entity_found", "relationship_found"):
             want, got = int(base.get(metric, 0)), obs[metric]

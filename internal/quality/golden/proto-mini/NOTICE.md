@@ -32,6 +32,8 @@ Copyright: none asserted; these two files are part of this repository.
 | `message` → field, `enum` → enum value CONTAINS, **including each enum's first (zero-default) value** | structural containment | 10 expected rows |
 | `rpc` type refs are REFERENCES and nothing else — the pre-#6359 `IMPORTS` shape does not come back *alongside* the correct edge | #6359 | forbidden **F3** |
 | cross-file `message` type reference emits **no** dangling edge | #6357 | forbidden **F1** |
+| an `enum` is **not** stamped as a `message` — the two are the same `Kind` from the same file and differ only in `Subtype` | #6422 (message/enum confusion), #6488 arm B | forbidden entity **FE1** |
+| the `internal/custom/cpp/protobuf.go` near-duplicate family does **not** swallow enums into its message half | #6488 arm B (entity over-emission) | forbidden entity **FE2** |
 
 Every one of those rows was verified load-bearing by mutating the production
 code and confirming the fixture goes red. See the issue #6453 thread for the
@@ -45,6 +47,20 @@ one, and the distinction is worth keeping in mind when adding rows here:
   request/response type **alongside** the correct REFERENCES — a near-literal
   return of the pre-#6359 shape — took relationships from 53 to 56 and left the
   fixture at 100% / 100% / 0 forbidden. F3 is what makes that mutant die.
+- **FE1 / FE2** — the first two `forbidden_entities` rows in the corpus
+  (#6488 arm B), and both exist for the same reason F3 does: recall counts
+  what was FOUND, so it is blind to the graph growing something it should not
+  have. FE1's mutant (`buildEnum`'s `Subtype` `"enum"` → `"message"`) left the
+  fixture at **19/19 entities, 17/17 relationships, 0 forbidden edges, exit
+  0** — `Subtype` is not hashed into `graph.EntityID`, so the flip moves no
+  id, breaks no edge and drops no row. FE2's (widening `reProtoMessage` to
+  `(?:message|enum)`) took extracted entities 31 → 33 and was likewise fully
+  green. Each fires its row and nothing else does.
+  - The two forms are deliberately different: **FE1 states a `subtype`** and so
+    forbids only that stamp (the legitimate `Role`/`enum` does not trip it);
+    **FE2 states none** and so forbids `proto_message:Role` whatever subtype it
+    wears. An omitted `subtype` is "any", the same "empty means don't care"
+    rule an expected row has carried since #6488 arm A.
 - **`Role.ROLE_UNKNOWN` / `Status.STATUS_UNKNOWN`** — the enum rows were
   one-value-deep. Dropping the *first* `enum_field` of every enum (the natural
   off-by-one over `enum_body`'s children) took entities 29 → 27 with the fixture

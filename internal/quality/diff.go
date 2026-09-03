@@ -179,6 +179,30 @@ type EntityResult struct {
 	GotSubtype      string
 }
 
+// ForbiddenEntityHit records an extracted entity that satisfied one of a
+// fixture's `forbidden_entities` rows (#6488 arm B). A non-empty slice of
+// these is a hard quality regression, exactly as a forbidden edge is.
+//
+// It is a type of its own rather than a reused EntityResult because the two
+// answer different questions. EntityResult describes a ROW (was the thing the
+// fixture asked for found, and if not, why not); its GotSubtype carries a
+// rejected candidate and is documented to be empty whenever the row states no
+// subtype. A forbidden hit describes the OFFENDING ENTITY, which the row may
+// have underspecified: a row naming only (kind, name) can be satisfied by an
+// entity in any file wearing any subtype, and a diagnostic that echoed only
+// the row would send the reader back to the graph to work out which one.
+type ForbiddenEntityHit struct {
+	// Expected is the fixture row that fired.
+	Expected ExpectedEntity
+	// The offending entity as extracted — read from graph.Entity, never
+	// copied from the row, so an underspecified row still names one entity.
+	MatchedID         string
+	MatchedName       string
+	MatchedKind       string
+	MatchedSourceFile string
+	MatchedSubtype    string
+}
+
 // RelationshipResult records the outcome of evaluating one
 // ExpectedRelationship.
 //
@@ -257,6 +281,15 @@ type Report struct {
 	// extracted relationship that matches a `forbidden_relationships`
 	// entry. A non-zero count is a hard quality regression.
 	ForbiddenHits []RelationshipResult
+
+	// Forbidden-entity hits — the entity analogue (#6488 arm B). Each entry
+	// is an extracted entity that matches a `forbidden_entities` row. Kept in
+	// its own slice, and counted under its own JSON key, so the two classes
+	// stay separable: "the extractor emitted an edge it should not have" and
+	// "the extractor emitted an entity it should not have" go to different
+	// diagnoses, and folding them into one counter would also silently move
+	// the meaning of the `forbidden_hits` key every baseline already records.
+	ForbiddenEntityHits []ForbiddenEntityHit
 
 	// Nice-to-have stats — surfaced separately so authors see what they
 	// could add without being penalised on must-have recall.
@@ -426,6 +459,36 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 				rep.EntityFound++
 			}
 		}
+	}
+
+	// Forbidden entities — any extracted entity satisfying one of the
+	// fixture's forbidden rows (#6488 arm B).
+	//
+	// Deliberately the SAME resolveEntity the recall loop just used, rather
+	// than a second matcher. A forbidden row and an expected row name an
+	// entity in exactly one vocabulary, so "what counts as this entity" must
+	// have one answer: if the forbidding matcher were looser than the
+	// asserting one, a fixture could forbid an entity it could not have
+	// expected, and if it were tighter, an entity could be simultaneously
+	// asserted-present and not-forbidden. Reuse also means `subtype` narrows
+	// here for free, with the same "empty is any" reading arm A gave it.
+	//
+	// The subtype-rejected candidate resolveEntity returns for diagnostics is
+	// discarded on purpose: on this path it means the row did NOT fire, and
+	// reporting a near-miss as a hit is the whole failure mode being avoided.
+	for _, fe := range fix.ForbiddenEntities {
+		ent, _ := resolveEntity(fe)
+		if ent == nil {
+			continue
+		}
+		rep.ForbiddenEntityHits = append(rep.ForbiddenEntityHits, ForbiddenEntityHit{
+			Expected:          fe,
+			MatchedID:         ent.ID,
+			MatchedName:       ent.Name,
+			MatchedKind:       ent.Kind,
+			MatchedSourceFile: ent.SourceFile,
+			MatchedSubtype:    ent.Subtype,
+		})
 	}
 
 	// Build a relationship lookup keyed on (FromID, ToID, Kind). We also

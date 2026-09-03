@@ -145,11 +145,15 @@ func runQuality(argv []string) error {
 		fmt.Fprintf(os.Stderr, "quality: wrote JSON report to %s\n", *jsonOut)
 	}
 
-	// Non-zero exit when any must-have miss OR any forbidden hit. This
-	// makes the command usable as-is in CI without a wrapper.
+	// Non-zero exit when any must-have miss OR any forbidden hit — edge or
+	// entity (#6488 arm B). This makes the command usable as-is in CI without
+	// a wrapper, and it is the ONLY gate for a developer running
+	// `grafel quality <fixture>` by hand, so a forbidden entity that did not
+	// appear here would be a finding printed and then exited 0 over.
 	if rep.EntityFound < rep.EntityExpected ||
 		rep.RelFound < rep.RelExpected ||
-		len(rep.ForbiddenHits) > 0 {
+		len(rep.ForbiddenHits) > 0 ||
+		len(rep.ForbiddenEntityHits) > 0 {
 		// Returning an error from a cobra RunE would surface "Error: ..."
 		// which is noisier than necessary — exit cleanly with code 2.
 		os.Exit(2)
