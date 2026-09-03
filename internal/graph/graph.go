@@ -709,6 +709,45 @@ type GraphStatsSidecar struct {
 	// of edges that carried it, truncated to the busiest
 	// fbwriter.NonEnumKindListCap kinds while the two counts above stay exact.
 	RelationshipDerivedKinds map[string]int `json:"relationship_derived_kinds,omitempty"`
+
+	// EntityKindsScanned records that the write path that produced this
+	// sidecar actually tallied the ENTITY kinds it serialized (#6776 arm A).
+	// Same job as RelationshipKindsScanned above and for the same reason:
+	// with omitempty alone, "counted, found none" and "never counted" are the
+	// same bytes, and reporting a clean vocabulary off a graph nothing looked
+	// at is the #6534 failure exactly. A sidecar written before this field
+	// existed, or by a pass whose graph write FAILED, carries false.
+	//
+	// The three fields below are meaningless unless this is true.
+	EntityKindsScanned bool `json:"entity_kinds_scanned,omitempty"`
+
+	// EntitiesKindNotInEnum is how many entities this index WROTE whose kind
+	// is absent from types.AllEntityKinds().
+	//
+	// The entity vocabulary is not enforced on the rule path at all:
+	// internal/engine/detector.go copies SourcePattern.EntityType straight
+	// into types.EntityRecord.Kind, so types.IsValidEntityKind is never
+	// consulted and a rule YAML can mint any string it likes. #6744 ledgered
+	// 532 declaration sites over 25 invalid values; this field is the other
+	// half of that picture, because a declaration site that produces no
+	// entity is an edit that buys nothing (#6776 arm A).
+	//
+	// "Not in the enum" is NOT the same as "undeclared": `Route` is declared
+	// by rule YAML and counted here, because the enum is what was checked.
+	//
+	// Nothing is dropped and no index fails because of this. It is a
+	// measurement, taken so the migration is ranked on evidence.
+	EntitiesKindNotInEnum int `json:"entity_entities_kind_not_in_enum,omitempty"`
+	// EntityDistinctKindsNotInEnum is the number of DISTINCT such kinds.
+	// Never capped, so it may exceed len(EntityKindsNotInEnum).
+	EntityDistinctKindsNotInEnum int `json:"entity_distinct_kinds_not_in_enum,omitempty"`
+	// EntityKindsNotInEnum maps each distinct kind to the number of entities
+	// that carried it. A bare count would only say something is wrong; the
+	// names say what, and the names are what a migration is ranked by.
+	// Truncated to the busiest fbwriter.NonEnumKindListCap kinds so a
+	// pathological graph cannot bloat this file — the two counts above stay
+	// exact.
+	EntityKindsNotInEnum map[string]int `json:"entity_kinds_not_in_enum,omitempty"`
 }
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.

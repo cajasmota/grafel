@@ -105,11 +105,26 @@ type NonEnumKindReport struct {
 	// DerivedKinds lists them, busiest first then by name, truncated to
 	// NonEnumKindListCap entries — the same asymmetry Kinds holds.
 	DerivedKinds []NonEnumKind
+
+	// Entities is the total number of ENTITIES written whose kind is not in
+	// types.AllEntityKinds() (#6776 arm A). Never capped. Counted by the same
+	// tally, on the same write, so Scanned above governs this half too.
+	Entities int
+	// EntityDistinctKinds is the number of distinct such entity kinds. Never
+	// capped — it may exceed len(EntityKinds).
+	EntityDistinctKinds int
+	// EntityKinds lists them, busiest first then by name, truncated to
+	// NonEnumKindListCap entries — the same asymmetry Kinds holds.
+	EntityKinds []NonEnumEntityKind
 }
 
-// Clean reports that a write path ran this tally AND every relationship it
+// Clean reports that a write path ran this tally AND every RELATIONSHIP it
 // wrote carried an enum kind. An unscanned report is not clean — it is
 // unknown.
+//
+// It says nothing about the entity half (#6776 arm A) — that is
+// EntityKindsClean. Two populations, two verdicts: a single predicate could
+// not tell a caller which vector is dirty.
 func (r NonEnumKindReport) Clean() bool { return r.Scanned && r.Edges == 0 }
 
 // KindNames returns the reported kind names in report order (truncated to the
@@ -200,6 +215,11 @@ func (r NonEnumKindReport) ApplyToSidecar(side *graph.GraphStatsSidecar) {
 		}
 		side.RelationshipDerivedKinds = derived
 	}
+	// #6776 arm A — the ENTITY population, on its own four fields, carried
+	// with exactly the same cap/count asymmetry. Applied here rather than by a
+	// second call site so ApplyToSidecar stays the single conversion: both
+	// sidecar writers get both vectors, or neither.
+	r.applyEntityKindsToSidecar(side)
 }
 
 // enumKindSet is types.AllRelationshipKinds() as a lookup set.
@@ -239,6 +259,11 @@ type nonEnumKindTally struct {
 	// rather than dropped.
 	derivedEdges  int
 	derivedCounts map[string]int
+	// entities/entityCounts are the same tally for ENTITY kinds against
+	// types.AllEntityKinds() (#6776 arm A). One tally per write observes both
+	// vectors, so Scanned cannot be true for one and false for the other.
+	entities     int
+	entityCounts map[string]int
 }
 
 // observe records kind if — and only if — it is absent from the enum. Counting
@@ -282,9 +307,12 @@ func (t *nonEnumKindTally) report() NonEnumKindReport {
 		DistinctKinds:        len(t.counts),
 		DerivedEdges:         t.derivedEdges,
 		DerivedDistinctKinds: len(t.derivedCounts),
+		Entities:             t.entities,
+		EntityDistinctKinds:  len(t.entityCounts),
 	}
 	rep.Kinds = rankKinds(t.counts)
 	rep.DerivedKinds = rankKinds(t.derivedCounts)
+	rep.EntityKinds = rankEntityKinds(t.entityCounts)
 	return rep
 }
 

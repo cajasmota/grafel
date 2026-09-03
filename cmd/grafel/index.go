@@ -1031,6 +1031,13 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 				// the prefix no longer claims everything it prints is a gap.
 				fmt.Fprintf(os.Stderr, "grafel: relationship-kind report: %s\n", sum)
 			}
+			// #6776 arm A — the ENTITY half, on its own line under its own
+			// prefix. Merging it into the line above would make a check
+			// scoped to "relationship-kind report:" start matching entity
+			// text, and the two populations have separate totals.
+			if sum := nonEnumKinds.EntitySummary(); sum != "" {
+				fmt.Fprintf(os.Stderr, "grafel: entity-kind report: %s\n", sum)
+			}
 			fmt.Fprintf(os.Stderr, "grafel: wrote %s\n", fbPath)
 			// #6207 — the manifest is committed HERE, and only here: the graph
 			// it describes is now durably on disk and the `current` pointer has

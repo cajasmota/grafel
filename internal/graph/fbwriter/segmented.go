@@ -162,7 +162,10 @@ func sortDocForSegments(doc *graph.Document) {
 func graphFitsSingleBuilder(doc *graph.Document, threshold int) bool {
 	b := flatbuffers.NewBuilder(segInitBuilderSize)
 	for i := range doc.Entities {
-		buildEntity(b, &doc.Entities[i])
+		// nil tally (#6776 arm A): same reason as the relationship probe
+		// below — this builder is thrown away and the same entities are
+		// re-serialized by the real write, so a tally here would double-count.
+		buildEntity(b, &doc.Entities[i], nil)
 		if int(b.Offset()) >= threshold {
 			return false
 		}
@@ -252,7 +255,7 @@ func writeSegments(stateDir string, doc *graph.Document, threshold int) (string,
 		if len(eOffs) == 0 {
 			minKey = e.ID // first (== smallest) id in this segment
 		}
-		eOffs = append(eOffs, buildEntity(eb, e))
+		eOffs = append(eOffs, buildEntity(eb, e, tally))
 		maxKey = e.ID // last appended (== largest so far) id in this segment
 		if int(eb.Offset()) >= threshold {
 			if err := flushEntities(); err != nil {
