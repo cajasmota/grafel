@@ -147,3 +147,104 @@ func TestKindVocabularyState_ThreeStates(t *testing.T) {
 		}
 	})
 }
+
+// TestKindVocabularyState_GraphWithNoReadableSidecar covers the state every
+// fixture in the first cut of this file silently skipped: a graph is stored,
+// but its sidecar is absent or unreadable.
+//
+// That is not a contrived shape. internal/daemon's worktree seeding copies the
+// graph artifact and the diff manifest and NOT graph-stats.json, so every
+// seeded worktree lands here. The branch's rule — an unreadable stamp cannot
+// prove a graph current — was asserted by nothing, and flipping it to
+// KindVocabularyCurrent kept every other test in the tree green.
+func TestKindVocabularyState_GraphWithNoReadableSidecar(t *testing.T) {
+	writeGraphOnly := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		doc := &Document{
+			Version:     SchemaVersion,
+			GeneratedAt: time.Now(),
+			Repo:        "legacy",
+			Entities: []Entity{{
+				ID:   "e1",
+				Name: "Widget",
+				Kind: string(types.EntityKindComponent),
+			}},
+		}
+		if err := WriteAtomic(filepath.Join(dir, "graph.json"), doc, false); err != nil {
+			t.Fatalf("write graph.json: %v", err)
+		}
+		return dir
+	}
+
+	t.Run("sidecar_absent", func(t *testing.T) {
+		dir := writeGraphOnly(t)
+		if _, err := os.Stat(SidecarPath(dir)); err == nil {
+			t.Fatal("premise: this fixture must have NO sidecar")
+		}
+		state, stored := KindVocabularyStateForDir(dir)
+		if state != KindVocabularyOlder {
+			t.Fatalf("graph with no sidecar reads as %q, want %q — an unstamped graph cannot prove it is current",
+				state, KindVocabularyOlder)
+		}
+		if stored != 0 {
+			t.Fatalf("stored = %d, want 0", stored)
+		}
+	})
+
+	t.Run("sidecar_unparseable", func(t *testing.T) {
+		dir := writeGraphOnly(t)
+		if err := os.WriteFile(SidecarPath(dir), []byte("{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		state, _ := KindVocabularyStateForDir(dir)
+		if state != KindVocabularyOlder {
+			t.Fatalf("graph with a corrupt sidecar reads as %q, want %q", state, KindVocabularyOlder)
+		}
+	})
+
+	t.Run("sidecar_is_a_directory", func(t *testing.T) {
+		dir := writeGraphOnly(t)
+		if err := os.MkdirAll(SidecarPath(dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		state, _ := KindVocabularyStateForDir(dir)
+		if state != KindVocabularyOlder {
+			t.Fatalf("graph whose sidecar path is a directory reads as %q, want %q", state, KindVocabularyOlder)
+		}
+	})
+}
+
+// TestKindVocabularyStateFor_OlderIsNotTheSameAsUnstamped pins the distinction
+// the exported entry point cannot express while KindVocabularyVersion is 1:
+// a graph stamped with a genuinely older NON-ZERO version, versus one that
+// was never stamped at all.
+//
+// Both answer "older" — the same advice applies — but the STORED number is
+// reported back to the user by doctor ("graph v%d"), so conflating them would
+// tell someone on v1 that their graph is on v0. #6776 takes the version to 2
+// and makes this reachable; pinning it now means the reader is already right
+// when that lands.
+func TestKindVocabularyStateFor_OlderIsNotTheSameAsUnstamped(t *testing.T) {
+	const futureCurrent = 2
+
+	if state, stored := kindVocabularyStateFor(futureCurrent, 1, true); state != KindVocabularyOlder || stored != 1 {
+		t.Errorf("a v1 graph under a v%d build = (%q, %d), want (%q, 1)",
+			futureCurrent, state, stored, KindVocabularyOlder)
+	}
+	if state, stored := kindVocabularyStateFor(futureCurrent, 0, true); state != KindVocabularyOlder || stored != 0 {
+		t.Errorf("an unstamped graph under a v%d build = (%q, %d), want (%q, 0)",
+			futureCurrent, state, stored, KindVocabularyOlder)
+	}
+	// The two must not report the same stored version: same verdict, different
+	// fact about the graph.
+	_, olderStored := kindVocabularyStateFor(futureCurrent, 1, true)
+	_, unstampedStored := kindVocabularyStateFor(futureCurrent, 0, true)
+	if olderStored == unstampedStored {
+		t.Errorf("a genuinely older stamp and an absent one both report stored=%d — doctor would misname the user's graph version", olderStored)
+	}
+	// And the boundary stays where it belongs.
+	if state, _ := kindVocabularyStateFor(futureCurrent, futureCurrent, true); state != KindVocabularyCurrent {
+		t.Errorf("a v%d graph under a v%d build = %q, want %q", futureCurrent, futureCurrent, state, KindVocabularyCurrent)
+	}
+}

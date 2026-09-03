@@ -281,6 +281,15 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 	// BEFORE (and independently of) the sidecar decode below, because it needs
 	// to know whether a graph exists at all: a state dir with a leftover
 	// sidecar and no graph is "nothing indexed", not "stale vocabulary".
+	//
+	// This does re-read graph-stats.json, which the block below reads again
+	// (and computeQualityMetrics a third time). Left deliberately unshared:
+	// the whole point of this call is that it does NOT trust the sidecar as
+	// its only input — it pairs the stamp with an independent graph-existence
+	// check — and threading a pre-decoded sidecar in would re-couple the two
+	// reads that must stay separate for the three states to survive. Each read
+	// is a small JSON file with no entity materialization; doctor already
+	// loads the full graph per repo on the deep path.
 	rh.KindVocabulary, rh.KindVocabularyStored = graph.KindVocabularyStateForDir(stateDir)
 
 	// Load graph-stats.json sidecar for basic counts

@@ -71,14 +71,34 @@ func KindVocabularyStateForDir(dir string) (state KindVocabularyState, stored in
 	}
 	side, err := LoadSidecar(dir)
 	if err != nil || side == nil {
-		// A graph with no readable sidecar cannot prove it is current, and the
-		// honest reading of an unprovable stamp is the same as an absent one:
-		// every graph written before this mechanism existed is genuinely on an
-		// older vocabulary.
+		return kindVocabularyStateFor(types.KindVocabularyVersion, 0, false)
+	}
+	return kindVocabularyStateFor(types.KindVocabularyVersion, side.KindVocabularyVersion, true)
+}
+
+// kindVocabularyStateFor is the decision KindVocabularyStateForDir makes once
+// it knows a graph EXISTS: which vocabulary that graph speaks, given this
+// build's version and the stamp read off the sidecar.
+//
+// It is a separate pure function for one reason that is not tidiness: with
+// KindVocabularyVersion at 1 the only reachable stale stamp is 0, so
+// "genuinely older" and "never stamped" are the same number and no test
+// through the exported entry point can tell them apart. That stops being true
+// the moment #6776 takes the version to 2, and the distinction is load-bearing
+// then: doctor PRINTS the stored number back to the user. Taking `current` as
+// a parameter lets the property be pinned at v2 today, before there is a v2.
+//
+// sidecarOK distinguishes "the sidecar was read and carried no stamp" from
+// "the sidecar could not be read at all". Both answer older — an unreadable
+// sidecar cannot prove a graph is current, and this direction is fail-safe:
+// being wrong here costs a reindex the user chooses to run, while being wrong
+// the other way is the silent-empty-result defect the whole mechanism exists
+// to prevent.
+func kindVocabularyStateFor(current, stored int, sidecarOK bool) (KindVocabularyState, int) {
+	if !sidecarOK {
 		return KindVocabularyOlder, 0
 	}
-	stored = side.KindVocabularyVersion
-	if stored >= types.KindVocabularyVersion {
+	if stored >= current {
 		// Strictly-newer means the graph came from a build ahead of this one.
 		// Reindexing with THIS binary would move it backwards, so there is
 		// nothing to report.
