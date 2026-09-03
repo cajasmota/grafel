@@ -109,4 +109,37 @@ type RelationshipRule struct {
 	SourceGroup int `yaml:"source_group"`
 	// TargetGroup is the regex capture group index for the target entity name.
 	TargetGroup int `yaml:"target_group"`
+	// Terminator is an optional literal string that the span BETWEEN the two
+	// captures may not cross (#6666).
+	//
+	// Why it exists: a rule whose pattern joins two constructs across a bounded
+	// `[\s\S]{0,N}?` window has a POSITIONAL window, not a structural one. When
+	// the SOURCE construct repeats in a file, the first source's header pairs
+	// with the SECOND source's target — one false edge plus one missing edge —
+	// and `FindAllStringSubmatch` returns non-overlapping matches, so the
+	// correct pairing is never even reachable. RE2 has no negative lookahead,
+	// so "no intervening End Module" cannot be written in the pattern.
+	//
+	// When set, the join site rejects any match whose text between the end of
+	// the source capture and the start of the target capture contains this
+	// string, and RESUMES the search from the line after the rejected source
+	// (rather than after the whole match) so a later source can still pair
+	// with the same target.
+	//
+	// Deliberate limitations, each pinned by a test in
+	// relationship_terminator_6666_test.go:
+	//   * It is a case-sensitive byte-literal substring test, not a scope
+	//     parser. `end module` does not block; `End Module` inside a `'`
+	//     comment or a string literal DOES block (a false negative).
+	//   * It cannot express nesting, so it suits languages whose block
+	//     terminators are explicit and non-nesting (VB `End Module`). Rules
+	//     whose boundary is a nesting `}` need real containment and are out of
+	//     scope here.
+	//   * Resumption is line-granular, so two source constructs on ONE line
+	//     cannot both be considered.
+	//
+	// Empty (the default) means no guard and byte-identical behaviour to
+	// before #6666 — this is opt-in per rule, asserted by
+	// Test6666_TerminatorBlocksCrossModuleJoin's no-terminator control leg.
+	Terminator string `yaml:"terminator"`
 }

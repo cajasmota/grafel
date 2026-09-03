@@ -39,6 +39,10 @@ type compiledRelationshipRule struct {
 	sourceGroup  int
 	targetGroup  int
 	framework    string
+	// terminator mirrors RelationshipRule.Terminator: a literal string the
+	// span between the source and target captures may not cross (#6666).
+	// Empty means no guard.
+	terminator string
 }
 
 // compiledFileConvention is a FileConvention whose Glob has been validated and
@@ -183,6 +187,7 @@ func (d *Detector) compile() {
 					sourceGroup:  rr.SourceGroup,
 					targetGroup:  rr.TargetGroup,
 					framework:    lang,
+					terminator:   rr.Terminator,
 				})
 			}
 
@@ -495,7 +500,7 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 
 		// Extract relationships from relationship rules.
 		for _, rr := range cs.relationshipRules {
-			matches := rr.regex.FindAllStringSubmatch(content, -1)
+			matches := findRelationshipMatches(rr, content)
 			for _, match := range matches {
 				sourceName := extractGroup(match, rr.sourceGroup)
 				targetName := extractGroup(match, rr.targetGroup)
@@ -1044,6 +1049,109 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		Entities:      entities,
 		Relationships: relationships,
 	}, nil
+}
+
+// findRelationshipMatches returns the submatch slices a relationship rule
+// contributes for content.
+//
+// With no terminator declared it IS rr.regex.FindAllStringSubmatch(content, -1)
+// — the pre-#6666 behaviour, unchanged, for every rule that does not opt in.
+//
+// With a terminator declared (#6666) it walks the content itself, because
+// FindAllStringSubmatch cannot express the two things the guard needs:
+//
+//  1. REJECT a match whose text between the source and target captures
+//     contains the terminator literal. That span is the join window, and a
+//     terminator inside it means the two captures live in different blocks.
+//     Anywhere else in the file — before the first capture, after the last —
+//     is irrelevant and must NOT block.
+//
+//  2. RESUME after a rejection from the line following the rejected match's
+//     start, not from its end. FindAllStringSubmatch returns non-overlapping
+//     matches, so the first (wrong) match consumes the target and the correct
+//     pairing becomes unreachable; simply dropping the bad match would trade a
+//     false edge for a missing one. Resuming lets a LATER source construct
+//     pair with the same target.
+//
+// Resuming at a line boundary keeps `(?m)^` honest: the slice handed to the
+// regex always begins immediately after a newline, so a `^` matching at slice
+// index 0 is matching a real line start. The cost is that two source
+// constructs on ONE line cannot both be considered.
+func findRelationshipMatches(rr compiledRelationshipRule, content string) [][]string {
+	if rr.terminator == "" {
+		return rr.regex.FindAllStringSubmatch(content, -1)
+	}
+
+	var out [][]string
+	for pos := 0; pos <= len(content); {
+		rest := content[pos:]
+		loc := rr.regex.FindStringSubmatchIndex(rest)
+		if loc == nil {
+			break
+		}
+
+		if joinSpanCrosses(rest, loc, rr.sourceGroup, rr.targetGroup, rr.terminator) {
+			// Rejected: resume on the line after this match began.
+			nl := strings.IndexByte(rest[loc[0]:], '\n')
+			if nl < 0 {
+				break
+			}
+			pos += loc[0] + nl + 1
+			continue
+		}
+
+		out = append(out, submatchStrings(rest, loc))
+		if loc[1] <= loc[0] {
+			pos += loc[0] + 1 // zero-width match: never stand still
+			continue
+		}
+		pos += loc[1]
+	}
+	return out
+}
+
+// joinSpanCrosses reports whether term occurs in the text BETWEEN the two
+// capture groups of a match. The groups may appear in either textual order
+// (a rule may set source_group to the later capture), so the span is taken
+// from the end of whichever group comes first to the start of the other.
+// A missing, out-of-range or overlapping pair yields no span and never blocks.
+func joinSpanCrosses(s string, loc []int, srcGroup, tgtGroup int, term string) bool {
+	srcS, srcE := groupSpan(loc, srcGroup)
+	tgtS, tgtE := groupSpan(loc, tgtGroup)
+	if srcS < 0 || tgtS < 0 {
+		return false
+	}
+	lo, hi := srcE, tgtS
+	if tgtE <= srcS {
+		lo, hi = tgtE, srcS
+	}
+	if lo < 0 || hi < 0 || lo > hi {
+		return false
+	}
+	return strings.Contains(s[lo:hi], term)
+}
+
+// groupSpan returns the [start, end) byte offsets of capture group g within a
+// FindStringSubmatchIndex result, or (-1, -1) if the group is absent.
+func groupSpan(loc []int, g int) (int, int) {
+	if g < 0 || 2*g+1 >= len(loc) {
+		return -1, -1
+	}
+	return loc[2*g], loc[2*g+1]
+}
+
+// submatchStrings converts a FindStringSubmatchIndex result over s into the
+// []string shape FindAllStringSubmatch would have produced.
+func submatchStrings(s string, loc []int) []string {
+	out := make([]string, len(loc)/2)
+	for i := range out {
+		a, b := loc[2*i], loc[2*i+1]
+		if a < 0 || b < 0 {
+			continue
+		}
+		out[i] = s[a:b]
+	}
+	return out
 }
 
 // extractGroup safely extracts a capture group from a regex match.
