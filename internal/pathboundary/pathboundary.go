@@ -79,16 +79,27 @@
 // removes the reads that had no business happening; whether it is what the
 // reporting user saw is unproven.
 //
-// Two things it deliberately does NOT do:
+// # Another user's home (#6548 requirement 3)
 //
-//   - It does not stop early at a directory that merely LOOKS like a home
-//     (a child of /Users, /home, C:\Users). A checkout under another root —
-//     /opt, /srv, a CI workspace, another user's tree a user explicitly pointed
-//     grafel at — must keep climbing, or the repo silently stops resolving its
-//     group. Only the ACTUAL resolved home is a boundary.
-//   - It does not constrain an explicitly user-supplied path. The rule bounds
-//     INFERRED traversal; pointing grafel at a repo inside ~/Documents stays a
-//     legitimate instruction.
+// A climb also stops at, and never enters, a home directory that is not the
+// current user's — /Users/<other>, /home/<other>, C:\Users\<other>. This
+// package used to document the opposite ("another user's tree a user
+// explicitly pointed grafel at must keep climbing"); the owner ruled that
+// position wrong on 2026-09-02, because an explicit path is a claim about
+// INTENT, not about PERMISSION, and reading another user's files is not made
+// harmless by the user having typed the path. See otherhome.go for the rule,
+// what "the current user's home" means without trusting $HOME, and how the
+// class composes with classMedia and classTCC.
+//
+// The remaining exemption is narrower than it was: the rule still does not
+// constrain an explicitly user-supplied path INSIDE THE CURRENT USER'S OWN
+// home. Pointing grafel at a repo in ~/Documents stays a legitimate
+// instruction; pointing it at one in another user's home no longer resolves
+// that repo's ancestors.
+//
+// A checkout under a non-home root — /opt, /srv, a CI workspace — is
+// unaffected and keeps its full climb: only an actual home, the current user's
+// or somebody else's, is a boundary.
 //
 // When the home directory cannot be determined (os.UserHomeDir fails because
 // neither $HOME nor %USERPROFILE% is set — a bare cron/launchd/container
@@ -182,20 +193,23 @@ func ClimbWithHome(dir, home string, visit func(dir string) bool) bool {
 	bounded := home != "" && Inside(cur, home)
 
 	homeReal := resolveOrSelf(home)
+	refs := resolveHomeReferences()
 
-	curClass := classifyDir(cur, home, homeReal)
+	curClass := classifyDir(cur, home, homeReal, refs)
 	for depth := 0; depth < MaxAncestorDepth; depth++ {
 		parent := filepath.Dir(cur)
 		atRoot := parent == cur
 		var parentClass dirClass
 		if !atRoot {
-			parentClass = classifyDir(parent, home, homeReal)
+			parentClass = classifyDir(parent, home, homeReal, refs)
 		}
+		// classOtherHome: refused at or under — another user's home is not
+		// ours to read, whatever path the caller supplied (#6548 req 3).
 		// classMedia: refused at or under, with no exemption to preserve.
 		// classTCC: refused at the outermost directory of the tree only — a
 		// level whose own parent is TCC-protected is inside a tree the caller
 		// was pointed at, and is visited normally.
-		if curClass.media || (curClass.tcc && !parentClass.tcc) {
+		if curClass.otherHome || curClass.media || (curClass.tcc && !parentClass.tcc) {
 			return false
 		}
 		if visit(cur) {
@@ -223,6 +237,10 @@ type dirClass struct {
 	// tcc — protected against INFERRED traversal, but a legitimate place to
 	// keep a repo. Refused at the outermost directory of the tree only.
 	tcc bool
+	// otherHome — at or under a home directory that is not the current
+	// user's (#6548 req 3). Refused at or under, and checked FIRST: an
+	// explicit path is a claim about intent, not about permission.
+	otherHome bool
 }
 
 // classifyDir asks protectedpath — grafel's single authority on what must not
@@ -252,11 +270,26 @@ type dirClass struct {
 // already ran an EvalSymlinks per level themselves, and every other climber
 // already ran an os.Stat per level inside its own visit function. The
 // alternative — reading a TCC-gated directory — is the defect.
-func classifyDir(dir, home, homeReal string) dirClass {
+func classifyDir(dir, home, homeReal string, refs homeReferences) dirClass {
 	if dir == "" {
 		return dirClass{}
 	}
 	resolved := resolveOrSelf(dir)
+	// Another user's home is checked first, and on the RESOLVED spelling only.
+	// A symlink outside every home that resolves into one is the same read, so
+	// resolving is what makes the class fire at all (a literal-only check was
+	// inert behind /var → /private/var). Resolving is also what makes it stop
+	// firing on the user's OWN home reached under a different name — a
+	// Windows 8.3 short name, say — because resolveOrSelf folds every alias to
+	// the one path the read actually lands on. ORing the literal spelling in
+	// as well would restore the false positive without buying any refusal the
+	// resolved check misses: refs holds both spellings of every home and
+	// container, and resolveOrSelf falls back to the literal path when it
+	// cannot resolve. This costs no filesystem work of its own — resolved is
+	// already in hand and underOtherUserHome is purely lexical.
+	if underOtherUserHome(canonicalForIdentity(dir, resolved), refs) {
+		return dirClass{otherHome: true}
+	}
 	if !mayBeProtected(dir, resolved, home, homeReal) {
 		return dirClass{}
 	}
@@ -284,6 +317,84 @@ func mayBeProtected(dir, resolved, home, homeReal string) bool {
 	}
 	return containedIn(filepath.Clean(dir), filepath.Clean(home)) ||
 		containedIn(filepath.Clean(resolved), filepath.Clean(homeReal))
+}
+
+// canonicalForIdentity returns the spelling of dir that the other-user-home
+// class may compare against the reference set. resolved is resolveOrSelf(dir),
+// already in hand.
+//
+// resolveOrSelf answers "resolved, or the literal if I could not resolve", and
+// collapsing those two answers into one string is what made #6787 survive its
+// first fix. A path that DOES NOT EXIST YET — which is the normal case for
+// registry.resolveDeepestExisting, mcp.pathContains and StateDirForExisting,
+// all of which compare a state directory that may not have been created —
+// fails EvalSymlinks outright, so resolveOrSelf hands back the literal. On
+// Windows that literal is whatever spelling the caller happened to hold, and
+// %TEMP% commonly holds the 8.3 short one (C:\Users\RUNNER~1\...): a third
+// spelling the reference set, built from os/user's long form, does not have.
+// The user's own home then reads as another user's for every not-yet-created
+// path beneath it, and the climb that would have created or validated it is
+// refused. Round two of #6787 fixed the existing-path branch and left this one.
+//
+// So "cannot resolve" is handled as its own case rather than as "resolved to
+// the literal": the deepest EXISTING ancestor is resolved and the missing tail
+// re-appended, which is the same shape registry.resolveDeepestExisting already
+// uses for the same reason (it cannot be reused here — it climbs through
+// Climb, which is this function's caller).
+//
+// Fail direction, per otherhome.go: this only ever makes the class fire LESS.
+// A tail re-appended onto a resolved ancestor names the same directory the
+// read would land on, so a genuinely foreign home is still recognised — the
+// missing components are below the home, not above it, and it is the ancestors
+// that decide.
+//
+// # Cost
+//
+// Zero extra filesystem calls on the common path: when dir resolves, resolved
+// is returned untouched. The ascent runs only for a path that does not exist,
+// walks at most MaxAncestorDepth levels, and stops at the first ancestor that
+// resolves — three lstat chains for a three-component missing tail. A climb
+// over a wholly non-existent chain pays it once per level, which is bounded
+// but quadratic in the missing depth; that is judged acceptable because the
+// alternative is refusing the user their own not-yet-created directories.
+func canonicalForIdentity(dir, resolved string) string {
+	if dir == "" {
+		return resolved
+	}
+	// resolveOrSelf returns the literal only when EvalSymlinks failed, so an
+	// unchanged value is exactly the "could not resolve" signal.
+	if resolved != filepath.Clean(dir) {
+		return resolved
+	}
+	if _, err := filepath.EvalSymlinks(dir); err == nil {
+		// It really did resolve to itself.
+		return resolved
+	}
+	cur := filepath.Clean(dir)
+	var tail []string
+	for depth := 0; depth < MaxAncestorDepth; depth++ {
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+		r, err := filepath.EvalSymlinks(cur)
+		if err != nil {
+			continue
+		}
+		out := filepath.Clean(r)
+		for i := len(tail) - 1; i >= 0; i-- {
+			out = filepath.Join(out, tail[i])
+		}
+		return out
+	}
+	// Nothing at all resolved, not even the volume root. There is no canonical
+	// evidence to be had, so the literal is all there is; in practice the
+	// volume root always resolves, so this is unreachable rather than a
+	// designed fallback, and it is deliberately NOT given behaviour of its own
+	// that no test could observe.
+	return resolved
 }
 
 // resolveOrSelf returns path with symlinks resolved, or path unchanged when it

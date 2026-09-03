@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/pathboundary"
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
@@ -77,20 +78,33 @@ func TestGroupFromCWD_FindsMarkerAtHome(t *testing.T) {
 }
 
 // TestGroupFromCWD_OutsideHomeStillClimbs guards the other permissive failure:
-// a start path that is NOT inside $HOME (a /var/folders temp dir, a /opt
-// checkout, another user's tree) must keep climbing. A boundary that fires on
-// any directory that merely LOOKS like a home — a child of /Users, /home — would
-// silently stop a repo from resolving its group.
+// a start path that is NOT inside any home (a /var/folders temp dir, an /opt or
+// /srv checkout) must keep climbing. A boundary that fired on every ancestor
+// would silently stop such a repo from resolving its group.
+//
+// #6548 requirement 3 (owner decision 2026-09-02) INVERTED half of this test:
+// it used to start under <root>/Users/someone — a SIBLING of the current
+// user's home — and require the marker above the Users level to be found.
+// That case is now a refusal and is asserted as one below.
 func TestGroupFromCWD_OutsideHomeStillClimbs(t *testing.T) {
-	root, _ := fakeHomeUnder(t, "Users", "me")
+	root, home := fakeHomeUnder(t, "Users", "me")
+	// $HOME is no longer consulted by the other-user-home class (it can be
+	// laundered), so the fixture's home is injected through the seam.
+	t.Cleanup(pathboundary.OverrideHomeReferences(home, pathboundary.RealUIDHomeForTest()))
 
-	// Start under a DIFFERENT users-style tree, with the marker ABOVE the
-	// "Users" level — the exact spot a home-LOOKING boundary would cut off.
 	writeGroupMarker(t, root, "workspace-root")
 
-	start := mkdir(t, filepath.Join(root, "Users", "someone", "src", "deep", "pkg"))
+	start := mkdir(t, filepath.Join(root, "srv", "ci", "src", "deep", "pkg"))
 	if got := groupFromCWD(start); got != "workspace-root" {
-		t.Fatalf("groupFromCWD stopped before a legitimate marker outside $HOME (a home-LOOKING ancestor is not a boundary): got %q, want %q", got, "workspace-root")
+		t.Fatalf("groupFromCWD stopped before a legitimate marker outside every home: got %q, want %q", got, "workspace-root")
+	}
+
+	// The inverted case: the same marker, reached from another user's home,
+	// must be unreachable — the climb never enters /Users/someone at all.
+	sibling := mkdir(t, filepath.Join(root, "Users", "someone", "src", "deep", "pkg"))
+	if got := groupFromCWD(sibling); got != "" {
+		t.Fatalf("groupFromCWD climbed out of another user's home %s (site: internal/mcp/routing.go groupFromCWD): got %q, want \"\"",
+			filepath.Join(root, "Users", "someone"), got)
 	}
 }
 

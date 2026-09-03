@@ -83,24 +83,31 @@ func TestClimb_StartOutsideHomeReachesRoot(t *testing.T) {
 	}
 }
 
-// TestClimb_HomeLookingAncestorIsNotABoundary is the permissive-direction
-// guard on the predicate itself: only the ACTUAL home stops a climb. A
-// boundary that fired on any ancestor that merely looks like a home container
-// (a child of /Users, /home, C:\Users) would silently stop a repo under another
-// root from ever resolving its group — the marker above it is never reached.
-func TestClimb_HomeLookingAncestorIsNotABoundary(t *testing.T) {
+// TestClimb_NonHomeAncestorIsNotABoundary is the permissive-direction guard on
+// the predicate itself: a checkout under a root that holds no homes — /opt,
+// /srv, a CI workspace — keeps its full climb, or the repo silently stops
+// resolving its group because the marker above it is never reached.
+//
+// This test was inverted by #6548 requirement 3 (owner decision 2026-09-02).
+// It used to place the start under <root>/Users/someone and assert the climb
+// ran to the filesystem root, on the reasoning that only the ACTUAL home is a
+// boundary. That reasoning was overruled: a sibling of the current user's home
+// IS a boundary now, so the fixture moves to a container that holds no homes
+// and keeps testing what it was really for.
+// See TestClimb_RefusesAnotherUsersHome for the inverted case.
+func TestClimb_NonHomeAncestorIsNotABoundary(t *testing.T) {
 	root := t.TempDir()
 	home := mk(t, filepath.Join(root, "Users", "me"))
-	// Not our home, but a directory whose parent is named "Users".
-	start := mk(t, filepath.Join(root, "Users", "someone", "src", "deep"))
+	// A checkout under a non-home root: "srv" holds no user homes.
+	start := mk(t, filepath.Join(root, "srv", "ci", "src", "deep"))
 
 	seen := visited(t, start, home)
 	last := seen[len(seen)-1]
 	if last != filepath.Dir(last) {
-		t.Fatalf("a home-LOOKING ancestor must not stop the climb: stopped at %q, want the filesystem root (visited %v)", last, seen)
+		t.Fatalf("a non-home ancestor must not stop the climb: stopped at %q, want the filesystem root (visited %v)", last, seen)
 	}
 	if len(seen) < 5 {
-		t.Fatalf("climb cut short at a home-looking ancestor: visited %v", seen)
+		t.Fatalf("climb cut short outside any home: visited %v", seen)
 	}
 }
 
