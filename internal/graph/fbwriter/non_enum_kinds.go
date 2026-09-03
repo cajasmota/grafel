@@ -35,9 +35,13 @@ import (
 //
 // Membership of the GO VOCABULARY ACCESSORS — types.AllRelationshipKinds()
 // (structural) and, since #6773, types.AllDerivedRelationshipKinds()
-// (statistical) — and nothing else. A kind in EITHER is declared, which is the
-// same definition of "declared" #6757 arm B's ledger uses
-// (types.IsDeclaredRelationshipKind); the two are counted SEPARATELY, into
+// (statistical) — and nothing else. A kind in EITHER is declared, matching
+// types.IsDeclaredRelationshipKind, which is what #6757 arm B's ledger calls.
+// This counter does NOT call it: it is per-edge and hot, and that predicate
+// rebuilds both slices per call. It builds the two lookup sets below from the
+// same accessors instead, and the agreement is asserted rather than assumed:
+// TestWritePathClassificationMatchesTheTypesPredicates checks this counter's
+// verdict against those predicates for every kind in both vocabularies. The two populations are counted SEPARATELY, into
 // Edges and DerivedEdges, because COMMIT_COUPLED alone was 27,407 of the
 // 27,645 edges this counter first reported and declaring a population is not a
 // reason to stop being able to see it.

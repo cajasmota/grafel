@@ -72,9 +72,15 @@ func TestPrintDoctorHealthRendersBothPopulationsOnSeparateLines(t *testing.T) {
 			EdgesKindNotInEnum:     238,
 			DistinctKindsNotInEnum: 5,
 			KindsNotInEnum:         map[string]int{"STEP_IN_PROCESS": 175},
-			EdgesDerivedKind:       27407,
-			DistinctDerivedKinds:   1,
-			DerivedKinds:           map[string]int{"COMMIT_COUPLED": 27407},
+			// The distinct axis is VARIED, deliberately: it is 3 (not 1, not
+			// 0, and not the 5 the non-enum population carries), and the map
+			// holds only 2 of those 3 names, so it is the writer's truncated
+			// view. A fixture holding distinct at 1 lets doctor render "0
+			// DERIVED kind(s)" or the OTHER population's distinct count with
+			// every other assertion still passing.
+			EdgesDerivedKind:     27416,
+			DistinctDerivedKinds: 3,
+			DerivedKinds:         map[string]int{"COMMIT_COUPLED": 27407, "CO_CHANGED": 9},
 		}},
 	}
 	var buf bytes.Buffer
@@ -106,8 +112,19 @@ func TestPrintDoctorHealthRendersBothPopulationsOnSeparateLines(t *testing.T) {
 	if strings.Contains(gapLine, "COMMIT_COUPLED") || strings.Contains(gapLine, "27,407") {
 		t.Errorf("non-enum line = %q has absorbed the derived population", gapLine)
 	}
-	if !strings.Contains(derivedLine, "27,407") || !strings.Contains(derivedLine, "COMMIT_COUPLED") {
-		t.Errorf("derived line = %q, want its own 27,407 / COMMIT_COUPLED", derivedLine)
+	if !strings.Contains(derivedLine, "27,416") || !strings.Contains(derivedLine, "COMMIT_COUPLED") {
+		t.Errorf("derived line = %q, want its own 27,416 / COMMIT_COUPLED", derivedLine)
+	}
+	// The DISTINCT count, at the call site. Doctor takes it from its own
+	// field: neither 0 nor the non-enum population's 5.
+	if !strings.Contains(derivedLine, "3 DERIVED") {
+		t.Errorf("derived line = %q, want the derived distinct count 3 — a line reading \"0 DERIVED "+
+			"relationship kind(s): COMMIT_COUPLED (27,407)\" is what an unpinned distinct argument "+
+			"renders", derivedLine)
+	}
+	// …and its consequence: the third kind is accounted for, not dropped.
+	if !strings.Contains(derivedLine, "+1 more") {
+		t.Errorf("derived line = %q, want the 3rd distinct kind summarised as +1 more", derivedLine)
 	}
 	if strings.Contains(derivedLine, "STEP_IN_PROCESS") {
 		t.Errorf("derived line = %q has absorbed the non-enum population", derivedLine)
@@ -155,10 +172,18 @@ func seedDerivedSidecar6773(t *testing.T, group string, scanned bool) string {
 		ComputedAt:    time.Now(),
 		TotalEntities: 5,
 
-		RelationshipKindsScanned:         scanned,
-		RelationshipEdgesDerivedKind:     27407,
-		RelationshipDistinctDerivedKinds: 1,
-		RelationshipDerivedKinds:         map[string]int{"COMMIT_COUPLED": 27407},
+		RelationshipKindsScanned: scanned,
+		// The non-enum population is populated too, with DIFFERENT numbers:
+		// a read that cross-wires the derived distinct count to
+		// RelationshipDistinctKindsNotInEnum would otherwise land on the same
+		// value and be invisible.
+		RelationshipEdgesKindNotInEnum:     238,
+		RelationshipDistinctKindsNotInEnum: 5,
+		RelationshipKindsNotInEnum:         map[string]int{"STEP_IN_PROCESS": 175},
+
+		RelationshipEdgesDerivedKind:     27416,
+		RelationshipDistinctDerivedKinds: 3,
+		RelationshipDerivedKinds:         map[string]int{"COMMIT_COUPLED": 27407, "CO_CHANGED": 9},
 	}
 	if err := graph.WriteSidecar(graph.SidecarPath(stateDir), side, false); err != nil {
 		t.Fatal(err)
@@ -209,8 +234,15 @@ func TestDoctorReadsTheDerivedCountsFromTheSidecar(t *testing.T) {
 	if derivedLine == "" {
 		t.Fatalf("doctor read the sidecar but reported no derived kinds. Output:\n%s", out)
 	}
-	if !strings.Contains(derivedLine, "27,407") || !strings.Contains(derivedLine, "COMMIT_COUPLED") {
-		t.Errorf("derived line = %q, want the sidecar's 27,407 / COMMIT_COUPLED", derivedLine)
+	if !strings.Contains(derivedLine, "27,416") || !strings.Contains(derivedLine, "COMMIT_COUPLED") {
+		t.Errorf("derived line = %q, want the sidecar's 27,416 / COMMIT_COUPLED", derivedLine)
+	}
+	// The distinct count comes from the sidecar's OWN derived field: 3, not
+	// the 5 the non-enum population in the same sidecar carries, and not 0.
+	if !strings.Contains(derivedLine, "3 DERIVED") {
+		t.Errorf("derived line = %q, want the sidecar's derived distinct count 3 (the same sidecar "+
+			"carries 5 distinct non-enum kinds, so a cross-wired read renders \"5 DERIVED\")",
+			derivedLine)
 	}
 }
 

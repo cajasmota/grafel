@@ -108,9 +108,12 @@ var undeclaredKindsDeferred = map[string]string{
 	// 27,645 edges arm C counted at the write path — 99.1% of the population,
 	// from this one site — and it is now DECLARED, in the separate DERIVED
 	// vocabulary types.AllDerivedRelationshipKinds(). "Declared" below means
-	// EITHER vocabulary (types.IsDeclaredRelationshipKind), which is the same
-	// definition arm C's write-path counter uses; the counter reports the
-	// derived population under its own separate count rather than dropping it.
+	// EITHER vocabulary (types.IsDeclaredRelationshipKind). Arm C's write-path
+	// counter classifies the same way — it cannot call the predicate per edge,
+	// so it builds lookup sets from the same two accessors, and its
+	// TestWritePathClassificationMatchesTheTypesPredicates pins the agreement
+	// — and it reports the derived population under its own separate count
+	// rather than dropping it.
 
 	// Rule YAML — engine/detector.go compiles rr.Relationship unvalidated and
 	// writes it straight into RelationshipRecord.Kind.

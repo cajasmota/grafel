@@ -125,32 +125,58 @@ func TestDerivedEdgesDoNotMakeAGraphUnclean(t *testing.T) {
 // survive the two counts being merged back into one number, which is the
 // failure this issue exists to prevent.
 func TestSummaryReportsBothPopulationsSeparately(t *testing.T) {
+	// MULTI-KIND on both sides on purpose: with one kind per clause, a
+	// separator equal to the intra-clause list separator (", ") still splits
+	// the string in exactly the right place, and the whole point of having a
+	// dedicated separator — that the two clauses stay unambiguously
+	// separable — goes unobserved.
 	rep := NonEnumKindReport{
 		Scanned:              true,
 		Edges:                238,
 		DistinctKinds:        5,
-		Kinds:                []NonEnumKind{{Kind: "STEP_IN_PROCESS", Edges: 175}},
-		DerivedEdges:         27407,
-		DerivedDistinctKinds: 1,
-		DerivedKinds:         []NonEnumKind{{Kind: "COMMIT_COUPLED", Edges: 27407}},
+		Kinds:                []NonEnumKind{{Kind: "STEP_IN_PROCESS", Edges: 175}, {Kind: "ENTRY_POINT_OF", Edges: 55}},
+		DerivedEdges:         27416,
+		DerivedDistinctKinds: 2,
+		DerivedKinds:         []NonEnumKind{{Kind: "COMMIT_COUPLED", Edges: 27407}, {Kind: "CO_CHANGED", Edges: 9}},
 	}
 	sum := rep.Summary()
+
+	// The CONSEQUENCE, asserted before anything splits on it: the separator
+	// occurs exactly once in a summary whose clauses each list several kinds,
+	// so "cut at the separator" yields the two clauses and not a fragment of
+	// one. A separator of ", " renders a summary this check fails.
+	if n := strings.Count(sum, DerivedSummarySeparator); n != 1 {
+		t.Fatalf("the clause separator %q occurs %d times in a two-clause, four-kind summary; a "+
+			"consumer cutting on it cannot recover the two populations. Summary() = %q",
+			DerivedSummarySeparator, n, sum)
+	}
 	head, tail, split := strings.Cut(sum, DerivedSummarySeparator)
 	if !split {
 		t.Fatalf("Summary() = %q, want the unknown and derived populations in separate clauses "+
 			"joined by %q", sum, DerivedSummarySeparator)
 	}
+	// And the split lands on a clause boundary: each half is a whole clause,
+	// with its own edge total and every one of its own kind names.
+	for _, want := range []string{"STEP_IN_PROCESS", "ENTRY_POINT_OF"} {
+		if !strings.Contains(head, want) {
+			t.Errorf("unknown clause = %q, lost kind %q — the cut landed inside the clause", head, want)
+		}
+	}
+	for _, want := range []string{"COMMIT_COUPLED", "CO_CHANGED"} {
+		if !strings.Contains(tail, want) {
+			t.Errorf("derived clause = %q, lost kind %q — the cut landed inside the clause", tail, want)
+		}
+	}
 	// The unknown clause: its own totals, and no derived kind in it.
 	if !strings.Contains(head, "238") || !strings.Contains(head, "5") {
 		t.Errorf("unknown clause = %q, want the 238/5 totals", head)
 	}
-	if strings.Contains(head, "COMMIT_COUPLED") || strings.Contains(head, "27,407") ||
-		strings.Contains(head, "27407") {
+	if strings.Contains(head, "COMMIT_COUPLED") || strings.Contains(head, "27416") {
 		t.Errorf("unknown clause = %q, has absorbed the derived population", head)
 	}
 	// The derived clause: its own totals, named, and no unknown kind in it.
-	if !strings.Contains(tail, "27407") {
-		t.Errorf("derived clause = %q, want the derived edge total 27407", tail)
+	if !strings.Contains(tail, "27416") {
+		t.Errorf("derived clause = %q, want the derived edge total 27416", tail)
 	}
 	if !strings.Contains(tail, "COMMIT_COUPLED") {
 		t.Errorf("derived clause = %q, does not name the derived kind", tail)
@@ -238,5 +264,74 @@ func TestApplyToSidecarCarriesTheDerivedPopulation(t *testing.T) {
 	if side2.RelationshipDistinctDerivedKinds != 40 {
 		t.Errorf("RelationshipDistinctDerivedKinds = %d, want the uncapped 40, not len(list)=%d",
 			side2.RelationshipDistinctDerivedKinds, len(truncated.DerivedKinds))
+	}
+}
+
+// TestWritePathClassificationMatchesTheTypesPredicates is what makes "the same
+// definition of declared" a fact rather than a coincidence (#6773 review D3).
+//
+// This counter cannot call types.IsDeclaredRelationshipKind per edge — it is a
+// linear scan over both vocabularies, on a hot path — so it builds its own
+// lookup sets. Nothing forced those sets to agree with the predicates: the
+// prose said they did, and mutating IsDeclaredRelationshipKind to ignore the
+// derived vocabulary left this package entirely green.
+//
+// So the write path's verdict is asserted AGAINST the predicates, for every
+// kind in both vocabularies plus kinds in neither, in one marshal.
+func TestWritePathClassificationMatchesTheTypesPredicates(t *testing.T) {
+	var kinds []string
+	for _, k := range types.AllRelationshipKinds() {
+		kinds = append(kinds, string(k))
+	}
+	for _, k := range types.AllDerivedRelationshipKinds() {
+		kinds = append(kinds, string(k))
+	}
+	// Kinds in NEITHER vocabulary: without them the agreement could be
+	// satisfied by a write path that classifies everything as declared.
+	unknown := []string{"STEP_IN_PROCESS", "ENTRY_POINT_OF", "NOT_A_KIND_AT_ALL"}
+	for _, k := range unknown {
+		if types.IsDeclaredRelationshipKind(k) {
+			t.Fatalf("fixture is inert: %q is expected to be in NEITHER vocabulary", k)
+		}
+	}
+	kinds = append(kinds, unknown...)
+
+	doc := &graph.Document{}
+	for i, k := range kinds {
+		doc.Relationships = append(doc.Relationships, relFixture(k, "a", fmt.Sprintf("b%d", i)))
+	}
+	_, rep, err := marshalWithReport(doc)
+	if err != nil {
+		t.Fatalf("marshalWithReport: %v", err)
+	}
+
+	countedUnknown := map[string]bool{}
+	for _, k := range rep.Kinds {
+		countedUnknown[k.Kind] = true
+	}
+	countedDerived := map[string]bool{}
+	for _, k := range rep.DerivedKinds {
+		countedDerived[k.Kind] = true
+	}
+	// Both lists are capped, so a corpus larger than the cap would make the
+	// per-kind check unreliable in the truncated tail.
+	if rep.DistinctKinds > NonEnumKindListCap || rep.DerivedDistinctKinds > NonEnumKindListCap {
+		t.Fatalf("fixture exceeds the report's name cap (%d unknown / %d derived vs cap %d); the "+
+			"per-kind assertions below would read a truncated list",
+			rep.DistinctKinds, rep.DerivedDistinctKinds, NonEnumKindListCap)
+	}
+
+	for _, k := range kinds {
+		wantUnknown := !types.IsDeclaredRelationshipKind(k)
+		if countedUnknown[k] != wantUnknown {
+			t.Errorf("write path counted %q as not-in-vocabulary = %v, but "+
+				"types.IsDeclaredRelationshipKind says declared = %v. The counter's sets and the "+
+				"types predicates have drifted: they are two spellings of one definition and only "+
+				"this test observes that.", k, countedUnknown[k], !wantUnknown)
+		}
+		if countedDerived[k] != types.IsDerivedRelationshipKind(k) {
+			t.Errorf("write path counted %q as derived = %v, but types.IsDerivedRelationshipKind "+
+				"says %v", k, countedDerived[k], types.IsDerivedRelationshipKind(k))
+		}
 	}
 }

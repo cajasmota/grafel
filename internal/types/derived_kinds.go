@@ -28,13 +28,19 @@ package types
 //     nothing that already asks "is this one of the kinds the extractors
 //     produce?" changed its answer.
 //   - IsDerivedRelationshipKind — derived only.
-//   - IsDeclaredRelationshipKind — the union, and the single definition of
-//     "declared" shared by #6757 arm B's static ledger
-//     (internal/relkinds) and arm C's write-path counter
-//     (internal/graph/fbwriter). A kind being declared here is NOT a licence
-//     for the counter to stop reporting it: fbwriter reports the derived
-//     population under its own separate count, because the number dropping was
-//     never the point of the measurement.
+//   - IsDeclaredRelationshipKind — the union. #6757 arm B's static ledger
+//     (internal/relkinds) CALLS it. Arm C's write-path counter
+//     (internal/graph/fbwriter) does NOT: it is per-edge and hot, and this
+//     predicate is a linear scan that rebuilds both slices per call, so the
+//     counter builds lookup sets from the same two accessors instead. That
+//     the two classifications agree is not left to construction — fbwriter's
+//     TestWritePathClassificationMatchesTheTypesPredicates asserts the write
+//     path's verdict against these predicates for every kind in both
+//     vocabularies.
+//
+// A kind being declared here is NOT a licence for the counter to stop
+// reporting it: fbwriter reports the derived population under its own separate
+// count, because the number dropping was never the point of the measurement.
 
 // RelationshipKindCommitCoupled is the co-change edge emitted by the
 // commit-coupling pass (internal/engine/commit_coupling_edges.go, which
