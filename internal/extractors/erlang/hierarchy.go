@@ -85,15 +85,18 @@ func collectBehaviourDecls(src string) []behaviourDecl {
 // behaviour yields no edge, because a self-edge is never information and is
 // the signature of a mis-attributed owner (#6369).
 //
-// There is deliberately no `owner == ""` early return: the sole call site sits
-// inside extractErlang's `-module` branch, so a file with no module attribute
-// never reaches here at all (TestErlangBehaviourWithoutModuleAttributeEmitsNoEdge
-// pins that from the call site). A guard for a case the call site cannot
-// produce is a branch no test can observe.
+// There is deliberately no `owner == ""` early return and no `d.name == ""`
+// skip. Neither case is reachable: the sole call site sits inside
+// extractErlang's `-module` branch, whose name comes from moduleRE group 1
+// (`[a-z][a-zA-Z0-9_@]*`, non-empty by construction), and behaviourRE group 1
+// has the same non-empty shape. A guard for a case the call site cannot produce
+// is a branch no test can observe, so both are omitted rather than written and
+// left unobserved. TestErlangBehaviourWithoutModuleAttributeEmitsNoEdge pins the
+// no-module case from the call site, which is where it is actually decidable.
 func behaviourImplementsEdges(decls []behaviourDecl, owner string) []types.RelationshipRecord {
 	var out []types.RelationshipRecord
 	for _, d := range decls {
-		if d.name == "" || d.name == owner {
+		if d.name == owner {
 			continue
 		}
 		out = append(out, types.RelationshipRecord{

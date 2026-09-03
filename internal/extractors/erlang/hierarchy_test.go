@@ -97,6 +97,12 @@ init([]) ->
 	if got, want := propOf(e.rel, "line"), "2"; got != want {
 		t.Errorf("line property = %q, want %q (the -behaviour attribute's own line)", got, want)
 	}
+	// The sibling SUPERVISES edge stamps provenance=otp_child_spec and that is
+	// pinned at extractor_test.go:769-771; this edge follows the same
+	// convention and is pinned the same way.
+	if got, want := propOf(e.rel, "provenance"), "otp_behaviour"; got != want {
+		t.Errorf("provenance property = %q, want %q", got, want)
+	}
 }
 
 // TestErlangModuleWithoutBehaviourEmitsNoImplementsEdge is the negative control
@@ -104,9 +110,18 @@ init([]) ->
 // often, so a module with no -behaviour() attribute at all must produce zero
 // IMPLEMENTS edges anywhere in the extraction — not merely none on the module.
 //
-// Varies: the presence of the -behaviour attribute (removed).
-// Holds constant: module name, export list, function bodies, and the word
-// "behaviour" still occurring in the file as a comment and inside a string.
+// The two decoys below are `%% -behaviour(gen_server).` and an indented string
+// literal containing the same text. Neither exercises comment- or
+// string-awareness, because there is none: the ONLY thing excluding them is
+// behaviourRE's `(?m)^` line anchor, since neither occurrence begins a line.
+// TestErlangBehaviourInsideMultiLineStringOverFires_KnownDivergence shows what
+// happens when an occurrence does begin a line inside a string, and
+// TestErlangBehaviourAnchorIsLoadBearing_IndentedAttributeIsNotMatched pins the
+// anchor that is doing all of the work here.
+//
+// Varies: the presence of a line-initial -behaviour attribute (removed).
+// Holds constant: module name, export list, function bodies, and the literal
+// text "-behaviour(gen_server)." still occurring twice in the file off-column.
 func TestErlangModuleWithoutBehaviourEmitsNoImplementsEdge(t *testing.T) {
 	src := `-module(plain_module).
 %% -behaviour(gen_server).
@@ -191,6 +206,19 @@ init([]) ->
 	for _, want := range []string{"gen_server", "supervisor"} {
 		if !seen[want] {
 			t.Errorf("missing IMPLEMENTS edge to %q (got %v)", want, seen)
+		}
+	}
+	// collectBehaviourDecls documents "the first declaration wins, so the
+	// reported line is the first one" — observe it. gen_server is declared on
+	// line 2 and again on line 4; a last-wins dedup would report 4 and is
+	// otherwise indistinguishable from first-wins, since the edge count and the
+	// ToID set are identical either way.
+	for _, e := range edges {
+		if e.rel.ToID != "gen_server" {
+			continue
+		}
+		if got, want := propOf(e.rel, "line"), "2"; got != want {
+			t.Errorf("line for the twice-declared gen_server = %q, want %q (the FIRST declaration)", got, want)
 		}
 	}
 }
@@ -313,5 +341,102 @@ init([]) ->
 	}
 	if n := len(implementsEdges(got)); n != 1 {
 		t.Errorf("want the IMPLEMENTS edge alongside the property, got %d edges", n)
+	}
+}
+
+// TestErlangBehaviourAnchorIsLoadBearing_IndentedAttributeIsNotMatched pins
+// behaviourRE's `(?m)^` anchor as a deliberate, load-bearing choice rather than
+// an incidental one, so that widening it is a decision someone has to make on
+// purpose.
+//
+// Erlang permits leading whitespace before a module attribute, so an indented
+// `-behaviour(gen_server).` IS a real declaration the compiler honours and this
+// extractor misses. That miss is pre-existing — it already governed
+// Properties["otp_behaviour"], the "otp" tags and the OTP subtype refinement,
+// all of which this test also observes so the anchor cannot be widened for the
+// edge alone. It is pinned here, and NOT fixed, because the obvious widening
+// (`(?m)^[ \t]*-behaviou?r`) makes the over-fire in
+// TestErlangBehaviourInsideMultiLineStringOverFires_KnownDivergence strictly
+// worse: today a false positive needs a string whose content starts at column
+// 0, and after the widening any indented line inside any string or comment
+// block would do. Widening the anchor is therefore not a safe local change —
+// it needs the comment/string scrubbing this extractor does not have, and that
+// pass would change the property half of extraction too, on a fixture that
+// currently reads 25/25.
+//
+// Varies: the indentation of the -behaviour attribute (four leading spaces).
+// Holds constant: everything else in the module, including the attribute text.
+func TestErlangBehaviourAnchorIsLoadBearing_IndentedAttributeIsNotMatched(t *testing.T) {
+	src := `-module(indented_mod).
+    -behaviour(gen_server).
+
+-export([init/1]).
+
+init([]) ->
+    {ok, []}.
+`
+	got := extractErl(t, "indented_mod.erl", src)
+	if edges := implementsEdges(got); len(edges) != 0 {
+		t.Fatalf("indented -behaviour is not matched by behaviourRE's (?m)^ anchor, so it must "+
+			"produce no edge; got %d: %+v.\nIf you widened the anchor, read this test's doc "+
+			"comment first: the widening also widens the over-fire pinned by "+
+			"TestErlangBehaviourInsideMultiLineStringOverFires_KnownDivergence", len(edges), edges)
+	}
+	// The same anchor governs the pre-existing property half. Asserting it here
+	// means the anchor cannot be widened for the edge alone, and records that
+	// the edge and the property agree about this input — the "single reader"
+	// property collectBehaviourDecls' doc comment claims.
+	for _, rec := range got {
+		if rec.Kind == "SCOPE.Component" && rec.Name == "indented_mod" {
+			if v, ok := rec.Properties["otp_behaviour"]; ok {
+				t.Errorf(`Properties["otp_behaviour"] = %q; the anchor must govern the property half too`, v)
+			}
+			if rec.Subtype != "module" {
+				t.Errorf("Subtype = %q, want plain %q — an unmatched attribute must not refine the subtype",
+					rec.Subtype, "module")
+			}
+		}
+	}
+}
+
+// TestErlangBehaviourInsideMultiLineStringOverFires_KnownDivergence records a
+// FALSE POSITIVE that this extractor produces today, so that it is visible and
+// so that the anchor-widening the sibling test warns about cannot be made
+// without confronting it.
+//
+// A multi-line Erlang string literal whose content happens to begin a line with
+// `-behaviour(...)` is matched: behaviourRE scans raw source with no lexical
+// state, so it cannot tell a string body from a module attribute. The property
+// half of this is pre-existing; the IMPLEMENTS edge half arrived with #6370 and
+// is what this test exists to make observable.
+//
+// This test asserts the CURRENT, WRONG output on purpose. Making the extractor
+// comment/string-aware is the real fix and would change this expectation — that
+// is the point: whoever writes that fix is told by a failing test that they
+// have also fixed this, rather than discovering it from a moved golden count.
+//
+// Varies: the column at which the decoy text starts (0, versus off-column in
+// TestErlangModuleWithoutBehaviourEmitsNoImplementsEdge).
+// Holds constant: the decoy is inside a string literal in both.
+func TestErlangBehaviourInsideMultiLineStringOverFires_KnownDivergence(t *testing.T) {
+	src := `-module(doc_mod).
+
+-export([usage/0]).
+
+usage() ->
+    "to make this module an OTP server, add:
+-behaviour(gen_server).
+to the top of the file".
+`
+	got := extractErl(t, "doc_mod.erl", src)
+	edges := implementsEdges(got)
+	if len(edges) != 1 {
+		t.Fatalf("KNOWN DIVERGENCE CHANGED: expected the documented false-positive edge "+
+			"(1 IMPLEMENTS to gen_server from text inside a string literal), got %d: %+v.\n"+
+			"If you made the extractor comment/string-aware, this is the fix — update this "+
+			"test to assert 0 edges, and say so in the PR body", len(edges), edges)
+	}
+	if edges[0].rel.ToID != "gen_server" {
+		t.Errorf("false-positive edge ToID = %q, want %q", edges[0].rel.ToID, "gen_server")
 	}
 }
