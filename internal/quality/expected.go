@@ -60,6 +60,24 @@ type Fixture struct {
 	// omits it forbids the named entity whatever subtype it wears. That is the
 	// same "empty means don't care" rule an expected row has carried since
 	// #6488 arm A, read in the forbidding direction.
+	//
+	// KNOWN BLIND SPOT — placeholder anchors cannot be forbidden. resolveEntity
+	// skips isPlaceholderAnchor candidates on every path (#6277), so a row
+	// naming an ormlink sentinel resolves nothing and reports zero hits even
+	// when the sentinel is in the graph. Anchor over-emission is therefore
+	// OUTSIDE the fence this field builds. That is inherited rather than
+	// chosen: reusing one matcher for asserting and forbidding is what keeps
+	// "this entity" from meaning two things, and the alternative — a forbidding
+	// matcher that sees anchors while the asserting one does not — would let a
+	// fixture forbid an entity it could never have expected. Recorded here
+	// because it is invisible in a green report, and pinned by
+	// TestForbiddenEntity_CannotForbidAPlaceholderAnchor_6488, so a future
+	// change to the exclusion is a red test rather than a discovery.
+	//
+	// Counting: a hit is a ROW THAT FIRED, not an offending entity. One row
+	// satisfied by two identical offenders is one hit — resolveEntity resolves
+	// one candidate rather than enumerating all of them, which is exactly what
+	// keeps it the same matcher the recall path uses.
 	ForbiddenEntities []ExpectedEntity `json:"forbidden_entities,omitempty"`
 	// AssertsNoRelationships is the explicit, named opt-in that exempts a
 	// fixture from the must-have relationship floor (#6490 arm A). It is a
@@ -212,16 +230,38 @@ func LoadFixture(dir string) (*Fixture, error) {
 	if err := rejectAmbiguousMatchBy("forbidden_entities", f.ForbiddenEntities); err != nil {
 		return nil, err
 	}
-	// #6488 arm B. Two ways a forbidden entity row can be decorative, both
-	// rejected at load because neither is visible in a green report:
+	// #6488 arm B. Four ways a forbidden entity row can be decorative, all
+	// rejected at load because none of them is visible in a green report — a
+	// forbidden row that cannot fire looks exactly like one that is holding,
+	// which is the failure this whole arm exists not to reproduce:
 	//
 	//   - must_exist / nice_to_have are recall-only fields inherited from the
 	//     shared ExpectedEntity shape. A forbidden row setting either states a
 	//     contradiction ("this must exist and must not exist"), and the
 	//     forbidden path ignores them, so the row does not mean what it says.
 	//   - a row with neither name nor qualified_name resolves nothing on every
-	//     path, so it can never fire. It is the entity-side vacuity trap this
-	//     arm exists to avoid reproducing.
+	//     path, so it can never fire.
+	//   - a row with no KIND is the same trap one axis over, and it is the one
+	//     that survived the first cut of this guard. resolveEntity keys on
+	//     byKindName[Kind+"\x00"+Name], so `{"name": "Role"}` looks for an
+	//     entity whose Kind is the empty string: it loads clean, reads as an
+	//     assertion, and can never match. match_by "qualified_name" is exempt
+	//     because that path resolves through byQName and never consults Kind —
+	//     it is a row that CAN fire, so rejecting it would be wrong.
+	//   - a row identical on every matching axis to a must_exist row is a
+	//     contradiction the harness would otherwise honour twice, scoring the
+	//     fixture 1/1 on recall and red on forbidden in the same run. Only an
+	//     EXACT duplicate is rejected: proto-mini deliberately requires
+	//     Role/SCOPE.Schema/user.proto with no subtype and forbids the same
+	//     three axes with subtype "message", which is the subtype axis doing
+	//     precisely the job it was added for.
+	byExpectedAxes := make(map[ExpectedEntity]int, len(f.ExpectedEntities))
+	for i, ee := range f.ExpectedEntities {
+		if !ee.MustExist {
+			continue
+		}
+		byExpectedAxes[matchAxes(ee)] = i
+	}
 	for i, fe := range f.ForbiddenEntities {
 		if fe.MustExist || fe.NiceToHave {
 			return nil, fmt.Errorf("%s: forbidden_entities[%d] (%q): must_exist / "+
@@ -232,6 +272,20 @@ func LoadFixture(dir string) (*Fixture, error) {
 			return nil, fmt.Errorf("%s: forbidden_entities[%d]: a forbidden entity row "+
 				"needs a name (or a qualified_name with match_by \"qualified_name\") — a "+
 				"nameless row resolves nothing and can never fire", p, i)
+		}
+		if fe.Kind == "" && fe.MatchBy != "qualified_name" {
+			return nil, fmt.Errorf("%s: forbidden_entities[%d] (%q): a forbidden entity "+
+				"row needs a kind — the lookup is keyed on (kind, name), so a row without "+
+				"one searches for an entity whose kind is the empty string and can never "+
+				"fire; state the kind, or use match_by \"qualified_name\", which resolves "+
+				"without consulting kind", p, i, fe.Name)
+		}
+		if j, dup := byExpectedAxes[matchAxes(fe)]; dup {
+			return nil, fmt.Errorf("%s: forbidden_entities[%d] (%q) is identical on every "+
+				"matching axis to expected_entities[%d], which requires it — a row cannot "+
+				"both be required and be forbidden, and the fixture would score 1/1 recall "+
+				"and go red in the same run; narrow one of the two (subtype and source_file "+
+				"both discriminate) or drop one", p, i, fe.Name, j)
 		}
 	}
 	// #6490 arm A, second half. Declaring the key is not yet an assertion: a
@@ -272,6 +326,35 @@ func LoadFixture(dir string) (*Fixture, error) {
 	}
 
 	return &f, nil
+}
+
+// matchAxes projects an ExpectedEntity onto exactly the fields resolveEntity
+// consults, dropping the ones it does not (must_exist, nice_to_have, note).
+// Two rows with the same axes name the same set of entities, which is what
+// makes one required and the other forbidden a contradiction rather than a
+// narrowing (#6488 arm B).
+//
+// Two things it is deliberately NOT. It is not a whole-row comparison: a
+// forbidden row cannot set must_exist at all, so every pair would differ on
+// that field and the check would never fire — decorative, which is the defect
+// class arm B exists to remove. And it is not a string concatenation, so a
+// row whose Name is "a\x00b" cannot collide with one whose Kind ends in "a".
+//
+// The fields ARE enumerated, so adding a matching axis to ExpectedEntity means
+// adding it here too. Forgetting is not silent: two rows that differ only on
+// the new axis would project equal and LoadFixture would reject a legitimate
+// fixture at load, which is loud and immediate rather than a quiet weakening.
+// TestLoadFixture_AllowsAForbiddenRowThatDiffersOnlyBySubtype_6488 is the
+// standing proof for the axis most recently added.
+func matchAxes(ee ExpectedEntity) ExpectedEntity {
+	return ExpectedEntity{
+		Name:          ee.Name,
+		QualifiedName: ee.QualifiedName,
+		Kind:          ee.Kind,
+		SourceFile:    ee.SourceFile,
+		MatchBy:       ee.MatchBy,
+		Subtype:       ee.Subtype,
+	}
 }
 
 // SourceDir returns the path the harness will hand to the indexer.

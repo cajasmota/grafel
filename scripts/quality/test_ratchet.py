@@ -1783,7 +1783,7 @@ class ForbiddenEntityHitsAreFatal(unittest.TestCase):
             rc, 2,
             "a report carrying 2 forbidden ENTITY hits passed the ratchet — "
             "entity over-emission is gated by nothing else")
-        self.assertIn("forbidden entity hit", err)
+        self.assertIn("forbidden entity row(s) fired", err)
 
     def test_a_report_predating_the_field_is_not_a_failure(self):
         """Absent means zero, not "unknown". Every baseline recorded before

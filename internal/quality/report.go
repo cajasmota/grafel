@@ -40,16 +40,28 @@ type JSONReport struct {
 	ForbiddenEntities    []forbiddenEntity     `json:"forbidden_entities,omitempty"`
 }
 
-// forbiddenEntity is the serialised shape of a ForbiddenEntityHit. It reports
-// the row's axes AND the offending entity's own name/file/subtype, because a
-// row may narrow on fewer axes than the entity carries — "a forbidden entity
-// was found" is not a diagnosis anyone can act on.
+// forbiddenEntity is the serialised shape of a ForbiddenEntityHit.
+//
+// The name/kind/source_file/subtype fields echo the ROW — they say which
+// assertion fired — and every got_* field describes the OFFENDING ENTITY as
+// extracted. Both halves are needed and neither substitutes for the other: a
+// row may narrow on fewer axes than the entity carries, and a
+// match_by:qualified_name row states no kind at all, so `kind` is legitimately
+// empty on exactly the rows where the offender's kind matters most.
+//
+// This is the diagnostic CI actually reads. scripts/quality/run.sh and
+// ratchet.py consume the JSON report and nothing in CI reads the human
+// summary, so the machine-readable path carries the offender's kind and id
+// too — anything WriteHuman prints and this does not is a diagnostic only a
+// developer running the command by hand would ever see.
 type forbiddenEntity struct {
 	Name       string `json:"name"`
 	Kind       string `json:"kind"`
 	File       string `json:"source_file,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
+	GotID      string `json:"got_id,omitempty"`
 	GotName    string `json:"got_name,omitempty"`
+	GotKind    string `json:"got_kind,omitempty"`
 	GotFile    string `json:"got_source_file,omitempty"`
 	GotSubtype string `json:"got_subtype,omitempty"`
 }
@@ -163,7 +175,9 @@ func (r *Report) ToJSON() *JSONReport {
 			Kind:       fh.Expected.Kind,
 			File:       fh.Expected.SourceFile,
 			Subtype:    fh.Expected.Subtype,
+			GotID:      fh.MatchedID,
 			GotName:    fh.MatchedName,
+			GotKind:    fh.MatchedKind,
 			GotFile:    fh.MatchedSourceFile,
 			GotSubtype: fh.MatchedSubtype,
 		})

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/extractors/cross/ormlink"
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
@@ -335,5 +336,205 @@ func TestProtoMiniCarriesRealForbiddenEntityRows_6488(t *testing.T) {
 		t.Error("proto-mini lost its subtype-free forbidden entity row " +
 			"(proto_message:Role/SCOPE.Schema/user.proto) — the near-duplicate " +
 			"framework family it bounds could grow without any fixture noticing")
+	}
+}
+
+// --- review follow-ups (#6488 arm B) --------------------------------------
+
+// The THIRD decorative shape, and the one that was inside the guard against
+// decorative rows. resolveEntity keys on byKindName[Kind+"\x00"+Name], so a
+// row with a name and no kind searches for an entity whose Kind is the empty
+// string. It loads clean, it reads as an assertion, and it can never fire.
+func TestLoadFixture_RejectsKindlessForbiddenEntity_6488(t *testing.T) {
+	dir := writeFixtureJSON_6488(t, `{
+	  "fixture_name": "t",
+	  "expected_entities": [],
+	  "expected_relationships": [],
+	  "asserts_no_relationships": true,
+	  "forbidden_entities": [ { "name": "Role" } ]
+	}`)
+	if _, err := LoadFixture(dir); err == nil {
+		t.Fatal("LoadFixture accepted a forbidden entity row with no kind — the " +
+			"(kind, name) lookup can never match it, so the row is decorative")
+	}
+}
+
+// The exemption, with a positive control so the rejection above cannot be
+// widened into "kind is always required". match_by:qualified_name resolves
+// through byQName and legitimately never consults Kind.
+func TestForbiddenEntity_QualifiedNameRowNeedsNoKind_6488(t *testing.T) {
+	dir := writeFixtureJSON_6488(t, `{
+	  "fixture_name": "t",
+	  "expected_entities": [],
+	  "expected_relationships": [],
+	  "asserts_no_relationships": true,
+	  "forbidden_entities": [
+	    { "name": "Role", "qualified_name": "pkg.Role", "match_by": "qualified_name" }
+	  ]
+	}`)
+	fix, err := LoadFixture(dir)
+	if err != nil {
+		t.Fatalf("LoadFixture rejected a kind-less qualified_name row: %v", err)
+	}
+	doc := &graph.Document{Entities: []graph.Entity{
+		{ID: "q1", Name: "Role", QualifiedName: "pkg.Role", Kind: "SCOPE.Schema",
+			Subtype: "enum", SourceFile: "user.proto"},
+	}}
+	rep := Evaluate(fix, doc)
+	if n := len(rep.ForbiddenEntityHits); n != 1 {
+		t.Fatalf("ForbiddenEntityHits=%d want 1 — the exemption is only defensible "+
+			"if the exempted row can actually fire", n)
+	}
+}
+
+// A forbidden row whose axes are IDENTICAL to a must_exist row is a
+// contradiction the harness would otherwise honour twice: the fixture scores
+// 1/1 recall and goes red in the same run. The load error already claims "a
+// row cannot both be required and be forbidden"; this is the case that
+// sentence describes.
+func TestLoadFixture_RejectsForbiddenRowDuplicatingAnExpectedRow_6488(t *testing.T) {
+	dir := writeFixtureJSON_6488(t, `{
+	  "fixture_name": "t",
+	  "expected_entities": [
+	    { "name": "Role", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true }
+	  ],
+	  "expected_relationships": [],
+	  "asserts_no_relationships": true,
+	  "forbidden_entities": [
+	    { "name": "Role", "kind": "SCOPE.Schema", "source_file": "user.proto" }
+	  ]
+	}`)
+	if _, err := LoadFixture(dir); err == nil {
+		t.Fatal("LoadFixture accepted a forbidden row identical to a must_exist row")
+	}
+}
+
+// The negative control for the check above, and it is proto-mini's own shape:
+// FE1 forbids Role/SCOPE.Schema/user.proto with subtype "message" while an
+// expected row requires the same (kind, name, file) with NO subtype. That is
+// not a contradiction — it is the whole point of the subtype axis — so a
+// duplicate check keyed on anything less than every matching axis would
+// reject the corpus's first real row.
+func TestLoadFixture_AllowsAForbiddenRowThatDiffersOnlyBySubtype_6488(t *testing.T) {
+	dir := writeFixtureJSON_6488(t, `{
+	  "fixture_name": "t",
+	  "expected_entities": [
+	    { "name": "Role", "kind": "SCOPE.Schema", "source_file": "user.proto", "must_exist": true }
+	  ],
+	  "expected_relationships": [],
+	  "asserts_no_relationships": true,
+	  "forbidden_entities": [
+	    { "name": "Role", "kind": "SCOPE.Schema", "source_file": "user.proto", "subtype": "message" }
+	  ]
+	}`)
+	if _, err := LoadFixture(dir); err != nil {
+		t.Fatalf("LoadFixture rejected the subtype-narrowed pair proto-mini ships: %v", err)
+	}
+}
+
+// Every firing row is reported, not just the first. The gate trips either
+// way, so this is not a correctness hole — it is the difference between an
+// operator fixing over-emission seeing the whole list and seeing one row per
+// run.
+func TestForbiddenEntity_ReportsEveryFiringRow_6488(t *testing.T) {
+	fix := &Fixture{
+		Name: "tiny",
+		ForbiddenEntities: []ExpectedEntity{
+			{Name: "Role", Kind: "SCOPE.Schema", SourceFile: "user.proto"},
+			{Name: "Address", Kind: "SCOPE.Schema", SourceFile: "common.proto"},
+			{Name: "proto_enum:Role", Kind: "SCOPE.Schema", SourceFile: "user.proto"},
+		},
+	}
+	rep := Evaluate(fix, forbiddenDoc())
+	if n := len(rep.ForbiddenEntityHits); n != 3 {
+		t.Fatalf("ForbiddenEntityHits=%d want 3 — a loop that stops at the first hit "+
+			"hides the rest of the over-emission: %+v", n, rep.ForbiddenEntityHits)
+	}
+	var buf bytes.Buffer
+	rep.WriteHuman(&buf)
+	for _, want := range []string{"Role", "Address", "proto_enum:Role"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("WriteHuman does not name the offender %q:\n%s", want, buf.String())
+		}
+	}
+}
+
+// forbidden_entity_hits must be serialised even when it is zero. The claim
+// "absent means this report predates the field" is only true if a live report
+// always carries the key — omitempty would make a clean run indistinguishable
+// from a run by a binary that cannot count entity hits at all, and
+// ratchet.py's .get(key, 0) reads both as 0.
+func TestForbiddenEntityHitsIsSerialisedWhenZero_6488(t *testing.T) {
+	rep := Evaluate(&Fixture{Name: "tiny"}, forbiddenDoc())
+	var buf bytes.Buffer
+	if err := rep.WriteJSON(&buf); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"forbidden_entity_hits": 0`) {
+		t.Fatalf("a clean report omits forbidden_entity_hits, so a consumer cannot "+
+			"tell a zero from a report written before the field existed:\n%s", buf.String())
+	}
+}
+
+// The JSON is the machine-readable path — ratchet.py and run.sh read it and
+// the human summary is read by nobody in CI — so it must not be the weaker
+// diagnostic. It carries the offending entity's kind and id, which the row
+// may not state at all.
+func TestForbiddenEntityJSONCarriesTheOffendersKindAndID_6488(t *testing.T) {
+	fix := &Fixture{
+		Name: "tiny",
+		ForbiddenEntities: []ExpectedEntity{
+			{Name: "Role", QualifiedName: "pkg.Role", MatchBy: "qualified_name"},
+		},
+	}
+	doc := &graph.Document{Entities: []graph.Entity{
+		{ID: "q1", Name: "Role", QualifiedName: "pkg.Role", Kind: "SCOPE.Schema",
+			Subtype: "enum", SourceFile: "user.proto"},
+	}}
+	rep := Evaluate(fix, doc)
+	if n := len(rep.ForbiddenEntityHits); n != 1 {
+		t.Fatalf("ForbiddenEntityHits=%d want 1", n)
+	}
+	var buf bytes.Buffer
+	if err := rep.WriteJSON(&buf); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+	// The row states no kind and no file at all, so every one of these can
+	// only have come from the extracted entity.
+	for _, want := range []string{
+		`"got_kind": "SCOPE.Schema"`,
+		`"got_id": "q1"`,
+		`"got_source_file": "user.proto"`,
+		`"got_subtype": "enum"`,
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("JSON forbidden entry is missing %s — it is the diagnostic CI "+
+				"reads:\n%s", want, buf.String())
+		}
+	}
+}
+
+// A documented blind spot, pinned so it stays a decision rather than becoming
+// folklore. resolveEntity skips placeholder anchors on every path (#6277), and
+// forbidden rows reuse it, so an ormlink sentinel cannot be forbidden. Anchor
+// over-emission is outside the fence this arm builds. If this test ever goes
+// red the exclusion changed, which is exactly when someone should re-read the
+// #6277 reasoning rather than discover it from a fixture going red.
+func TestForbiddenEntity_CannotForbidAPlaceholderAnchor_6488(t *testing.T) {
+	doc := &graph.Document{Entities: []graph.Entity{
+		{ID: "a1", Name: "Role", Kind: "SCOPE.Schema",
+			Subtype: ormlink.SubtypeSentinel, SourceFile: "user.proto"},
+	}}
+	fix := &Fixture{
+		Name: "tiny",
+		ForbiddenEntities: []ExpectedEntity{
+			{Name: "Role", Kind: "SCOPE.Schema", SourceFile: "user.proto",
+				Subtype: ormlink.SubtypeSentinel},
+		},
+	}
+	if n := len(Evaluate(fix, doc).ForbiddenEntityHits); n != 0 {
+		t.Fatalf("ForbiddenEntityHits=%d want 0 — placeholder anchors are excluded "+
+			"from resolveEntity on every path, so this is the documented blind spot, "+
+			"not a hit; if it now fires, update the doc on Fixture.ForbiddenEntities", n)
 	}
 }
