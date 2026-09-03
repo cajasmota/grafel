@@ -79,16 +79,27 @@
 // removes the reads that had no business happening; whether it is what the
 // reporting user saw is unproven.
 //
-// Two things it deliberately does NOT do:
+// # Another user's home (#6548 requirement 3)
 //
-//   - It does not stop early at a directory that merely LOOKS like a home
-//     (a child of /Users, /home, C:\Users). A checkout under another root —
-//     /opt, /srv, a CI workspace, another user's tree a user explicitly pointed
-//     grafel at — must keep climbing, or the repo silently stops resolving its
-//     group. Only the ACTUAL resolved home is a boundary.
-//   - It does not constrain an explicitly user-supplied path. The rule bounds
-//     INFERRED traversal; pointing grafel at a repo inside ~/Documents stays a
-//     legitimate instruction.
+// A climb also stops at, and never enters, a home directory that is not the
+// current user's — /Users/<other>, /home/<other>, C:\Users\<other>. This
+// package used to document the opposite ("another user's tree a user
+// explicitly pointed grafel at must keep climbing"); the owner ruled that
+// position wrong on 2026-09-02, because an explicit path is a claim about
+// INTENT, not about PERMISSION, and reading another user's files is not made
+// harmless by the user having typed the path. See otherhome.go for the rule,
+// what "the current user's home" means without trusting $HOME, and how the
+// class composes with classMedia and classTCC.
+//
+// The remaining exemption is narrower than it was: the rule still does not
+// constrain an explicitly user-supplied path INSIDE THE CURRENT USER'S OWN
+// home. Pointing grafel at a repo in ~/Documents stays a legitimate
+// instruction; pointing it at one in another user's home no longer resolves
+// that repo's ancestors.
+//
+// A checkout under a non-home root — /opt, /srv, a CI workspace — is
+// unaffected and keeps its full climb: only an actual home, the current user's
+// or somebody else's, is a boundary.
 //
 // When the home directory cannot be determined (os.UserHomeDir fails because
 // neither $HOME nor %USERPROFILE% is set — a bare cron/launchd/container
@@ -182,20 +193,23 @@ func ClimbWithHome(dir, home string, visit func(dir string) bool) bool {
 	bounded := home != "" && Inside(cur, home)
 
 	homeReal := resolveOrSelf(home)
+	refs := resolveHomeReferences(home)
 
-	curClass := classifyDir(cur, home, homeReal)
+	curClass := classifyDir(cur, home, homeReal, refs)
 	for depth := 0; depth < MaxAncestorDepth; depth++ {
 		parent := filepath.Dir(cur)
 		atRoot := parent == cur
 		var parentClass dirClass
 		if !atRoot {
-			parentClass = classifyDir(parent, home, homeReal)
+			parentClass = classifyDir(parent, home, homeReal, refs)
 		}
+		// classOtherHome: refused at or under — another user's home is not
+		// ours to read, whatever path the caller supplied (#6548 req 3).
 		// classMedia: refused at or under, with no exemption to preserve.
 		// classTCC: refused at the outermost directory of the tree only — a
 		// level whose own parent is TCC-protected is inside a tree the caller
 		// was pointed at, and is visited normally.
-		if curClass.media || (curClass.tcc && !parentClass.tcc) {
+		if curClass.otherHome || curClass.media || (curClass.tcc && !parentClass.tcc) {
 			return false
 		}
 		if visit(cur) {
@@ -223,6 +237,10 @@ type dirClass struct {
 	// tcc — protected against INFERRED traversal, but a legitimate place to
 	// keep a repo. Refused at the outermost directory of the tree only.
 	tcc bool
+	// otherHome — at or under a home directory that is not the current
+	// user's (#6548 req 3). Refused at or under, and checked FIRST: an
+	// explicit path is a claim about intent, not about permission.
+	otherHome bool
 }
 
 // classifyDir asks protectedpath — grafel's single authority on what must not
@@ -252,11 +270,18 @@ type dirClass struct {
 // already ran an EvalSymlinks per level themselves, and every other climber
 // already ran an os.Stat per level inside its own visit function. The
 // alternative — reading a TCC-gated directory — is the defect.
-func classifyDir(dir, home, homeReal string) dirClass {
+func classifyDir(dir, home, homeReal string, refs homeReferences) dirClass {
 	if dir == "" {
 		return dirClass{}
 	}
 	resolved := resolveOrSelf(dir)
+	// Another user's home is checked first and on BOTH spellings: a symlink
+	// outside every home that resolves into one is the same read. This costs
+	// no filesystem work of its own — resolved is already in hand and
+	// underOtherUserHome is purely lexical.
+	if underOtherUserHome(dir, refs) || underOtherUserHome(resolved, refs) {
+		return dirClass{otherHome: true}
+	}
 	if !mayBeProtected(dir, resolved, home, homeReal) {
 		return dirClass{}
 	}

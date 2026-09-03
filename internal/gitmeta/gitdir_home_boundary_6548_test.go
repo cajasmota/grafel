@@ -60,18 +60,30 @@ func TestHasGitDirInTree_FindsGitAtHome(t *testing.T) {
 	}
 }
 
-// TestHasGitDirInTree_OutsideHomeStillClimbs — a start path outside $HOME keeps
-// climbing; a boundary that fires on any home-LOOKING ancestor would break
+// TestHasGitDirInTree_OutsideHomeStillClimbs — a start path outside every home
+// keeps climbing; a boundary that fired on any ancestor at all would break
 // repos under /opt, /var/folders or a CI checkout root.
+//
+// #6548 requirement 3 (owner decision 2026-09-02) INVERTED half of this test.
+// It used to start under <root>/Users/someone — a sibling of the current
+// user's home — and assert the .git above the Users level was still found.
+// That case is now a refusal, and is asserted as one below; the
+// still-climbs half moves to a non-home root, which is what it was really for.
 func TestHasGitDirInTree_OutsideHomeStillClimbs(t *testing.T) {
 	root, _ := fakeHomeUnder6548(t, "Users", "me")
 
-	// The .git sits ABOVE the "Users" level — the exact spot a home-LOOKING
-	// boundary would cut the climb off.
 	mkdir6548(t, filepath.Join(root, ".git"))
-	start := mkdir6548(t, filepath.Join(root, "Users", "someone", "src", "deep"))
+	start := mkdir6548(t, filepath.Join(root, "srv", "ci", "src", "deep"))
 	if !HasGitDirInTree(start) {
-		t.Fatalf("HasGitDirInTree stopped before a legitimate .git outside $HOME (a home-LOOKING ancestor is not a boundary; start %s)", start)
+		t.Fatalf("HasGitDirInTree stopped before a legitimate .git outside every home (start %s)", start)
+	}
+
+	// The inverted case: the same .git, reached from a SIBLING HOME, must not
+	// be found — the climb never enters /Users/someone at all.
+	sibling := mkdir6548(t, filepath.Join(root, "Users", "someone", "src", "deep"))
+	if HasGitDirInTree(sibling) {
+		t.Fatalf("HasGitDirInTree climbed out of another user's home %s (site: internal/gitmeta/gitmeta.go HasGitDirInTree)",
+			filepath.Join(root, "Users", "someone"))
 	}
 }
 
