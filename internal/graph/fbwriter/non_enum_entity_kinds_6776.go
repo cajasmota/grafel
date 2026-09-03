@@ -55,8 +55,17 @@ import (
 // population here, not two.
 //
 // The tally is SHARED with the relationship half — one *nonEnumKindTally per
-// write, observing both vectors — so Scanned covers both and a graph write
-// cannot report one population as measured and the other as unknown.
+// write, observing both vectors. What that buys is PLUMBING, and nothing more:
+// every path that already threaded a tally and a NonEnumKindReport
+// (streamingMarshal, writeGraphGenFlat, writeSegments, ApplyToSidecar) carries
+// the entity population without a second parameter, a second return value or a
+// second sidecar conversion to drift out of sync.
+//
+// It is NOT what makes Scanned cover both populations — NonEnumKindReport has
+// a single Scanned bool, so that would hold with two separate tallies too. The
+// two counts stay SEPARATE fields for the reason #6773 kept the derived
+// relationship count separate: a population you cannot see individually is a
+// population you cannot rank a migration by.
 
 // NonEnumEntityKind is one distinct entity kind that was written to the graph
 // without appearing in types.AllEntityKinds().

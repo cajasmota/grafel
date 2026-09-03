@@ -261,7 +261,9 @@ type nonEnumKindTally struct {
 	derivedCounts map[string]int
 	// entities/entityCounts are the same tally for ENTITY kinds against
 	// types.AllEntityKinds() (#6776 arm A). One tally per write observes both
-	// vectors, so Scanned cannot be true for one and false for the other.
+	// vectors — a plumbing choice (no second parameter, return value or
+	// sidecar conversion), not what makes Scanned cover both: the report has
+	// one Scanned bool either way.
 	entities     int
 	entityCounts map[string]int
 }

@@ -465,3 +465,157 @@ func TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath(t *testing.T) {
 		})
 	}
 }
+
+// TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted — review D2.
+//
+// Varies: the PREFIX. Three kinds that are all absent from
+// types.AllEntityKinds(), one un-prefixed and two spelled `SCOPE.*`.
+// Holds constant: enum membership (all three are outside it), one entity each,
+// the writer, and an empty relationship vector — so the prefix is the only
+// thing that could make the counter treat them differently.
+//
+// This is the observation for arm A's second measured finding: seven
+// SCOPE.-prefixed kinds reach the graph outside the enum (SCOPE.Process is the
+// largest, though its VOLUME did not reproduce across environments — see the
+// PR body; the existence of the population did, in every run by both
+// measurers). The belief
+// that the SCOPE. prefix is what makes a kind valid is FALSE, and until this
+// test existed the counter was free to act on it: adding
+// `if strings.HasPrefix(kind, "SCOPE.") { return }` to observeEntity left the
+// whole package green while silently deleting the finding.
+func TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted(t *testing.T) {
+	// SCOPE.Process is real (internal/graph/flows/flows.go kindProcess) and is
+	// what the measurement actually saw; SCOPE.ZZNotAKind is invented so this
+	// test keeps failing a prefix exemption even if SCOPE.Process is later
+	// added to the enum. Both must be outside it TODAY or the fixture is inert.
+	const realPrefixed, inventedPrefixed, unprefixed = "SCOPE.Process", "SCOPE.ZZNotAKind", "Route"
+	for _, k := range []string{realPrefixed, inventedPrefixed, unprefixed} {
+		if types.IsValidEntityKind(k) {
+			if k == realPrefixed {
+				t.Skipf("%q has been added to the entity enum; SCOPE.ZZNotAKind still covers the prefix rule", k)
+			}
+			t.Fatalf("fixture is inert: %q is expected to be ABSENT FROM THE ENUM but IsValidEntityKind accepts it", k)
+		}
+	}
+	if !strings.HasPrefix(realPrefixed, "SCOPE.") || !strings.HasPrefix(inventedPrefixed, "SCOPE.") {
+		t.Fatal("fixture is inert: the prefixed kinds must actually carry the SCOPE. prefix")
+	}
+	if strings.HasPrefix(unprefixed, "SCOPE.") {
+		t.Fatal("fixture is inert: the control kind must NOT carry the SCOPE. prefix")
+	}
+
+	doc := &graph.Document{Entities: []graph.Entity{
+		entFixture("a", realPrefixed),
+		entFixture("b", inventedPrefixed),
+		entFixture("c", unprefixed),
+		entFixture("d", string(types.EntityKindFunction)), // in the enum: never counted
+	}}
+	_, rep, err := marshalWithReport(doc)
+	if err != nil {
+		t.Fatalf("marshalWithReport: %v", err)
+	}
+	got := map[string]int{}
+	for _, k := range rep.EntityKinds {
+		got[k.Kind] = k.Entities
+	}
+	for _, want := range []string{realPrefixed, inventedPrefixed} {
+		if got[want] != 1 {
+			t.Errorf("%q count = %d, want 1 — the counter is exempting SCOPE.-prefixed kinds, which is "+
+				"exactly the belief arm A measured to be false: the prefix does not make a kind valid (report: %+v)",
+				want, got[want], rep.EntityKinds)
+		}
+	}
+	if got[unprefixed] != 1 {
+		t.Errorf("control kind %q count = %d, want 1", unprefixed, got[unprefixed])
+	}
+	// And the restraint direction, so this test cannot be satisfied by a
+	// counter that simply tallies everything.
+	if rep.Entities != 3 || rep.EntityDistinctKinds != 3 {
+		t.Errorf("Entities=%d DistinctKinds=%d, want 3/3 — 4 entities written, one of them in the enum",
+			rep.Entities, rep.EntityDistinctKinds)
+	}
+	if _, bad := got[string(types.EntityKindFunction)]; bad {
+		t.Errorf("enum kind %s was counted", types.EntityKindFunction)
+	}
+	// The names reach the summary line too — a prefixed kind that is counted
+	// but never named would still be invisible to the reader.
+	sum := rep.EntitySummary()
+	for _, want := range []string{realPrefixed, inventedPrefixed} {
+		if !strings.Contains(sum, want) {
+			t.Errorf("EntitySummary() = %q, missing SCOPE.-prefixed kind %q", sum, want)
+		}
+	}
+}
+
+// TestEntityKindRankingIsBusiestFirstSoTruncationKeepsTheBiggestPopulations —
+// review D4.
+//
+// Varies: the per-kind entity COUNT, made distinct for every kind so a sort
+// direction is unambiguous.
+// Holds constant: the number of distinct kinds (cap + 11) and the kind names,
+// so nothing but the ordering decides which names survive truncation.
+//
+// The direction is not cosmetic. NonEnumKindListCap truncates the NAME list
+// that reaches graph-stats.json, so busiest-first is what decides WHICH kinds
+// a migration gets ranked by — this arm's entire purpose. Sorting least-busy
+// first is green without this test.
+//
+// The same gap exists in arm C's rankKinds (#6757) and is INHERITED here, not
+// introduced; it is filed separately rather than fixed in this arm, which did
+// not measure the relationship population.
+func TestEntityKindRankingIsBusiestFirstSoTruncationKeepsTheBiggestPopulations(t *testing.T) {
+	const distinct = NonEnumKindListCap + 11
+	doc := &graph.Document{}
+	// Kind i carries i+1 entities, so every count is distinct and the busiest
+	// kinds are the HIGHEST-numbered names. A name-ordered or least-busy-first
+	// sort keeps a different 32 names.
+	for i := 0; i < distinct; i++ {
+		kind := fmt.Sprintf("ZZ_RANK_%03d", i)
+		if types.IsValidEntityKind(kind) {
+			t.Fatalf("fixture is inert: %q is actually a valid entity kind", kind)
+		}
+		for n := 0; n <= i; n++ {
+			doc.Entities = append(doc.Entities, entFixture(fmt.Sprintf("e%03d_%03d", i, n), kind))
+		}
+	}
+	_, rep, err := marshalWithReport(doc)
+	if err != nil {
+		t.Fatalf("marshalWithReport: %v", err)
+	}
+	if len(rep.EntityKinds) != NonEnumKindListCap {
+		t.Fatalf("len(EntityKinds) = %d, want the cap %d", len(rep.EntityKinds), NonEnumKindListCap)
+	}
+	// Descending by count, entry by entry.
+	for i := 1; i < len(rep.EntityKinds); i++ {
+		if rep.EntityKinds[i-1].Entities < rep.EntityKinds[i].Entities {
+			t.Fatalf("EntityKinds is not busiest-first at index %d: %+v", i, rep.EntityKinds)
+		}
+	}
+	// And the SURVIVORS are the busiest ones: the top entry must be the
+	// largest population in the graph, and every kind smaller than the cutoff
+	// must have been the one dropped.
+	if rep.EntityKinds[0].Kind != fmt.Sprintf("ZZ_RANK_%03d", distinct-1) ||
+		rep.EntityKinds[0].Entities != distinct {
+		t.Fatalf("busiest entry = %+v, want ZZ_RANK_%03d with %d entities — truncation is keeping the "+
+			"wrong names, and the names are what a migration is ranked by",
+			rep.EntityKinds[0], distinct-1, distinct)
+	}
+	kept := map[string]bool{}
+	for _, k := range rep.EntityKinds {
+		kept[k.Kind] = true
+	}
+	for i := 0; i < distinct; i++ {
+		name := fmt.Sprintf("ZZ_RANK_%03d", i)
+		wantKept := i >= distinct-NonEnumKindListCap
+		if kept[name] != wantKept {
+			t.Errorf("kind %q (%d entities) kept=%v, want %v — the cap must drop the SMALLEST populations",
+				name, i+1, kept[name], wantKept)
+		}
+	}
+	// Ties fall back to name, ascending — pinned separately so the tie-break
+	// cannot silently invert while the count ordering above still holds.
+	tied := rankEntityKinds(map[string]int{"Bbb": 5, "Aaa": 5, "Ccc": 9})
+	if len(tied) != 3 || tied[0].Kind != "Ccc" || tied[1].Kind != "Aaa" || tied[2].Kind != "Bbb" {
+		t.Errorf("tie-break order = %+v, want Ccc, Aaa, Bbb (count desc, then name asc)", tied)
+	}
+}
