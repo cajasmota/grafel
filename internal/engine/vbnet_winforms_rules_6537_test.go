@@ -121,8 +121,8 @@ End Module
 `
 
 // vbTwoModuleSource is a single file declaring two Modules, which VB permits.
-// It exists to pin a KNOWN DEFECT — see
-// TestVBNet6537_InstantiatesWindowMispairsAcrossModules.
+// The non-calling module is declared FIRST — see
+// TestVBNet6537_InstantiatesRespectsModuleBoundary.
 const vbTwoModuleSource = `Imports System.Windows.Forms
 
 Module DiagnosticsHelpers
@@ -134,6 +134,26 @@ End Module
 Module Program
     Public Sub Main()
         Application.Run(New OrderEntryForm())
+    End Sub
+End Module
+`
+
+// vbTwoModuleCallerFirstSource is vbTwoModuleSource with the two Modules
+// SWAPPED, so the module that calls Application.Run is declared FIRST. The
+// join is then legitimate — no `End Module` lies between the two captures —
+// even though the literal still occurs later in the file. It is the
+// over-firing control for the #6666 terminator guard.
+const vbTwoModuleCallerFirstSource = `Imports System.Windows.Forms
+
+Module Program
+    Public Sub Main()
+        Application.Run(New OrderEntryForm())
+    End Sub
+End Module
+
+Module DiagnosticsHelpers
+    Public Sub Log(ByVal msg As String)
+        System.Diagnostics.Debug.WriteLine(msg)
     End Sub
 End Module
 `
@@ -317,33 +337,50 @@ func TestVBNet6537_FiresOnEntryPointModule(t *testing.T) {
 	}
 }
 
-// TestVBNet6537_InstantiatesWindowMispairsAcrossModules PINS A KNOWN DEFECT so
-// it cannot get quietly worse, and so that fixing it is forced to update this
-// comment.
+// TestVBNet6537_InstantiatesRespectsModuleBoundary pins the REPAIR of the
+// cross-module mispairing that this test used to pin as a defect (#6605 →
+// #6666).
 //
 // The INSTANTIATES pattern joins `Module (\w+)` to `Application.Run(New (\w+)(`
-// through a `[\s\S]{0,600}?` window. That window is POSITIONAL, not
-// structural: it has no notion of `End Module`, so in a file declaring two
-// Modules — legal and not unusual in VB — the first Module's header pairs with
-// the second Module's Application.Run. RE2 has no negative lookahead, so "no
-// intervening End Module" is not expressible in this schema; the fix needs
-// containment awareness the text-rule engine does not have.
+// through a `[\s\S]{0,600}?` window. That window is POSITIONAL: it has no
+// notion of `End Module`, so in a file declaring two Modules — legal and not
+// unusual in VB — the first Module's header used to pair with the second
+// Module's Application.Run, attributing the edge to DiagnosticsHelpers and
+// giving Program, the module that actually makes the call, no edge at all.
 //
-// Observed today: the edge is attributed to DiagnosticsHelpers, and Program —
-// the module that actually calls Application.Run — gets no edge at all. Both
-// halves are wrong. Tracked in #6605.
-func TestVBNet6537_InstantiatesWindowMispairsAcrossModules(t *testing.T) {
+// RE2 has no negative lookahead, so the fix is not in the pattern: the rule
+// now carries `terminator: "End Module"` and the join site (findRelationshipMatches
+// in detector.go) rejects any match whose span between the two captures crosses
+// that literal, then resumes the search so the real caller is still reachable.
+//
+// Both halves are asserted here, and BOTH module orders are exercised — a
+// guard that simply refused to emit anything when the terminator appears
+// anywhere in the file would pass the first pair and fail the second.
+func TestVBNet6537_InstantiatesRespectsModuleBoundary(t *testing.T) {
 	res := detectVBNet(t, "src/Program.vb", vbTwoModuleSource)
 
-	if !hasVBRelationship(res, "INSTANTIATES", "Module:DiagnosticsHelpers", "View:OrderEntryForm") {
-		t.Errorf("the known cross-module mispairing no longer reproduces — if this was fixed, "+
-			"delete this test and the KNOWN LIMITATION note in winforms.yaml; got %s",
-			formatVBRelationships(res))
+	if hasVBRelationship(res, "INSTANTIATES", "Module:DiagnosticsHelpers", "View:OrderEntryForm") {
+		t.Errorf("the cross-module mispairing is back: DiagnosticsHelpers makes no "+
+			"Application.Run call, so the `End Module` terminator guard on the INSTANTIATES "+
+			"rule is not in effect; got %s", formatVBRelationships(res))
 	}
-	if hasVBRelationship(res, "INSTANTIATES", "Module:Program", "View:OrderEntryForm") {
-		t.Errorf("Module:Program now gets the edge it should always have had — the window defect "+
-			"appears fixed; update this test and winforms.yaml; got %s",
-			formatVBRelationships(res))
+	if !hasVBRelationship(res, "INSTANTIATES", "Module:Program", "View:OrderEntryForm") {
+		t.Errorf("Module:Program, which actually calls Application.Run, has no edge — blocking "+
+			"the bad join must not cost the good one; got %s", formatVBRelationships(res))
+	}
+
+	// Over-firing control: the same two modules in the OPPOSITE order. Here
+	// the caller comes first and the join is legitimate, yet `End Module`
+	// still occurs in the file (after the target). The edge must survive.
+	res = detectVBNet(t, "src/Program.vb", vbTwoModuleCallerFirstSource)
+	if !hasVBRelationship(res, "INSTANTIATES", "Module:Program", "View:OrderEntryForm") {
+		t.Errorf("with the caller declared FIRST there is no terminator between the two "+
+			"captures, so the edge must still be emitted; the guard is testing the whole file "+
+			"rather than the span between the captures: %s", formatVBRelationships(res))
+	}
+	if hasVBRelationship(res, "INSTANTIATES", "Module:DiagnosticsHelpers", "View:OrderEntryForm") {
+		t.Errorf("DiagnosticsHelpers is declared AFTER the Application.Run call and still got "+
+			"the edge: %s", formatVBRelationships(res))
 	}
 }
 

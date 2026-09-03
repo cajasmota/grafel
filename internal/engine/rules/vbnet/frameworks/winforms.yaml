@@ -28,17 +28,26 @@
 #   * The two file_conventions below are not exercised by any fixture path, so
 #     their globs are declared but unobserved by the test suite.
 #   * The INSTANTIATES rule joins `Module (\w+)` to `Application.Run(New (\w+)(`
-#     across a `{0,600}` window. That window is POSITIONAL, not structural — it
-#     has no notion of `End Module` — so in a file declaring two Modules (legal
-#     VB) the FIRST module's header pairs with the SECOND module's
-#     Application.Run. Measured: a two-module file yields
-#     `Module:DiagnosticsHelpers -INSTANTIATES-> View:OrderEntryForm` while
-#     Module:Program, which actually makes the call, gets no edge at all. Both
-#     halves are wrong. RE2 has no negative lookahead, so "no intervening
-#     End Module" is not expressible here; the repair needs containment
-#     awareness this engine does not have. Tracked in #6605; pinned by
-#     TestVBNet6537_InstantiatesWindowMispairsAcrossModules so it cannot get
-#     quietly worse.
+#     across a `{0,600}` window. That window is POSITIONAL, not structural, so
+#     until #6666 a file declaring two Modules (legal VB) paired the FIRST
+#     module's header with the SECOND module's Application.Run — a false edge
+#     plus a missing one. RE2 has no negative lookahead, so "no intervening
+#     End Module" cannot be written in the pattern; the rule therefore carries
+#     `terminator: "End Module"`, an engine-level guard (#6666) that rejects any
+#     match whose span BETWEEN the two captures crosses that literal and resumes
+#     the search so the real caller can still pair. Now measured: the two-module
+#     file yields `Module:Program -INSTANTIATES-> View:OrderEntryForm` and
+#     nothing for DiagnosticsHelpers, in either module order. Pinned by
+#     TestVBNet6537_InstantiatesRespectsModuleBoundary.
+#     The guard is a case-sensitive byte-literal test, NOT a scope parser: an
+#     `End Module` inside a `'` comment or a string literal between the two
+#     captures still blocks (a false negative), and a lower-case `end module`
+#     does not block at all. Both are asserted by
+#     Test6666_TerminatorIsALiteralNotAScopeParser and
+#     Test6666_TerminatorIsCaseSensitive rather than left as claims.
+#     The guard also resumes its search only at LINE boundaries, so two Modules
+#     declared on one line would not both be considered. Legal VB, vanishingly
+#     rare, and asserted by Test6666_TerminatorResumptionIsLineGranular.
 
 frameworks:
   name: WinForms
@@ -176,3 +185,8 @@ relationship_rules:
     relationship: INSTANTIATES
     source_group: 1
     target_group: 2
+    # #6666: the {0,600} window is positional. `End Module` is VB's explicit,
+    # non-nesting block terminator, so it is exactly the boundary this join
+    # must not cross. See the KNOWN LIMITATIONS note above for what the guard
+    # does and does not do.
+    terminator: 'End Module'
