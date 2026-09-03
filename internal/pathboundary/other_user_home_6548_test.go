@@ -432,7 +432,11 @@ func TestOtherHome_EveryReferenceInTheSetIsHonoured(t *testing.T) {
 	// never derived, so bob is not recognised as anybody's home and the climb
 	// runs. Without this the assertion below could pass on a boundary that
 	// refuses nothing.
-	restore := OverrideHomeReferences(first)
+	// RealUIDHomeForTest() is in BOTH legs, so the axis under test stays "how
+	// many synthetic homes" and not "is the process's real home referenced".
+	// Omitting it here failed on Windows, where t.TempDir() sits inside that
+	// real home and turns it into a foreign ancestor of the fixture.
+	restore := OverrideHomeReferences(first, RealUIDHomeForTest())
 	if s := visited(t, stranger, ""); len(s) == 0 {
 		restore()
 		t.Fatalf("with only %q referenced, %q sits in an underived container and the climb should run; visited nothing", first, stranger)
@@ -442,7 +446,7 @@ func TestOtherHome_EveryReferenceInTheSetIsHonoured(t *testing.T) {
 	// With BOTH referenced, the second reference contributes its container and
 	// bob becomes another user's home. A fix that kept only homes[0] leaves
 	// this climb running.
-	t.Cleanup(OverrideHomeReferences(first, second))
+	t.Cleanup(OverrideHomeReferences(first, second, RealUIDHomeForTest()))
 	if s := visited(t, stranger, ""); len(s) != 0 {
 		t.Fatalf("the second reference %q was dropped: its container %q was never derived, so another user's home %q was read; visited %v",
 			second, filepath.Dir(second), filepath.Dir(stranger), s)
@@ -452,5 +456,99 @@ func TestOtherHome_EveryReferenceInTheSetIsHonoured(t *testing.T) {
 	own := mk(t, filepath.Join(second, "proj", "pkg"))
 	if s := visited(t, own, ""); len(s) == 0 {
 		t.Fatalf("the current user's own home %q was refused once a second reference was held; climb from %q visited nothing", second, own)
+	}
+}
+
+// TestClimb_UnresolvablePathIsClassifiedFromItsDeepestExistingAncestor is the
+// round-3 #6787 pin. Round two made classifyDir decide on the resolved
+// spelling; resolveOrSelf, however, returns the LITERAL when a path cannot be
+// resolved at all, so for a path that DOES NOT EXIST YET there was no resolved
+// verdict and the literal was all there was. That is the same defect on a
+// narrower branch, and it is the branch grafel's callers use most: registry's
+// resolveDeepestExisting, mcp's pathContains and StateDirForExisting all
+// compare a state or repo directory that may not have been created.
+//
+// AXIS VARIED: whose home the not-yet-created path sits under — the current
+// user's (reached under a second spelling, so the literal does not match the
+// reference set) versus another user's. HELD CONSTANT: the layout, the
+// reference set, the missing tail, the climb bound, and the fact that no
+// component of the tail exists.
+//
+// Both directions are asserted, because this class has now failed BOTH ways:
+// round two was total over-refusal, round three over-refusal on the
+// unresolvable branch, and a widening that fixed one while disarming the other
+// would look identical from the graph.
+func TestClimb_UnresolvablePathIsClassifiedFromItsDeepestExistingAncestor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privilege on Windows; the native second spelling there is the 8.3 short name")
+	}
+	homes := usersLayout(t, "alice", "bob")
+	container := filepath.Dir(homes["alice"])
+
+	// A second name for alice's own home, in the same container, matching
+	// neither spelling the reference set holds.
+	alias := filepath.Join(container, "alice-second-spelling")
+	if err := os.Symlink(homes["alice"], alias); err != nil {
+		t.Skipf("symlink unsupported here: %v", err)
+	}
+
+	// Nothing below the home exists — this is the whole point.
+	const missing = "not/created/yet"
+	mustNotExist := func(p string) {
+		t.Helper()
+		if _, err := os.Lstat(p); err == nil {
+			t.Fatalf("fixture invalid: %q exists, so this test would not exercise the unresolvable branch", p)
+		}
+	}
+
+	// OURS: a not-yet-created path under the current user's own home, reached
+	// under the second spelling, must still climb.
+	ownMissing := filepath.Join(alias, missing)
+	mustNotExist(ownMissing)
+	if s := visited(t, ownMissing, ""); len(s) == 0 {
+		t.Fatalf("a path that does not exist yet under the current user's OWN home %q, reached as %q, was refused: climb from %q visited nothing. EvalSymlinks fails on a missing path, so the literal spelling was classified — see canonicalForIdentity in pathboundary.go (#6787).",
+			homes["alice"], alias, ownMissing)
+	}
+
+	// THEIRS: the identical shape under another user's home must still be
+	// refused. Without this the assertion above is satisfied by a boundary
+	// that stopped firing on missing paths altogether.
+	foreignMissing := filepath.Join(homes["bob"], missing)
+	mustNotExist(foreignMissing)
+	if s := visited(t, foreignMissing, ""); len(s) != 0 {
+		t.Fatalf("a path that does not exist yet under another user's home %q was read; visited %v", homes["bob"], s)
+	}
+
+	// THEIRS, ALIASED: resolving the ancestor must fold an alias ONTO its
+	// target, not wave the alias through. This is the direction that would
+	// turn the fix into a bypass — name a missing path under a symlink whose
+	// own name looks innocent and the foreign home behind it is entered.
+	bobAlias := filepath.Join(container, "not-obviously-bob")
+	if err := os.Symlink(homes["bob"], bobAlias); err == nil {
+		aliasedForeign := filepath.Join(bobAlias, missing)
+		mustNotExist(aliasedForeign)
+		if s := visited(t, aliasedForeign, ""); len(s) != 0 {
+			t.Fatalf("a not-yet-created path under another user's home, reached as %q, was read; visited %v", bobAlias, s)
+		}
+	}
+
+	// A home that DOES NOT EXIST YET is still a home. Re-appending the missing
+	// tail onto the resolved ancestor is what preserves this: resolving only
+	// as far as the container and stopping there would classify
+	// <container>/ghost/x from <container>, which is nobody's home, and let
+	// the climb through.
+	ghostMissing := filepath.Join(container, "ghost", "x")
+	mustNotExist(filepath.Join(container, "ghost"))
+	if s := visited(t, ghostMissing, ""); len(s) != 0 {
+		t.Fatalf("%q is a home-shaped child of the container %q that merely does not exist yet, and was read; visited %v", filepath.Join(container, "ghost"), container, s)
+	}
+
+	// UNDER-FIRING CONTROL for the plain case: a missing path under the
+	// current user's home by its CANONICAL name must climb too, so the fix
+	// cannot be read as "only aliased paths are handled".
+	canonicalMissing := filepath.Join(homes["alice"], missing)
+	mustNotExist(canonicalMissing)
+	if s := visited(t, canonicalMissing, ""); len(s) == 0 {
+		t.Fatalf("a not-yet-created path under the current user's own home %q was refused; visited nothing", canonicalMissing)
 	}
 }
