@@ -33,7 +33,19 @@ import (
 //
 // # What this measures, precisely
 //
-// Membership of types.AllRelationshipKinds() — the GO ENUM — and nothing else.
+// Membership of the GO VOCABULARY ACCESSORS — types.AllRelationshipKinds()
+// (structural) and, since #6773, types.AllDerivedRelationshipKinds()
+// (statistical) — and nothing else. A kind in EITHER is declared, matching
+// types.IsDeclaredRelationshipKind, which is what #6757 arm B's ledger calls.
+// This counter does NOT call it: it is per-edge and hot, and that predicate
+// rebuilds both slices per call. It builds the two lookup sets below from the
+// same accessors instead, and the agreement is asserted rather than assumed:
+// TestWritePathClassificationMatchesTheTypesPredicates checks this counter's
+// verdict against those predicates for every kind in both vocabularies. The two populations are counted SEPARATELY, into
+// Edges and DerivedEdges, because COMMIT_COUPLED alone was 27,407 of the
+// 27,645 edges this counter first reported and declaring a population is not a
+// reason to stop being able to see it.
+//
 // It is NOT "undeclared": a kind can be declared in an engine rule YAML's
 // `relationship_rules:` and still be absent from the Go enum. DECORATES is
 // exactly that case (internal/engine/rules/python/frameworks/fastapi.yaml:137),
@@ -78,6 +90,21 @@ type NonEnumKindReport struct {
 	// Kinds lists them, busiest first then by name, truncated to
 	// NonEnumKindListCap entries.
 	Kinds []NonEnumKind
+
+	// DerivedEdges is the total number of relationships written whose kind is
+	// in types.AllDerivedRelationshipKinds() — the statistical vocabulary
+	// (#6773). These are DECLARED, so they are not counted in Edges above and
+	// they do not make a graph unclean; they are counted separately because
+	// COMMIT_COUPLED alone was 99.1% of what this counter used to report, and
+	// declaring a population is not a reason to stop being able to see it.
+	// Never capped.
+	DerivedEdges int
+	// DerivedDistinctKinds is the number of distinct derived kinds written.
+	// Never capped — it may exceed len(DerivedKinds).
+	DerivedDistinctKinds int
+	// DerivedKinds lists them, busiest first then by name, truncated to
+	// NonEnumKindListCap entries — the same asymmetry Kinds holds.
+	DerivedKinds []NonEnumKind
 }
 
 // Clean reports that a write path ran this tally AND every relationship it
@@ -87,28 +114,48 @@ func (r NonEnumKindReport) Clean() bool { return r.Scanned && r.Edges == 0 }
 
 // KindNames returns the reported kind names in report order (truncated to the
 // cap, like Kinds).
-func (r NonEnumKindReport) KindNames() []string {
-	out := make([]string, 0, len(r.Kinds))
-	for _, k := range r.Kinds {
-		out = append(out, k.Kind)
-	}
-	return out
-}
+func (r NonEnumKindReport) KindNames() []string { return kindNames(r.Kinds) }
 
 // Summary renders a one-line human/agent-readable report, or "" when there is
 // nothing to say (clean, or never scanned). It names the kinds — a count alone
 // would only say that something is wrong.
 func (r NonEnumKindReport) Summary() string {
-	if r.Edges == 0 {
-		return ""
+	var clauses []string
+	if r.Edges > 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d relationship edge(s) across %d kind(s) absent from the relationship-kind vocabulary: %s",
+			r.Edges, r.DistinctKinds, strings.Join(r.KindNames(), ", "))
+		if r.DistinctKinds > len(r.Kinds) {
+			fmt.Fprintf(&b, " (+%d more)", r.DistinctKinds-len(r.Kinds))
+		}
+		clauses = append(clauses, b.String())
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%d relationship edge(s) across %d kind(s) absent from the relationship-kind enum: %s",
-		r.Edges, r.DistinctKinds, strings.Join(r.KindNames(), ", "))
-	if r.DistinctKinds > len(r.Kinds) {
-		fmt.Fprintf(&b, " (+%d more)", r.DistinctKinds-len(r.Kinds))
+	if r.DerivedEdges > 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d derived (statistical) relationship edge(s) across %d kind(s): %s",
+			r.DerivedEdges, r.DerivedDistinctKinds, strings.Join(kindNames(r.DerivedKinds), ", "))
+		if r.DerivedDistinctKinds > len(r.DerivedKinds) {
+			fmt.Fprintf(&b, " (+%d more)", r.DerivedDistinctKinds-len(r.DerivedKinds))
+		}
+		clauses = append(clauses, b.String())
 	}
-	return b.String()
+	return strings.Join(clauses, DerivedSummarySeparator)
+}
+
+// DerivedSummarySeparator joins Summary's two clauses. They are two
+// populations with two sets of totals, and the separator is exported so a
+// consumer (and this package's tests) can address one clause without matching
+// the other: a check that greps the whole line survives the two counts being
+// merged back into one, which is the regression #6773 guards against.
+const DerivedSummarySeparator = "; "
+
+// kindNames renders a kind list in report order.
+func kindNames(ks []NonEnumKind) []string {
+	out := make([]string, 0, len(ks))
+	for _, k := range ks {
+		out = append(out, k.Kind)
+	}
+	return out
 }
 
 // ApplyToSidecar copies this report into the graph-stats.json payload.
@@ -142,6 +189,17 @@ func (r NonEnumKindReport) ApplyToSidecar(side *graph.GraphStatsSidecar) {
 		}
 		side.RelationshipKindsNotInEnum = kinds
 	}
+	// #6773 — the derived population, on its own three fields. It is carried
+	// with exactly the same cap/count asymmetry, for the same reason.
+	side.RelationshipEdgesDerivedKind = r.DerivedEdges
+	side.RelationshipDistinctDerivedKinds = r.DerivedDistinctKinds
+	if len(r.DerivedKinds) > 0 {
+		derived := make(map[string]int, len(r.DerivedKinds))
+		for _, k := range r.DerivedKinds {
+			derived[k.Kind] = k.Edges
+		}
+		side.RelationshipDerivedKinds = derived
+	}
 }
 
 // enumKindSet is types.AllRelationshipKinds() as a lookup set.
@@ -157,6 +215,17 @@ var enumKindSet = sync.OnceValue(func() map[string]struct{} {
 	return set
 })
 
+// derivedKindSet is types.AllDerivedRelationshipKinds() as a lookup set
+// (#6773). Built exactly once, for the same reason as enumKindSet.
+var derivedKindSet = sync.OnceValue(func() map[string]struct{} {
+	all := types.AllDerivedRelationshipKinds()
+	set := make(map[string]struct{}, len(all))
+	for _, k := range all {
+		set[string(k)] = struct{}{}
+	}
+	return set
+})
+
 // nonEnumKindTally accumulates the non-enum kinds seen by one write.
 // A nil *nonEnumKindTally is a no-op observer, which is how the bounded probe
 // in graphFitsSingleBuilder opts out of being counted.
@@ -165,6 +234,11 @@ var enumKindSet = sync.OnceValue(func() map[string]struct{} {
 type nonEnumKindTally struct {
 	edges  int
 	counts map[string]int
+	// derivedEdges/derivedCounts are the same tally for the DERIVED
+	// vocabulary (#6773): declared, so not part of edges/counts, but counted
+	// rather than dropped.
+	derivedEdges  int
+	derivedCounts map[string]int
 }
 
 // observe records kind if — and only if — it is absent from the enum. Counting
@@ -175,6 +249,18 @@ func (t *nonEnumKindTally) observe(kind string) {
 		return
 	}
 	if _, inEnum := enumKindSet()[kind]; inEnum {
+		return
+	}
+	// #6773 — a derived kind IS declared, so it does not belong in the
+	// unknown tally; it gets its own, because the whole point of the decision
+	// was to keep the statistical population visible rather than to make a
+	// number go down.
+	if _, derived := derivedKindSet()[kind]; derived {
+		t.derivedEdges++
+		if t.derivedCounts == nil {
+			t.derivedCounts = make(map[string]int)
+		}
+		t.derivedCounts[kind]++
 		return
 	}
 	t.edges++
@@ -190,18 +276,36 @@ func (t *nonEnumKindTally) report() NonEnumKindReport {
 	if t == nil {
 		return NonEnumKindReport{}
 	}
-	rep := NonEnumKindReport{Scanned: true, Edges: t.edges, DistinctKinds: len(t.counts)}
-	for k, n := range t.counts {
-		rep.Kinds = append(rep.Kinds, NonEnumKind{Kind: k, Edges: n})
+	rep := NonEnumKindReport{
+		Scanned:              true,
+		Edges:                t.edges,
+		DistinctKinds:        len(t.counts),
+		DerivedEdges:         t.derivedEdges,
+		DerivedDistinctKinds: len(t.derivedCounts),
 	}
-	sort.Slice(rep.Kinds, func(i, j int) bool {
-		if rep.Kinds[i].Edges != rep.Kinds[j].Edges {
-			return rep.Kinds[i].Edges > rep.Kinds[j].Edges
-		}
-		return rep.Kinds[i].Kind < rep.Kinds[j].Kind
-	})
-	if len(rep.Kinds) > NonEnumKindListCap {
-		rep.Kinds = rep.Kinds[:NonEnumKindListCap]
-	}
+	rep.Kinds = rankKinds(t.counts)
+	rep.DerivedKinds = rankKinds(t.derivedCounts)
 	return rep
+}
+
+// rankKinds orders a tally busiest-first then by name and truncates the NAME
+// list at NonEnumKindListCap. The caller keeps the uncapped totals.
+func rankKinds(counts map[string]int) []NonEnumKind {
+	if len(counts) == 0 {
+		return nil
+	}
+	out := make([]NonEnumKind, 0, len(counts))
+	for k, n := range counts {
+		out = append(out, NonEnumKind{Kind: k, Edges: n})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Edges != out[j].Edges {
+			return out[i].Edges > out[j].Edges
+		}
+		return out[i].Kind < out[j].Kind
+	})
+	if len(out) > NonEnumKindListCap {
+		out = out[:NonEnumKindListCap]
+	}
+	return out
 }

@@ -94,10 +94,21 @@ import (
 	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/module"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // KindCommitCoupled is the relationship kind emitted by this pass.
-const KindCommitCoupled = "COMMIT_COUPLED"
+//
+// #6773: this is the shared types.RelationshipKindCommitCoupled, not a
+// package-local literal. It was a literal, and that is how the largest single
+// relationship kind in the graph by volume (99.1% of the edges #6757 arm C
+// found outside the vocabulary) stayed invisible to every consumer of the
+// relationship-kind vocabulary. Spelling it once means the emitted kind and
+// the declared kind cannot drift apart.
+//
+// It is DERIVED, not structural: types.AllDerivedRelationshipKinds() carries
+// it and types.AllRelationshipKinds() deliberately does not.
+const KindCommitCoupled = string(types.RelationshipKindCommitCoupled)
 
 // KindFile is the synthetic entity kind used as endpoints for commit-coupling
 // edges. We use "File" rather than reusing "Module" because module rollup is
@@ -310,7 +321,15 @@ func ApplyCommitCoupling(doc *graph.Document, repoPath string, cfg CommitCouplin
 			ID:     eid,
 			FromID: fromID,
 			ToID:   toID,
-			Kind:   KindCommitCoupled,
+			// Spelled as the shared types constant rather than the local
+			// alias so the static relationship-kind scan (internal/relkinds)
+			// can still RESOLVE this site: it reads source constants, and a
+			// local alias whose value is `string(types.X)` is not one, so
+			// routing the alias through internal/types would otherwise have
+			// made the busiest kind in the graph invisible to the very ledger
+			// that found it (#6773). Identical to KindCommitCoupled, which
+			// engine's commit_coupling_derived_kind_6773_test.go pins.
+			Kind: string(types.RelationshipKindCommitCoupled),
 		}.WithProperties(map[string]string{
 			"support":    strconv.Itoa(pair.support),
 			"confidence": strconv.FormatFloat(conf, 'f', 4, 64),

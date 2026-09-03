@@ -72,6 +72,17 @@ type DoctorRepoHealth struct {
 	// DistinctKindsNotInEnum is the uncapped number of distinct such kinds;
 	// it may exceed len(KindsNotInEnum).
 	DistinctKindsNotInEnum int
+
+	// DerivedKinds / EdgesDerivedKind / DistinctDerivedKinds are the same
+	// three numbers for the DERIVED (statistical) vocabulary #6773 declared —
+	// COMMIT_COUPLED and anything later added beside it. They are reported
+	// separately rather than folded into the three fields above: those edges
+	// are declared, so they are not a vocabulary gap, but they are 99% of the
+	// population the gap-counter used to report and doctor is where that was
+	// visible.
+	DerivedKinds         map[string]int
+	EdgesDerivedKind     int
+	DistinctDerivedKinds int
 	// RenameAddedSkipped is how many added entities that truncated pass never
 	// examined. Only meaningful when RenameTruncated is true.
 	RenameAddedSkipped int
@@ -319,6 +330,12 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 				rh.KindsNotInEnum = side.RelationshipKindsNotInEnum
 				rh.EdgesKindNotInEnum = side.RelationshipEdgesKindNotInEnum
 				rh.DistinctKindsNotInEnum = side.RelationshipDistinctKindsNotInEnum
+				// #6773 — read under the SAME scanned guard: the derived
+				// counts describe the same tally, and an unscanned sidecar
+				// knows nothing about either population.
+				rh.DerivedKinds = side.RelationshipDerivedKinds
+				rh.EdgesDerivedKind = side.RelationshipEdgesDerivedKind
+				rh.DistinctDerivedKinds = side.RelationshipDistinctDerivedKinds
 			}
 			if !side.ComputedAt.IsZero() {
 				rh.LastIndexed = side.ComputedAt
@@ -556,6 +573,13 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 			// status. It is printed because the count is otherwise invisible:
 			// the kinds are absent from the enum every consumer traverses by.
 			if line := KindsNotInEnumLine(r.EdgesKindNotInEnum, r.DistinctKindsNotInEnum, r.KindsNotInEnum); line != "" {
+				fmt.Fprintf(w, "    %-*s  %s\n", maxSlugLen, "", line)
+			}
+			// #6773 — the derived population, on its own line for the same
+			// reason: declaring COMMIT_COUPLED removed 99.1% of the count
+			// above, and a number that large must not simply vanish from the
+			// surface that reported it.
+			if line := DerivedKindsLine(r.EdgesDerivedKind, r.DistinctDerivedKinds, r.DerivedKinds); line != "" {
 				fmt.Fprintf(w, "    %-*s  %s\n", maxSlugLen, "", line)
 			}
 		}

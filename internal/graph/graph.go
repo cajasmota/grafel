@@ -656,7 +656,10 @@ type GraphStatsSidecar struct {
 	RelationshipKindsScanned bool `json:"relationship_kinds_scanned,omitempty"`
 
 	// RelationshipEdgesKindNotInEnum is how many relationships this index
-	// WROTE whose kind is absent from types.AllRelationshipKinds().
+	// WROTE whose kind is absent from BOTH relationship-kind vocabularies —
+	// types.AllRelationshipKinds() and, since #6773,
+	// types.AllDerivedRelationshipKinds(). Derived kinds are counted under
+	// RelationshipEdgesDerivedKind below instead, never here.
 	//
 	// The relationship vocabulary is enforced by nothing —
 	// types.IsValidRelationshipKind had zero non-test callers — so the enum
@@ -684,6 +687,28 @@ type GraphStatsSidecar struct {
 	// fbwriter.NonEnumKindListCap kinds so a pathological graph cannot bloat
 	// this file — the two counts above stay exact.
 	RelationshipKindsNotInEnum map[string]int `json:"relationship_kinds_not_in_enum,omitempty"`
+
+	// RelationshipEdgesDerivedKind is how many relationships this index wrote
+	// whose kind is in types.AllDerivedRelationshipKinds() — the DERIVED
+	// (statistical) vocabulary added by #6773.
+	//
+	// These are declared kinds, so they are NOT counted in
+	// RelationshipEdgesKindNotInEnum above. They get their own count because
+	// COMMIT_COUPLED alone was 27,407 of the 27,645 edges arm C reported as
+	// absent from the vocabulary — 99.1%. Declaring it removes it from that
+	// count, and if nothing else recorded it, the effect of the decision
+	// would be indistinguishable from deleting the measurement. Nothing about
+	// these edges is wrong: a derived edge is an inference from git history
+	// rather than a structural fact an extractor observed, and this is the
+	// number that says how much of the graph is that.
+	RelationshipEdgesDerivedKind int `json:"relationship_edges_derived_kind,omitempty"`
+	// RelationshipDistinctDerivedKinds is the number of DISTINCT such kinds.
+	// Never capped, so it may exceed len(RelationshipDerivedKinds).
+	RelationshipDistinctDerivedKinds int `json:"relationship_distinct_derived_kinds,omitempty"`
+	// RelationshipDerivedKinds maps each distinct derived kind to the number
+	// of edges that carried it, truncated to the busiest
+	// fbwriter.NonEnumKindListCap kinds while the two counts above stay exact.
+	RelationshipDerivedKinds map[string]int `json:"relationship_derived_kinds,omitempty"`
 }
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.

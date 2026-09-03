@@ -29,11 +29,21 @@ type declaredRelationshipKind struct {
 // the last explicit type is carried forward for exactly that case.
 func declaredRelationshipKindsFromSource(t *testing.T) []declaredRelationshipKind {
 	t.Helper()
+	return declaredRelationshipKindsIn(t, kindsSourceFile)
+}
+
+// declaredRelationshipKindsIn is the same walk over an arbitrary file of this
+// package. #6773 added a SECOND vocabulary file (derivedKindsSourceFile), and
+// its constants need the same completeness guard as kinds.go's — pointing the
+// existing walk at it is what stops the derived vocabulary being the one place
+// a RelationshipKind constant can be declared and never registered.
+func declaredRelationshipKindsIn(t *testing.T, srcFile string) []declaredRelationshipKind {
+	t.Helper()
 
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, kindsSourceFile, nil, 0)
+	file, err := parser.ParseFile(fset, srcFile, nil, 0)
 	if err != nil {
-		t.Fatalf("parse %s: %v", kindsSourceFile, err)
+		t.Fatalf("parse %s: %v", srcFile, err)
 	}
 
 	var out []declaredRelationshipKind
