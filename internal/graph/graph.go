@@ -551,6 +551,23 @@ type GraphStatsSidecar struct {
 	Modularity         float64   `json:"modularity"`
 	GodNodes           int       `json:"god_nodes"`
 	ArticulationPoints int       `json:"articulation_points"`
+	// KindVocabularyVersion is types.KindVocabularyVersion as of the build
+	// that produced the accompanying graph (#6779) — the version of the
+	// entity-kind VOCABULARY the stored entities are spelled in.
+	//
+	// This sidecar is the ONLY place it can live. Nothing in the graph itself
+	// records which vocabulary its kind strings belong to: after a rename the
+	// old graph still loads, still validates, and still answers a query for
+	// the new kind with an empty result — indistinguishable from "there is
+	// nothing of that kind here". Stamping the version alongside the counts is
+	// what lets a reader tell those two apart.
+	//
+	// Zero / absent means the graph was written before this field existed and
+	// is therefore on an OLDER vocabulary — deliberately NOT "unknown, assume
+	// fine". omitempty is safe here because 0 is never a valid stamp:
+	// KindVocabularyVersion starts at 1.
+	KindVocabularyVersion int `json:"kind_vocabulary_version,omitempty"`
+
 	// RuntimeMS is the wall-clock duration of the graph-algorithm pass
 	// (Pass 4: Louvain / PageRank / articulation). Its meaning is unchanged
 	// since it was introduced; the extract/link phase timings below are

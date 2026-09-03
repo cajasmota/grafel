@@ -1674,6 +1674,9 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		TotalEntities:      doc.Stats.Entities,
 		TotalRelationships: doc.Stats.Relationships,
 		ExtractMS:          time.Since(t0).Milliseconds(),
+
+		// #6779 — provisional; the carry-forward below may lower it.
+		KindVocabularyVersion: types.KindVocabularyVersion,
 	}
 	// #6757 arm C — FRESH, not carried forward (unlike UnsupportedExtensions
 	// below). This pass re-serializes the WHOLE document, so every
@@ -1691,6 +1694,21 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// than wrong, and the next full index refreshes it.
 	if priorSide, sErr := graph.LoadSidecar(filepath.Dir(fbPath)); sErr == nil && priorSide != nil {
 		side.UnsupportedExtensions = priorSide.UnsupportedExtensions
+
+		// #6779 — the OLDEST vocabulary any entity in the written graph was
+		// spelled in, which is NOT this build's whenever the prior graph was
+		// older. Unlike the non-enum tally above, this pass does not respell
+		// anything it did not re-extract: entities from unchanged files are
+		// carried forward verbatim, still spelled by whichever build first
+		// wrote them. Stamping this build's version on that mixture would
+		// clear the stale-vocabulary warning WITHOUT having migrated a single
+		// old kind — the daemon runs this path on every watched edit, so one
+		// keystroke in one file would silence the report for the whole repo.
+		// Only a full reindex re-extracts everything and can legitimately
+		// claim the current vocabulary.
+		if priorSide.KindVocabularyVersion < side.KindVocabularyVersion {
+			side.KindVocabularyVersion = priorSide.KindVocabularyVersion
+		}
 	}
 	endSide := tr.span("sidecar-write")
 	serr := graph.WriteSidecar(fbPath, side, false)
