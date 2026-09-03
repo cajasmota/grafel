@@ -73,9 +73,11 @@ import (
 // undeclaredKindsDeferredMax and TestUndeclaredKindsDeferredOnlyShrinks.
 //
 // Every entry was produced by the live scan at 278301296; none was copied from
-// the issue. The issue's own count was 19 and the scan finds 22 — see
-// undeclaredFamily's "engine_workflow" and "engine_coupling" notes for the
-// four the issue's manual enumeration missed.
+// the issue. The issue's own count was 19 and the scan found 22 — see
+// undeclaredFamily's "engine_workflow" note for three of the four the issue's
+// manual enumeration missed. The fourth was COMMIT_COUPLED, which #6773
+// declared in the derived vocabulary and removed from this ledger, taking the
+// count to 21.
 var undeclaredKindsDeferred = map[string]string{
 	// internal/custom/java — patterns_dispatch.go copies Relationship.
 	// RelationshipType verbatim into graph.Relationship.Kind.
@@ -102,8 +104,13 @@ var undeclaredKindsDeferred = map[string]string{
 	"STEPFUNCTION_STEP_INVOKES": "engine_workflow", // internal/engine/workflow_edges.go:969 (4 sites)
 	"EXECUTES_ACTIVITY":         "engine_workflow", // internal/engine/workflow_dag_edges.go:196 (2 sites)
 
-	// internal/engine commit coupling — also missed by the issue's manual scan.
-	"COMMIT_COUPLED": "engine_coupling", // internal/engine/commit_coupling_edges.go:313
+	// #6773 removed COMMIT_COUPLED from this ledger. It was 27,407 of the
+	// 27,645 edges arm C counted at the write path — 99.1% of the population,
+	// from this one site — and it is now DECLARED, in the separate DERIVED
+	// vocabulary types.AllDerivedRelationshipKinds(). "Declared" below means
+	// EITHER vocabulary (types.IsDeclaredRelationshipKind), which is the same
+	// definition arm C's write-path counter uses; the counter reports the
+	// derived population under its own separate count rather than dropping it.
 
 	// Rule YAML — engine/detector.go compiles rr.Relationship unvalidated and
 	// writes it straight into RelationshipRecord.Kind.
@@ -128,7 +135,7 @@ var undeclaredKindsDeferred = map[string]string{
 //   - The ledger SHRINKS (a kind was declared, which is the point) → this fires
 //     and requires the constant to come down with it, so the bar is never left
 //     slack for a later append to slip under.
-const undeclaredKindsDeferredMax = 22
+const undeclaredKindsDeferredMax = 21
 
 // undeclaredFamily explains each family tag. A ledger entry without a stated
 // reason is not a decision, it is a silence.
@@ -158,11 +165,6 @@ var undeclaredFamily = map[string]struct {
 		Why: "workflow / Step Functions edges, same package-local-const shape as engine_flow. NOT " +
 			"in the issue's enumeration — its scan was manual and these three were missed, which " +
 			"is precisely why the ledger is derived from a scan rather than transcribed.",
-	},
-	"engine_coupling": {
-		Origin: relkinds.OriginGo,
-		Why: "commit-coupling edges (internal/engine/commit_coupling_edges.go). Also missed by the " +
-			"issue's manual enumeration.",
 	},
 	"rule_yaml": {
 		Origin: relkinds.OriginRuleYAML,
@@ -209,8 +211,15 @@ func TestNoUndeclaredRelationshipKinds(t *testing.T) {
 		}
 	}
 
+	// "Declared" is the UNION of the structural and derived vocabularies
+	// (#6773). Arm C's write-path counter classifies with the same predicate,
+	// so a kind cannot be blessed by one arm and reported as unknown by the
+	// other.
 	declared := map[string]bool{}
 	for _, k := range types.AllRelationshipKinds() {
+		declared[string(k)] = true
+	}
+	for _, k := range types.AllDerivedRelationshipKinds() {
 		declared[string(k)] = true
 	}
 
@@ -222,8 +231,8 @@ func TestNoUndeclaredRelationshipKinds(t *testing.T) {
 			// Cross-check: the accessor and the predicate must agree, or the
 			// ledger is measured against a different vocabulary than the one
 			// Arm C would enforce with.
-			if !types.IsValidRelationshipKind(s.Kind) {
-				t.Errorf("%s: AllRelationshipKinds() contains %q but IsValidRelationshipKind rejects it",
+			if !types.IsDeclaredRelationshipKind(s.Kind) {
+				t.Errorf("%s: the vocabulary accessors contain %q but IsDeclaredRelationshipKind rejects it",
 					s, s.Kind)
 			}
 			continue

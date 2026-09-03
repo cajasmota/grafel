@@ -1026,7 +1026,10 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			// MCP, the dashboard and `doctor`, which read the graph.
 			nonEnumKinds = writtenNonEnumKinds
 			if sum := nonEnumKinds.Summary(); sum != "" {
-				fmt.Fprintf(os.Stderr, "grafel: relationship kinds not in the enum: %s\n", sum)
+				// #6773 — Summary() now carries TWO populations (kinds the
+				// vocabulary does not know, and declared-derived kinds), so
+				// the prefix no longer claims everything it prints is a gap.
+				fmt.Fprintf(os.Stderr, "grafel: relationship-kind report: %s\n", sum)
 			}
 			fmt.Fprintf(os.Stderr, "grafel: wrote %s\n", fbPath)
 			// #6207 — the manifest is committed HERE, and only here: the graph
