@@ -275,11 +275,19 @@ func classifyDir(dir, home, homeReal string, refs homeReferences) dirClass {
 		return dirClass{}
 	}
 	resolved := resolveOrSelf(dir)
-	// Another user's home is checked first and on BOTH spellings: a symlink
-	// outside every home that resolves into one is the same read. This costs
-	// no filesystem work of its own — resolved is already in hand and
-	// underOtherUserHome is purely lexical.
-	if underOtherUserHome(dir, refs) || underOtherUserHome(resolved, refs) {
+	// Another user's home is checked first, and on the RESOLVED spelling only.
+	// A symlink outside every home that resolves into one is the same read, so
+	// resolving is what makes the class fire at all (a literal-only check was
+	// inert behind /var → /private/var). Resolving is also what makes it stop
+	// firing on the user's OWN home reached under a different name — a
+	// Windows 8.3 short name, say — because resolveOrSelf folds every alias to
+	// the one path the read actually lands on. ORing the literal spelling in
+	// as well would restore the false positive without buying any refusal the
+	// resolved check misses: refs holds both spellings of every home and
+	// container, and resolveOrSelf falls back to the literal path when it
+	// cannot resolve. This costs no filesystem work of its own — resolved is
+	// already in hand and underOtherUserHome is purely lexical.
+	if underOtherUserHome(resolved, refs) {
 		return dirClass{otherHome: true}
 	}
 	if !mayBeProtected(dir, resolved, home, homeReal) {

@@ -20,8 +20,19 @@ import (
 // produced.
 //
 // Every fixture is a TempDir with a synthetic /Users-like layout, pointed at by
-// OverrideHomeReferences. No test here reads, enumerates or stats anything
-// under a real home directory.
+// OverrideHomeReferences, and no test here reads or enumerates the CONTENTS of
+// a real home directory. Two qualifications, because an unqualified claim here
+// would be prose asserting more than the tests do:
+//
+//   - On Windows t.TempDir() lives inside the running user's home
+//     (C:\Users\<user>\AppData\Local\Temp\...), so a climb out of a
+//     fixture necessarily lstats real ancestors. That is also why every
+//     fixture passes RealUIDHomeForTest() alongside its synthetic home — see
+//     that function, and #6787.
+//   - TestOtherHome_NoHomeReferenceStandsDown classifies a path under the
+//     PLATFORM container (/Users, /home, C:\Users) because a synthetic
+//     container cannot exercise the stand-down. The name it uses belongs to no
+//     user and is never created; the climb stops at the first level.
 
 // usersLayout builds <tmp>/Users/{names...}, makes the FIRST name the current
 // user's home, and returns the homes by name. The override is torn down when
@@ -33,7 +44,7 @@ func usersLayout(t *testing.T, names ...string) map[string]string {
 	for _, n := range names {
 		homes[n] = mk(t, filepath.Join(container, n))
 	}
-	t.Cleanup(OverrideHomeReferences(homes[names[0]]))
+	t.Cleanup(OverrideHomeReferences(homes[names[0]], RealUIDHomeForTest()))
 	return homes
 }
 
@@ -201,7 +212,7 @@ func TestOtherHome_SystemAndServiceHomesDoNotCreateContainers(t *testing.T) {
 	}
 	for _, home := range []string{"/root", "/var/root", "/var/lib/postgresql", "/usr/local/nobody"} {
 		t.Run(home, func(t *testing.T) {
-			t.Cleanup(OverrideHomeReferences(home))
+			t.Cleanup(OverrideHomeReferences(home, RealUIDHomeForTest()))
 			start := mk(t, filepath.Join(t.TempDir(), "srv", "checkout", "pkg"))
 			if s := visited(t, start, ""); len(s) == 0 {
 				t.Fatalf("a home of %q made %q a home container: climb from %q visited nothing",
@@ -218,7 +229,7 @@ func TestOtherHome_SystemAndServiceHomesDoNotCreateContainers(t *testing.T) {
 func TestOtherHome_NotAHomeNamesAreExempt(t *testing.T) {
 	container := mk(t, filepath.Join(t.TempDir(), "Users"))
 	home := mk(t, filepath.Join(container, "alice"))
-	t.Cleanup(OverrideHomeReferences(home))
+	t.Cleanup(OverrideHomeReferences(home, RealUIDHomeForTest()))
 
 	var exempt []string
 	switch runtime.GOOS {
@@ -250,7 +261,7 @@ func TestOtherHome_NotAHomeNamesAreExempt(t *testing.T) {
 func TestOtherHome_UsersContainerHoldsOnlyPlausibleNames(t *testing.T) {
 	root := t.TempDir()
 	home := mk(t, filepath.Join(root, "data", "alice"))
-	t.Cleanup(OverrideHomeReferences(home))
+	t.Cleanup(OverrideHomeReferences(home, RealUIDHomeForTest()))
 
 	start := mk(t, filepath.Join(root, "data", "shared-ci", "proj"))
 	if s := visited(t, start, home); len(s) == 0 {
@@ -268,5 +279,178 @@ func TestClimb_RefusesUnderAnotherUsersProtectedTree(t *testing.T) {
 
 	if s := visited(t, start, homes["alice"]); len(s) != 0 {
 		t.Fatalf("climb inside another user's Documents visited %v", s)
+	}
+}
+
+// TestClimb_OwnHomeUnderASecondSpellingIsStillOurs is the #6787 regression
+// pin, and the reason Windows CI went red across five packages.
+//
+// AXIS VARIED: the SPELLING of the path used to reach the current user's own
+// home — its canonical name, versus a second name for the SAME directory that
+// sits in the same home container and does not match the reference set
+// textually. HELD CONSTANT: the layout, the reference set, the foreign home,
+// and the climb's home bound.
+//
+// On Windows the second spelling is the 8.3 short name the filesystem itself
+// hands out: %TEMP% is C:\Users\RUNNER~1\AppData\Local\Temp\... while
+// os/user reports C:\Users\runneradmin, so the literal spelling of the user's
+// OWN home read as another user's and the at-or-under rule then refused
+// everything beneath it. That mechanism needs Windows to observe, and this
+// test does NOT reproduce it — a symlink is not a short name. What it does
+// reproduce is the CLASS: one directory, two names, only one of them in the
+// reference set. The fix is the same for both, because classifyDir now decides
+// on the EvalSymlinks-resolved spelling, and on Windows EvalSymlinks folds the
+// short name to the long one (toNorm/normBase, path/filepath).
+//
+// OVER-FIRING CONTROL is in the same fixture: a genuinely foreign home,
+// reached by its own canonical name, must STILL be refused. Widening what
+// counts as "ours" is precisely the direction that can silently disable this
+// boundary, so the widening and the thing it must not touch are asserted
+// together.
+func TestClimb_OwnHomeUnderASecondSpellingIsStillOurs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privilege on Windows; the native second spelling there is the 8.3 short name")
+	}
+	homes := usersLayout(t, "alice", "bob")
+	container := filepath.Dir(homes["alice"])
+
+	// A second name for alice's home, sitting in the same container, whose
+	// text matches neither spelling held in the reference set. Structurally
+	// indistinguishable from a sibling user's home until it is resolved.
+	alias := filepath.Join(container, "alice-second-spelling")
+	if err := os.Symlink(homes["alice"], alias); err != nil {
+		t.Skipf("symlink unsupported here: %v", err)
+	}
+	proj := mk(t, filepath.Join(homes["alice"], "proj"))
+	start := filepath.Join(alias, "proj")
+
+	seen := visited(t, start, "")
+	if len(seen) == 0 {
+		t.Fatalf("the current user's OWN home %q, reached as %q, was classified as another user's: the climb from %q visited nothing. A path can name one directory in more than one way (a symlink here; a Windows 8.3 short name in #6787) and the identity comparison must resolve before it compares.",
+			homes["alice"], alias, start)
+	}
+	// And it must actually reach alice's own tree, not merely visit the start.
+	// The climb reports the LITERAL path it walked, so the marker is matched
+	// after resolving — the point of the test is that the two spell the same
+	// directory.
+	if !ClimbWithHome(start, "", func(dir string) bool { return samePath(resolveOrSelf(dir), resolveOrSelf(proj)) }) {
+		t.Fatalf("climb from %q never reached %q inside the current user's own home", start, proj)
+	}
+
+	// OVER-FIRING CONTROL: bob is a different user, named canonically. The
+	// widening above must not have reached him.
+	if s := visited(t, mk(t, filepath.Join(homes["bob"], "proj")), ""); len(s) != 0 {
+		t.Fatalf("resolving the identity comparison disabled the boundary: a climb inside another user's home %q visited %v", homes["bob"], s)
+	}
+	// ... nor to a foreign home reached through a symlink of its own, which
+	// is the D1 direction: resolving must fold an alias ONTO its target, not
+	// wave the alias through.
+	bobAlias := filepath.Join(container, "not-obviously-bob")
+	if err := os.Symlink(homes["bob"], bobAlias); err == nil {
+		if s := visited(t, filepath.Join(bobAlias, "proj"), ""); len(s) != 0 {
+			t.Fatalf("a foreign home reached as %q was let through; visited %v", bobAlias, s)
+		}
+	}
+}
+
+// TestOtherHome_NoHomeReferenceStandsDown pins the fail-direction decision
+// documented in otherhome.go under "When the current user's home cannot be
+// determined at all". Before #6787 the package doc asserted that an
+// unresolvable home is "a narrowing of this boundary, never a widening of it"
+// and NO test observed that claim — the dominant defect class in this repo.
+// The claim was true and useless: the narrowing is TOTAL, because with no
+// left-hand side for "not MY home" every home under a platform container,
+// including the user's own, is somebody else's.
+//
+// AXIS VARIED: whether a reference for the current user's home exists at all.
+// HELD CONSTANT: the path under test, the platform's conventional home
+// container, and the climb bound.
+//
+// The path is deliberately under the PLATFORM container (/Users, /home,
+// C:\Users) rather than a synthetic one: with no reference, the synthetic
+// container is not derived either, so a TempDir layout would pass this test
+// without the class standing down at all — vacuously. Nothing is created and
+// nothing is enumerated; the name does not exist and the climb stops at the
+// first level.
+func TestOtherHome_NoHomeReferenceStandsDown(t *testing.T) {
+	containers := platformHomeContainers()
+	if len(containers) == 0 {
+		t.Skip("no conventional home container on this platform")
+	}
+	// A name no user has. Never created, never read.
+	stranger := filepath.Join(containers[0], "grafel-6787-no-such-user", "proj")
+
+	reached := func() bool {
+		return ClimbWithHome(stranger, "", func(dir string) bool { return samePath(dir, stranger) })
+	}
+
+	// WITH a reference (some other home entirely): stranger is a child of a
+	// conventional container and is not ours, so it is refused. This is the
+	// control that keeps the assertion below from being vacuous.
+	restore := OverrideHomeReferences(filepath.Join(containers[0], "grafel-6787-me"))
+	if reached() {
+		restore()
+		t.Fatalf("with a home reference, %q under the conventional container %q was NOT refused — the stand-down assertion below would prove nothing", stranger, containers[0])
+	}
+	restore()
+
+	// WITHOUT any reference: the class has no evidence and must stand down
+	// rather than refuse the user their own machine.
+	t.Cleanup(OverrideHomeReferences())
+	if !reached() {
+		t.Fatalf("with NO home reference the other-user-home class refused %q. It cannot tell the user's own home from anyone else's here, and refusing means grafel declines to index the user's own repositories (#6787). See otherhome.go, \"When the current user's home cannot be determined at all\".", stranger)
+	}
+}
+
+// TestOtherHome_EveryReferenceInTheSetIsHonoured pins the property the #6787
+// Windows fix rests on: the reference set is a SET, and every member of it
+// contributes — its own identity AND the container it sits in. A fix that
+// honoured only the first entry would look correct in every fixture that
+// passes one home and fail exactly where the fix is needed.
+//
+// WHAT THIS DOES NOT REPRODUCE, stated plainly: the Windows topology itself.
+// There, t.TempDir() is C:\Users\<user>\AppData\Local\Temp\..., so the
+// process's real home ENCLOSES the fixture and is a child of the
+// platform-conventional container C:\Users — which is why a fixture that
+// referenced only its synthetic home turned the real home into "another
+// user's" and refused everything beneath the temp root. That shape needs the
+// container to be the platform's own absolute path, so it cannot be built in a
+// TempDir on darwin or linux. It is asserted here through the property, not
+// the topology.
+//
+// AXIS VARIED: how many homes the reference set holds (one, versus the same
+// one plus a second in a DIFFERENT container). HELD CONSTANT: both layouts,
+// the start path, and the climb bound.
+func TestOtherHome_EveryReferenceInTheSetIsHonoured(t *testing.T) {
+	root := t.TempDir()
+	first := mk(t, filepath.Join(root, "a", "Users", "alice"))
+	second := mk(t, filepath.Join(root, "b", "Users", "me"))
+	// A sibling of the SECOND home, in the second home's container.
+	stranger := mk(t, filepath.Join(root, "b", "Users", "bob", "proj"))
+
+	// CONTROL — with only the first home referenced, the second container is
+	// never derived, so bob is not recognised as anybody's home and the climb
+	// runs. Without this the assertion below could pass on a boundary that
+	// refuses nothing.
+	restore := OverrideHomeReferences(first)
+	if s := visited(t, stranger, ""); len(s) == 0 {
+		restore()
+		t.Fatalf("with only %q referenced, %q sits in an underived container and the climb should run; visited nothing", first, stranger)
+	}
+	restore()
+
+	// With BOTH referenced, the second reference contributes its container and
+	// bob becomes another user's home. A fix that kept only homes[0] leaves
+	// this climb running.
+	t.Cleanup(OverrideHomeReferences(first, second))
+	if s := visited(t, stranger, ""); len(s) != 0 {
+		t.Fatalf("the second reference %q was dropped: its container %q was never derived, so another user's home %q was read; visited %v",
+			second, filepath.Dir(second), filepath.Dir(stranger), s)
+	}
+
+	// UNDER-FIRING CONTROL: honouring the second reference must not refuse it.
+	own := mk(t, filepath.Join(second, "proj", "pkg"))
+	if s := visited(t, own, ""); len(s) == 0 {
+		t.Fatalf("the current user's own home %q was refused once a second reference was held; climb from %q visited nothing", second, own)
 	}
 }

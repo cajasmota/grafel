@@ -90,7 +90,7 @@ func TestGroupFromCWD_OutsideHomeStillClimbs(t *testing.T) {
 	root, home := fakeHomeUnder(t, "Users", "me")
 	// $HOME is no longer consulted by the other-user-home class (it can be
 	// laundered), so the fixture's home is injected through the seam.
-	t.Cleanup(pathboundary.OverrideHomeReferences(home))
+	t.Cleanup(pathboundary.OverrideHomeReferences(home, pathboundary.RealUIDHomeForTest()))
 
 	writeGroupMarker(t, root, "workspace-root")
 

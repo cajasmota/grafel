@@ -44,10 +44,60 @@ import (
 // Today ClimbWithHome's only production caller is Climb, so nothing exercises
 // that path, but the class does not rely on that staying true.
 //
-// When the password database has no entry for the uid (a cgo-less static
-// binary in a container with no /etc/passwd row) the real-uid home is empty
-// and only the platform-conventional containers below remain in force. That is
-// a narrowing of this boundary, never a widening of it.
+// # When the current user's home cannot be determined at all
+//
+// The class is DISABLED — it refuses nothing. This is the one place the
+// boundary deliberately fails OPEN, and the reasoning is worth stating because
+// an earlier revision of this doc claimed the opposite ("a narrowing of this
+// boundary, never a widening of it") with no test behind the claim, and the
+// claim was wrong about the consequence.
+//
+// The class answers ONE question: "is this directory somebody else's home?"
+// It answers it by elimination — a child of a home container that is not MY
+// home. With no reference for "my home" the elimination has no left-hand side,
+// so on the platform-conventional containers below (/Users, /home,
+// C:\Users) EVERY home becomes "somebody else's", the user's own included.
+// Failing closed there is a narrowing, yes — a TOTAL one: grafel refuses to
+// index the user's own repositories on their own machine. Windows CI proved
+// this is not hypothetical (#6787): with the reference set holding a spelling
+// the incoming path did not use, 26 tests across five packages failed because
+// the boundary refused everything under the temp root.
+//
+// The two questions must fail in OPPOSITE directions:
+//
+//   - "is this a FOREIGN home?" — fail closed. Refusing wrongly costs an
+//     un-indexed directory; allowing wrongly reads another user's files.
+//   - "is this MY OWN home?" — fail open. Refusing wrongly denies the user
+//     their own files, and the harm prevented is zero, because the files are
+//     theirs.
+//
+// With no reference the second question is unanswerable, so the class stands
+// down and grafel behaves exactly as it did before #6548 requirement 3 — no
+// new exposure is invented, an existing guarantee is simply not offered on a
+// host where its premise does not hold. TestOtherHome_NoHomeReferenceStandsDown
+// pins it, in both directions.
+//
+// OWNER NOTE: this is the fail-direction ruling implied by, but not stated in,
+// the 2026-09-02 decision. The residual exposure is real and bounded: a host
+// with no password-database entry for the running uid (a cgo-less static
+// binary in a scratch container) gets no other-user-home boundary. Reverting
+// to fail-closed is a one-line change in isOtherUserHome plus the test above.
+//
+// # Spellings: one directory, many names
+//
+// A directory can be reached by more than one path — a symlink, macOS's
+// /var → /private/var, and on Windows the 8.3 short name (C:\Users\RUNNER~1
+// for C:\Users\runneradmin, which %TEMP% commonly hands out). The reference
+// set cannot enumerate them, so the CLASSIFIED path is canonicalised instead
+// and the comparison happens in canonical space: classifyDir tests the
+// EvalSymlinks-resolved spelling, and only that one. Testing the literal
+// spelling as well — an OR, which is what #6787 shipped — makes the refusal
+// win whenever ANY alias of the user's own home looks foreign, which is a
+// false positive with no upside: the read lands at the canonical location, so
+// the canonical location is what decides. On Windows filepath.EvalSymlinks
+// normalises every component through FindFirstFile (toNorm/normBase in
+// path/filepath/symlink_windows.go), which is what folds RUNNER~1 back to
+// runneradmin.
 //
 // # What counts as another user's home
 //
@@ -102,35 +152,67 @@ type homeReferences struct {
 	containers []string
 }
 
-// realUIDHome is the single reference, as a swappable func so a test can
-// construct a synthetic /Users-like layout — and so the case where the real
-// uid and $HOME DISAGREE can be built and asserted on.
+// currentUserHomes answers "which directories are the current user's home?".
+// In production it is the real uid and nothing else; it is a swappable func so
+// a test can construct a synthetic /Users-like layout — and so the case where
+// the real uid and $HOME DISAGREE, and the case where there is NO reference at
+// all, can both be built and asserted on.
 var (
-	homeRefsMu  sync.RWMutex
-	realUIDHome = func() string {
-		u, err := user.Current()
-		if err != nil || u == nil || u.HomeDir == "" {
-			return ""
+	homeRefsMu       sync.RWMutex
+	currentUserHomes = func() []string {
+		if h := realUIDHome(); h != "" {
+			return []string{h}
 		}
-		return filepath.Clean(u.HomeDir)
+		return nil
 	}
 )
 
-// OverrideHomeReferences replaces the current user's home and returns a restore
-// func. It is a TEST SEAM, exported because the killing tests for this boundary
-// must drive REAL climbers in OTHER packages (gitmeta.HasGitDirInTree,
-// mcp.groupFromCWD) against a synthetic layout in a TempDir — unit-testing the
-// predicate in this package does not pin the call site (#6533). It is also the
-// only way a test can point the boundary somewhere safe, now that $HOME is not
-// consulted. Production code must never call it.
-func OverrideHomeReferences(realUID string) (restore func()) {
+// realUIDHome resolves the running process's uid through the platform password
+// database (getpwuid on darwin/linux, the token's profile directory on
+// Windows). It never consults the environment. Empty when there is no entry.
+func realUIDHome() string {
+	u, err := user.Current()
+	if err != nil || u == nil || u.HomeDir == "" {
+		return ""
+	}
+	return filepath.Clean(u.HomeDir)
+}
+
+// RealUIDHomeForTest exposes realUIDHome so a fixture can keep the running
+// process's ACTUAL home in the reference set alongside its synthetic one.
+//
+// It exists because of a platform asymmetry that is easy to miss and cost a
+// full Windows CI red (#6787): on Windows t.TempDir() lives INSIDE the running
+// user's home (C:\Users\<user>\AppData\Local\Temp\...), so a fixture that
+// replaces the reference set with only its synthetic <tmp>/Users/alice turns
+// the process's real home — an ANCESTOR of the fixture — into "another user's
+// home", and every climb under the temp root is refused. On darwin
+// (/var/folders) and linux (/tmp) the temp root is outside every home
+// container and the omission is invisible. Production must never call this.
+func RealUIDHomeForTest() string { return realUIDHome() }
+
+// OverrideHomeReferences REPLACES the set of directories treated as the current
+// user's home and returns a restore func. It is a TEST SEAM, exported because
+// the killing tests for this boundary must drive REAL climbers in OTHER
+// packages (gitmeta.HasGitDirInTree, mcp.groupFromCWD) against a synthetic
+// layout in a TempDir — unit-testing the predicate in this package does not pin
+// the call site (#6533). It is also the only way a test can point the boundary
+// somewhere safe, now that $HOME is not consulted. Production must never call
+// it.
+//
+// It replaces rather than adds, so that calling it with NO arguments builds the
+// no-password-database case exactly. A fixture whose layout sits under a real
+// temp root should pass RealUIDHomeForTest() alongside its synthetic home; see
+// that function for why.
+func OverrideHomeReferences(homes ...string) (restore func()) {
+	list := append([]string(nil), homes...)
 	homeRefsMu.Lock()
-	prev := realUIDHome
-	realUIDHome = func() string { return cleanOrEmpty(realUID) }
+	prev := currentUserHomes
+	currentUserHomes = func() []string { return list }
 	homeRefsMu.Unlock()
 	return func() {
 		homeRefsMu.Lock()
-		realUIDHome = prev
+		currentUserHomes = prev
 		homeRefsMu.Unlock()
 	}
 }
@@ -145,7 +227,7 @@ func cleanOrEmpty(p string) string {
 // resolveHomeReferences builds the reference set described above.
 func resolveHomeReferences() homeReferences {
 	homeRefsMu.RLock()
-	realFn := realUIDHome
+	homesFn := currentUserHomes
 	homeRefsMu.RUnlock()
 
 	var refs homeReferences
@@ -169,12 +251,22 @@ func resolveHomeReferences() homeReferences {
 		appendUnique(list, resolveOrSelf(cleanOrEmpty(p)))
 	}
 
-	home := cleanOrEmpty(realFn())
-	if home != "" {
+	for _, h := range homesFn() {
+		home := cleanOrEmpty(h)
+		if home == "" {
+			continue
+		}
 		bothSpellings(&refs.current, home)
 		if parent := filepath.Dir(home); isPlausibleHomeContainer(parent) {
 			bothSpellings(&refs.containers, parent)
 		}
+	}
+	// With no reference for "my home" the class stands down entirely — see
+	// "When the current user's home cannot be determined at all" above. Not
+	// adding the platform containers is what makes isOtherUserHome's
+	// container check answer false for every directory on the machine.
+	if len(refs.current) == 0 {
+		return homeReferences{}
 	}
 	for _, c := range platformHomeContainers() {
 		bothSpellings(&refs.containers, c)

@@ -33,7 +33,7 @@ func TestHasGitDirInTree_RefusesAnotherUsersHome(t *testing.T) {
 	alice := mkdir(t, filepath.Join(users, "alice"))
 	bob := mkdir(t, filepath.Join(users, "bob"))
 
-	restore := pathboundary.OverrideHomeReferences(alice)
+	restore := pathboundary.OverrideHomeReferences(alice, pathboundary.RealUIDHomeForTest())
 	defer restore()
 
 	repo := mkdir(t, filepath.Join(bob, "proj"))
@@ -64,7 +64,7 @@ func TestHasGitDirInTree_SiblingHomeIsNotAPrefixMatch(t *testing.T) {
 	alice := mkdir(t, filepath.Join(users, "alice"))
 	alice2 := mkdir(t, filepath.Join(users, "alice2"))
 
-	restore := pathboundary.OverrideHomeReferences(alice)
+	restore := pathboundary.OverrideHomeReferences(alice, pathboundary.RealUIDHomeForTest())
 	defer restore()
 
 	repo := mkdir(t, filepath.Join(alice2, "proj"))
