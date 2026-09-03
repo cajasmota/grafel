@@ -752,33 +752,137 @@ relationship_rules:
 custom_extractors: []
 `
 
-// Test6666_TerminatorWithGroupZeroIsRejectedAtLoad is review defect D2.
-// With source_group 0 the source "capture" ends where the match ends, so the
-// span between the captures is inverted and joinSpanCrosses returns false
-// unconditionally — a guard that silently does nothing, with green tests.
+// targetGroupZeroTerminatorYAML is the MIRROR of groupZeroTerminatorYAML: the
+// TARGET is group 0 and the source is a real capture. The no-op reaches
+// joinSpanCrosses by the other path — tgtS is the match START, so
+// `lo, hi = srcE, tgtS` gives lo > hi, while the reversed branch
+// (`tgtE <= srcS`) is false because the match END is after the source
+// capture's start. It falls through `lo > hi` and returns false, exactly as
+// the source-side case does.
+const targetGroupZeroTerminatorYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "BEGIN (\\w+)[\\s\\S]{0,60}?USE \\w+"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 0
+    terminator: "STOP"
+custom_extractors: []
+`
+
+// targetGroupZeroNoTerminatorYAML is the same rule WITHOUT a terminator, the
+// mirror of groupZeroNoTerminatorYAML.
+const targetGroupZeroNoTerminatorYAML = `
+file_conventions: []
+source_patterns: []
+relationship_rules:
+  - pattern: "BEGIN (\\w+)[\\s\\S]{0,60}?USE \\w+"
+    source_type: Module
+    target_type: View
+    relationship: INSTANTIATES
+    source_group: 1
+    target_group: 0
+custom_extractors: []
+`
+
+// Test6666_TerminatorWithGroupZeroIsRejectedAtLoad is review defect D2, driven
+// on BOTH halves of the condition it is named for.
+//
+// Capture group 0 is the WHOLE match, so a join window bounded by it is empty
+// by construction and joinSpanCrosses returns false unconditionally — a guard
+// that silently does nothing, with green tests. That is true from either side,
+// by two different paths through the same function:
+//
+//   - source_group: 0 — srcE is the match END, so `lo, hi = srcE, tgtS` gives
+//     lo > hi.
+//   - target_group: 0 — tgtS is the match START, so lo > hi again, and the
+//     reversed branch (`tgtE <= srcS`) is false because the match END is after
+//     the source capture's start.
+//
+// The mirror half was unobserved when this test only drove the source side:
+// dropping `|| rr.TargetGroup == 0` from the load check killed nothing. Both
+// halves are driven now, each with its own positive control, because fixing
+// one direction and leaving its twin open is the failure mode this change has
+// already hit three times.
+//
 // `internal/engine/rules/swift/frameworks/vapor.yaml` is the one rule in the
 // tree with source_group 0, and it is a nominated terminator candidate.
 //
-// VARIES: whether the group-0 rule also declares a terminator.
-// HELD CONSTANT: pattern, fixture, and the presence of STOP between the two
-// constructs.
+// Sub-test axes:
+//
+//	source_group_zero  VARIES: whether the rule also declares a terminator.
+//	                   HOLDS: pattern, fixture, and which group is 0 (source).
+//	target_group_zero  VARIES: the same thing, on the mirror rule.
+//	                   HOLDS: pattern, fixture, and which group is 0 (target).
+//
+// Across the two sub-tests the varied axis is WHICH group is 0; everything the
+// rejection depends on other than that is held constant.
 func Test6666_TerminatorWithGroupZeroIsRejectedAtLoad(t *testing.T) {
-	const content = "func boot(routes)\nSTOP\nUSE widget\n"
-
-	rels := terminatorRels(t, groupZeroTerminatorYAML, content)
-	if len(rels) != 0 {
-		t.Errorf("a rule combining `terminator` with capture group 0 was loaded and fired (%v). "+
-			"Group 0 is the whole match, so its guard can never block anything — the rule must "+
-			"be refused at load rather than shipping a guard that does nothing", rels)
+	cases := []struct {
+		name string
+		// side names the group the rule sets to 0, for the failure messages.
+		side          string
+		withTerm      string
+		withoutTerm   string
+		content       string
+		wantWhenLoads string
+	}{
+		{
+			name:          "source_group_zero",
+			side:          "source_group",
+			withTerm:      groupZeroTerminatorYAML,
+			withoutTerm:   groupZeroNoTerminatorYAML,
+			content:       "func boot(routes)\nSTOP\nUSE widget\n",
+			wantWhenLoads: "View:widget",
+		},
+		{
+			name:          "target_group_zero",
+			side:          "target_group",
+			withTerm:      targetGroupZeroTerminatorYAML,
+			withoutTerm:   targetGroupZeroNoTerminatorYAML,
+			content:       "BEGIN alpha\nSTOP\nUSE widget\n",
+			wantWhenLoads: "Module:alpha",
+		},
 	}
 
-	// Positive control: the SAME rule without a terminator still loads, so the
-	// rejection is aimed at the combination and is not a blanket ban on
-	// source_group 0 (#6788 owns that separately).
-	rels = terminatorRels(t, groupZeroNoTerminatorYAML, content)
-	if len(rels) == 0 {
-		t.Errorf("source_group 0 without a terminator no longer loads; the load-time rejection "+
-			"is too broad and has taken over #6788's territory: %v", rels)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The fixture puts STOP squarely between the two constructs, so a
+			// guard that worked WOULD block it. If the rule loaded, the edge
+			// would appear anyway and the guard's uselessness would be
+			// invisible — which is the whole defect.
+			rels := terminatorRels(t, tc.withTerm, tc.content)
+			if len(rels) != 0 {
+				t.Errorf("a rule combining `terminator` with %s: 0 was loaded and fired (%v). "+
+					"Group 0 is the whole match, so its join window is empty and the guard can "+
+					"never block anything — the rule must be refused at load rather than "+
+					"shipping a guard that does nothing", tc.side, rels)
+			}
+
+			// Positive control: the SAME rule without a terminator still
+			// loads, so the rejection is aimed at the COMBINATION and is not a
+			// blanket ban on group 0 (#6788 owns that separately). Without
+			// this, refusing to load every group-0 rule would pass the leg
+			// above.
+			rels = terminatorRels(t, tc.withoutTerm, tc.content)
+			if len(rels) == 0 {
+				t.Fatalf("%s: 0 WITHOUT a terminator no longer loads; the load-time rejection is "+
+					"too broad and has taken over #6788's territory: %v", tc.side, rels)
+			}
+			var found bool
+			for _, r := range rels {
+				if strings.Contains(r, tc.wantWhenLoads) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("the no-terminator control emitted edges but none mentioning %q, so it "+
+					"is not exercising the same rule: %v", tc.wantWhenLoads, rels)
+			}
+		})
 	}
 }
 
