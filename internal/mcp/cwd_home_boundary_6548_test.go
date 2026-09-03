@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/pathboundary"
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
@@ -86,7 +87,10 @@ func TestGroupFromCWD_FindsMarkerAtHome(t *testing.T) {
 // user's home — and require the marker above the Users level to be found.
 // That case is now a refusal and is asserted as one below.
 func TestGroupFromCWD_OutsideHomeStillClimbs(t *testing.T) {
-	root, _ := fakeHomeUnder(t, "Users", "me")
+	root, home := fakeHomeUnder(t, "Users", "me")
+	// $HOME is no longer consulted by the other-user-home class (it can be
+	// laundered), so the fixture's home is injected through the seam.
+	t.Cleanup(pathboundary.OverrideHomeReferences(home))
 
 	writeGroupMarker(t, root, "workspace-root")
 

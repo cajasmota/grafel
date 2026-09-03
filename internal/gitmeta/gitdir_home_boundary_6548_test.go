@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/pathboundary"
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
@@ -70,7 +71,10 @@ func TestHasGitDirInTree_FindsGitAtHome(t *testing.T) {
 // That case is now a refusal, and is asserted as one below; the
 // still-climbs half moves to a non-home root, which is what it was really for.
 func TestHasGitDirInTree_OutsideHomeStillClimbs(t *testing.T) {
-	root, _ := fakeHomeUnder6548(t, "Users", "me")
+	root, home := fakeHomeUnder6548(t, "Users", "me")
+	// $HOME is no longer consulted by the other-user-home class (it can be
+	// laundered), so the fixture's home is injected through the seam.
+	t.Cleanup(pathboundary.OverrideHomeReferences(home))
 
 	mkdir6548(t, filepath.Join(root, ".git"))
 	start := mkdir6548(t, filepath.Join(root, "srv", "ci", "src", "deep"))

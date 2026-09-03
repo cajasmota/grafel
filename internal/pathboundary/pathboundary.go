@@ -193,7 +193,7 @@ func ClimbWithHome(dir, home string, visit func(dir string) bool) bool {
 	bounded := home != "" && Inside(cur, home)
 
 	homeReal := resolveOrSelf(home)
-	refs := resolveHomeReferences(home)
+	refs := resolveHomeReferences()
 
 	curClass := classifyDir(cur, home, homeReal, refs)
 	for depth := 0; depth < MaxAncestorDepth; depth++ {
