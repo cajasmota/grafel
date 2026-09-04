@@ -1,0 +1,46 @@
+{
+  "fixture_name": "graphql-schema-mini",
+  "language": "graphql",
+  "description": "A GraphQL SDL schema whose subject is the `implements` clause (#6370). Added because the graphql extractor emitted no hierarchy edge at all and NO fixture in this corpus contained the word `implements` anywhere, so the work would have shipped graded by nothing. Exercises: a single-interface clause, a three-interface clause joined by `&`, an interface that itself implements an interface, and two definitions declaring no interface at all. Field, CONTAINS and GRAPH_RELATES extraction come along for the ride and are asserted where they land on a stable node.",
+  "selection_rule": "Every IMPLEMENTS edge declared in the source is gated must_exist — six of them, spread over three owners and three targets, so a predicate that handles only the first name after the keyword, or only `type` owners, fails rather than scores. Entities are gated at the kind the graphql extractor emits (SCOPE.Schema per definition, SCOPE.Component per field) for the five definitions that survive the pipeline under that kind; see known_kind_collision below for the two that do not. Nothing here is nice_to_have.",
+  "known_kind_collision": "Settings and Query are extracted as SCOPE.Schema by internal/extractors/graphql and are NOT assertable at that kind, so they carry no expected_entities row. The YAML rule pack at internal/engine/rules/graphql/frameworks/graphql_schema.yaml independently mints an entity for every `type X {` (kind `Model`) and every `interface X {` (kind `Interface`) in a .graphql file; class-shadow-fold then folds the extractor's record into the pack's, and the surviving node carries the pack's kind. (Only the pack's ENTITY rules are involved here; its IMPLEMENTS relationship rule was removed by #6370's review as a duplicate producer, which changed no entity.) Node/Timestamped/Named/User/Post escape it: the pack's `type\\s+(\\w+)\\s*(?:implements\\s+\\w+\\s*)?\\{` and `interface\\s+(\\w+)\\s*\\{` patterns do not match a header carrying a multi-interface `&` list or an `implements` clause on an interface, so those five are minted once. That asymmetry is a defect in the pack, not in this fixture; it is recorded here rather than asserted, because asserting `Model` would gate a shadow entity whose kind is not even in the entity-kind vocabulary. Filed on #6370 as a finding.",
+  "to_bare_name_rationale": "Five of the six IMPLEMENTS rows match on to_bare_name and one (User -> Named) on a resolved to_name. That split is not a style choice; it records a measured fact and each half is checked in a different direction. The extractor emits the bare written interface name as the ToID for every one of the six. Five of them stay STUBS in the finished graph: Node and Timestamped are each minted twice — once by internal/extractors/graphql as SCOPE.Schema and once by the YAML rule pack — so name resolution sees two candidates and binds neither, and class-shadow-fold only merges the pair AFTERWARDS, leaving the edge stranded. Named is minted once (the pack's `interface\\s+(\\w+)\\s*\\{` does not match `interface Named implements Node {`), so its edge binds and is asserted at the resolved endpoint. A to_bare_name row matches ONLY a stub, which is what makes every row load-bearing. Verified by deleting the emit site in internal/extractors/graphql/graphql.go: 6/6 becomes 0/6 with all six rows reported missing and ZERO IMPLEMENTS edges left in the graph. (Until the #6370 review the rule pack also emitted a RESOLVED User -> Node and Post -> Node, so the fixture carried 8 edges for 6 declared facts; that duplicate producer is gone -- see the note where the rule was removed in internal/engine/rules/graphql/frameworks/graphql_schema.yaml, and TestGraphQLImplementsHasExactlyOneProducer, which fails if it returns.) WHEN THE STUBS START RESOLVING — because the pack stops shadowing, or the fold runs before resolution — these five rows will fail. That is the correct outcome and the fix is to convert them to to_name + to_kind SCOPE.Schema, not to widen the matcher.",
+  "expected_entities": [
+    { "name": "Node", "kind": "SCOPE.Schema", "source_file": "schema.graphql", "must_exist": true, "note": "interface Node — the target of three of the six IMPLEMENTS rows." },
+    { "name": "Timestamped", "kind": "SCOPE.Schema", "source_file": "schema.graphql", "must_exist": true },
+    { "name": "Named", "kind": "SCOPE.Schema", "source_file": "schema.graphql", "must_exist": true, "note": "Both a target (of User) and an owner (of Node): an interface that implements an interface." },
+    { "name": "User", "kind": "SCOPE.Schema", "source_file": "schema.graphql", "must_exist": true },
+    { "name": "Post", "kind": "SCOPE.Schema", "source_file": "schema.graphql", "must_exist": true },
+    { "name": "User.email", "kind": "SCOPE.Component", "source_file": "schema.graphql", "must_exist": true, "note": "A field on a type that carries a three-interface clause — the clause must not swallow the body." },
+    { "name": "Post.title", "kind": "SCOPE.Component", "source_file": "schema.graphql", "must_exist": true },
+    { "name": "Settings.implements", "kind": "SCOPE.Component", "source_file": "schema.graphql", "must_exist": true, "note": "A field NAMED `implements`. It must be extracted as an ordinary field; the forbidden row below asserts it produces no edge." }
+  ],
+  "expected_relationships": [
+    { "from_name": "Named", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_bare_name": "Node",
+      "must_exist": true, "note": "#6370: an INTERFACE implementing an interface. An implementation gated on `type` owners only — which is what the YAML rule pack does — fails this row and passes every other one." },
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_bare_name": "Node",
+      "must_exist": true, "note": "#6370: first name in a three-interface clause." },
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_bare_name": "Timestamped",
+      "must_exist": true, "note": "#6370: SECOND name in the clause. An implementation reading only the first name after the keyword satisfies the row above and fails this one." },
+    { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_name": "Named", "to_kind": "SCOPE.Schema", "to_file": "schema.graphql",
+      "must_exist": true, "note": "#6370: THIRD name in the clause, so the `&` list is graded past its second element too." },
+    { "from_name": "Post", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_bare_name": "Node",
+      "must_exist": true, "note": "#6370: a second owner naming the same interface, so the edge cannot be a one-off keyed to User." },
+    { "from_name": "Post", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_bare_name": "Timestamped",
+      "must_exist": true }
+  ],
+  "forbidden_relationships": [
+    { "from_name": "Settings", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_bare_name": "String",
+      "must_exist": false, "note": "#6370 OVER-FIRING CONTROL. Settings declares no interface and carries a field `implements: String`. An implementation that scans a definition's BODY for the keyword — rather than stopping the header at the body's opening brace — emits exactly this edge. Recall cannot see that mistake; this row can." },
+    { "from_name": "Query", "from_kind": "SCOPE.Schema", "from_file": "schema.graphql",
+      "kind": "IMPLEMENTS", "to_bare_name": "Node",
+      "must_exist": false, "note": "#6370 OVER-FIRING CONTROL. Query declares no interface; `Node` appears only as the return type of its `node` field. An implementation whose header bound runs past the `{` and treats the first type name it meets as a supertype emits this." }
+  ]
+}

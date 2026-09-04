@@ -168,7 +168,7 @@ func TestPopulatedExpectedRelationshipsIsAccepted_6490(t *testing.T) {
 // slip past by simply not being walked. `fixtures++` deliberately runs AFTER
 // the key check rather than after the file is opened: a census that counts
 // files OPENED lets a filter inserted mid-loop shrink coverage while the
-// denominator stays 26. Counting files INSPECTED makes the pin defend itself.
+// denominator stays 27. Counting files INSPECTED makes the pin defend itself.
 func TestEveryGoldenFixtureDeclaresExpectedRelationships_6490(t *testing.T) {
 	ents, err := os.ReadDir(goldenDir)
 	if err != nil {
@@ -229,8 +229,8 @@ func TestEveryGoldenFixtureDeclaresExpectedRelationships_6490(t *testing.T) {
 	// Checked only after `missing` is reported, because a fixture that failed
 	// the key check never reached the counter — this is the number of fixtures
 	// actually INSPECTED, not the number of files opened.
-	if fixtures != 26 {
-		t.Fatalf("inspected %d golden fixtures, want 26 — the corpus size changed, so this "+
+	if fixtures != 27 {
+		t.Fatalf("inspected %d golden fixtures, want 27 — the corpus size changed, so this "+
 			"test's coverage claim needs re-deriving rather than silently shrinking", fixtures)
 	}
 	// A FAILURE, not a t.Logf. It was a log while arm A only required the key

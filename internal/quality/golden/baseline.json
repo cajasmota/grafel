@@ -53,6 +53,12 @@
       "relationship_found": 19,
       "relationship_expected": 19
     },
+    "graphql-schema-mini": {
+      "entity_found": 8,
+      "entity_expected": 8,
+      "relationship_found": 6,
+      "relationship_expected": 6
+    },
     "groovy-grails-mini": {
       "entity_found": 13,
       "entity_expected": 16,

@@ -1,0 +1,53 @@
+# A small GraphQL SDL schema for the extraction-quality benchmark (#6370).
+#
+# The point of this fixture is the `implements` clause, which nothing in the
+# corpus graded before it existed. It carries three shapes of it:
+#
+#   * a single interface                 (Post implements Node & Timestamped)
+#   * an interface list joined by `&`    (User implements three)
+#   * an interface implementing an
+#     interface                          (Named implements Node)
+#
+# plus two definitions that declare NO interface — Settings and Query — so a
+# predicate that fires on every type definition produces forbidden hits rather
+# than scoring. Settings additionally carries a FIELD named `implements`, which
+# is what a body-wide keyword scan mistakes for a clause.
+
+interface Node {
+  id: ID!
+}
+
+interface Timestamped {
+  createdAt: String!
+}
+
+interface Named implements Node {
+  id: ID!
+  name: String!
+}
+
+type User implements Node & Timestamped & Named {
+  id: ID!
+  createdAt: String!
+  name: String!
+  email: String!
+}
+
+type Post implements Node & Timestamped {
+  id: ID!
+  createdAt: String!
+  title: String!
+  author: User!
+}
+
+type Settings {
+  theme: String!
+  implements: String
+}
+
+type Query {
+  node(id: ID!): Node
+  user(id: ID!): User
+  posts: [Post!]!
+  settings: Settings!
+}
