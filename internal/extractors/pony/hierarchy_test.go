@@ -177,13 +177,29 @@ func TestPonyHierarchy_GenericParamsAreCrossedNotSearched(t *testing.T) {
 	}
 }
 
-// TestPonyHierarchy_UnterminatedGenericListEmitsNothing pins the -1 branch of
-// skipGenericParams: a `[` that never closes on its own line must not let the
-// anchor drift onto a later line and adopt that line's `is`.
+// TestPonyHierarchy_UnterminatedGenericListEmitsNothing pins the behaviour of
+// skipGenericParams on a `[` that never closes on its own line: the offset it
+// returns must leave the anchor ON the bracket, so the anchor cannot drift onto
+// a later line and adopt that line's `is`.
+//
+// It says nothing about HOW that is achieved. An earlier draft of this comment
+// claimed it pinned a "-1 branch"; that branch was removed in this same change
+// because no input could distinguish it from returning `pos`, and the comment
+// outlived it by one commit. The behaviour is the assertion; the mechanism is
+// not.
+//
+// The second declaration is the positive control. Without it this test passes
+// against an extractor that emits nothing at all, which is the whole failure
+// mode a bare absence assertion has.
 func TestPonyHierarchy_UnterminatedGenericListEmitsNothing(t *testing.T) {
-	src := "class Box[A: Any\n  is Sized\n"
-	if got := allImplements(runPony(t, src, "src/x.pony")); len(got) != 0 {
-		t.Fatalf("IMPLEMENTS = %v, want none — the anchor crossed a newline", got)
+	src := "class Box[A: Any\n  is Sized\nclass Inline[A: Any val] is Sized\n"
+	ents := runPony(t, src, "src/x.pony")
+	if got := implementsOf(ents, "Box"); len(got) != 0 {
+		t.Fatalf("Box: IMPLEMENTS = %v, want none — the anchor crossed a newline", got)
+	}
+	if got := implementsOf(ents, "Inline"); !eqStrings(got, []string{"Sized"}) {
+		t.Fatalf("Inline: IMPLEMENTS = %v, want [Sized] — the control failed, so the "+
+			"assertion above proved nothing", got)
 	}
 }
 
@@ -472,28 +488,224 @@ func TestPonyHierarchy_CapabilityBeforeNameIsInvisible_KnownDivergence(t *testin
 	}
 }
 
-// TestPonyHierarchy_DeclarationInsideBlockCommentOverFires_KnownDivergence pins
-// the limit the package header states: the anchor decides which `is` belongs to
-// a declaration and has no opinion on whether the DECLARATION is real. A
-// column-0 `class … is …` inside a `/* … */` block comment or a `"""…"""`
-// docstring is line-initial, so typeDeclarationRE matches it and the edge is
-// emitted. This asserts today's wrong output so it is a fact on record rather
-// than a sentence in a comment.
+// TestPonyHierarchy_DeclarationInsideCommentOrDocstringOverFires_KnownDivergence
+// pins the limit the package header states: the anchor decides which `is`
+// belongs to a declaration and has no opinion on whether the DECLARATION is
+// real. A column-0 `class … is …` inside a `/* … */` block comment or a
+// `"""…"""` docstring is line-initial, so typeDeclarationRE matches it and the
+// edge is emitted. This asserts today's wrong output so it is a fact on record
+// rather than a sentence in a comment.
+//
+// THREE rows, because the header names three shapes and the first draft of this
+// test asserted one. The axis varied is WHERE the fake declaration is hidden
+// (block comment / a type's own docstring / a docstring inside a method body);
+// held constant are the fake declaration's own text and its column-0 position,
+// which is what makes typeDeclarationRE match in every row. Each row carries its
+// own real declaration as a positive control, so a row cannot pass by the
+// extractor emitting nothing.
 //
 // Verified as a real tripwire by mutating TOWARD the fix (blanking `/*…*/` and
 // `"""…"""` regions before extraction): this test fires and nothing else in the
 // package moves.
-func TestPonyHierarchy_DeclarationInsideBlockCommentOverFires_KnownDivergence(t *testing.T) {
-	src := `/*
+func TestPonyHierarchy_DeclarationInsideCommentOrDocstringOverFires_KnownDivergence(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want []string
+	}{
+		{"block comment", `/*
 class Ghost is Phantom
 */
 class Real is Named
-`
-	ents := runPony(t, src, "src/x.pony")
-	got := allImplements(ents)
-	want := []string{"Ghost->Phantom", "Real->Named"}
-	if !eqStrings(got, want) {
-		t.Fatalf("IMPLEMENTS = %v, want %v — if Ghost->Phantom is gone the extractor "+
-			"gained comment awareness: delete this known-divergence test", got, want)
+`, []string{"Ghost->Phantom", "Real->Named"}},
+		{"type docstring", `class Doc
+  """
+class Ghost is Phantom
+  """
+class Real is Named
+`, []string{"Ghost->Phantom", "Real->Named"}},
+		{"docstring inside a method body", `class Holder
+  fun d(): String =>
+    """
+class Fake is Bogus
+    """
+    "x"
+class Real is Named
+`, []string{"Fake->Bogus", "Real->Named"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := allImplements(runPony(t, tc.src, "src/x.pony"))
+			if !eqStrings(got, tc.want) {
+				t.Fatalf("IMPLEMENTS = %v, want %v — if the fake declaration's edge is "+
+					"gone the extractor gained comment/string awareness: delete this "+
+					"known-divergence row", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPonyHierarchy_TrailingWhitespaceAfterIsIsRequired pins the trailing
+// `[ \t]+` of ponyIsAnchorRE, which nothing else in this package or the golden
+// fixture grades. Dropping it turns the anchor into a prefix match, and Pony has
+// real identifiers that start with `is`: `class Foo island` would yield
+// Foo -> land and `class Foo is_ready` would yield Foo -> _ready — an edge whose
+// target is a fragment of a token that was never a type name.
+//
+// The axis varied is the character that follows `is`; held constant is the
+// owner and the position. The third row is the positive control that a real
+// space still works, without which a producer that rejected every clause would
+// pass the first two.
+func TestPonyHierarchy_TrailingWhitespaceAfterIsIsRequired(t *testing.T) {
+	cases := []struct {
+		decl string
+		want []string
+	}{
+		{"class Foo island", nil},
+		{"class Foo is_ready", nil},
+		{"class Foo is1", nil},
+		{"class Foo is Named", []string{"Named"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.decl, func(t *testing.T) {
+			ents := runPony(t, tc.decl+"\n", "src/x.pony")
+			if got := implementsOf(ents, "Foo"); !eqStrings(got, tc.want) {
+				t.Fatalf("%q: IMPLEMENTS = %v, want %v", tc.decl, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPonyHierarchy_AmpersandInsideGenericArgsStaysWithItsLeaf pins the `[`/`]`
+// half of splitProvides' depth counter. An `&` inside a generic argument list is
+// part of ONE type name, not a list separator: `is Pair[A & B]` names a single
+// trait. Stop counting brackets and the leaf is cut in half, both halves fail
+// ponyProvidedTypeRE, and the declaration silently loses its only edge.
+//
+// The axis varied is where the `&` sits relative to the brackets; held constant
+// is that every case names exactly one or two REAL traits. The header's own
+// example `Foo[(A & B)]` is included because a doc example with no test is the
+// defect this repo keeps rediscovering.
+func TestPonyHierarchy_AmpersandInsideGenericArgsStaysWithItsLeaf(t *testing.T) {
+	cases := []struct {
+		decl string
+		want []string
+	}{
+		{"class Foo is Pair[A & B]", []string{"Pair"}},
+		{"class Foo is Boxed[(A & B)]", []string{"Boxed"}},
+		{"class Foo is (Pair[A & B] & Named)", []string{"Named", "Pair"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.decl, func(t *testing.T) {
+			ents := runPony(t, tc.decl+"\n", "src/x.pony")
+			if got := implementsOf(ents, "Foo"); !eqStrings(got, tc.want) {
+				t.Fatalf("%q: IMPLEMENTS = %v, want %v", tc.decl, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPonyHierarchy_MalformedParenthesesYieldNothing pins BOTH refusals inside
+// unwrapParens, which are two separate guards that a single test name would
+// have blurred together:
+//
+//   - the `depth != 0` guard, which refuses a clause whose parentheses do not
+//     balance at all (`(Named & ))`, `(Named & ()`, `((Named)`);
+//   - the `i != len(s)-1` single-pair guard, which refuses a clause that
+//     BALANCES overall but whose leading `(` is not matched by the trailing `)`
+//     (`(Named & Sized)()`, `(Named)(& Sized)`). Nothing else catches this
+//     second one: strip only that line and the balance guard still passes,
+//     the outer characters are stripped anyway, and `(Named & Sized)()`
+//     silently yields Named.
+//
+// The two shapes were separated by an exhaustive differential rather than by
+// eye. Over every string of length <= 7 built from `A`, `B`, `(`, `)`, `&`, `[`,
+// `]` and space, deleting the single-pair guard alone diverges on 98 inputs, and
+// every one of them is of the second shape — an `&` that becomes a top-level
+// separator only after a wrong unwrap. An earlier draft of this test asserted
+// three UNBALANCED inputs and was DEAD on the balance guard while leaving the
+// single-pair guard ALIVE: they look like one property and are not.
+//
+// The last row is the positive control: a genuinely nested clause must still be
+// unwrapped, so this test cannot pass on a producer that refuses every
+// parenthesis.
+func TestPonyHierarchy_MalformedParenthesesYieldNothing(t *testing.T) {
+	cases := []struct {
+		name string
+		decl string
+		want []string
+	}{
+		{"unbalanced: extra close", "class Foo is (Named & ))", nil},
+		{"unbalanced: extra open", "class Foo is (Named & ()", nil},
+		{"unbalanced: unclosed outer", "class Foo is ((Named)", nil},
+		{"balanced but two groups", "class Foo is (Named & Sized)()", nil},
+		{"balanced, separator in the second group", "class Foo is (Named)(& Sized)", nil},
+		{"control: genuinely nested", "class Foo is ((Named & Sized))", []string{"Named", "Sized"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ents := runPony(t, tc.decl+"\n", "src/x.pony")
+			if got := implementsOf(ents, "Foo"); !eqStrings(got, tc.want) {
+				t.Fatalf("%q: IMPLEMENTS = %v, want %v", tc.decl, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPonyHierarchy_SpacingAndTargetCapabilityAreInvisible_KnownDivergence pins
+// two shapes that are plausibly legal Pony and that this producer silently
+// drops, so they are a fact on record rather than an omission nobody knows
+// about.
+//
+//   - `class Foo is(Named & Sized)` — no space between `is` and the list.
+//     ponyIsAnchorRE demands `[ \t]+` after the keyword (see
+//     TestPonyHierarchy_TrailingWhitespaceAfterIsIsRequired for why it cannot
+//     simply be dropped: that same requirement is what stops `island` binding
+//     `land`). Fixing this needs a lookahead for a non-identifier character,
+//     not a relaxation.
+//   - `class Foo is Named val` — a reference capability on the TARGET type.
+//     ponyProvidedTypeRE is anchored at both ends and a trailing ` val` makes
+//     the leaf fail whole.
+//
+// Both are recorded as today's output, NOT argued to be correct. The positive
+// controls are the same two declarations written the plain way, so neither row
+// can pass because the extractor stopped emitting.
+func TestPonyHierarchy_SpacingAndTargetCapabilityAreInvisible_KnownDivergence(t *testing.T) {
+	cases := []struct {
+		name string
+		decl string
+		want []string
+	}{
+		{"no space after is", "class Foo is(Named & Sized)", nil},
+		{"capability on target", "class Foo is Named val", nil},
+		{"control: spaced", "class Foo is (Named & Sized)", []string{"Named", "Sized"}},
+		{"control: bare target", "class Foo is Named", []string{"Named"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ents := runPony(t, tc.decl+"\n", "src/x.pony")
+			if got := implementsOf(ents, "Foo"); !eqStrings(got, tc.want) {
+				t.Fatalf("%q: IMPLEMENTS = %v, want %v — if this now emits, the shape is "+
+					"supported: delete the row and assert the edge instead", tc.decl, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPonyHierarchy_KeywordAndNameMayBeSeparatedByANewline records the bound the
+// package header states rather than the absolute it used to claim.
+// typeDeclarationRE separates the keyword from the name with `\s+`, which
+// crosses newlines, so a declaration can begin on one line and name its type on
+// the next — and the anchor then reads THAT line's remainder. The header used to
+// say the anchor "cannot reach" anything but a normal declaration line; this is
+// the case that makes the narrower statement the true one.
+//
+// Asserted as today's output without claiming it is wrong: reading the clause of
+// a declaration split across two lines is arguably right. What is not acceptable
+// is a comment asserting an absolute that no test observes.
+func TestPonyHierarchy_KeywordAndNameMayBeSeparatedByANewline(t *testing.T) {
+	ents := runPony(t, "class\n  Foo is Bar\n", "src/x.pony")
+	if got := implementsOf(ents, "Foo"); !eqStrings(got, []string{"Bar"}) {
+		t.Fatalf("IMPLEMENTS = %v, want [Bar] — the header's bound changed, re-derive it", got)
 	}
 }

@@ -53,11 +53,18 @@
 // other `is` in the file is excluded STRUCTURALLY by position rather than by a
 // blocklist:
 //
-//   - the identity operator only ever appears inside a method body, which is
-//     indented and on a later line; `[ \t]+` never matches a newline, so the
-//     anchor cannot reach it;
-//   - an `is` inside a string literal or after a `//` in a method body is at
-//     that same unreachable position;
+//   - the identity operator (`a is b`) appears inside a method body. The bound
+//     the code actually guarantees is narrower than "it can never be reached",
+//     and the narrow version is the true one: the anchor reads from the offset
+//     just past the declared NAME and `[ \t]+` never matches a newline, so it
+//     can only ever see the REMAINDER OF THE DECLARATION LINE. A body sits on a
+//     later line and is therefore out of reach. What that does NOT rule out is
+//     a declaration whose own line is unusual: typeDeclarationRE separates the
+//     keyword from the name with `\s+`, which DOES cross newlines, so
+//     `class\n  Foo is Bar` yields Foo -> Bar. Contrived, and arguably right,
+//     but it is a case the word "never" would have hidden;
+//   - an `is` inside a string literal or after a `//` in a method body is on
+//     that same later line, so the same bound excludes it;
 //   - a `//`-commented declaration (`// class Foo is Bar`) is not matched by
 //     typeDeclarationRE at all — that regex is `(?m)^(actor|class|…)` with NO
 //     leading-whitespace allowance, so a comment marker before the keyword
@@ -73,12 +80,14 @@
 // discovered: this extractor has NO comment or string awareness of its own,
 // and this comment claims none. The anchor decides which `is` belongs to a
 // declaration; it has no opinion on whether the DECLARATION is real. A
-// `class Foo is Bar` written at column 0 inside a `"""…"""` docstring, or
-// inside a `/* … */` block comment, is line-initial, so typeDeclarationRE
-// matches it and this file emits the edge. The entity half of that is
-// pre-existing; the edge half arrives with #6370, so it is pinned as the
-// deliberate known-divergence test
-// TestPonyHierarchy_DeclarationInsideBlockCommentOverFires_KnownDivergence.
+// `class Foo is Bar` written at column 0 inside a `/* … */` block comment, or
+// inside a `"""…"""` docstring — whether that docstring is a type's own or sits
+// inside a method body — is line-initial, so typeDeclarationRE matches it and
+// this file emits the edge. The entity half of that is pre-existing; the edge
+// half arrives with #6370, so ALL THREE shapes are pinned, each as its own row,
+// by TestPonyHierarchy_DeclarationInsideCommentOrDocstringOverFires_KnownDivergence.
+// Two of the three were asserted nowhere in this change's first draft while
+// this comment named them, which is the defect class the pin exists to stop.
 package pony
 
 import (
@@ -152,11 +161,17 @@ func provideEdges(src string, afterName int, owner string, line int) []types.Rel
 	// that grades nothing.
 	pos += loc[1]
 
+	// The clause is read to end of LINE. A CRLF file leaves a trailing "\r"
+	// here and it is deliberately NOT trimmed: splitProvides opens with
+	// strings.TrimSpace, which already eats it, so a TrimSuffix would be a dead
+	// line rather than a guard. That is equivalence IN FACT, not merely under
+	// the suite — the same standard that removed the -1 sentinel from
+	// skipGenericParams. TestPonyHierarchy_CRLFDeclarationStillConforms is the
+	// positive control that the \r really is absorbed.
 	rest := src[pos:]
 	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
 		rest = rest[:nl]
 	}
-	rest = strings.TrimSuffix(rest, "\r")
 	rest = stripTrailingComment(rest)
 
 	var out []types.RelationshipRecord
