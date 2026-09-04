@@ -6412,6 +6412,16 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 		}.WithProperties(rel.Properties.Snapshot()))
 	}
 
+	// #6805 — no entity is its own supertype. Runs LAST, after every producer
+	// has appended and after the resolver has rewritten both endpoints onto
+	// real ids: a hierarchy self-loop is only observable once both stubs have
+	// been bound, so no earlier site can see it. See
+	// graph.DropHierarchySelfLoops for the mechanism that creates them.
+	relationships, hierSelfLoops := graph.DropHierarchySelfLoops(relationships)
+	if hierSelfLoops > 0 {
+		fmt.Fprintf(os.Stderr, "graph: dropped %d hierarchy self-loop edge(s)\n", hierSelfLoops)
+	}
+
 	return &graph.Document{
 		Version:        graph.SchemaVersion,
 		GeneratedAt:    deterministicGeneratedAt(),
@@ -6761,6 +6771,22 @@ func mergeIncrementalPrevSource(doc *graph.Document, prev prevGraphSource, chang
 		doc.Entities = append(doc.Entities, e)
 		docEntityIDs[e.ID] = true
 		stats.entitiesAdded++
+	}
+
+	// #6805 — re-apply the hierarchy self-loop invariant to the SPLICED set.
+	// buildDocument filters the rows THIS run produced, but the carry-forward
+	// loop above appends rows read back from the previous graph, and it only
+	// checks whether each endpoint still EXISTS — it never compares the two
+	// endpoints to each other. Without this, a graph written by a pre-#6805
+	// binary keeps its self-loops indefinitely across `rebuild --incremental`,
+	// for every file that did not change. Nothing else would notice: the
+	// extraction-quality gate only ever runs full indexes.
+	//
+	// It lives here rather than at the call site so that every caller of the
+	// merge is covered, including mergeIncrementalPrevDoc.
+	if filtered, n := graph.DropHierarchySelfLoops(doc.Relationships); n > 0 {
+		doc.Relationships = filtered
+		fmt.Fprintf(os.Stderr, "graph: dropped %d carried-forward hierarchy self-loop edge(s)\n", n)
 	}
 
 	doc.Stats.Entities = len(doc.Entities)

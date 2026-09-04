@@ -84,10 +84,10 @@
       "relationship_expected": 27
     },
     "kotlin-spring-mini": {
-      "entity_found": 18,
-      "entity_expected": 19,
-      "relationship_found": 12,
-      "relationship_expected": 17
+      "entity_found": 23,
+      "entity_expected": 24,
+      "relationship_found": 14,
+      "relationship_expected": 19
     },
     "nim-objects-mini": {
       "entity_found": 21,

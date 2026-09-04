@@ -1,7 +1,7 @@
 {
   "fixture_name": "kotlin-spring-mini",
   "language": "kotlin",
-  "description": "Tiny Spring Boot Kotlin REST controller exercising @RestController, @RequestMapping, @GetMapping / @PostMapping / @DeleteMapping, data classes with primary-constructor val/var fields, and SCOPE.Service emission from Spring stereotype. Used by the extraction-quality benchmark to detect recall regressions in the kotlin + Spring framework path. Added by issue #44 slice-5 (Kotlin resolver: Spring ResponseEntity builder fix).",
+  "description": "Tiny Spring Boot Kotlin REST controller exercising @RestController, @RequestMapping, @GetMapping / @PostMapping / @DeleteMapping, data classes with primary-constructor val/var fields, and SCOPE.Service emission from Spring stereotype. Used by the extraction-quality benchmark to detect recall regressions in the kotlin + Spring framework path. Added by issue #44 slice-5 (Kotlin resolver: Spring ResponseEntity builder fix). Since #6805 it ALSO carries a Kotlin Multiplatform expect/actual pair (commonMain/kotlin/Platform.kt + androidMain/kotlin/Platform.android.kt) that grades the two IMPLEMENTS rules in internal/engine/rules/kotlin/frameworks/kmp.yaml: two must_exist rows for the correct cross-source-set edges, and one forbidden_relationships row for the `nowMillis IMPLEMENTS nowMillis` self-loop those rules used to leave behind for an `actual` member with no `expect` counterpart. The forbidden row is the only thing in the tree that grades the self-loop — recall is blind to it.",
   "expected_entities": [
     { "name": "User", "kind": "SCOPE.Component", "source_file": "SampleController.kt", "must_exist": true, "note": "data class User(val id: Int, val name: String, val email: String)" },
     { "name": "User.id", "kind": "SCOPE.Schema", "source_file": "SampleController.kt", "must_exist": true, "note": "Primary-constructor val field — #690 pattern." },
@@ -25,7 +25,13 @@
 
     { "name": "GET /health", "kind": "SCOPE.Operation", "source_file": "SampleController.kt", "must_exist": true, "note": "@GetMapping(\"/health\") route." },
     { "name": "GET /{id}", "kind": "SCOPE.Operation", "source_file": "SampleController.kt", "must_exist": true },
-    { "name": "DELETE /{id}", "kind": "SCOPE.Operation", "source_file": "SampleController.kt", "must_exist": true }
+    { "name": "DELETE /{id}", "kind": "SCOPE.Operation", "source_file": "SampleController.kt", "must_exist": true },
+
+    { "name": "Clock", "kind": "Interface", "source_file": "commonMain/kotlin/Platform.kt", "must_exist": true, "note": "#6805 — `expect class Clock`. The KMP rule pack (internal/engine/rules/kotlin/frameworks/kmp.yaml) types the expect side `Interface`." },
+    { "name": "Clock", "kind": "Implementation", "source_file": "androidMain/kotlin/Platform.android.kt", "must_exist": true, "note": "#6805 — `actual class Clock`. Same NAME as the row above, different KIND and different FILE: the two rows exist so the IMPLEMENTS row below is demonstrably between two distinct entities and not one entity twice." },
+    { "name": "platformName", "kind": "Interface", "source_file": "commonMain/kotlin/Platform.kt", "must_exist": true, "note": "#6805 — `expect fun platformName`. Top-level function form, held against the class form above." },
+    { "name": "platformName", "kind": "Implementation", "source_file": "androidMain/kotlin/Platform.android.kt", "must_exist": true, "note": "#6805 — `actual fun platformName`." },
+    { "name": "nowMillis", "kind": "Implementation", "source_file": "androidMain/kotlin/Platform.android.kt", "must_exist": true, "note": "#6805 — `actual fun nowMillis` inside `actual class Clock`. This row is LOAD-BEARING for the forbidden_relationships row below: the fence forbids an edge between this entity and itself, so the entity has to be pinned as present, or the fence would pass simply because nothing named nowMillis was ever extracted. There is deliberately no `nowMillis` Interface twin — members of an `expect class` carry no `expect` keyword, so the common half emits nothing for it." }
   ],
   "expected_relationships": [
     { "from_name": "User", "from_kind": "SCOPE.Component", "from_file": "SampleController.kt",
@@ -82,7 +88,18 @@
       "must_exist": true },
     { "from_name": "http:DELETE:/api/users/{id}", "from_kind": "http_endpoint_definition", "from_file": "SampleController.kt",
       "kind": "ROUTES_TO", "to_name": "UserController.deleteUser", "to_kind": "SCOPE.Operation", "to_file": "SampleController.kt",
-      "must_exist": true }
+      "must_exist": true },
+
+    { "from_name": "Clock", "from_kind": "Implementation", "from_file": "androidMain/kotlin/Platform.android.kt",
+      "kind": "IMPLEMENTS", "to_name": "Clock", "to_kind": "Interface", "to_file": "commonMain/kotlin/Platform.kt",
+      "must_exist": true, "note": "#6805 — the CORRECT expect/actual edge, and the reason the two kmp.yaml rules were kept rather than deleted. Issue #6805 read `source_group: 1` + `target_group: 1` as proof that both endpoints are the same node; they are not, because the rule also sets source_type: Implementation / target_type: Interface, and the two halves of the pair live in different source sets and become different entities. Deleting the rules would have destroyed this edge — measured, that deletion turns exactly ONE fixture red (this one, relationship_found 14 -> 12) and against main would have cost zero graded rows, since the only rows it breaks are the two #6805 added. This row is the positive control that stops the #6805 fix from being over-broad: a fix that suppressed ALL kmp IMPLEMENTS edges would satisfy the forbidden row below and fail here." },
+    { "from_name": "platformName", "from_kind": "Implementation", "from_file": "androidMain/kotlin/Platform.android.kt",
+      "kind": "IMPLEMENTS", "to_name": "platformName", "to_kind": "Interface", "to_file": "commonMain/kotlin/Platform.kt",
+      "must_exist": true, "note": "#6805 — the same pairing for the top-level-function rule. The axis varied against the Clock row is the DECLARATION FORM (`actual fun` vs `actual class`, two separate rules in kmp.yaml); everything else — the file pair, the entity kinds, the edge kind — is held constant. One rule regressing would leave the other row green." }
   ],
-  "forbidden_relationships": []
+  "forbidden_relationships": [
+    { "from_name": "nowMillis", "from_kind": "Implementation", "from_file": "androidMain/kotlin/Platform.android.kt",
+      "kind": "IMPLEMENTS", "to_name": "nowMillis", "to_kind": "Implementation", "to_file": "androidMain/kotlin/Platform.android.kt",
+      "note": "#6805 THE FENCE. Both endpoints are the SAME entity — this row forbids the self-loop `nowMillis IMPLEMENTS nowMillis`. It fires whenever graph.DropHierarchySelfLoops stops running: `actual fun nowMillis` emits the stub pair Implementation:nowMillis -> Interface:nowMillis, no Interface:nowMillis entity exists (see the entity note above), and the resolver's bare-name fallback binds the unmatched target back to the Implementation entity, landing both endpoints on one id. Recall cannot see this: the two must_exist IMPLEMENTS rows above stay green with the self-loop present, which is precisely how it survived on main. Verified by mutation — deleting the DropHierarchySelfLoops call site in cmd/grafel/index.go makes THIS row, and only this row, go red. Not to be confused with the #6809 self-loops (5 rule-pack rules whose source_type equals their target_type build FromID == ToID at emission, no resolver involved); this fence does not cover those and must not be widened to." }
+  ]
 }
