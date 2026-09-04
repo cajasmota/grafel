@@ -418,6 +418,24 @@ when isMainModule:
 		t.Errorf("entity recall %.0f%% below 80%% threshold (%d/%d found)",
 			recall, totalFound, totalWant)
 	}
+
+	// `ApiError* = object of CatchableError` sat in this fixture from the day it
+	// was written and nothing observed the `of` clause: the recall loop above
+	// only asks whether an entity called ApiError exists, which is equally true
+	// of `ApiError* = object`. #6370 makes the clause an EXTENDS edge, so the
+	// fixture's one real inheritance declaration is now asserted here too.
+	if !nimHasRel(ents, "ApiError", "SCOPE.Component", "EXTENDS", "CatchableError") {
+		t.Errorf("ApiError EXTENDS CatchableError missing (#6370)")
+	}
+	// Negative half on the same axis: AppConfig is a plain `object` in the same
+	// file and must NOT acquire an edge.
+	if e := nimFind(ents, "AppConfig", "SCOPE.Component"); e != nil {
+		for _, r := range e.Relationships {
+			if r.Kind == "EXTENDS" {
+				t.Errorf("AppConfig has no `of` clause but got EXTENDS -> %s", r.ToID)
+			}
+		}
+	}
 }
 
 // TestNim_AsyncChronosFixture — async Nim with chronos-style patterns.

@@ -370,7 +370,7 @@ func TestRatchetUpdateRefusesFixtureWithoutExpectations_6273(t *testing.T) {
 // TestGoldenSetIsFullyGraded_6273 for why (#6521). It is declared once, at file
 // scope, so that "the number" cannot drift between two copies — a second
 // hardcoded 26 elsewhere would reintroduce exactly the hazard this replaced.
-const minFixtures = 26
+const minFixtures = 27
 
 // TestGoldenSetIsFullyGraded_6273 asserts the absolute figure the benchmark's
 // denominators are quoted from. All three halves matter: golden/ holds at
