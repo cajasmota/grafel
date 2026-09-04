@@ -9,6 +9,11 @@ package engine
 
 // EntityKindProcess identifies a Process entity — a linearized call chain
 // emitted by RunProcessFlow. Name: "<entry> → <terminal>".
+//
+// #6776 arm B4 added types.EntityKindProcess with this exact value. This
+// untyped constant is deliberately NOT replaced by it: the arm's scope was enum
+// membership, and rewiring producers is a separate change. Same string, two
+// declarations, on purpose.
 const EntityKindProcess = "SCOPE.Process"
 
 // DefaultFlowMinSteps is the minimum step_count for a Process to appear in

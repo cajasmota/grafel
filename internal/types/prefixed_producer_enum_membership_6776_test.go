@@ -7,6 +7,12 @@ package types_test
 // producer writes and types.AllEntityKinds() did not carry. This arm puts them
 // in the enum and empties that ledger.
 //
+// "What it found" is the honest scope: the ledger holds what ScanGo RESOLVES,
+// which is the `Kind:` field of an Entity / EntityRecord composite literal. A
+// producer passing the kind as a function argument was never on it. That does
+// not change which six kinds this arm promotes — it is why b4PromotedKinds
+// below lists a producer file the sweep cannot see.
+//
 // # What arm B4 changes, and what it deliberately does not
 //
 // ENUM MEMBERSHIP ONLY. The six keep their CURRENT spellings, so nothing
@@ -36,21 +42,30 @@ import (
 )
 
 // b4PromotedKinds is the exact set arm B3's ledger held: every SCOPE.*-prefixed
-// kind a Go producer declares that the enum did not carry. Each is written by
-// its producer as `Kind: <identifier>` — a package-level constant, never a
-// string literal — which is precisely why the pre-B3 literal-only guard could
-// not see any of them.
+// kind a Go producer declares that the enum did not carry. Every one is written
+// by its producer as a package-level CONSTANT rather than a string literal,
+// which is precisely why the pre-B3 literal-only guard could not see any of
+// them.
 //
 // The list is NOT the authority on what the producers declare: that is
 // TestProducerEntityKinds6776_PrefixedLedgerIsExact, which rescans the tree and
-// fails on any prefixed kind outside the (now empty) ledger. This list is the
-// authority on what arm B4 promoted, so that a later change removing one of
-// them from the enum fails here rather than silently re-opening the drift.
+// fails on any prefixed kind it RESOLVES outside the (now empty) ledger. This
+// list is the authority on what arm B4 promoted, so that a later change
+// removing one of them from the enum fails here rather than silently re-opening
+// the drift.
+//
+// The file lists are documentation and are not asserted, so they are written to
+// be complete rather than to match the sweep: SCOPE.ScheduledJob's third
+// producer, iac_cloudformation_edges.go, passes the kind as a FUNCTION ARGUMENT
+// (emitEntity(id, cfnScheduledJobKind, ...)) and is therefore outside what
+// ScanGo reads at all — see the sweep's limits in
+// producer_entity_kinds_6776_test.go. Listing only what the scanner happens to
+// see would let this comment inherit the scanner's blind spot.
 var b4PromotedKinds = map[string]string{
 	"SCOPE.Activity":     "engine/workflow_dag_edges.go, engine/workflow_edges.go",
 	"SCOPE.EventFlow":    "engine/event_flow.go",
 	"SCOPE.Process":      "engine/process_flow.go",
-	"SCOPE.ScheduledJob": "engine/scheduled_jobs_edges.go, engine/serverless_framework_edges.go",
+	"SCOPE.ScheduledJob": "engine/scheduled_jobs_edges.go, engine/serverless_framework_edges.go, engine/iac_cloudformation_edges.go (call site, unscanned)",
 	"SCOPE.StateMachine": "engine/workflow_edges.go",
 	"SCOPE.Workflow":     "engine/workflow_dag_edges.go, engine/workflow_edges.go",
 }
@@ -63,6 +78,12 @@ var b4PromotedKinds = map[string]string{
 // slice, IsValidEntityKind is a linear scan over it, and a kind listed twice
 // would validate identically while silently double-counting anywhere the slice
 // is used as a roster (internal/graph/fbwriter builds its tally set from it).
+//
+// That check is scoped to THESE SIX and nothing else. Duplicating a non-B4
+// entry — EntityKindClass, say — is ALIVE under the whole suite; scored, and
+// left alive deliberately, because roster-wide duplicate protection is a
+// different guard than arm B4's worklist and is nobody's worklist yet. Stated
+// so the next reader does not mistake this for it.
 //
 // Varies: the kind. Holds constant: the validator and the roster.
 func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
@@ -92,15 +113,27 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 }
 
 // TestEntityKindEnum6776_B4_KindsOutsideTheEnumStayOutside is the NEGATIVE
-// half. Each row is a DISTINCT way a too-permissive validator could pass the
-// positive half above; no two rows share a mechanism, so no row's failure can
-// be masked by another's.
+// half: rows a too-permissive validator would admit while still passing the
+// positive half above. Every row uses t.Errorf, so no row's failure masks
+// another's and each is reported independently.
+//
+// The rows are NOT all distinct axes, and saying so would be this issue's own
+// defect: Route and Config are the SAME axis — un-prefixed rule-declared kinds
+// — and no validator permissiveness admits one without the other. They are both
+// present because both are named by internal/graph/fbwriter's arm-A fixture,
+// which hard-fails "fixture is inert" if either becomes valid, so pinning them
+// from this side documents that live cross-package dependency rather than
+// widening coverage. The genuinely separate mechanisms are: un-prefixed
+// rule-declared (Route/Config), the not-promoted synthetic (File), the other B3
+// ledger (ChannelEvent), prefix-stripping (Workflow), near-miss spelling
+// (SCOPE.Workflows), and re-admitting a retired kind (SCOPE.ExternalAPI).
 //
 // Varies: the shape of the non-member. Holds constant: the validator.
 //
 //	Route, Config          un-prefixed rule-declared kinds — #6776 arm B5..n's
 //	                       worklist, and the values internal/graph/fbwriter's
-//	                       arm-A fixture asserts are still invalid
+//	                       arm-A fixture asserts are still invalid. ONE axis,
+//	                       two rows, for the reason above.
 //	File                   the commit-coupling synthetic, deliberately NOT
 //	                       promoted (894 entities of an internal artefact)
 //	ChannelEvent           a Go producer's UN-prefixed kind: B4 promoted the

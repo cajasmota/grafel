@@ -70,7 +70,8 @@ package types_test
 //
 //   - goPrefixedKindsDeferred — SCOPE.*-prefixed kinds a Go producer writes
 //     that are not in the enum. This was #6776 arm B4's worklist and arm B4
-//     emptied it: the pin is 0 and the sweep now fails on ANY such kind.
+//     emptied it: the pin is 0, so any such kind the sweep RESOLVES now fails
+//     it. See the ledger's own doc for what the sweep does and does not reach.
 //   - goUnprefixedKindsDeferred — Go producers writing an UN-prefixed kind.
 //     producer_kinds_test.go used to call these "intentionally outside the
 //     validator set". That claim is retracted: #6744's scan of the rule tree
@@ -113,10 +114,26 @@ import (
 // SCOPE.EventType, by listing the constant that was already declared.
 //
 // An EMPTY ledger is not a disabled guard. assertLedgerExact's found→ledger
-// direction is what fires, and with nothing ledgered ANY prefixed Go-declared
-// kind outside the enum fails the sweep — which is the steady state this arm
-// was working towards, not a hole it leaves behind. It is kept rather than
-// deleted so the next drift lands on a mechanism instead of inventing one.
+// direction is what fires, and with nothing ledgered any prefixed kind the
+// sweep RESOLVES outside the enum fails it — the steady state this arm was
+// working towards, not a hole it leaves behind. It is kept rather than deleted
+// so the next drift lands on a mechanism instead of inventing one.
+//
+// # What "the sweep" actually covers, which is less than every Go producer
+//
+// ScanGo reads the `Kind:` field of an Entity / EntityRecord COMPOSITE LITERAL.
+// A producer that passes the kind as a FUNCTION ARGUMENT is invisible to it:
+// internal/engine/iac_cloudformation_edges.go:690 emits SCOPE.ScheduledJob via
+// emitEntity(id, cfnScheduledJobKind, ...) and this sweep has never seen that
+// site. Nothing is missed today only because that kind is now in the enum.
+//
+// This is B3's own headline holding one level further out — AN AST GUARD THAT
+// RESOLVES ONLY ONE SHAPE HAS A HOLE SHAPED EXACTLY LIKE ITS RESOLVER. B3
+// closed the identifier hole (a bare name where a literal was expected) and
+// left the call-site hole open. Widening ScanGo to argument positions is its
+// own change with its own measurement and is deliberately NOT done here; what
+// is done here is to stop the comment claiming coverage the code lacks, which
+// is the failure this whole issue exists to correct.
 var goPrefixedKindsDeferred = map[string]bool{}
 
 // goPrefixedKindsDeferredMax pins the ledger's exact size.

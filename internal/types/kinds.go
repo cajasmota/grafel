@@ -436,14 +436,16 @@ const (
 	//
 	// They are not new extraction: every one is produced today, with the exact
 	// spelling declared here, by a pass that keeps its own package-level
-	// constant (internal/engine/workflow_edges.go, workflow_dag_edges.go,
-	// scheduled_jobs_edges.go, serverless_framework_edges.go, event_flow.go,
-	// process_flow.go, and internal/graph/flows/flows.go). They drifted out of
-	// the enum because the guard that was supposed to catch exactly this read
-	// `Kind:` only when it was a string LITERAL, and every one of these
-	// producers writes `Kind: <identifier>`. Arm B3 replaced that guard with
-	// internal/entkinds.ScanGo, which resolves source constants, and the six
-	// fell out of it immediately.
+	// constant — internal/engine/workflow_edges.go, workflow_dag_edges.go,
+	// scheduled_jobs_edges.go, serverless_framework_edges.go,
+	// iac_cloudformation_edges.go, event_flow.go and process_flow.go.
+	// (internal/graph/flows/flows.go declares SCOPE.Process and SCOPE.EventFlow
+	// too, but only READS them, in IsFlowEntityKind; it is not a producer.)
+	// They drifted out of the enum because the guard that was supposed to catch
+	// exactly this read `Kind:` only when it was a string LITERAL, and every one
+	// of these producers writes `Kind: <identifier>`. Arm B3 replaced that guard
+	// with internal/entkinds.ScanGo, which resolves source constants, and the
+	// six fell out of it immediately.
 	//
 	// Adding them changes NO spelling and therefore does not move
 	// KindVocabularyVersion: nothing already on disk is restated, and a query
