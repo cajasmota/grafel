@@ -46,11 +46,20 @@ package entkinds_test
 // is why `Module` validates by coincidence rather than by design. Nothing
 // documents an un-prefixed namespace, and nothing implements one.
 //
-// Fixing it is NOT this issue. It is ~530 declaration sites across 38 language
-// directories, it changes the Kind of every rule-produced entity in the graph,
-// and it needs a re-baseline of the golden corpus plus a migration story for
-// stored graphs. Reported for separate filing; this guard freezes the
-// population meanwhile, so the accident cannot grow.
+// This verdict stands and is now the repository's only one. The competing note
+// in internal/types/producer_kinds_test.go, which called the un-prefixed names
+// "intentionally outside the validator set", was retracted by #6776 arm B3; the
+// Go half of the same accident is ledgered alongside it in
+// internal/types/producer_entity_kinds_6776_test.go.
+//
+// Fixing it is NOT this issue. Two costs, and #6776 separated them:
+// making these kinds VALID is enum membership at the current spellings — no
+// KindVocabularyVersion bump, no reindex, no stored-graph migration, no golden
+// re-baseline. RENAMING them to SCOPE.* is the expensive half (~530 sites, the
+// Kind of every rule-produced entity, a golden re-baseline and a migration
+// story for stored graphs) and is a separate, separately-costed decision.
+// Reported for separate filing; this guard freezes the population meanwhile, so
+// the accident cannot grow.
 //
 // # Why a ledger, and not a fix
 //

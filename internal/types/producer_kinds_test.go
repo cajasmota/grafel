@@ -1,19 +1,26 @@
 package types_test
 
 // This test scans the grafel producer codebase for hard-coded `Kind: "..."`
-// string literals on Entity / Relationship / EntityRecord / RelationshipRecord
-// composite literals and asserts that every distinct literal value is covered
-// by IsValidEntityKind or IsValidRelationshipKind respectively.
+// string literals on Relationship / RelationshipRecord composite literals and
+// asserts that every distinct literal value is covered by
+// IsValidRelationshipKind.
 //
 // It is the runtime-free guardrail for Issue #86: it catches typos and stale
 // kind strings the moment a producer is compiled into the test binary, with
 // zero overhead in the production hot path.
 //
-// Distinguishing entities from relationships is done structurally:
-//   - Entity / EntityRecord composite literals  -> entity kinds
-//   - Relationship / RelationshipRecord literals -> relationship kinds
+// Qualified types (e.g. graph.RelationshipRecord) are accepted.
 //
-// Qualified types (e.g. graph.Entity, types.RelationshipRecord) are accepted.
+// # The ENTITY half moved (#6776 arm B3)
+//
+// It used to live here and read only *ast.BasicLit values, so a producer
+// writing `Kind: workflowKind` — an identifier naming a package-level string
+// constant — was invisible to it. Six SCOPE.*-prefixed kinds drifted out of
+// types.AllEntityKinds() behind that blindness. The entity guard now lives in
+// producer_entity_kinds_6776_test.go and delegates resolution to
+// internal/entkinds.ScanGo, which resolves source constants as well as
+// literals. That guard is a strict superset of what this file used to do for
+// entities, which is why the entity branch is gone rather than duplicated.
 
 import (
 	"go/ast"
@@ -85,27 +92,18 @@ func repoRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(here), "..", ".."))
 }
 
-// entityTypeNames are the unqualified Go type names whose `Kind` field is an
-// EntityKind. Qualified forms like graph.Entity also match by suffix.
-var entityTypeNames = map[string]struct{}{
-	"Entity":       {},
-	"EntityRecord": {},
-}
-
 var relationshipTypeNames = map[string]struct{}{
 	"Relationship":       {},
 	"RelationshipRecord": {},
 }
 
-// kindBucket categorises a composite-literal type expression as "entity",
-// "relationship", or "" (ignore).
+// kindBucket categorises a composite-literal type expression as
+// "relationship" or "" (ignore). Entity literals are the business of
+// producer_entity_kinds_6776_test.go.
 func kindBucket(typeExpr ast.Expr) string {
 	name := compositeTypeName(typeExpr)
 	if name == "" {
 		return ""
-	}
-	if _, ok := entityTypeNames[name]; ok {
-		return "entity"
 	}
 	if _, ok := relationshipTypeNames[name]; ok {
 		return "relationship"
@@ -140,7 +138,7 @@ func compositeTypeName(e ast.Expr) string {
 // triples for every `Kind: "..."` field appearing inside an Entity-ish or
 // Relationship-ish composite literal.
 type kindHit struct {
-	bucket  string // "entity" or "relationship"
+	bucket  string // "relationship"
 	value   string
 	pos     token.Position
 	typeTag string
@@ -189,7 +187,7 @@ func collectKindHits(fset *token.FileSet, file *ast.File) []kindHit {
 	return hits
 }
 
-func TestProducerKindLiterals_AreValid(t *testing.T) {
+func TestProducerRelationshipKindLiterals_AreValid(t *testing.T) {
 	root := repoRoot(t)
 	scanDir := filepath.Join(root, "internal")
 
@@ -222,20 +220,9 @@ func TestProducerKindLiterals_AreValid(t *testing.T) {
 
 	// Aggregate bad literals so the failure message lists every offender.
 	//
-	// Scoping note: grafel has two coexisting entity-kind taxonomies:
-	//   1. The SCOPE.* taxonomy emitted by tree-sitter extractors and covered
-	//      by IsValidEntityKind / AllEntityKinds.
-	//   2. An older YAML-driven detector taxonomy in internal/engine/ that
-	//      uses unprefixed names like "Route", "Component", "Config". These
-	//      are intentionally outside the validator set and are checked
-	//      downstream by their literal kind.
-	//
-	// The scan only enforces validators on literals that *look like* they
-	// belong to taxonomy #1: entity kinds that start with "SCOPE." and
-	// relationship kinds that match an UPPER_SNAKE shape. Anything else is
-	// considered out-of-scope for this guard and ignored. If you want to
-	// shrink the engine-layer taxonomy into the typed system, that's a
-	// separate piece of work (see Issue #77).
+	// The scan enforces the validator only on literals matching the UPPER_SNAKE
+	// shape a typed RelationshipKind takes; anything else is a string that
+	// happens to sit in a `Kind` field, not a claim about the vocabulary.
 	type badKey struct {
 		bucket string
 		value  string
@@ -244,11 +231,6 @@ func TestProducerKindLiterals_AreValid(t *testing.T) {
 	for _, h := range allHits {
 		var ok bool
 		switch h.bucket {
-		case "entity":
-			if !strings.HasPrefix(h.value, "SCOPE.") {
-				continue // engine-layer taxonomy, out of scope
-			}
-			ok = types.IsValidEntityKind(h.value)
 		case "relationship":
 			if !looksLikeRelationshipKind(h.value) {
 				continue
@@ -302,7 +284,7 @@ func TestProducerKindLiterals_AreValid(t *testing.T) {
 			b.WriteString(" more\n")
 		}
 	}
-	b.WriteString("Either add the kind to internal/types/kinds.go (and AllEntityKinds / ")
+	b.WriteString("Either add the kind to internal/types/kinds.go (and ")
 	b.WriteString("AllRelationshipKinds) or fix the producer to use the typed constant.")
 	t.Fatal(b.String())
 }
