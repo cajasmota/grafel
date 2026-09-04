@@ -205,10 +205,17 @@ const (
 	// A single declared state in an application-level state machine — XState
 	// (JS/TS), Ruby AASM, Spring StateMachine (Java), or the Python
 	// `transitions` library. One entity per statically-named state. Distinct
-	// from EntityKindStateMachine ("SCOPE.StateMachine"), which models an AWS
+	// from the whole-machine kind "SCOPE.StateMachine", which models an AWS
 	// Step Functions *whole-machine*; this models the individual nodes of the
 	// state graph, connected by RelationshipKindTransitionsTo. Synthetic ID
 	// shape: `state:<lib>:<machine>:<stateName>`.
+	//
+	// This paragraph used to name a constant `EntityKindStateMachine` that has
+	// never existed (#6776 arm B3). "SCOPE.StateMachine" is written as a bare
+	// Go constant by internal/engine/workflow_edges.go and is NOT in this enum;
+	// it is ledgered in internal/types/producer_entity_kinds_6776_test.go and
+	// is arm B4's work. A doc comment naming a constant that does not exist is
+	// the same defect one layer down from the guard that missed the producer.
 	EntityKindState EntityKind = "SCOPE.State"
 
 	// #1217 (Sub-A of #1115): Split http_endpoint into two distinct kinds.
@@ -481,10 +488,18 @@ func AllEntityKinds() []EntityKind {
 		EntityKindServerlessFunction,
 		// #927:
 		EntityKindEventBusEvent,
-		// #6776 arm B2: declared at kinds.go:192 since the messaging split and
-		// never listed here — the only one of the 63 EntityKind constants the
-		// list omitted. Adding a kind needs no KindVocabularyVersion bump (see
-		// the doc on that constant): nothing already on disk changes spelling.
+		// #6776 arm B2: declared since the messaging split and never listed
+		// here — the SOLE omission from this list, in either direction.
+		//
+		// The population is 63 constants of type EntityKind, of which 62 are
+		// NAMED EntityKind*; the 63rd is HTTPEndpointKindLegacy, which is
+		// EntityKind-typed under a different name and was already listed. Both
+		// counts and the set equality are pinned by
+		// TestEntityKindDeclarations6776_MatchAllEntityKindsExactly rather than
+		// asserted here, so this comment cannot go stale unobserved.
+		//
+		// Adding a kind needs no KindVocabularyVersion bump (see the doc on
+		// that constant): nothing already on disk changes spelling.
 		EntityKindEventType,
 		// CLI command entry-points (epic #3628):
 		EntityKindCommand,

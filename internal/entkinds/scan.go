@@ -45,6 +45,32 @@
 // computed at run time is reported as unresolved rather than guessed at. The
 // YAML scan reads scalars only; a sequence or an empty value is unresolved.
 //
+// # Scoping, and the two ways a bare-name resolver fabricates a kind (#6776)
+//
+// Both of these were live here and both produced a CONFIDENT WRONG ANSWER —
+// the opposite failure direction from the "unresolved" one above, and the more
+// dangerous one, because a fabricated kind is indistinguishable from a real
+// declaration in the output.
+//
+//   - A SELECTOR is resolved only when its qualifier names a package this file
+//     imports. `types.EntityKindRoute` resolves; `e.Kind` — a field read on a
+//     value that merely happens to be spelled like a constant in scope — does
+//     not, and is reported unresolved. Resolving by the selector's final
+//     identifier alone reported a run-time field read as a source constant.
+//   - A BARE IDENTIFIER is resolved only against package-level constants in
+//     its OWN directory, which is what Go scoping actually permits: a bare name
+//     cannot refer to another package's constant. A tree-wide fallback let a
+//     FUNCTION-LOCAL `const localName = ...` resolve to an unrelated package's
+//     `localName`, silently reporting a kind that appears nowhere at that site.
+//
+// The residual imprecision is stated rather than hidden: a selector still
+// resolves against package-level constants tree-wide rather than against the
+// specific package the qualifier names, so an import alias pointing at a
+// different package than its path's last element could in principle mis-bind.
+// `ambiguous` blunts it — a name declared with two DIFFERENT values anywhere in
+// the tree resolves to neither — and function-local constants are not collected
+// at all, so they are reported unresolved rather than guessed at.
+//
 // A MULTI-DOCUMENT YAML file is read only as far as its first document.
 // yaml.Unmarshal decodes one document, so a kind declared after a `---`
 // separator is invisible to this scan. That is not a hole the rule tree can
@@ -401,17 +427,26 @@ func ScanGo(root string) (Result, error) {
 
 	res := Result{FilesParsed: len(asts), GoFilesParsed: len(asts)}
 	for _, p := range asts {
-		resolve := func(name string) (string, bool) {
-			if v, ok := perDir[p.dir][name]; ok {
-				return v, true
-			}
+		// A bare identifier can only name a constant of its own package, so it
+		// resolves against its own directory and nowhere else. A tree-wide
+		// fallback here is what let a function-local constant resolve to an
+		// unrelated package's same-named one (#6776).
+		resolveLocal := func(name string) (string, bool) {
+			v, ok := perDir[p.dir][name]
+			return v, ok
+		}
+		// A qualified selector names another package's constant, which is not
+		// in perDir. `ambiguous` drops any name two packages declare with
+		// different values, so a collision resolves to neither rather than to
+		// whichever the walk saw last.
+		resolveQualified := func(name string) (string, bool) {
 			if ambiguous[name] {
 				return "", false
 			}
 			v, ok := global[name]
 			return v, ok
 		}
-		sites, unresolved := goSitesIn(p.fset, p.file, p.rel, resolve)
+		sites, unresolved := goSitesIn(p.fset, p.file, p.rel, resolveLocal, resolveQualified, importNames(p.file))
 		res.Sites = append(res.Sites, sites...)
 		res.UnresolvedSites = append(res.UnresolvedSites, unresolved...)
 	}
@@ -460,7 +495,7 @@ func stringLit(e ast.Expr) (string, bool) {
 // goSitesIn walks one file for entity composite literals. Untyped elements are
 // handled: in `[]types.EntityRecord{{Kind: "X"}}` the inner literal has no Type
 // of its own and inherits the slice's element type.
-func goSitesIn(fset *token.FileSet, f *ast.File, rel string, resolve func(string) (string, bool)) (sites, unresolved []Site) {
+func goSitesIn(fset *token.FileSet, f *ast.File, rel string, resolveLocal, resolveQualified func(string) (string, bool), imports map[string]bool) (sites, unresolved []Site) {
 	var visit func(n ast.Node, inherited string)
 	visit = func(n ast.Node, inherited string) {
 		ast.Inspect(n, func(node ast.Node) bool {
@@ -486,7 +521,7 @@ func goSitesIn(fset *token.FileSet, f *ast.File, rel string, resolve func(string
 					if !ok || key.Name != "Kind" {
 						continue
 					}
-					val, ok := constValueOf(kv.Value, resolve)
+					val, ok := constValueOf(kv.Value, resolveLocal, resolveQualified, imports)
 					if !ok {
 						unresolved = append(unresolved, Site{
 							File:   rel,
@@ -543,24 +578,60 @@ func elemTypeNameOf(e ast.Expr) string {
 }
 
 // constValueOf resolves an expression to a source-constant string.
-func constValueOf(e ast.Expr, resolve func(string) (string, bool)) (string, bool) {
+//
+// The two resolvers are deliberately NOT interchangeable — see the package doc.
+// A bare identifier goes to resolveLocal (its own package only); a selector
+// goes to resolveQualified, and only after its qualifier is confirmed to name
+// an imported package, so a field read like `e.Kind` is reported unresolved
+// instead of being answered with whatever constant shares the field's name.
+func constValueOf(e ast.Expr, resolveLocal, resolveQualified func(string) (string, bool), imports map[string]bool) (string, bool) {
 	switch v := e.(type) {
 	case *ast.BasicLit:
 		return stringLit(v)
 	case *ast.Ident:
-		return resolve(v.Name)
+		return resolveLocal(v.Name)
 	case *ast.SelectorExpr:
-		return resolve(v.Sel.Name)
+		pkg, ok := v.X.(*ast.Ident)
+		if !ok || !imports[pkg.Name] {
+			return "", false
+		}
+		return resolveQualified(v.Sel.Name)
 	case *ast.CallExpr:
 		if len(v.Args) != 1 {
 			return "", false
 		}
 		switch v.Fun.(type) {
 		case *ast.Ident, *ast.SelectorExpr:
-			return constValueOf(v.Args[0], resolve)
+			return constValueOf(v.Args[0], resolveLocal, resolveQualified, imports)
 		}
 	}
 	return "", false
+}
+
+// importNames returns the identifiers by which f can refer to an imported
+// package: the explicit alias where there is one, otherwise the import path's
+// last element. It is the qualifier whitelist for the selector case.
+func importNames(f *ast.File) map[string]bool {
+	out := map[string]bool{}
+	for _, imp := range f.Imports {
+		if imp.Name != nil {
+			if imp.Name.Name != "_" && imp.Name.Name != "." {
+				out[imp.Name.Name] = true
+			}
+			continue
+		}
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		if i := strings.LastIndex(path, "/"); i >= 0 {
+			path = path[i+1:]
+		}
+		if path != "" {
+			out[path] = true
+		}
+	}
+	return out
 }
 
 // BoundPaths returns, sorted, the YAML paths this package treats as actually

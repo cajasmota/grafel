@@ -26,9 +26,30 @@ package types_test
 //	ITS RESOLVER.
 //
 // So the resolution is delegated to internal/entkinds.ScanGo, which already
-// resolves a literal, an identifier naming a package-level string constant, a
-// qualified selector, and a one-argument conversion around any of those. One
-// resolver, one hole, one place to widen it.
+// resolves a literal, a bare identifier naming a package-level string constant
+// of the SAME package, a selector qualified by an IMPORTED package, and a
+// one-argument conversion around any of those. One resolver, one hole, one
+// place to widen it.
+//
+// # Two fabrication holes in that resolver, found while fixing this one
+//
+// The maxim above cuts both ways, and reusing a resolver inherits its bugs.
+// Review of this change found ScanGo answering CONFIDENTLY WRONG in two
+// shapes — worse than the unresolved direction, because a fabricated kind is
+// indistinguishable from a real declaration in the output:
+//
+//   - a selector was resolved by its FINAL IDENTIFIER with no check that the
+//     qualifier named a package, so the field read `e.Kind` was reported as a
+//     source constant whenever some package declared `const Kind = "..."`;
+//   - a bare identifier fell back to a TREE-WIDE constant table, so a
+//     function-local `const localName = "SCOPE.ActuallyThisOne"` resolved to an
+//     unrelated package's `localName` — a kind appearing nowhere at that site.
+//
+// Both are fixed in internal/entkinds/scan.go and both are OBSERVED here, in
+// TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds, rather than
+// asserted in this comment. The advertised selector capability is observed too,
+// in TestProducerEntityKinds6776_ResolverReadsSourceConstantShapes — it had no
+// test of any kind before review.
 //
 // # The resolver's limits, and where they are observed
 //
@@ -350,47 +371,72 @@ func TestProducerEntityKinds6776_UnresolvedSitesAreReportedNotDropped(t *testing
 	}
 }
 
-// TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds is the negative
-// control: recall alone cannot detect a resolver that over-fires, so this pins
-// what must NOT be collected. It varies the SHAPE of each declaration and holds
-// the constant's value style (a package-level string constant) fixed:
+// writeFixtureTree writes a multi-package fixture under a fresh temp root and
+// returns the root. Split out so the positive and negative resolver tests read
+// the SAME tree: a capability test and an over-firing test that disagree about
+// the fixture prove nothing about each other.
 //
-//   - a string constant never used as an entity Kind      -> not collected
-//   - a string constant used on a different FIELD         -> not collected
-//   - a string constant used on a non-entity TYPE         -> not collected
-//   - a package-level VAR (not a constant) used as Kind   -> unresolved, not guessed
-//
-// The one positive row keeps the test from passing by collecting nothing.
-func TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds(t *testing.T) {
+// Package q exists to be imported, and package r to be a stranger that shares a
+// constant NAME with a function-local one in package p.
+func writeFixtureTree(t *testing.T) string {
+	t.Helper()
 	root := t.TempDir()
-	dir := filepath.Join(root, "p")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
+	write := func(rel, src string) {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	src := `package p
+
+	write("q/q.go", `package q
+
+const QualifiedKind = "SCOPE.QualifiedOK"
+`)
+	write("r/r.go", `package r
+
+const shadowedName = "SCOPE.StrangerPackage"
+`)
+	write("p/a.go", `package p
+
+import "example.com/q"
 
 const usedKind = "SCOPE.Function"
-const unusedKind = "SCOPE.NeverUsedAnywhere"
+const convertedKind = "SCOPE.Converted"
+const orphanKind = "SCOPE.OrphanNeverReferenced"
+const wrongTypeKind = "SCOPE.OnAWidget"
 const notAKindAtAll = "just a name"
+const Kind = "SCOPE.FieldNameCollision"
 
 var runtimeKind = "SCOPE.ComputedAtRunTime"
 
 type Entity struct{ Kind, Name string }
 type Widget struct{ Kind string }
+type carrier struct{ Kind string }
 
-func f() []Entity {
-	_ = Widget{Kind: unusedKind}
+func f(c carrier) []Entity {
+	_ = Widget{Kind: wrongTypeKind}
+	const shadowedName = "SCOPE.FunctionLocal"
 	return []Entity{
 		{Kind: usedKind},
+		{Kind: q.QualifiedKind},
+		{Kind: string(convertedKind)},
 		{Name: notAKindAtAll},
 		{Kind: runtimeKind},
+		{Kind: c.Kind},
+		{Kind: shadowedName},
 	}
 }
-`
-	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o600); err != nil {
-		t.Fatal(err)
-	}
+`)
+	return root
+}
 
+// collectedKinds runs the shared resolver over a fixture tree and returns the
+// distinct kinds it reported plus the unresolved count.
+func collectedKinds(t *testing.T, root string) (map[string]bool, int) {
+	t.Helper()
 	res, err := entkinds.ScanGo(root)
 	if err != nil {
 		t.Fatal(err)
@@ -399,23 +445,169 @@ func f() []Entity {
 	for _, s := range res.Sites {
 		got[s.Kind] = true
 	}
-	if !got["SCOPE.Function"] {
-		t.Fatalf("positive control missing: SCOPE.Function not collected; sites = %+v", res.Sites)
-	}
-	for _, forbidden := range []string{
-		"SCOPE.NeverUsedAnywhere",
-		"just a name",
-		"SCOPE.ComputedAtRunTime",
+	return got, res.Unresolved()
+}
+
+// TestProducerEntityKinds6776_ResolverReadsSourceConstantShapes is the POSITIVE
+// control for every declaration shape the file header advertises. Before
+// review the selector shape was claimed in prose and observed by nothing.
+//
+// It varies the EXPRESSION SHAPE of the Kind value and holds constant: the
+// composite-literal type (Entity), the field (Kind), and the fixture tree.
+//
+//	{Kind: usedKind}            bare identifier, same package
+//	{Kind: q.QualifiedKind}     selector qualified by an imported package
+//	{Kind: string(constIdent)}  one-argument conversion
+func TestProducerEntityKinds6776_ResolverReadsSourceConstantShapes(t *testing.T) {
+	got, _ := collectedKinds(t, writeFixtureTree(t))
+	for shape, want := range map[string]string{
+		"bare identifier":     "SCOPE.Function",
+		"qualified selector":  "SCOPE.QualifiedOK",
+		"string() conversion": "SCOPE.Converted",
 	} {
-		if got[forbidden] {
-			t.Errorf("resolver over-fired: collected %q, which is not an entity-kind declaration", forbidden)
+		if !got[want] {
+			t.Errorf("%s: resolver did not collect %q; collected = %v", shape, want, got)
 		}
 	}
-	if len(got) != 1 {
-		t.Errorf("collected %d distinct kinds, want exactly 1: %v", len(got), got)
+}
+
+// TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds is the NEGATIVE
+// control: recall cannot detect a resolver that over-fires, so this pins what
+// must NOT be collected. Every row is a DISTINCT axis with its own constant —
+// no two rows share a declaration, so no row's failure can be masked by
+// another's. It varies the shape of the non-declaration and holds constant the
+// fixture tree and the value style (a string constant, except where the axis IS
+// the value style).
+//
+//	orphanKind        a string constant referenced nowhere at all
+//	notAKindAtAll     a string constant used on a different FIELD (Name)
+//	wrongTypeKind     a string constant used on a non-entity TYPE (Widget)
+//	runtimeKind       a package-level VAR, not a constant
+//	c.Kind            a FIELD READ whose name collides with `const Kind`  (#6776 review)
+//	shadowedName      a FUNCTION-LOCAL constant that another package also names (#6776 review)
+//
+// The last two are the fabrication holes: before the fix the resolver answered
+// them with "SCOPE.FieldNameCollision" and "SCOPE.StrangerPackage", neither of
+// which is declared at the site. They must now be UNRESOLVED — reported, not
+// guessed and not dropped — which is why the unresolved count is asserted
+// exactly rather than merely being non-zero.
+func TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds(t *testing.T) {
+	got, unresolved := collectedKinds(t, writeFixtureTree(t))
+
+	if !got["SCOPE.Function"] {
+		t.Fatalf("positive control missing: SCOPE.Function not collected; collected = %v", got)
 	}
-	if res.Unresolved() != 1 {
-		t.Errorf("unresolved = %d, want 1 (the package-level var); unresolved = %+v",
-			res.Unresolved(), res.UnresolvedSites)
+	for axis, forbidden := range map[string]string{
+		"constant referenced nowhere":                               "SCOPE.OrphanNeverReferenced",
+		"constant on another field":                                 "just a name",
+		"constant on a non-entity type":                             "SCOPE.OnAWidget",
+		"package-level var":                                         "SCOPE.ComputedAtRunTime",
+		"field read colliding with a constant name":                 "SCOPE.FieldNameCollision",
+		"function-local constant, name shared with another package": "SCOPE.StrangerPackage",
+		"function-local constant, its own value":                    "SCOPE.FunctionLocal",
+	} {
+		if got[forbidden] {
+			t.Errorf("resolver over-fired on the %q axis: collected %q, which is not an "+
+				"entity-kind declaration at that site", axis, forbidden)
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("collected %d distinct kinds, want exactly 3 (the three source-constant "+
+			"shapes): %v", len(got), got)
+	}
+	if unresolved != 3 {
+		t.Errorf("unresolved = %d, want 3 (the package-level var, the field read, and the "+
+			"function-local constant): a drop here is a silent blind spot, a rise means a "+
+			"shape stopped resolving", unresolved)
+	}
+}
+
+// TestEntityKindDeclarations6776_MatchAllEntityKindsExactly pins the population
+// arm B2 corrected, and pins it as a SET rather than only as a count: 63
+// constants of type EntityKind, 62 of them named EntityKind*, and
+// AllEntityKinds() listing every one with nothing extra.
+//
+// It exists because the count reached review as a number in a comment, and the
+// review disagreed with it — one side counting EntityKind-TYPED constants (63)
+// and the other EntityKind-NAMED ones (62). Both are now observed, so the
+// distinction cannot be re-litigated from prose. Note that the parse counts
+// DECLARATIONS: kinds.go also contained a doc comment naming a constant
+// (EntityKindStateMachine) that has never existed, and no AST walk sees it.
+//
+// Varies: nothing (a live-source observation). Holds constant: the source file.
+func TestEntityKindDeclarations6776_MatchAllEntityKindsExactly(t *testing.T) {
+	path := filepath.Join(repoRoot(t), "internal", "types", "kinds.go")
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	declared := map[string]bool{}
+	namedEntityKind := 0
+	for _, d := range f.Decls {
+		gen, ok := d.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			if id, ok := vs.Type.(*ast.Ident); !ok || id.Name != "EntityKind" {
+				continue
+			}
+			for _, n := range vs.Names {
+				declared[n.Name] = true
+				if strings.HasPrefix(n.Name, "EntityKind") {
+					namedEntityKind++
+				}
+			}
+		}
+	}
+
+	listed := map[string]bool{}
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Name.Name != "AllEntityKinds" {
+			continue
+		}
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			cl, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			for _, e := range cl.Elts {
+				if id, ok := e.(*ast.Ident); ok {
+					listed[id.Name] = true
+				}
+			}
+			return true
+		})
+	}
+
+	if len(declared) != 63 {
+		t.Errorf("EntityKind-typed constants = %d, want 63; re-pin this number and the "+
+			"comment in AllEntityKinds beside EntityKindEventType", len(declared))
+	}
+	if namedEntityKind != 62 {
+		t.Errorf("constants NAMED EntityKind* = %d, want 62 (the 63rd EntityKind-typed "+
+			"constant is HTTPEndpointKindLegacy)", namedEntityKind)
+	}
+	for name := range declared {
+		if !listed[name] {
+			t.Errorf("%s is declared as an EntityKind but AllEntityKinds() omits it — "+
+				"IsValidEntityKind will reject every entity carrying it", name)
+		}
+	}
+	for name := range listed {
+		if !declared[name] {
+			t.Errorf("AllEntityKinds() lists %s, which is not an EntityKind constant "+
+				"declared in this file", name)
+		}
+	}
+	if len(listed) != len(declared) {
+		t.Errorf("AllEntityKinds() lists %d entries, %d constants declared", len(listed), len(declared))
 	}
 }
