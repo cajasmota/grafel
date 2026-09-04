@@ -288,8 +288,8 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 			}
 		}
 	}
-	if fixtures != 29 {
-		t.Fatalf("parsed %d fixtures, want 29 — every golden expected.json must "+
+	if fixtures != 30 {
+		t.Fatalf("parsed %d fixtures, want 30 — every golden expected.json must "+
 			"keep parsing across this additive schema change", fixtures)
 	}
 	want := map[string][]string{

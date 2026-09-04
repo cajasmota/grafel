@@ -463,6 +463,11 @@ func extractLisp(src, filePath, dialect string) []types.EntityRecord {
 				StartLine:  startLine,
 				EndLine:    startLine,
 				Signature:  "(defclass " + name + " ...)",
+				// #6370: the superclass list is the form immediately after the
+				// name. m[3] is the offset just past the NAME capture, which is
+				// what makes the slot list structurally unreachable — see
+				// hierarchy.go.
+				Relationships: superclassEdges(scrubbed, m[3], name, startLine),
 			})
 		}
 	}

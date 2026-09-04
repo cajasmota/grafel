@@ -229,8 +229,8 @@ func TestEveryGoldenFixtureDeclaresExpectedRelationships_6490(t *testing.T) {
 	// Checked only after `missing` is reported, because a fixture that failed
 	// the key check never reached the counter — this is the number of fixtures
 	// actually INSPECTED, not the number of files opened.
-	if fixtures != 29 {
-		t.Fatalf("inspected %d golden fixtures, want 29 — the corpus size changed, so this "+
+	if fixtures != 30 {
+		t.Fatalf("inspected %d golden fixtures, want 30 — the corpus size changed, so this "+
 			"test's coverage claim needs re-deriving rather than silently shrinking", fixtures)
 	}
 	// A FAILURE, not a t.Logf. It was a log while arm A only required the key
