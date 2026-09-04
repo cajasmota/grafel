@@ -204,6 +204,15 @@ func extractGraphQL(src, filePath string) []types.EntityRecord {
 			}
 		}
 
+		// #6370 — the SDL `implements` clause becomes IMPLEMENTS edges. Only
+		// an object type and an interface type may carry one; `enum`/`union`/
+		// `input`/`scalar` cannot, so they are not offered the header at all.
+		// See hierarchy.go for the header bound and what it excludes.
+		if subtype == "type" || subtype == "interface" {
+			ent.Relationships = append(ent.Relationships,
+				implementsEdges(src, name, m[5], startLine)...)
+		}
+
 		// Fields are only meaningful for type/interface/input. enum members
 		// and union members are intentionally not emitted as fields here.
 		if (subtype == "type" || subtype == "interface" || subtype == "input") &&
