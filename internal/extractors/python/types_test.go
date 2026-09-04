@@ -10,6 +10,7 @@
 package python_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -101,10 +102,34 @@ class Status(StrEnum):
 	}
 }
 
-// TestEnumValueSet_PythonParenthesizedValue asserts a member value wrapped in
-// parentheses across lines (`NAME = (\n    "value"\n)`) still resolves to its
-// literal, while auto() stays empty-valued and a Django-style tuple still
-// resolves to its first element.
+// TestEnumValueSet_PythonParenthesizedValue pins BOTH directions of the
+// parenthesised-RHS case. Recall: a literal wrapped in parentheses
+// (`NAME = (\n    "value"\n)`) still resolves, for a string, for a non-string
+// literal, and through a parenthesised Django tuple. Over-firing: a computed
+// expression wrapped in parentheses stays value-less — unwrapping must recurse
+// into the inner node, never fall back to the parenthesised node's raw text.
+//
+// Axis varied per member, everything else held constant (same class, same enum
+// base, same single-assignment form):
+//
+//	SHORT                   — unparenthesised string (control for the whole set)
+//	A_VERY_LONG_MEMBER_NAME — parens + newlines around a string
+//	NUM                     — parens around a NON-string literal (integer), so
+//	                          the new case is not pinned only via the string arm
+//	AUTOD                   — bare `enum.auto()`: computed, no parens
+//	AUTOD_PAREN             — computed WRAPPED IN PARENS: the negative control.
+//	                          This is the only member that enters the
+//	                          parenthesised case with a computed payload; it is
+//	                          what a raw-text fallback would fabricate a value
+//	                          for.
+//	COMPUTED                — second computed-in-parens control (arithmetic)
+//	DJANGO_LIKE             — bare tuple, no extra parens
+//	DJANGO_PAREN            — parens around a tuple: the only member where the
+//	                          parenthesised case and the tuple case compose
+//
+// Not covered here, deliberately: an f-string value (#6799) and a comment
+// inside the parentheses (#6800). Both are open bugs; pinning today's output
+// would pin the defect.
 func TestEnumValueSet_PythonParenthesizedValue(t *testing.T) {
 	src := `
 import enum
@@ -114,20 +139,37 @@ class TransactionType(enum.StrEnum):
     A_VERY_LONG_MEMBER_NAME = (
         "some-value"
     )
+    NUM = (
+        7
+    )
     AUTOD = enum.auto()
+    AUTOD_PAREN = (enum.auto())
+    COMPUTED = (1 + 2)
     DJANGO_LIKE = ("db", "Label")
+    DJANGO_PAREN = (("db2", "Label"))
 `
 	ents := extractPy(t, src, "app/transaction.py")
 	en := findEnum(ents, "TransactionType")
 	if en == nil {
 		t.Fatal("SCOPE.Enum:TransactionType value-set node not found")
 	}
-	want := "SHORT=short, A_VERY_LONG_MEMBER_NAME=some-value, DJANGO_LIKE=db"
-	if got := en.Properties["values"]; got != want {
+	want := "SHORT=short, A_VERY_LONG_MEMBER_NAME=some-value, NUM=7, DJANGO_LIKE=db, DJANGO_PAREN=db2"
+	got := en.Properties["values"]
+	if got != want {
 		t.Fatalf("values = %q, want %q", got, want)
 	}
-	if got := en.Properties["member_count"]; got != "4" {
-		t.Fatalf("member_count = %q, want 4", got)
+	// Negative control, stated separately from the equality above so a failure
+	// names the defect: unwrapping parentheses must not hand a computed member
+	// a value. A raw-text fallback would emit `AUTOD_PAREN=enum.auto()` and
+	// `COMPUTED=1 + 2` here.
+	for _, computed := range []string{"AUTOD_PAREN", "COMPUTED"} {
+		if strings.Contains(got, computed+"=") {
+			t.Errorf("computed member %s in parentheses was given a value: values = %q", computed, got)
+		}
+	}
+	// All 8 members are recorded even though 3 carry no value.
+	if got := en.Properties["member_count"]; got != "8" {
+		t.Fatalf("member_count = %q, want 8", got)
 	}
 }
 
