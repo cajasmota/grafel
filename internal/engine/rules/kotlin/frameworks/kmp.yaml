@@ -92,6 +92,45 @@ source_patterns:
     scope: file
 
 relationship_rules:
+  # NOTE (#6805) — `source_group: 1` and `target_group: 1` on the two rules
+  # below are CORRECT and deliberate. They are NOT a copy-paste slip, and
+  # making them different capture groups is not possible: the expect/actual
+  # pairing in Kotlin Multiplatform is BY NAME, so one capture is all there
+  # is to read. The endpoints are separated by source_type/target_type, not
+  # by capture group — `actual class Clock` in androidMain emits
+  # `Implementation:Clock` and `expect class Clock` in commonMain emits
+  # `Interface:Clock`, two distinct entities in two distinct files, and the
+  # IMPLEMENTS edge between them is a real architectural fact.
+  #
+  # #6805 was filed reading these two rules as unconditional `X IMPLEMENTS X`
+  # self-loops and proposed deleting them. Measured, they are not: on a KMP
+  # expect/actual pair they produce the correct cross-source-set edge, and
+  # deleting them destroys it. internal/quality/golden/kotlin-spring-mini
+  # grades both correct edges (`Clock` and `platformName`) as must_exist for
+  # exactly this reason — deleting the two rules turns that ONE fixture red
+  # (relationship_found 14 -> 12) and no other. Note what that number means:
+  # against main it would have cost ZERO graded rows, because the only rows a
+  # deletion breaks are the two #6805 itself added. The rules were inert as
+  # far as CI was concerned, which is precisely why nobody noticed they were
+  # doing something correct.
+  #
+  # `source_group == target_group` is ALSO not a bug signature on its own:
+  # across the rule tree 17 rules in 12 files use it, as the normal "one
+  # capture, two endpoint TYPES" idiom. But the shape is not uniformly benign
+  # — 5 of those 17 additionally have `source_type == target_type`, which
+  # builds `FromID == ToID` literally at emission with no resolver
+  # involvement. Those five are a DIFFERENT defect from this one and are
+  # tracked in #6809; they are deliberately not addressed here or by
+  # graph.DropHierarchySelfLoops.
+  #
+  # The real self-loop #6805 saw comes from a case these rules cannot see:
+  # a member function of an `expect class` carries no `expect` keyword of its
+  # own (repeating it is a compile error), so `actual fun nowMillis` inside
+  # `actual class Clock` has no `Interface:nowMillis` to bind to, and the
+  # RESOLVER's bare-name fallback binds the unmatched target back to
+  # `Implementation:nowMillis`. That is fixed downstream, where both endpoints
+  # are finally visible as one id — see graph.DropHierarchySelfLoops.
+
   # actual fun NAME implements expect fun NAME — same name links them
   - pattern: "\\bactual\\s+fun\\s+(\\w+)\\s*[(<]"
     source_type: Implementation
