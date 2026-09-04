@@ -365,11 +365,29 @@ func TestRatchetUpdateRefusesFixtureWithoutExpectations_6273(t *testing.T) {
 	}
 }
 
-// minFixtures is the ONE number about the golden set that is still written by
-// hand, and it is a FLOOR rather than an exact count. See
-// TestGoldenSetIsFullyGraded_6273 for why (#6521). It is declared once, at file
-// scope, so that "the number" cannot drift between two copies — a second
-// hardcoded 26 elsewhere would reintroduce exactly the hazard this replaced.
+// minFixtures is the golden-set size THIS FILE reads, and it is a FLOOR rather
+// than an exact count. See TestGoldenSetIsFullyGraded_6273 for why (#6521).
+//
+// DO NOT BUMP IT WHEN YOU ADD A FIXTURE. That is the whole point of the floor:
+// #6521 replaced an exact hand-maintained integer here precisely so two fixture
+// branches in flight at once cannot collide on it, and so neither can be
+// reconciled to a wrong number. Adding a directory leaves the floor correct by
+// construction; TestGoldenSetFloorIsBelowTheRealSet is what keeps it from
+// drifting so far below the real set that it stops catching a deletion.
+//
+// It is NOT the only hardcoded copy in the package, and the comment that used to
+// claim it was the only one was false the day it was written. Three OTHER tests
+// carry an EXACT count, and those DO move with the directory count:
+//
+//	absent_relationships_6490_test.go  TestEveryGoldenFixtureDeclaresExpectedRelationships_6490
+//	subtype_assertion_6488_test.go     TestOnlyTheIntendedGoldenRowsAssertSubtype_6488
+//	zero_relationships_6490_test.go    TestNoGoldenFixtureClaimsTheOptIn_6490
+//
+// Re-derive those three from `ls -d internal/quality/golden/*/ | wc -l` rather
+// than by adding one to the previous value: two fixture-adding branches each see
+// the old number and each "+1" to the same wrong total. They fail loudly when it
+// is got wrong, which is what makes deriving cheap; this floor would not, which
+// is what makes editing it a bad habit rather than a harmless one.
 const minFixtures = 26
 
 // TestGoldenSetIsFullyGraded_6273 asserts the absolute figure the benchmark's
@@ -435,6 +453,11 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// handler in the same tree was written to graph.json as UNRESOLVED_FETCH,
 	// because the substrate base-URL fold ran only in `grafel group-link`, a
 	// later process phase the index-time matcher never met.
+	//
+	// 27 since #6803 added graphql-schema-mini and 28 since #6370 added
+	// nim-objects-mini — the two hierarchy-gap fixtures, landed back to back.
+	// Neither bumped minFixtures, and neither should have: the three exact-count
+	// tests named at the constant moved, the floor did not.
 	//
 	// express-baseurl-mini and python-fastapi-mini were built in parallel off
 	// the same 24-fixture base, so each bumped the old exact constant to 25 on

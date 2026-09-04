@@ -89,6 +89,12 @@
       "relationship_found": 12,
       "relationship_expected": 17
     },
+    "nim-objects-mini": {
+      "entity_found": 21,
+      "entity_expected": 21,
+      "relationship_found": 11,
+      "relationship_expected": 11
+    },
     "php-slim-mini": {
       "entity_found": 5,
       "entity_expected": 5,

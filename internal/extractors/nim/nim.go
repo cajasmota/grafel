@@ -205,6 +205,13 @@ func extractNim(src, filePath string) []types.EntityRecord {
 
 		// Find methods declared for this type (methods take first param of this type).
 		var rels []types.RelationshipRecord
+
+		// Inheritance: `= ref object of Base` (#6370). m[1] is the byte just
+		// past the `object` keyword, which is the ONLY position an `of` can
+		// mean inheritance in Nim — see hierarchy.go.
+		if ext := baseOfEdge(src, m[1], kind, name, startLine); ext != nil {
+			rels = append(rels, *ext)
+		}
 		methodSeen := make(map[string]bool)
 		for _, pm := range procRE.FindAllStringSubmatchIndex(src, -1) {
 			if len(pm) < 7 {
