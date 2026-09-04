@@ -15,7 +15,8 @@ package graphql_test
 //	                     undeclared — one dialect for all three   (14)
 //	decoys               field named `implements` / header `#` /
 //	                     leading description / comment-only line  (17, 18, 19, 20)
-//	bounds               unindented next line / block description (10, 21)
+//	bounds               unindented next line / blank line /
+//	                     block description / column-0 `&` / comma  (10, 21)
 //	anchoring            empty FromID / no duplicate entity       (22, 23)
 //	provenance           line + provenance properties             (11)
 
@@ -192,10 +193,16 @@ func TestGraphQLImplementsOnEnumAndInputEmitsNothing(t *testing.T) {
 
 // ---- 4. clause syntax edge cases -------------------------------------------
 
-// Varies: the clause spanning lines, with each continuation INDENTED. Holds:
-// arity 2, target declaredness.
+// Varies: the WHITESPACE the continuation line is indented with. Holds: arity
+// 2, target declaredness, the multi-line shape itself.
+//
+// Both spaces and tabs are indentation, and the stop tests only `' '` and
+// `'\t'` explicitly, so each character needs its own case: dropping `'\t'`
+// from the test made a tab-indented continuation end the header, and a
+// spaces-only source could not see it.
 func TestGraphQLImplementsNewlineContinuedClauseIsRead(t *testing.T) {
-	src := `interface Node { id: ID! }
+	cases := map[string]string{
+		"spaces": `interface Node { id: ID! }
 interface Named { name: String! }
 
 type User implements Node
@@ -203,12 +210,47 @@ type User implements Node
 {
   id: ID!
 }
+`,
+		"tab": "interface Node { id: ID! }\ninterface Named { name: String! }\n\n" +
+			"type User implements Node\n\t& Named\n{\n  id: ID!\n}\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			ents := extractGQL(t, "s.graphql", src)
+			got := implementsToIDs(ents, "User")
+			want := []string{"Node", "Named"}
+			if !equalStrings(got, want) {
+				t.Fatalf("ToIDs = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// Varies: a BLANK line inside the header. Holds: the continuation is indented,
+// so indentation cannot be what excludes it.
+//
+// A blank line ends a declaration header. It is stopped by the same condition
+// as an unindented line — a `\n` whose successor is neither space nor tab is
+// also a `\n` whose successor is `\n` — but that is exactly why it needs its
+// own case: a mutant that let the scan cross blank lines while still stopping
+// at column-0 text survives every other test in this file.
+func TestGraphQLImplementsBlankLineEndsTheHeader(t *testing.T) {
+	src := `interface Node { id: ID! }
+interface Named { name: String! }
+
+type User implements Node
+
+    & Named
+{
+  id: ID!
+}
 `
 	ents := extractGQL(t, "s.graphql", src)
 	got := implementsToIDs(ents, "User")
-	want := []string{"Node", "Named"}
+	want := []string{"Node"}
 	if !equalStrings(got, want) {
-		t.Fatalf("ToIDs = %v, want %v", got, want)
+		t.Fatalf("ToIDs = %v, want %v — the blank line ends the header, so `& Named` "+
+			"below it is not part of the clause", got, want)
 	}
 }
 
@@ -230,20 +272,39 @@ type User implements Node Named {
 	}
 }
 
-// Varies: the keyword glued to the first target name. Holds: everything else.
-// `implementsNode` is one identifier, not a clause; without the word boundary
-// on the keyword pattern this over-fires with a target of "Node".
+// Varies: WHICH end of the keyword is glued to a neighbouring token. Holds:
+// everything else.
+//
+// Two sub-cases because `\bimplements\b` has two boundaries and each is
+// load-bearing alone: `trailing` is the only one an earlier version of this
+// test covered, and a mutant dropping just the LEADING `\b` survived it while
+// the test's name went on claiming the keyword was pinned as a whole word.
+// Each sub-case is named for the boundary that excludes it.
 func TestGraphQLImplementsKeywordMustBeAWholeWord(t *testing.T) {
-	src := `interface Node { id: ID! }
+	cases := map[string]string{
+		// `implementsNode` is one identifier. Excluded by the TRAILING \b.
+		"trailing": `interface Node { id: ID! }
 
 type User implementsNode {
   id: ID!
 }
-`
-	ents := extractGQL(t, "s.graphql", src)
-	if n := totalImplements(ents); n != 0 {
-		t.Fatalf("`implementsNode` was read as a clause and emitted %d edges: %v",
-			n, implementsByOwner(ents))
+`,
+		// `reimplements` contains the keyword. Excluded by the LEADING \b.
+		"leading": `interface Node { id: ID! }
+
+type User reimplements Node {
+  id: ID!
+}
+`,
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			ents := extractGQL(t, "s.graphql", src)
+			if n := totalImplements(ents); n != 0 {
+				t.Fatalf("the keyword was matched inside a longer identifier and emitted "+
+					"%d edges: %v", n, implementsByOwner(ents))
+			}
+		})
 	}
 }
 
@@ -463,6 +524,67 @@ extend type User implements Node {
 			"and this test recorded that it emits none. If you extended #6370 to the "+
 			"extend loop, that is a FIX: replace this test with the real assertion.\n%v",
 			n, implementsByOwner(ents))
+	}
+}
+
+// KNOWN DIVERGENCE, asserted on purpose. SDL does not require a continuation
+// line of an `implements` list to be indented, and this header bound does: an
+// `&` at COLUMN 0 ends the header, so `Timestamped` is silently dropped and
+// only `Node` survives.
+//
+// The direction is safe — an edge is lost, never invented — but a lost edge is
+// still the "empty answer indistinguishable from nothing does" that #6370
+// exists to remove, so it is pinned rather than described. Whoever teaches the
+// bound about a leading `&` will be told by this failing test that they have
+// also fixed a real under-read.
+func TestGraphQLImplementsColumnZeroAmpersandContinuationIsDropped_KnownDivergence(t *testing.T) {
+	src := `interface Node { id: ID! }
+interface Timestamped { createdAt: String! }
+
+type User implements Node
+& Timestamped
+{
+  id: ID!
+}
+`
+	ents := extractGQL(t, "s.graphql", src)
+	got := implementsToIDs(ents, "User")
+	want := []string{"Node"}
+	if !equalStrings(got, want) {
+		t.Fatalf("KNOWN DIVERGENCE CHANGED: a column-0 `& Timestamped` continuation is "+
+			"currently DROPPED, so this owner should carry only %v; got %v.\n"+
+			"If you taught the header bound to cross an unindented line that continues the "+
+			"list, that is a FIX: replace this test with the real assertion and re-check "+
+			"TestGraphQLImplementsHeaderStopsAtUnindentedLine, which relies on the same stop.",
+			want, got)
+	}
+}
+
+// KNOWN DIVERGENCE, asserted on purpose. A COMMA-separated interface list —
+// `implements Node, Timestamped` — was accepted by graphql-js for years and
+// still appears in older schemas. It yields NOTHING here: the whole segment
+// fails the single-Name check and is discarded, so BOTH names are lost rather
+// than one.
+//
+// Discarding is the deliberate choice over splitting on `,` as well: `&` is
+// the separator the spec defines, and a parser that guesses at a second one
+// has no principled place to stop. But "deliberate" is a claim, so it is
+// asserted — and asserted at TWO names lost, because an implementation that
+// silently kept the first would satisfy a weaker "not both" assertion.
+func TestGraphQLImplementsCommaSeparatedListIsDropped_KnownDivergence(t *testing.T) {
+	src := `interface Node { id: ID! }
+interface Timestamped { createdAt: String! }
+
+type User implements Node, Timestamped {
+  id: ID!
+}
+`
+	ents := extractGQL(t, "s.graphql", src)
+	if n := totalImplements(ents); n != 0 {
+		t.Fatalf("KNOWN DIVERGENCE CHANGED: a comma-separated list currently yields NO "+
+			"edges, and this test recorded that; got %d: %v.\n"+
+			"If you taught implementsTargets about `,`, that is a FIX: replace this test "+
+			"with the real assertion for BOTH names.", n, implementsByOwner(ents))
 	}
 }
 

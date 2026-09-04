@@ -65,6 +65,23 @@
 // level" — `typeDefRE` is `(?m)^` anchored — so the header bound and the
 // definition scan agree by construction.
 //
+// # Two shapes this bound reads too little of, both pinned
+//
+// Both are SAFE directions — an edge is dropped, never invented — and both are
+// asserted as today's output by a KnownDivergence test rather than left as
+// prose, because a limitation nobody pins is an invitation to widen the parser
+// with nothing to notice:
+//
+//   - A continuation line beginning with `&` AT COLUMN 0
+//     (`type User implements Node\n& Timestamped {`) ends the header, so only
+//     `Node` is read. SDL does not require the continuation to be indented;
+//     this bound does.
+//     TestGraphQLImplementsColumnZeroAmpersandContinuationIsDropped_KnownDivergence.
+//   - A COMMA-separated list (`implements Node, Timestamped`), which graphql-js
+//     historically accepted, yields NOTHING: the segment is not a single Name,
+//     so it is discarded whole rather than split on a separator SDL never
+//     specified. TestGraphQLImplementsCommaSeparatedListIsDropped_KnownDivergence.
+//
 // It is NOT what stops `type X implements` running into a following
 // `type Y {`: that segment reads `type Y`, two words, which the Name check in
 // implementsTargets discards anyway. The stop is load-bearing for the
@@ -83,8 +100,10 @@ import (
 )
 
 var (
-	// The SDL keyword, as a whole word: a header reading `implementsFoo` is
-	// not an implements clause.
+	// The SDL keyword, as a whole word — BOTH boundaries, each load-bearing on
+	// its own side. Without the trailing one `implementsNode` is read as a
+	// clause naming Node; without the leading one `reimplements Node` is. Both
+	// directions are scored by TestGraphQLImplementsKeywordMustBeAWholeWord.
 	implementsKeywordRE = regexp.MustCompile(`\bimplements\b`)
 	// A GraphQL Name (spec: /[_A-Za-z][_0-9A-Za-z]*/), anchored so a segment
 	// carrying anything else — `A B`, `A,`, a stray `!` — is discarded rather
@@ -95,10 +114,14 @@ var (
 // declarationHeader returns the bytes of a type-system definition between the
 // end of its declared name (nameEnd) and the end of its header. See the
 // package-level note above for what the four stops exclude.
+// There is deliberately no `nameEnd < 0 || nameEnd > len(src)` guard. The sole
+// call site passes m[5] — the end offset of group 2 of a SUCCESSFUL
+// typeDefRE.FindAllStringSubmatchIndex match — which is by construction in
+// [0, len(src)]. Re-introducing the check scores equivalent under any suite,
+// which is the evidence it belongs out of the code: a branch no input can
+// reach is not a guard, it is a claim no test can observe. Same treatment, and
+// the same reason, as the `}` that is absent from the stop set below.
 func declarationHeader(src string, nameEnd int) string {
-	if nameEnd < 0 || nameEnd > len(src) {
-		return ""
-	}
 	for i := nameEnd; i < len(src); i++ {
 		switch src[i] {
 		// No `}` here. A closing brace can only be met before an opening one

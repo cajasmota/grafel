@@ -82,13 +82,24 @@ source_patterns:
     scope: file
 
 relationship_rules:
-  # type implements interface
-  - pattern: "type\\s+(\\w+)\\s+implements\\s+(\\w+)"
-    source_type: Model
-    target_type: Interface
-    relationship: IMPLEMENTS
-    source_group: 1
-    target_group: 2
+  # NO `implements` RULE HERE. #6370 gave internal/extractors/graphql its own
+  # IMPLEMENTS emission, and keeping this one made the graph report the same
+  # fact twice: measured on internal/quality/golden/graphql-schema-mini, a
+  # schema declaring 6 `implements` facts produced 8 IMPLEMENTS edges, with
+  # `User -> Node` and `Post -> Node` each appearing once from here and once
+  # from the extractor. Asking "what does User implement" answered `Node`
+  # twice.
+  #
+  # The extractor is the surviving producer because this rule was a strict
+  # subset of it and strictly worse: it matched `type` owners only (never
+  # `interface X implements Y`), took only the FIRST name of an
+  # `implements A & B & C` list, and — being unanchored and comment-blind —
+  # fired on a COMMENTED-OUT `# type Ghost implements Node {`, minting the
+  # `Ghost` entity to hang the edge on as well.
+  #
+  # TestGraphQLImplementsHasExactlyOneProducer (internal/extractors/graphql)
+  # drives BOTH producers over the golden fixture and fails if either this
+  # rule returns or the two ever emit the same pair again.
   # Field references another type: fieldName: TypeName
   - pattern: "\\s+(\\w+)\\s*:\\s*\\[?(\\w+)\\]?"
     source_type: Model
