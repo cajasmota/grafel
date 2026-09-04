@@ -454,10 +454,12 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// because the substrate base-URL fold ran only in `grafel group-link`, a
 	// later process phase the index-time matcher never met.
 	//
-	// 27 since #6803 added graphql-schema-mini and 28 since #6370 added
-	// nim-objects-mini — the two hierarchy-gap fixtures, landed back to back.
-	// Neither bumped minFixtures, and neither should have: the three exact-count
-	// tests named at the constant moved, the floor did not.
+	// 27 since #6803 added graphql-schema-mini, 28 since #6370 added
+	// nim-objects-mini and 29 since #6370 added pony-traits-mini — the
+	// hierarchy-gap fixtures, landed back to back. None bumped minFixtures, and
+	// none should have: the three exact-count tests named at the constant moved,
+	// the floor did not. Each count was re-derived from
+	// `ls -d internal/quality/golden/*/ | wc -l`, not by adding one.
 	//
 	// express-baseurl-mini and python-fastapi-mini were built in parallel off
 	// the same 24-fixture base, so each bumped the old exact constant to 25 on

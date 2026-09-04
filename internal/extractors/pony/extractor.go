@@ -165,8 +165,15 @@ func extractPony(src, filePath string) []types.EntityRecord {
 		body := extractPonyBlock(src, m[1])
 		endLine := startLine + strings.Count(body, "\n")
 
-		// Collect member operations (fun/be/new) within this body.
-		var containsRels []types.RelationshipRecord
+		// Relationships embedded on this type: its conformance edges plus the
+		// CONTAINS edges to its member operations (fun/be/new).
+		var typeRels []types.RelationshipRecord
+
+		// Conformance: `class Foo is Bar` (#6370). m[1] is the byte just past
+		// the declared NAME, which — after an optional generic parameter list
+		// — is the ONLY position an `is` can mean conformance in Pony. See
+		// hierarchy.go for why this is anchored rather than searched.
+		typeRels = append(typeRels, provideEdges(src, m[1], name, startLine)...)
 
 		// Functions within this type body.
 		for _, fm := range funRE.FindAllStringSubmatchIndex(body, -1) {
@@ -180,7 +187,7 @@ func extractPony(src, filePath string) []types.EntityRecord {
 			calls := collectCalls(fnBody, fnName)
 
 			ref := extractor.BuildOperationStructuralRef("pony", filePath, name+"."+fnName)
-			containsRels = append(containsRels, types.RelationshipRecord{
+			typeRels = append(typeRels, types.RelationshipRecord{
 				ToID: ref,
 				Kind: "CONTAINS",
 			})
@@ -210,7 +217,7 @@ func extractPony(src, filePath string) []types.EntityRecord {
 			calls := collectCalls(beBody, beName)
 
 			ref := extractor.BuildOperationStructuralRef("pony", filePath, name+"."+beName)
-			containsRels = append(containsRels, types.RelationshipRecord{
+			typeRels = append(typeRels, types.RelationshipRecord{
 				ToID: ref,
 				Kind: "CONTAINS",
 			})
@@ -240,7 +247,7 @@ func extractPony(src, filePath string) []types.EntityRecord {
 			calls := collectCalls(ctorBody, ctorName)
 
 			ref := extractor.BuildOperationStructuralRef("pony", filePath, name+"."+ctorName)
-			containsRels = append(containsRels, types.RelationshipRecord{
+			typeRels = append(typeRels, types.RelationshipRecord{
 				ToID: ref,
 				Kind: "CONTAINS",
 			})
@@ -268,7 +275,7 @@ func extractPony(src, filePath string) []types.EntityRecord {
 			EndLine:       endLine,
 			Signature:     keyword + " " + name,
 			Properties:    map[string]string{"imports": importProp},
-			Relationships: containsRels,
+			Relationships: typeRels,
 		})
 	}
 
