@@ -549,6 +549,12 @@ func pythonEnumLiteralValue(rhs ts.Node, src []byte) string {
 		return extractor.StripLiteralQuotes(nodeText(rhs, src))
 	case "true", "false", "none":
 		return nodeText(rhs, src)
+	case "parenthesized_expression":
+		// `NAME = (\n    "value"\n)`: the grammar wraps a lone parenthesised
+		// value distinctly from the comma-bearing forms below.
+		if el := rhs.NamedChild(0); el != nil {
+			return pythonEnumLiteralValue(el, src)
+		}
 	case "tuple", "expression_list":
 		// Django (Integer|Text)Choices: `ACTIVE = "active", "Active"` → first
 		// element is the stored value. The grammar exposes the bare comma form
