@@ -69,8 +69,8 @@ package types_test
 // migrates a kind must delete its row and lower the pin in the same change.
 //
 //   - goPrefixedKindsDeferred — SCOPE.*-prefixed kinds a Go producer writes
-//     that are not in the enum. This is #6776 arm B4's worklist. It is expected
-//     to reach zero.
+//     that are not in the enum. This was #6776 arm B4's worklist and arm B4
+//     emptied it: the pin is 0 and the sweep now fails on ANY such kind.
 //   - goUnprefixedKindsDeferred — Go producers writing an UN-prefixed kind.
 //     producer_kinds_test.go used to call these "intentionally outside the
 //     validator set". That claim is retracted: #6744's scan of the rule tree
@@ -103,22 +103,24 @@ import (
 )
 
 // goPrefixedKindsDeferred are the SCOPE.*-prefixed entity kinds a Go producer
-// declares that types.AllEntityKinds() does not carry. Arm B4's worklist.
+// declares that types.AllEntityKinds() does not carry.
 //
-// Every one of the six is written as `Kind: <identifier>`, which is exactly why
-// the literal-only guard never saw them. Arm B2 removed a seventh,
+// EMPTY, and that is the point: this was arm B4's worklist and arm B4 finished
+// it. The six it held — SCOPE.Activity, EventFlow, Process, ScheduledJob,
+// StateMachine and Workflow, each written as `Kind: <identifier>` and so
+// invisible to the pre-B3 literal-only guard — are now declared in kinds.go and
+// listed in AllEntityKinds(). Arm B2 had already removed a seventh,
 // SCOPE.EventType, by listing the constant that was already declared.
-var goPrefixedKindsDeferred = map[string]bool{
-	"SCOPE.Activity":     true, // engine/workflow_dag_edges.go, engine/workflow_edges.go
-	"SCOPE.EventFlow":    true, // engine/event_flow.go
-	"SCOPE.Process":      true, // engine/process_flow.go
-	"SCOPE.ScheduledJob": true, // engine/scheduled_jobs_edges.go, engine/serverless_framework_edges.go
-	"SCOPE.StateMachine": true, // engine/workflow_edges.go (5 sites)
-	"SCOPE.Workflow":     true, // engine/workflow_dag_edges.go, engine/workflow_edges.go
-}
+//
+// An EMPTY ledger is not a disabled guard. assertLedgerExact's found→ledger
+// direction is what fires, and with nothing ledgered ANY prefixed Go-declared
+// kind outside the enum fails the sweep — which is the steady state this arm
+// was working towards, not a hole it leaves behind. It is kept rather than
+// deleted so the next drift lands on a mechanism instead of inventing one.
+var goPrefixedKindsDeferred = map[string]bool{}
 
 // goPrefixedKindsDeferredMax pins the ledger's exact size.
-const goPrefixedKindsDeferredMax = 6
+const goPrefixedKindsDeferredMax = 0
 
 // goUnprefixedKindsDeferred are the un-prefixed entity kinds a Go producer
 // declares. See the file header: drift, not a second namespace.
@@ -307,23 +309,56 @@ func literalOnlyEntityKinds(t *testing.T) map[string]bool {
 	return out
 }
 
-// TestProducerEntityKinds6776_ResolverSeesWhatLiteralsCannot is the differential
-// that justifies this change existing. It varies the RESOLVER (constant-
-// resolving vs. literal-only) and holds the scanned subtree, the composite-
-// literal type set and the tree state constant.
+// identifierDeclaredPrefixedKinds are SCOPE.*-prefixed kinds that Go producers
+// write as `Kind: <identifier>` and never as a string literal. It is arm B3's
+// ledger, frozen at the moment arm B4 emptied that ledger by promoting all six
+// into the enum.
 //
-// Every ledgered SCOPE.* kind must be (a) found by the resolving scan and
-// (b) absent from the literal-only scan — i.e. each is a producer the old guard
-// was structurally incapable of reaching, not one it happened to pass.
+// The differential below used to read the ledger itself, which stopped working
+// the instant the ledger reached zero — it would have gone vacuous exactly when
+// the drift it measures was fixed. These six are still identifier-declared
+// producers; only their enum membership changed, so they remain valid exemplars
+// and the differential keeps its teeth.
+var identifierDeclaredPrefixedKinds = []string{
+	"SCOPE.Activity",     // engine/workflow_dag_edges.go, engine/workflow_edges.go
+	"SCOPE.EventFlow",    // engine/event_flow.go
+	"SCOPE.Process",      // engine/process_flow.go
+	"SCOPE.ScheduledJob", // engine/scheduled_jobs_edges.go, engine/serverless_framework_edges.go
+	"SCOPE.StateMachine", // engine/workflow_edges.go (5 sites)
+	"SCOPE.Workflow",     // engine/workflow_dag_edges.go, engine/workflow_edges.go
+}
+
+// allGoKindSites buckets every RESOLVED site by kind, valid or not. The
+// ledger tests need the invalid ones; the differential below needs all of
+// them, because arm B4 made its six exemplars valid without changing how any
+// of them is written.
+func allGoKindSites(res entkinds.Result) map[string][]entkinds.Site {
+	out := map[string][]entkinds.Site{}
+	for _, s := range res.Sites {
+		out[s.Kind] = append(out[s.Kind], s)
+	}
+	return out
+}
+
+// TestProducerEntityKinds6776_ResolverSeesWhatLiteralsCannot is the differential
+// that justifies arm B3 existing. It varies the RESOLVER (constant-resolving
+// vs. literal-only) and holds the scanned subtree, the composite-literal type
+// set and the tree state constant.
+//
+// Every kind in identifierDeclaredPrefixedKinds must be (a) found by the
+// resolving scan and (b) absent from the literal-only scan — i.e. each is a
+// producer the old guard was structurally incapable of reaching, not one it
+// happened to pass. Enum membership is irrelevant to both halves, which is why
+// arm B4 promoting all six left this test measuring the same thing.
 func TestProducerEntityKinds6776_ResolverSeesWhatLiteralsCannot(t *testing.T) {
-	prefixed, _ := invalidGoKindSites(scanGoEntityKinds(t))
+	resolved := allGoKindSites(scanGoEntityKinds(t))
 	literals := literalOnlyEntityKinds(t)
 
-	if len(goPrefixedKindsDeferred) == 0 {
-		t.Fatal("no ledgered kinds to compare; this test would pass vacuously")
+	if len(identifierDeclaredPrefixedKinds) == 0 {
+		t.Fatal("no exemplars to compare; this test would pass vacuously")
 	}
-	for kind := range goPrefixedKindsDeferred {
-		sites, ok := prefixed[kind]
+	for _, kind := range identifierDeclaredPrefixedKinds {
+		sites, ok := resolved[kind]
 		if !ok || len(sites) == 0 {
 			t.Errorf("%q: the resolving scan found no site, so the differential is untestable", kind)
 			continue
@@ -523,9 +558,14 @@ func TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds(t *testing.T) {
 }
 
 // TestEntityKindDeclarations6776_MatchAllEntityKindsExactly pins the population
-// arm B2 corrected, and pins it as a SET rather than only as a count: 63
-// constants of type EntityKind, 62 of them named EntityKind*, and
+// arm B2 corrected, and pins it as a SET rather than only as a count: 69
+// constants of type EntityKind, 68 of them named EntityKind*, and
 // AllEntityKinds() listing every one with nothing extra.
+//
+// The counts were 63/62 before #6776 arm B4 declared the six SCOPE.*-prefixed
+// Go producers its ledger held; both moved by exactly six, and the 63rd/69th
+// EntityKind-TYPED-but-not-EntityKind-NAMED constant is still
+// HTTPEndpointKindLegacy.
 //
 // It exists because the count reached review as a number in a comment, and the
 // review disagreed with it — one side counting EntityKind-TYPED constants (63)
@@ -587,13 +627,13 @@ func TestEntityKindDeclarations6776_MatchAllEntityKindsExactly(t *testing.T) {
 		})
 	}
 
-	if len(declared) != 63 {
-		t.Errorf("EntityKind-typed constants = %d, want 63; re-pin this number and the "+
+	if len(declared) != 69 {
+		t.Errorf("EntityKind-typed constants = %d, want 69; re-pin this number and the "+
 			"comment in AllEntityKinds beside EntityKindEventType", len(declared))
 	}
-	if namedEntityKind != 62 {
-		t.Errorf("constants NAMED EntityKind* = %d, want 62 (the 63rd EntityKind-typed "+
-			"constant is HTTPEndpointKindLegacy)", namedEntityKind)
+	if namedEntityKind != 68 {
+		t.Errorf("constants NAMED EntityKind* = %d, want 68 (the one EntityKind-typed "+
+			"constant not so named is HTTPEndpointKindLegacy)", namedEntityKind)
 	}
 	for name := range declared {
 		if !listed[name] {
