@@ -1,6 +1,7 @@
 package nim_test
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -32,6 +33,25 @@ func entityNames(ents []types.EntityRecord) string {
 		b = append(b, e.Kind+":"+e.Name)
 	}
 	return strings.Join(b, ", ")
+}
+
+// requireComponents fails unless every named type is present as a
+// SCOPE.Component.
+//
+// Every "emits no EXTENDS" assertion below MUST call this first. allExtends
+// counts edges across the whole record set and says nothing about whether the
+// declaring type still exists, so without this a negative test passes when the
+// type stops being extracted at all — the type vanishing and the edge being
+// correctly withheld look identical to it. extendsOf has this guard built in;
+// the allExtends callers did not, which is the hole this closes.
+func requireComponents(t *testing.T, ents []types.EntityRecord, names ...string) {
+	t.Helper()
+	for _, n := range names {
+		if nimFind(ents, n, "SCOPE.Component") == nil {
+			t.Fatalf("vacuous negative: no SCOPE.Component named %q, so \"no EXTENDS\" "+
+				"is satisfied by the type having vanished (entities: %s)", n, entityNames(ents))
+		}
+	}
 }
 
 // allExtends returns every EXTENDS edge in the record set, whatever it is
@@ -103,11 +123,88 @@ func TestNimHierarchy_RefObjectOfEmitsExtends(t *testing.T) {
 }
 
 // TestNimHierarchy_PlainObjectOfEmitsExtends — varies ONLY the presence of the
-// `ref` keyword (`object of` vs `ref object of`), holding the base and the
-// clause constant. Both are inheritance in Nim and both must emit.
+// `ref` keyword. Everything else is byte-identical between the two halves: the
+// same owner name, the same base, the same body, the same file, produced from
+// one template string. Both forms are inheritance in Nim and both must emit the
+// same edge.
+//
+// Written as a template rather than as two hand-written sources on purpose. The
+// first version of this test asserted a controlled comparison in its doc
+// comment while its body held a single case and left the `ref` half to a
+// different test with a different owner, base and file — nothing was held
+// constant, so the comment claimed a comparison the body never made.
 func TestNimHierarchy_PlainObjectOfEmitsExtends(t *testing.T) {
-	ents := runNim(t, "type ApiError = object of CatchableError\n  code: int\n", "e.nim")
-	wantOneExtends(t, ents, "ApiError", "CatchableError", "1")
+	const tmpl = "type ApiError = %sobject of CatchableError\n  code: int\n"
+	for _, tc := range []struct{ name, refKw string }{
+		{"without ref", ""},
+		{"with ref", "ref "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ents := runNim(t, fmt.Sprintf(tmpl, tc.refKw), "e.nim")
+			wantOneExtends(t, ents, "ApiError", "CatchableError", "1")
+		})
+	}
+}
+
+// TestNimHierarchy_RefObjectSeparatorIsNotJustOneSpace — varies ONLY the
+// whitespace between `ref` and `object`, holding the owner, base, body and file
+// constant. typeRE's kind group is `ref\s+object`, so the kind string reaching
+// isObjectKind can be "ref object", "ref\tobject" or "ref  object"; a check
+// written as `kind == "ref object"` handles the first and silently drops the
+// others. That mutant was ALIVE against the rest of this package.
+func TestNimHierarchy_RefObjectSeparatorIsNotJustOneSpace(t *testing.T) {
+	const tmpl = "type Dog = ref%sobject of Animal\n  name: string\n"
+	for _, tc := range []struct{ name, sep string }{
+		{"single space", " "},
+		{"tab", "\t"},
+		{"two spaces", "  "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ents := runNim(t, fmt.Sprintf(tmpl, tc.sep), "d.nim")
+			wantOneExtends(t, ents, "Dog", "Animal", "1")
+		})
+	}
+}
+
+// TestNimHierarchy_OfMustBeFollowedByWhitespace — varies ONLY whether a space
+// separates `of` from the base name, holding everything else constant.
+// `ofAnimal` is one identifier, not the keyword `of` applied to `Animal`, so it
+// must yield nothing. The separator is `[ \t]+` and not `[ \t]*` for exactly
+// this reason; the `*` mutant was ALIVE against the rest of this package and
+// against the golden fixture.
+func TestNimHierarchy_OfMustBeFollowedByWhitespace(t *testing.T) {
+	glued := runNim(t, "type Dog = ref object ofAnimal\n  name: string\n", "d.nim")
+	requireComponents(t, glued, "Dog")
+	if got := allExtends(glued); len(got) != 0 {
+		t.Fatalf("`object ofAnimal` is one identifier, not inheritance, but got %+v", got)
+	}
+	// Positive control on the same axis: insert the space and only the space.
+	spaced := runNim(t, "type Dog = ref object of Animal\n  name: string\n", "d.nim")
+	wantOneExtends(t, spaced, "Dog", "Animal", "1")
+}
+
+// TestNimHierarchy_UnterminatedGenericDoesNotSwallowLaterLines — varies ONLY
+// whether the generic argument list on the declaration line is closed, holding
+// the owner, base and file constant. nimObjectOfRE's argument class is
+// `[^\]\n]*`, and the `\n` is what stops an unclosed `[` from consuming the rest
+// of the file up to some unrelated `]`. Dropping the `\n` from that class was an
+// ALIVE mutant: ToID is unaffected, so only the `base` property can observe it.
+func TestNimHierarchy_UnterminatedGenericDoesNotSwallowLaterLines(t *testing.T) {
+	src := "type Box = ref object of Container[int\nproc f(xs: seq[int]) = discard\n"
+	ents := runNim(t, src, "g.nim")
+	r := wantOneExtends(t, ents, "Box", "Container", "1")
+	if got := r.Properties.Get("base"); got != "" {
+		t.Errorf("unclosed generic on the declaration line must record no written "+
+			"form, got base=%q — the argument class swallowed past the newline", got)
+	}
+
+	// Positive control on the same axis: close the bracket on that same line and
+	// the written form IS recorded, so the assertion above is about the newline
+	// and not about `base` never being set.
+	closed := runNim(t, "type Box = ref object of Container[int]\nproc f(xs: seq[int]) = discard\n", "g.nim")
+	if got := wantOneExtends(t, closed, "Box", "Container", "1").Properties.Get("base"); got != "Container[int]" {
+		t.Errorf("closed generic: base=%q, want Container[int]", got)
+	}
 }
 
 // TestNimHierarchy_IndentedTypeBlockAndRootObjAndLocalBase — varies the BASE's
@@ -175,8 +272,8 @@ func TestNimHierarchy_GenericAndQualifiedBasesAreReducedToTheBareName(t *testing
 // in them does not sit at the anchor position, NOT because anything scrubs
 // them.
 func TestNimHierarchy_OverloadedOfDoesNotFire(t *testing.T) {
-	cases := []struct{ name, src string }{
-		{"case-statement-branch", `type Token = object
+	cases := []struct{ name, owner, src string }{
+		{"case-statement-branch", "Token", `type Token = object
   kind: int
 
 proc render(t: Token): string =
@@ -185,27 +282,30 @@ proc render(t: Token): string =
   of 1: "one"
   else: "many"
 `},
-		{"object-variant-branch", `type Node = object
+		{"object-variant-branch", "Node", `type Node = object
   case kind: NodeKind
   of nkInt:
     intVal: int
   of nkStr:
     strVal: string
 `},
-		{"runtime-type-test", `type Holder = ref object
+		{"runtime-type-test", "Holder", `type Holder = ref object
   payload: RootRef
 
 proc check(h: Holder): bool =
   h.payload of Widget
 `},
-		{"trailing-line-comment", "type Plain = object # of Animal\n  a: int\n"},
-		{"doc-comment", "type Plain = object ## inherits of Animal in spirit only\n  a: int\n"},
-		{"string-literal", "type Plain = object\n  a: string\n\nconst note = \"of Animal\"\n"},
-		{"of-on-the-next-line", "type Plain = ref object\n  of Animal\n"},
+		{"trailing-line-comment", "Plain", "type Plain = object # of Animal\n  a: int\n"},
+		{"doc-comment", "Plain", "type Plain = object ## inherits of Animal in spirit only\n  a: int\n"},
+		{"string-literal", "Plain", "type Plain = object\n  a: string\n\nconst note = \"of Animal\"\n"},
+		{"of-on-the-next-line", "Plain", "type Plain = ref object\n  of Animal\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ents := runNim(t, tc.src, "n.nim")
+			// Without this the case passes when the declaring type is not
+			// extracted at all — see requireComponents.
+			requireComponents(t, ents, tc.owner)
 			if got := allExtends(ents); len(got) != 0 {
 				t.Fatalf("emitted %d EXTENDS from a source with no inheritance: %+v", len(got), got)
 			}
@@ -219,14 +319,17 @@ proc check(h: Holder): bool =
 // Nim; they exist to pin the kind restriction, which is the only thing that
 // stops a token sequence with no defined meaning from minting an EXTENDS.
 func TestNimHierarchy_NonObjectKindsNeverExtend(t *testing.T) {
-	for _, src := range []string{
-		"type Colour = enum of Base\n",
-		"type Pair = tuple of Base\n",
-		"type Id = distinct int of Base\n",
+	for _, tc := range []struct{ owner, src string }{
+		{"Colour", "type Colour = enum of Base\n"},
+		{"Pair", "type Pair = tuple of Base\n"},
+		{"Id", "type Id = distinct int of Base\n"},
 	} {
-		ents := runNim(t, src, "k.nim")
+		ents := runNim(t, tc.src, "k.nim")
+		// The kind restriction is only observable while the type is still an
+		// entity; without this the row passes if typeRE stops matching it.
+		requireComponents(t, ents, tc.owner)
 		if got := allExtends(ents); len(got) != 0 {
-			t.Errorf("%q emitted %d EXTENDS: %+v", src, len(got), got)
+			t.Errorf("%q emitted %d EXTENDS: %+v", tc.src, len(got), got)
 		}
 	}
 	// Positive control on the same axis: change ONLY the keyword to `object`
@@ -241,6 +344,7 @@ func TestNimHierarchy_NonObjectKindsNeverExtend(t *testing.T) {
 // of a mis-attributed owner (#6369).
 func TestNimHierarchy_SelfInheritanceEmitsNoEdge(t *testing.T) {
 	ents := runNim(t, "type Loop = ref object of Loop\n", "s.nim")
+	requireComponents(t, ents, "Loop")
 	if got := allExtends(ents); len(got) != 0 {
 		t.Fatalf("self-inheritance emitted %d EXTENDS: %+v", len(got), got)
 	}
@@ -296,6 +400,60 @@ func TestNimHierarchy_PtrObjectIsInvisible_KnownDivergence(t *testing.T) {
 	}
 	if got := allExtends(ents); len(got) != 0 {
 		t.Fatalf("KNOWN DIVERGENCE CHANGED: `ptr object` now emits %d EXTENDS: %+v", len(got), got)
+	}
+}
+
+// TestNimHierarchy_InsideTripleQuotedStringOverFires_KnownDivergence — a whole
+// type declaration sitting inside a `"""…"""` string literal is extracted as a
+// real declaration, entity and EXTENDS edge alike.
+//
+// This extractor has no string awareness. The package header says the anchor is
+// the whole guard, and the anchor only decides which `of` belongs to a
+// declaration — it has no opinion on whether the DECLARATION is real. Inside a
+// triple-quoted block the `type` line is line-initial, so typeRE matches it and
+// the `of` sits exactly where inheritance sits.
+//
+// The entity half is pre-existing; the EXTENDS half is new with #6370, so the
+// edge half is this change's to own. Asserted as the current WRONG output on
+// purpose: whoever adds string scrubbing is told by a failing test that they
+// have also fixed this, rather than discovering it.
+//
+// The `#`-comment case is the positive control and is NOT a divergence: typeRE
+// is anchored `(?m)^[ \t]*(?:type\s+)?[A-Z]`, so a `#` before `type` makes the
+// line structurally unmatchable. That is why the golden fixture's commented-out
+// `Ghost` decoy cannot fire for THIS extractor and its forbidden_entities rows
+// say so, while this shape can.
+func TestNimHierarchy_InsideTripleQuotedStringOverFires_KnownDivergence(t *testing.T) {
+	src := "const doc = \"\"\"\ntype Ghost = ref object of Widget\n\"\"\"\n\n" +
+		"type Real* = ref object of RootObj\n  a: int\n"
+	ents := runNim(t, src, "s.nim")
+
+	if nimFind(ents, "Ghost", "SCOPE.Component") == nil {
+		t.Fatalf("KNOWN DIVERGENCE CHANGED: a type declared inside a \"\"\"…\"\"\" string is " +
+			"no longer extracted as an entity. If you added string scrubbing, delete this " +
+			"test and add the positive assertion, and promote the golden fixture's Ghost/Widget " +
+			"forbidden_entities rows to a reachable decoy.")
+	}
+	if !nimHasRel(ents, "Ghost", "SCOPE.Component", "EXTENDS", "Widget") {
+		t.Fatalf("KNOWN DIVERGENCE CHANGED: the string-literal declaration no longer emits " +
+			"EXTENDS -> Widget. See the message above.")
+	}
+
+	// Positive control: the real declaration outside the string is unaffected,
+	// so the divergence is about the string and not about the file being
+	// mis-parsed wholesale.
+	wantOneExtends(t, ents, "Real", "RootObj", "5")
+
+	// Negative control on the neighbouring axis: the same declaration behind a
+	// `#` is excluded, and by typeRE's line anchor rather than by any string or
+	// comment awareness.
+	commented := runNim(t, "# type Ghost = ref object of Widget\ntype Real* = ref object of RootObj\n", "c.nim")
+	requireComponents(t, commented, "Real")
+	if e := nimFind(commented, "Ghost", "SCOPE.Component"); e != nil {
+		t.Errorf("a commented-out declaration became an entity: %+v", e)
+	}
+	if got := len(allExtends(commented)); got != 1 {
+		t.Errorf("commented-out form: want exactly 1 EXTENDS (Real -> RootObj), got %d", got)
 	}
 }
 

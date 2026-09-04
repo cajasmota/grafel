@@ -86,8 +86,8 @@
       "kind": "EXTENDS", "to_bare_name": "RootObj",
       "note": "#6370 OVER-FIRING: Config is a plain `object` with no clause. Nim gives every object an implicit root, but nothing in the SOURCE says RootObj, and this extractor must report what is written." },
     { "from_name": "NodeKind", "from_kind": "SCOPE.Component", "from_file": "model.nim",
-      "kind": "EXTENDS", "to_bare_name": "nkInt",
-      "note": "#6370 OVER-FIRING, enum: enum members are not bases and `of` is not part of the enum grammar. NOT FIRED by removing the kind restriction alone (NodeKind's members are on the next line, so the anchor still excludes them) — it takes the anchor AND the kind restriction going together. The kind restriction is killed at the unit level by TestNimHierarchy_NonObjectKindsNeverExtend; this row fences the compound." },
+      "kind": "EXTENDS", "to_bare_name": "RootObj",
+      "note": "#6370 OVER-FIRING, enum: `of` is not part of the enum grammar, so NodeKind must never acquire a base. FIRES, verified: with BOTH the anchor and the kind restriction removed, NodeKind binds `RootObj` — the first `of` after `enum` is Node's inheritance clause three lines further down, not `of nkInt`. The row originally named nkInt and was therefore unfireable; naming what the compound mutant actually produces is what makes it graded. The kind restriction on its own is killed at the unit level by TestNimHierarchy_NonObjectKindsNeverExtend." },
     { "from_name": "Payload", "from_kind": "SCOPE.Component", "from_file": "model.nim",
       "kind": "EXTENDS", "to_bare_name": "nkInt",
       "note": "#6370 OVER-FIRING: Payload has NO base and its first `of` is a variant branch. Node cannot catch this — Node's first `of` IS its base, so a producer that scans the whole declaration rather than anchoring at the `object` keyword still gets Node right. This row and the next are the two the unanchored mutant fails." },
@@ -103,8 +103,8 @@
   ],
   "forbidden_entities": [
     { "name": "Ghost", "kind": "SCOPE.Component", "source_file": "errors.nim",
-      "note": "#6370: `# type Ghost = ref object of Widget` is COMMENTED OUT in errors.nim. No producer may materialise it — the graphql rule pack (internal/engine/rules/graphql/frameworks/graphql_schema.yaml) does exactly this for a commented-out SDL type, so the hazard is real and this row is the fence. Nim has no rule pack today; if one is ever added, this row is what tells its author." },
+      "note": "#6370: `# type Ghost = ref object of Widget` is COMMENTED OUT in errors.nim. NOT REACHABLE by any mutant of this extractor, stated plainly rather than implied: typeRE is anchored `(?m)^[ \\t]*(?:type\\s+)?[A-Z]`, so a `#` before `type` makes the line structurally unmatchable and no loosening of the `of` clause can reach it. Kept as an absence fence for a rule-pack producer — internal/engine/rules/graphql/frameworks/graphql_schema.yaml does exactly this for a commented-out SDL type — and nim has no rule pack today. The reachable version of this hazard IS a real defect and is pinned instead as TestNimHierarchy_InsideTripleQuotedStringOverFires_KnownDivergence: the same declaration inside a \"\"\"…\"\"\" block IS extracted, entity and EXTENDS edge alike. It is deliberately not in this fixture, because a golden fixture must stay green." },
     { "name": "Widget", "kind": "SCOPE.Component", "source_file": "errors.nim",
-      "note": "#6370: the base named in that same commented-out line." }
+      "note": "#6370: the base named in that same commented-out line. Same grading status as the row above — an unreachable fence, not a mutant-killed row." }
   ]
 }

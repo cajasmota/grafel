@@ -365,11 +365,25 @@ func TestRatchetUpdateRefusesFixtureWithoutExpectations_6273(t *testing.T) {
 	}
 }
 
-// minFixtures is the ONE number about the golden set that is still written by
-// hand, and it is a FLOOR rather than an exact count. See
-// TestGoldenSetIsFullyGraded_6273 for why (#6521). It is declared once, at file
-// scope, so that "the number" cannot drift between two copies — a second
-// hardcoded 26 elsewhere would reintroduce exactly the hazard this replaced.
+// minFixtures is the golden-set size THIS FILE reads, and it is a FLOOR rather
+// than an exact count. See TestGoldenSetIsFullyGraded_6273 for why (#6521). It
+// is declared once, at file scope, so the number cannot drift between two
+// copies within this file.
+//
+// It is NOT the only hardcoded copy in the package, and the comment that used to
+// claim so was false the day it was written. Three other tests carry their own
+// EXACT-count literal and all four move together whenever a fixture directory is
+// added or removed:
+//
+//	absent_relationships_6490_test.go  TestEveryGoldenFixtureDeclaresExpectedRelationships_6490
+//	subtype_assertion_6488_test.go     TestOnlyTheIntendedGoldenRowsAssertSubtype_6488
+//	zero_relationships_6490_test.go    TestNoGoldenFixtureClaimsTheOptIn_6490
+//
+// Re-derive all four from `ls -d internal/quality/golden/*/ | wc -l` rather than
+// by adding one to the previous value: two fixture-adding branches in flight at
+// the same time each see the old number and each "+1" to the same wrong total.
+// The three exact-count tests fail loudly when this is got wrong; minFixtures,
+// being a floor, does not, which is the reason to derive rather than increment.
 const minFixtures = 27
 
 // TestGoldenSetIsFullyGraded_6273 asserts the absolute figure the benchmark's

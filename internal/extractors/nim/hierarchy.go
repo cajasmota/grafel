@@ -50,6 +50,17 @@
 // non-`of` character. The extractor has NO comment or string awareness of its
 // own, and this comment claims none — the anchor is the whole guard.
 // TestNimHierarchy_OverloadedOfDoesNotFire enumerates the four and pins it.
+//
+// The limit of that guard, stated rather than left to be discovered: the anchor
+// decides which `of` belongs to a declaration, and has no opinion on whether the
+// DECLARATION is real. A whole `type X = ref object of Y` inside a `"""…"""`
+// string literal is line-initial, so typeRE matches it and this file emits the
+// edge. The entity half of that is pre-existing; the edge half arrives with
+// #6370, so it is pinned as the deliberate known-divergence test
+// TestNimHierarchy_InsideTripleQuotedStringOverFires_KnownDivergence — mutating
+// toward the fix (blanking triple-quoted regions before extraction) fires it and
+// nothing else in the package moves. A `#`-commented declaration is NOT in that
+// class: typeRE's own `(?m)^[ \t]*` anchor makes it structurally unmatchable.
 package nim
 
 import (
