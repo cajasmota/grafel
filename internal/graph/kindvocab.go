@@ -83,10 +83,16 @@ func KindVocabularyStateForDir(dir string) (state KindVocabularyState, stored in
 // It is a separate pure function for one reason that is not tidiness: with
 // KindVocabularyVersion at 1 the only reachable stale stamp is 0, so
 // "genuinely older" and "never stamped" are the same number and no test
-// through the exported entry point can tell them apart. That stops being true
-// the moment #6776 takes the version to 2, and the distinction is load-bearing
-// then: doctor PRINTS the stored number back to the user. Taking `current` as
-// a parameter lets the property be pinned at v2 today, before there is a v2.
+// through the exported entry point can tell them apart. It stops being true at
+// the first v2, and the distinction is load-bearing then: doctor PRINTS the
+// stored number back to the user. Taking `current` as a parameter lets the
+// property be pinned at v2 today, before there is a v2.
+//
+// #6776 was that expected v2 and is NOT: its decided target is ENUM MEMBERSHIP
+// with the current spellings kept, and adding a kind requires no bump (see the
+// doc on types.KindVocabularyVersion). Nothing on the board schedules a v2, so
+// this parameter is now insurance against the first RENAME or RETIREMENT,
+// whenever one lands, rather than a wait for a specific issue.
 //
 // sidecarOK distinguishes "the sidecar was read and carried no stamp" from
 // "the sidecar could not be read at all". Both answer older — an unreadable

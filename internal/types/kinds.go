@@ -481,6 +481,11 @@ func AllEntityKinds() []EntityKind {
 		EntityKindServerlessFunction,
 		// #927:
 		EntityKindEventBusEvent,
+		// #6776 arm B2: declared at kinds.go:192 since the messaging split and
+		// never listed here — the only one of the 63 EntityKind constants the
+		// list omitted. Adding a kind needs no KindVocabularyVersion bump (see
+		// the doc on that constant): nothing already on disk changes spelling.
+		EntityKindEventType,
 		// CLI command entry-points (epic #3628):
 		EntityKindCommand,
 		// #3704 FSM topology:

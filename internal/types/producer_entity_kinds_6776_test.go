@@ -1,0 +1,421 @@
+package types_test
+
+// producer_entity_kinds_6776_test.go — the Go-side entity-kind guard, and the
+// binding ledger of Go-declared entity kinds types.AllEntityKinds() does not
+// carry (#6776 arm B3).
+//
+// # The hole this file exists to close
+//
+// The guard that lived in producer_kinds_test.go read `Kind:` values only when
+// they were written as a string LITERAL (*ast.BasicLit). A producer that writes
+//
+//	const workflowKind = "SCOPE.Workflow"
+//	...
+//	types.EntityRecord{Kind: workflowKind}
+//
+// is an *ast.Ident, not a BasicLit, and was therefore invisible to it. Six
+// SCOPE.*-prefixed kinds drifted out of the enum behind that blindness without
+// a single test noticing.
+//
+// This is the same defect class as #6773, where routing a constant through
+// types as `const K = string(types.X)` dropped relkinds.SitesFor from 1 site to
+// 0 because a *ast.CallExpr is not a source string constant either. The lesson
+// generalises and is the reason this file does not hand-roll a third scanner:
+//
+//	AN AST GUARD THAT RESOLVES ONLY LITERALS HAS A HOLE SHAPED EXACTLY LIKE
+//	ITS RESOLVER.
+//
+// So the resolution is delegated to internal/entkinds.ScanGo, which already
+// resolves a literal, an identifier naming a package-level string constant, a
+// qualified selector, and a one-argument conversion around any of those. One
+// resolver, one hole, one place to widen it.
+//
+// # The resolver's limits, and where they are observed
+//
+// ScanGo resolves SOURCE constants only. A kind computed at run time — the rule
+// layer's `Kind: pattern.EntityType` being the load-bearing example — is
+// reported as an UNRESOLVED site rather than guessed at or silently dropped.
+// TestProducerEntityKinds6776_UnresolvedSitesAreReportedNotDropped observes
+// that limit against the live tree instead of asserting it in prose, and
+// TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds observes the other
+// direction: the resolver must not scoop up strings that are not entity kinds.
+//
+// # The two ledgers
+//
+// Both are asserted by EXACT SET EQUALITY IN BOTH DIRECTIONS plus a size pin,
+// the mechanism #6744 established for ruleDeclaredKindsDeferredMax: an author
+// who trips the sweep cannot silence it by appending a line, and one who
+// migrates a kind must delete its row and lower the pin in the same change.
+//
+//   - goPrefixedKindsDeferred — SCOPE.*-prefixed kinds a Go producer writes
+//     that are not in the enum. This is #6776 arm B4's worklist. It is expected
+//     to reach zero.
+//   - goUnprefixedKindsDeferred — Go producers writing an UN-prefixed kind.
+//     producer_kinds_test.go used to call these "intentionally outside the
+//     validator set". That claim is retracted: #6744's scan of the rule tree
+//     settled the namespace question as an ACCIDENT (25 of 27 rule-declared
+//     values outside the enum, nothing anywhere treating `Route` differently
+//     from `SCOPE.Route`), and this ledger is the Go half of the same accident.
+//     It is ledgered rather than skipped precisely so the claim stops being
+//     prose and becomes a number that cannot move unnoticed.
+//
+// # What this guard is NOT
+//
+// The rule-YAML producer family (internal/engine/rules/**/*.yaml, ~532 sites)
+// is out of reach of any Go scan by construction and is ledgered separately in
+// internal/entkinds/rule_declared_kinds_sweep_guard_6744_test.go.
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/entkinds"
+	"github.com/cajasmota/grafel/internal/types"
+)
+
+// goPrefixedKindsDeferred are the SCOPE.*-prefixed entity kinds a Go producer
+// declares that types.AllEntityKinds() does not carry. Arm B4's worklist.
+//
+// Every one of the six is written as `Kind: <identifier>`, which is exactly why
+// the literal-only guard never saw them. Arm B2 removed a seventh,
+// SCOPE.EventType, by listing the constant that was already declared.
+var goPrefixedKindsDeferred = map[string]bool{
+	"SCOPE.Activity":     true, // engine/workflow_dag_edges.go, engine/workflow_edges.go
+	"SCOPE.EventFlow":    true, // engine/event_flow.go
+	"SCOPE.Process":      true, // engine/process_flow.go
+	"SCOPE.ScheduledJob": true, // engine/scheduled_jobs_edges.go, engine/serverless_framework_edges.go
+	"SCOPE.StateMachine": true, // engine/workflow_edges.go (5 sites)
+	"SCOPE.Workflow":     true, // engine/workflow_dag_edges.go, engine/workflow_edges.go
+}
+
+// goPrefixedKindsDeferredMax pins the ledger's exact size.
+const goPrefixedKindsDeferredMax = 6
+
+// goUnprefixedKindsDeferred are the un-prefixed entity kinds a Go producer
+// declares. See the file header: drift, not a second namespace.
+//
+// `File` is called out on #6776 as the largest non-enum entity kind (894
+// entities) and as an internal commit-coupling artefact rather than a
+// first-class kind; it is ledgered here, not promoted.
+var goUnprefixedKindsDeferred = map[string]bool{
+	"ChannelEvent": true, // engine/websocket_edges.go
+	"File":         true, // engine/commit_coupling_edges.go — engine.KindFile, a derived artefact
+	"Migration":    true, // extractors/python/django_migration.go
+	"Route":        true, // engine/django_routes.go, engine/spring_routes.go
+	"Stream":       true, // engine/sse_edges.go
+	"Subscription": true, // engine/graphql_subscriptions.go
+	"relationship": true, // extractors/cross/hierarchy/extractor.go — a fallback its own comment calls unreachable
+}
+
+// goUnprefixedKindsDeferredMax pins the ledger's exact size.
+const goUnprefixedKindsDeferredMax = 7
+
+// scanGoEntityKinds runs the shared resolver over internal/ — the same subtree
+// the literal guard walked — and fails loudly if the walk read nothing, since a
+// walk that reaches no files reports no offenders and looks like a clean tree.
+func scanGoEntityKinds(t *testing.T) entkinds.Result {
+	t.Helper()
+	root := filepath.Join(repoRoot(t), "internal")
+	res, err := entkinds.ScanGo(root)
+	if err != nil {
+		t.Fatalf("ScanGo(%s): %v", root, err)
+	}
+	if res.FilesParsed < 500 {
+		t.Fatalf("ScanGo parsed %d files under internal/; the walk is broken", res.FilesParsed)
+	}
+	if len(res.Sites) < 200 {
+		t.Fatalf("ScanGo resolved %d entity-kind sites; expected hundreds", len(res.Sites))
+	}
+	return res
+}
+
+// invalidGoKindSites buckets every resolved site whose kind fails
+// IsValidEntityKind into prefixed / un-prefixed, keyed by kind.
+func invalidGoKindSites(res entkinds.Result) (prefixed, unprefixed map[string][]entkinds.Site) {
+	prefixed = map[string][]entkinds.Site{}
+	unprefixed = map[string][]entkinds.Site{}
+	for _, s := range res.Sites {
+		if types.IsValidEntityKind(s.Kind) {
+			continue
+		}
+		if strings.HasPrefix(s.Kind, "SCOPE.") {
+			prefixed[s.Kind] = append(prefixed[s.Kind], s)
+		} else {
+			unprefixed[s.Kind] = append(unprefixed[s.Kind], s)
+		}
+	}
+	return prefixed, unprefixed
+}
+
+func sortedKeys(m map[string][]entkinds.Site) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// assertLedgerExact compares found against ledger in BOTH directions and pins
+// the ledger's size, so neither an appended row nor a silently-migrated kind
+// can leave the ledger stale.
+func assertLedgerExact(t *testing.T, label string, found map[string][]entkinds.Site, ledger map[string]bool, pin int) {
+	t.Helper()
+	if len(ledger) != pin {
+		t.Fatalf("%s: ledger has %d entries but the pin says %d; move both or neither", label, len(ledger), pin)
+	}
+	for _, kind := range sortedKeys(found) {
+		if !ledger[kind] {
+			var where []string
+			for _, s := range found[kind] {
+				where = append(where, s.String())
+			}
+			t.Errorf("%s: NEW Go-declared entity kind %q outside types.AllEntityKinds():\n    %s\n"+
+				"Add it to internal/types/kinds.go (constant AND AllEntityKinds), or ledger it "+
+				"here and raise the pin by one.", label, kind, strings.Join(where, "\n    "))
+		}
+	}
+	for kind := range ledger {
+		if _, ok := found[kind]; !ok {
+			t.Errorf("%s: ledgered kind %q is no longer declared by any Go producer (or has become "+
+				"valid). Delete its row and lower the pin by one.", label, kind)
+		}
+	}
+}
+
+// TestProducerEntityKinds6776_PrefixedLedgerIsExact varies the ledger's
+// agreement with the live tree; it holds the resolver and the scanned subtree
+// constant. It is the guard that would have caught the six SCOPE.*-prefixed
+// producers that drifted out of the enum unseen.
+func TestProducerEntityKinds6776_PrefixedLedgerIsExact(t *testing.T) {
+	prefixed, _ := invalidGoKindSites(scanGoEntityKinds(t))
+	assertLedgerExact(t, "prefixed", prefixed, goPrefixedKindsDeferred, goPrefixedKindsDeferredMax)
+}
+
+// TestProducerEntityKinds6776_UnprefixedLedgerIsExact does the same for the
+// un-prefixed Go producers — the population producer_kinds_test.go used to
+// dismiss as intentional. Varies: the ledger. Holds constant: the resolver,
+// the subtree, and the prefix classification.
+func TestProducerEntityKinds6776_UnprefixedLedgerIsExact(t *testing.T) {
+	_, unprefixed := invalidGoKindSites(scanGoEntityKinds(t))
+	assertLedgerExact(t, "unprefixed", unprefixed, goUnprefixedKindsDeferred, goUnprefixedKindsDeferredMax)
+}
+
+// literalOnlyEntityKinds re-creates the OLD guard's resolver — `Kind:` read
+// only when the value is an *ast.BasicLit on an Entity / EntityRecord composite
+// literal — over the same subtree. It exists solely so the gap this change
+// closes is a measurement rather than a claim in a comment.
+func literalOnlyEntityKinds(t *testing.T) map[string]bool {
+	t.Helper()
+	root := filepath.Join(repoRoot(t), "internal")
+	fset := token.NewFileSet()
+	out := map[string]bool{}
+	files := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			return perr
+		}
+		files++
+		ast.Inspect(f, func(n ast.Node) bool {
+			cl, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			name := ""
+			switch tp := cl.Type.(type) {
+			case *ast.Ident:
+				name = tp.Name
+			case *ast.SelectorExpr:
+				name = tp.Sel.Name
+			}
+			if name != "Entity" && name != "EntityRecord" {
+				return true
+			}
+			for _, el := range cl.Elts {
+				kv, ok := el.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				key, ok := kv.Key.(*ast.Ident)
+				if !ok || key.Name != "Kind" {
+					continue
+				}
+				lit, ok := kv.Value.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				if v, uerr := strconv.Unquote(lit.Value); uerr == nil {
+					out[v] = true
+				}
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("literal-only walk: %v", err)
+	}
+	if files < 500 {
+		t.Fatalf("literal-only walk parsed %d files; the comparison would be vacuous", files)
+	}
+	if len(out) == 0 {
+		t.Fatal("literal-only walk found no Kind literals at all; it is not a fair stand-in for the old guard")
+	}
+	return out
+}
+
+// TestProducerEntityKinds6776_ResolverSeesWhatLiteralsCannot is the differential
+// that justifies this change existing. It varies the RESOLVER (constant-
+// resolving vs. literal-only) and holds the scanned subtree, the composite-
+// literal type set and the tree state constant.
+//
+// Every ledgered SCOPE.* kind must be (a) found by the resolving scan and
+// (b) absent from the literal-only scan — i.e. each is a producer the old guard
+// was structurally incapable of reaching, not one it happened to pass.
+func TestProducerEntityKinds6776_ResolverSeesWhatLiteralsCannot(t *testing.T) {
+	prefixed, _ := invalidGoKindSites(scanGoEntityKinds(t))
+	literals := literalOnlyEntityKinds(t)
+
+	if len(goPrefixedKindsDeferred) == 0 {
+		t.Fatal("no ledgered kinds to compare; this test would pass vacuously")
+	}
+	for kind := range goPrefixedKindsDeferred {
+		sites, ok := prefixed[kind]
+		if !ok || len(sites) == 0 {
+			t.Errorf("%q: the resolving scan found no site, so the differential is untestable", kind)
+			continue
+		}
+		if literals[kind] {
+			t.Errorf("%q: the literal-only scan ALSO sees this kind, so it is not evidence of "+
+				"identifier-blindness — pick a different exemplar or drop the claim", kind)
+		}
+	}
+}
+
+// TestProducerEntityKinds6776_UnresolvedSitesAreReportedNotDropped observes the
+// resolver's documented limit instead of asserting it in prose: a Kind computed
+// at run time must surface as an unresolved site, not vanish.
+//
+// engine/detector.go is the load-bearing example — it copies a rule file's
+// entity_type straight into EntityRecord.Kind, which is precisely the producer
+// family no Go scan can read and why #6744's separate YAML ledger exists.
+//
+// Varies: nothing (a live-tree observation). Holds constant: the resolver.
+func TestProducerEntityKinds6776_UnresolvedSitesAreReportedNotDropped(t *testing.T) {
+	res := scanGoEntityKinds(t)
+	if res.Unresolved() == 0 {
+		t.Fatal("no unresolved sites at all: either every producer is now a source constant " +
+			"(update this test and the file header) or the reporting was lost")
+	}
+	found := false
+	for _, s := range res.UnresolvedSites {
+		if s.File == "engine/detector.go" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		var sample []string
+		for i, s := range res.UnresolvedSites {
+			if i == 5 {
+				break
+			}
+			sample = append(sample, s.File)
+		}
+		t.Errorf("engine/detector.go's rule-YAML passthrough is not among the %d unresolved sites "+
+			"(sample: %v); the Go guard may have silently started claiming coverage of the rule layer",
+			res.Unresolved(), sample)
+	}
+}
+
+// TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds is the negative
+// control: recall alone cannot detect a resolver that over-fires, so this pins
+// what must NOT be collected. It varies the SHAPE of each declaration and holds
+// the constant's value style (a package-level string constant) fixed:
+//
+//   - a string constant never used as an entity Kind      -> not collected
+//   - a string constant used on a different FIELD         -> not collected
+//   - a string constant used on a non-entity TYPE         -> not collected
+//   - a package-level VAR (not a constant) used as Kind   -> unresolved, not guessed
+//
+// The one positive row keeps the test from passing by collecting nothing.
+func TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "p")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := `package p
+
+const usedKind = "SCOPE.Function"
+const unusedKind = "SCOPE.NeverUsedAnywhere"
+const notAKindAtAll = "just a name"
+
+var runtimeKind = "SCOPE.ComputedAtRunTime"
+
+type Entity struct{ Kind, Name string }
+type Widget struct{ Kind string }
+
+func f() []Entity {
+	_ = Widget{Kind: unusedKind}
+	return []Entity{
+		{Kind: usedKind},
+		{Name: notAKindAtAll},
+		{Kind: runtimeKind},
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := entkinds.ScanGo(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, s := range res.Sites {
+		got[s.Kind] = true
+	}
+	if !got["SCOPE.Function"] {
+		t.Fatalf("positive control missing: SCOPE.Function not collected; sites = %+v", res.Sites)
+	}
+	for _, forbidden := range []string{
+		"SCOPE.NeverUsedAnywhere",
+		"just a name",
+		"SCOPE.ComputedAtRunTime",
+	} {
+		if got[forbidden] {
+			t.Errorf("resolver over-fired: collected %q, which is not an entity-kind declaration", forbidden)
+		}
+	}
+	if len(got) != 1 {
+		t.Errorf("collected %d distinct kinds, want exactly 1: %v", len(got), got)
+	}
+	if res.Unresolved() != 1 {
+		t.Errorf("unresolved = %d, want 1 (the package-level var); unresolved = %+v",
+			res.Unresolved(), res.UnresolvedSites)
+	}
+}
