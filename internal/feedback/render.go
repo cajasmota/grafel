@@ -200,9 +200,10 @@ func Render(w io.Writer, r *Report) error {
 		// here: before #6836 three of six rows were wired to counters nothing
 		// incremented and rendered a permanent 0.00%. Iterating the taxonomy
 		// removes that failure mode for every disposition the slice names —
-		// each gets a row, and each row is fed by the classifier. It does NOT
-		// cover a Disposition that reaches the enum without reaching
-		// AllDispositions, which nothing currently checks.
+		// each gets a row, and each row is fed by the classifier. A Disposition
+		// that reaches the enum without reaching AllDispositions is covered
+		// too, since #6849 grades the slice against the enum at its root.
+		// Row ORDER follows the slice; the numbers do not depend on it.
 		for _, d := range resolve.AllDispositions {
 			fmt.Fprintf(w, "| %s | %.2f%% |\n", d.String(), rv.Pct(d.String()))
 		}
