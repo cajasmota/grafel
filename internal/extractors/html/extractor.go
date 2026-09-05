@@ -197,6 +197,29 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// nodes (not structured elements), so we scan the raw source bytes.
 	entities = append(entities, extractJinja2Directives(file)...)
 
+	// #6852 — every asset IMPORTS edge keeps the file path as its FromID
+	// (buildAssetImportRel, #373), but nothing this extractor emits is NAMED
+	// after the file: every record is named after the REFERENCE (the src/href
+	// value). internal/resolve/refs.go has no path→entity index and a
+	// path-valued FromID resolves only onto a record carrying that exact string
+	// as its Name, so the FROM end resolved to nothing at EVERY path depth —
+	// html has no pre-existing file component, so unlike hcl (#6871) the root
+	// case never resolved by accident either. PrependFileCarrier is the
+	// CONDITIONAL form #6815 and #6518 settled on: it mints the carrier only
+	// when some relationship is actually anchored on the path. Unconditional
+	// would add one bare orphan node per .html file across a whole repo,
+	// including the many pages whose only script/link refs are CDN URLs (#506
+	// drops those before any record is built) or which reference nothing local
+	// at all.
+	//
+	// Placed AFTER both passes, deliberately: the anchored edges are carried by
+	// the script/link/img records the CST walk produces, so before that append
+	// FileCarrierFor's clause 2 can never hold and no carrier would ever be
+	// minted. The two earlier returns — empty content and the #506
+	// email-template skip — return nil without reaching here, and neither
+	// anchors anything, so the helper would be a guaranteed no-op on both.
+	entities = extractor.PrependFileCarrier(file.Path, "html", entities)
+
 	span.SetAttributes(
 		attribute.Int("file_line_count", lineCount),
 		attribute.Int("entity_count", len(entities)),
