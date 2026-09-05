@@ -88,6 +88,7 @@ package types_test
 // internal/entkinds/rule_declared_kinds_sweep_guard_6744_test.go.
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -156,9 +157,46 @@ var goUnprefixedKindsDeferred = map[string]bool{
 // goUnprefixedKindsDeferredMax pins the ledger's exact size.
 const goUnprefixedKindsDeferredMax = 5
 
+// goScanAnchors are production sites the scan MUST reach, named as
+// (file, kind) pairs. They are the must-scan half of the walk-integrity check
+// and exist because a COUNT is only a witness of "read the right files", not
+// the property.
+//
+// Concretely: internal/ holds 2663 _test.go files against 2101 non-test ones,
+// so inverting parseGoTree's `.go` / `_test.go` filter parses MORE files than
+// the correct walk and clears any sane floor while opening not one production
+// source. Measured, not assumed — that mutant leaves both floors below intact
+// (#6834 arm 1).
+//
+// Each pair is a kind the ledgers below already name with its file, so a
+// producer that genuinely moves updates both in one change. They sit deep in
+// long files on purpose: a walk that reads a PREFIX of the tree's content
+// tends to keep the first declarations and lose the last.
+var goScanAnchors = []struct{ file, kind string }{
+	{"engine/workflow_edges.go", "SCOPE.StateMachine"},
+	{"engine/commit_coupling_edges.go", "File"},
+	{"engine/sse_edges.go", "Stream"},
+}
+
 // scanGoEntityKinds runs the shared resolver over internal/ — the same subtree
-// the literal guard walked — and fails loudly if the walk read nothing, since a
-// walk that reaches no files reports no offenders and looks like a clean tree.
+// the literal guard walked — and fails loudly if the walk did not do this
+// work, since a walk that reaches no files reports no offenders and looks like
+// a clean tree.
+//
+// Three questions, one failure site, because they are one question — "is the
+// input the ledgers are about to be compared against real?":
+//
+//  1. did it read ANYTHING? The FilesParsed floor. 2015 files parse today, so
+//     500 is a floor and not a count.
+//  2. did it read the RIGHT files? goScanAnchors. The floor alone cannot say
+//     so; see that variable's doc for the measurement.
+//  3. did it get anything OUT of them? The site floor. 566 sites today.
+//
+// The message must diagnose the WALK, not the tree. Without these checks the
+// mutants above still fail the package — but through the ledger tests, saying
+// `ledgered kind "Stream" is no longer declared by any Go producer. Delete its
+// row and lower the pin by one.` That is the opposite diagnosis, and following
+// it deletes the ledger rows and leaves the broken walk permanently green.
 func scanGoEntityKinds(t *testing.T) entkinds.Result {
 	t.Helper()
 	root := filepath.Join(repoRoot(t), "internal")
@@ -166,11 +204,31 @@ func scanGoEntityKinds(t *testing.T) entkinds.Result {
 	if err != nil {
 		t.Fatalf("ScanGo(%s): %v", root, err)
 	}
-	if res.FilesParsed < 500 {
-		t.Fatalf("ScanGo parsed %d files under internal/; the walk is broken", res.FilesParsed)
+	broken := ""
+	switch {
+	case res.FilesParsed < 500:
+		broken = fmt.Sprintf("it parsed only %d files, want at least 500", res.FilesParsed)
+	case len(res.Sites) < 200:
+		broken = fmt.Sprintf("it resolved only %d entity-kind sites, expected hundreds", len(res.Sites))
+	default:
+		for _, a := range goScanAnchors {
+			seen := false
+			for _, s := range res.Sites {
+				if s.File == a.file && s.Kind == a.kind {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				broken = fmt.Sprintf("it never resolved %q in %s — it read something, but not the production sources these ledgers grade", a.kind, a.file)
+				break
+			}
+		}
 	}
-	if len(res.Sites) < 200 {
-		t.Fatalf("ScanGo resolved %d entity-kind sites; expected hundreds", len(res.Sites))
+	if broken != "" {
+		t.Fatalf("THE SCAN'S WALK IS BROKEN, not the tree: %s (walked %s, %d files, %d sites). "+
+			"An empty or shrunken result from a walk that did not read internal/'s production sources "+
+			"is not evidence about the ledgers (#6834; cf. 52aaa84f1).", broken, root, res.FilesParsed, len(res.Sites))
 	}
 	return res
 }
@@ -205,10 +263,15 @@ func sortedKeys(m map[string][]entkinds.Site) []string {
 // assertLedgerExact compares found against ledger in BOTH directions and pins
 // the ledger's size, so neither an appended row nor a silently-migrated kind
 // can leave the ledger stale.
-func assertLedgerExact(t *testing.T, label string, found map[string][]entkinds.Site, ledger map[string]bool, pin int) {
+// It takes testing.TB rather than *testing.T so
+// TestAssertLedgerExact_ActsOnWhatTheScanReturns can hand it a recorder and
+// observe both outcomes. Nothing follows the Fatalf, so the function behaves
+// the same whether or not Fatalf is terminal for the TB it was handed.
+func assertLedgerExact(t testing.TB, label string, found map[string][]entkinds.Site, ledger map[string]bool, pin int) {
 	t.Helper()
 	if len(ledger) != pin {
 		t.Fatalf("%s: ledger has %d entries but the pin says %d; move both or neither", label, len(ledger), pin)
+		return
 	}
 	for _, kind := range sortedKeys(found) {
 		if !ledger[kind] {
@@ -226,6 +289,84 @@ func assertLedgerExact(t *testing.T, label string, found map[string][]entkinds.S
 			t.Errorf("%s: ledgered kind %q is no longer declared by any Go producer (or has become "+
 				"valid). Delete its row and lower the pin by one.", label, kind)
 		}
+	}
+}
+
+// recordingTB is a testing.TB that records failures instead of aborting.
+//
+// testing.TB embeds a private method, so it is embedded here to satisfy the
+// interface; only Helper, Errorf and Fatalf are ever called, and any other
+// method would panic loudly rather than silently pass. Fatalf deliberately
+// does NOT call runtime.Goexit — recording and returning is what lets one test
+// observe both the failing and the passing outcome on its own goroutine.
+type recordingTB struct {
+	testing.TB
+	failed bool
+	msgs   []string
+}
+
+func (r *recordingTB) Helper() {}
+
+func (r *recordingTB) Errorf(format string, args ...any) {
+	r.failed = true
+	r.msgs = append(r.msgs, fmt.Sprintf(format, args...))
+}
+
+func (r *recordingTB) Fatalf(format string, args ...any) {
+	r.failed = true
+	r.msgs = append(r.msgs, fmt.Sprintf(format, args...))
+}
+
+// TestAssertLedgerExact_ActsOnWhatTheScanReturns is the positive control for
+// the guard's REACTION.
+//
+// The walk checks grade the input and the resolver controls grade the matcher.
+// Neither observes that anything is DONE with the sites the scan returns:
+// wrapping either ledger direction in `false &&`, or returning from
+// assertLedgerExact before it compares anything, left this whole package green
+// — measured, both mutants ALIVE (#6834 arm 1). The live tree agrees with its
+// ledgers today, so the reaction is never exercised by the tree itself and
+// nothing but this test can see it.
+//
+// It grades all three directions AND the clean one, because a reaction that
+// fails unconditionally satisfies "a dirty set fails" just as well as a
+// correct one does.
+func TestAssertLedgerExact_ActsOnWhatTheScanReturns(t *testing.T) {
+	site := []entkinds.Site{{File: "engine/x.go", Line: 7, Kind: "SCOPE.Unledgered"}}
+
+	// 1. a kind the scan found that the ledger does not carry.
+	var onNew recordingTB
+	assertLedgerExact(&onNew, "ctl", map[string][]entkinds.Site{"SCOPE.Unledgered": site}, map[string]bool{}, 0)
+	if !onNew.failed {
+		t.Fatal("no failure for a found kind that is not ledgered: the ledger comparison is not acting on what the scan returned, so this guard is inert however well the scan works")
+	}
+	if !strings.Contains(strings.Join(onNew.msgs, "\n"), "SCOPE.Unledgered") {
+		t.Fatalf("the failure does not name the offending kind; got %q", onNew.msgs)
+	}
+
+	// 2. a ledgered kind the scan no longer finds.
+	var onStale recordingTB
+	assertLedgerExact(&onStale, "ctl", map[string][]entkinds.Site{}, map[string]bool{"SCOPE.Gone": true}, 1)
+	if !onStale.failed {
+		t.Fatal("no failure for a ledgered kind absent from the scan: a migrated kind would leave its row behind unnoticed")
+	}
+	if !strings.Contains(strings.Join(onStale.msgs, "\n"), "SCOPE.Gone") {
+		t.Fatalf("the failure does not name the stale kind; got %q", onStale.msgs)
+	}
+
+	// 3. ledger size disagreeing with its pin.
+	var onPin recordingTB
+	assertLedgerExact(&onPin, "ctl", map[string][]entkinds.Site{}, map[string]bool{"SCOPE.Gone": true}, 0)
+	if !onPin.failed {
+		t.Fatal("no failure when the ledger's size disagrees with its pin: a row could be appended without moving the pin")
+	}
+
+	// 4. exact agreement must NOT fail, or every direction above passes for
+	//    the wrong reason.
+	var onClean recordingTB
+	assertLedgerExact(&onClean, "ctl", map[string][]entkinds.Site{"SCOPE.Ledgered": site}, map[string]bool{"SCOPE.Ledgered": true}, 1)
+	if onClean.failed {
+		t.Fatalf("a ledger in exact agreement with the scan failed: %q", onClean.msgs)
 	}
 }
 
