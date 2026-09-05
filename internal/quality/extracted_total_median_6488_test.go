@@ -30,28 +30,34 @@ import (
 // file on disk. Recall figures are held constant at 1/1 so the fixture passes
 // and nothing but the aggregation of the totals is under test.
 //
-// withTotals=false omits both keys entirely, which is how a binary predating
-// the field behaves.
-func varyingStubBin(t *testing.T, h runShHarness, entityTotals, relTotals []int, withTotals bool) string {
+// emitTotals says, per run, whether that run's report carries the two keys at
+// all. A run with false omits them, which is how a binary predating the field
+// behaves and how a truncated or failed run looks. Partial presence — some runs
+// carrying them, some not — is the input that separates `all(...)` from
+// `any(...)` and separates dropping the key from inheriting the last run's.
+func varyingStubBin(t *testing.T, h runShHarness, entityTotals, relTotals []int, emitTotals []bool) string {
 	t.Helper()
-	if len(entityTotals) != len(relTotals) {
-		t.Fatalf("test bug: %d entity totals but %d relationship totals",
-			len(entityTotals), len(relTotals))
+	if len(entityTotals) != len(relTotals) || len(entityTotals) != len(emitTotals) {
+		t.Fatalf("test bug: %d entity totals, %d relationship totals, %d emit flags",
+			len(entityTotals), len(relTotals), len(emitTotals))
 	}
 	counter := filepath.Join(h.root, "stub-run-counter")
 	var cases string
 	for i := range entityTotals {
-		cases += fmt.Sprintf("  %d) ent=%d rel=%d ;;\n", i+1, entityTotals[i], relTotals[i])
+		emit := "0"
+		if emitTotals[i] {
+			emit = "1"
+		}
+		cases += fmt.Sprintf("  %d) ent=%d rel=%d emit=%s ;;\n",
+			i+1, entityTotals[i], relTotals[i], emit)
 	}
 	// A run beyond the supplied list is a test-bug, not a case to interpolate:
 	// fail loudly rather than silently reusing the last pair.
 	cases += fmt.Sprintf("  *) echo \"stub: run $n beyond the %d supplied\" >&2; exit 1 ;;\n",
 		len(entityTotals))
 
-	totals := ""
-	if withTotals {
-		totals = `,"entity_extracted_total":$ent,"relationship_extracted_total":$rel`
-	}
+	// The two keys are appended by the stub itself, per run, so that one
+	// invocation can carry them and the next not.
 	script := `#!/usr/bin/env bash
 out=""
 shift
@@ -66,10 +72,14 @@ n=$((n + 1))
 echo "$n" > "` + counter + `"
 case "$n" in
 ` + cases + `esac
+totals=""
+if [[ "$emit" == "1" ]]; then
+  totals=",\"entity_extracted_total\":$ent,\"relationship_extracted_total\":$rel"
+fi
 cat > "$out" <<JSON
 {"fixture":"stub","entity_expected":1,"entity_found":1,"entity_recall":1.0,
  "relationship_expected":0,"relationship_found":0,"relationship_recall":0.0,
- "forbidden_hits":0` + totals + `}
+ "forbidden_hits":0$totals}
 JSON
 `
 	p := filepath.Join(h.root, "varying-stub-grafel")
@@ -118,7 +128,7 @@ func TestRunShMediansTheExtractedTotals_6488(t *testing.T) {
 	// Deliberately ordered so median != last AND median != first: an
 	// implementation that took either end scores differently from one that
 	// medians. Entity median is 9 (of 5, 9, 90); relationship median is 4.
-	bin := varyingStubBin(t, h, []int{5, 9, 90}, []int{3, 4, 40}, true)
+	bin := varyingStubBin(t, h, []int{5, 9, 90}, []int{3, 4, 40}, []bool{true, true, true})
 
 	// Strict mode, not --ratchet: the recall figures are a constant 1/1, so the
 	// fixture passes, and no baseline is consulted. What is under test is what
@@ -143,6 +153,48 @@ func TestRunShMediansTheExtractedTotals_6488(t *testing.T) {
 	}
 }
 
+// TestRunShDropsTotalsMissingFromSomeRuns_6488 is the PARTIAL-presence case,
+// and it is the one that separates `all(_total in r ...)` from `any(...)`.
+//
+// The all-missing test above cannot: `any` drops the key there too, so both
+// spellings score identically on it. Here two of the three runs omit the
+// totals and the third carries 100 — under `any`, med_int would default the two
+// silent runs to 0 and record a median of 0, which is the loose ceiling the
+// implementation comment warns about, arrived at silently. Partial presence is
+// also the realistic shape: a total goes missing when one run fails or is
+// truncated, not when every run does.
+//
+// The run that DOES carry the totals is deliberately the LAST one, so
+// `merged = dict(base)` has inherited them. That makes this test grade the
+// `merged.pop(...)` branch as well: an implementation that simply skipped the
+// key instead of removing it would leave the last run's 100 in the merged
+// report, and a 1-of-3 sample is not a measurement of anything.
+func TestRunShDropsTotalsMissingFromSomeRuns_6488(t *testing.T) {
+	requireBash(t)
+	requirePython3(t)
+	h := newRunShHarness(t)
+	h.addFixture(t, "graded-mini", true)
+	bin := varyingStubBin(t, h,
+		[]int{0, 0, 100}, []int{0, 0, 100}, []bool{false, false, true})
+
+	code, out := h.run(t, bin, "--runs", "3")
+	if code != 0 {
+		t.Fatalf("run.sh exit = %d, want 0 with a 1/1 stub\n%s", code, out)
+	}
+	rep := mergedReport(t, h, "graded-mini")
+	if got := mergedInt(t, rep, "runs_executed"); got != 3 {
+		t.Fatalf("runs_executed = %d, want 3 — the premise (one run of three "+
+			"carrying the totals) does not hold\n%s", got, out)
+	}
+	for _, key := range []string{"entity_extracted_total", "relationship_extracted_total"} {
+		if raw, ok := rep[key]; ok {
+			t.Errorf("merged report carries %s = %s, but two of the three runs "+
+				"reported no such figure — a total merged from a partial sample "+
+				"is a ceiling nothing measured", key, raw)
+		}
+	}
+}
+
 // TestRunShOmitsExtractedTotalsItNeverMeasured_6488 pins the other half: when
 // the binary emits no totals, the merged report must carry none either.
 //
@@ -155,7 +207,7 @@ func TestRunShOmitsExtractedTotalsItNeverMeasured_6488(t *testing.T) {
 	requirePython3(t)
 	h := newRunShHarness(t)
 	h.addFixture(t, "graded-mini", true)
-	bin := varyingStubBin(t, h, []int{0, 0}, []int{0, 0}, false)
+	bin := varyingStubBin(t, h, []int{0, 0}, []int{0, 0}, []bool{false, false})
 
 	code, out := h.run(t, bin, "--runs", "2")
 	if code != 0 {
