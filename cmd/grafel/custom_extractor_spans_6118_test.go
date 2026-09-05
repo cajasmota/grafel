@@ -390,9 +390,25 @@ func TestCustomExtractorGateDoesNotRegressFileComponentStartLines(t *testing.T) 
 
 // entityTupleKey is the same content tuple entityTuples aggregates on, for a
 // single entity.
+//
+// LANGUAGE IS PART OF THE TUPLE (#6862). Language is a dedicated top-level
+// FlatBuffers slot (fbwriter/writer.go, #2370) — it round-trips into the
+// shipped graph exactly like Kind and SourceFile do, and grafel_find
+// --language reads it. Before #6862 the tuple hashed seven fields and Language
+// was not among them, so an extractor that re-stamped the language token on
+// EVERY entity it emits moved this digest by zero. That was measured, not
+// assumed: mutating the Python extractor's token wholesale
+// ("python" -> "zzlang", both TagEntitiesLanguage calls plus all eight direct
+// `Language:` literals) left this digest byte-identical. The Go extractor's
+// equivalent mutant did move it, but only via a structural side effect
+// (141/286 instead of 142/287) — the field itself was still unobserved.
+//
+// Entity Properties are still NOT hashed. That is a deliberately separate
+// decision with a much larger blast radius (#6862 declines to bundle it).
 func entityTupleKey(e *graph.Entity) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%d|%d",
-		e.Kind, e.Name, e.QualifiedName, e.Subtype, e.SourceFile, e.StartLine, e.EndLine)
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%d|%d",
+		e.Kind, e.Name, e.QualifiedName, e.Subtype, e.SourceFile, e.Language,
+		e.StartLine, e.EndLine)
 }
 
 // semanticDigest6118 is a stable content digest of a graph: entities as
@@ -621,6 +637,62 @@ func semanticDigest6118(doc *graph.Document) string {
 // EXACTLY (142/281, d073c83f…), and the diff against it is six added edge lines
 // and nothing else — no entity added, deleted, re-kinded or moved, no existing
 // edge rewired, no dangling count change beyond the six new endpoints.
+
+// #6862 MOVED IT A FIFTH TIME, AND THIS ONE IS NOT A GRAPH CHANGE. Every
+// previous re-pin above moved the digest because the GRAPH moved. This one
+// moves it because the TUPLE moved: entityTupleKey now hashes Language.
+//
+// The graph is byte-for-byte the same graph. Counts are unchanged at 142/287,
+// no entity is added, deleted, re-kinded, re-positioned or renamed, and no edge
+// is added, deleted or rewired — TestCustomExtractorGateOffDeltaIsExactlyThe-
+// DocumentedSpanGain and TestCsharpHierarchyEdgesArePresentGateOff both pass
+// unchanged across this re-pin. So the usual "enumerate the fixture members
+// producing the delta" has no members to enumerate: the delta is one extra
+// field appended to all 142 entity lines.
+//
+// What the tuple now observes, enumerated by the value it gained — the language
+// census of the gate-OFF fixture graph, 142 entities:
+//
+//	python      39
+//	csharp      32
+//	(empty)     31
+//	typescript  11
+//	java        10
+//	rust         9
+//	javascript   6
+//	go           4
+//
+// The 31 empty ones are not a hole in the extractors: every one of them is a
+// SCOPE.External or a Module synthetic with NO source file (the `_external`
+// and `span6118` modules, and 29 dangling import targets — Microsoft, axum,
+// django, express, net/http, rest_framework, …). Nothing that came out of a
+// file is language-less, which is the precondition that makes hashing the field
+// safe rather than noisy.
+//
+// WHY: a wholesale language regression in an extractor was invisible here.
+// Measured on this fixture at b0951cb0a, before the tuple changed:
+//
+//	python  "python"->"zzlang" (2 TagEntitiesLanguage calls + 8 `Language:`
+//	        literals): this digest UNCHANGED. Caught only by
+//	        TestLanguageTagPersistsAfterFBRoundtrip, which hardcodes
+//	        `.py` -> "python" and therefore covers exactly one language.
+//	go      "go"->"zzlang" (1 TagEntitiesLanguage call + 6 literals): digest
+//	        moved, but at 141/286 — a STRUCTURAL side effect of the token, not
+//	        the field being observed. A language change that does not perturb
+//	        resolution would have been silent.
+//	bicep   `const lang` -> "zzlang": nothing outside internal/extractors/bicep
+//	        failed. (Still true after #6862 — this fixture has no .bicep file.)
+//	engine  detector.go's three `Language: file.Language` rule-emit sites ->
+//	        "zzlang": nothing outside internal/engine failed. This one IS closed
+//	        by #6862 and is the mutant scored against the new tuple.
+//
+// NOTE ON THE OLDER CONSTANTS BELOW. With Language in the tuple, none of the
+// pre-#6862 digests can be produced by a graph reversion alone any more — they
+// require the tuple to have lost Language as well. Their reversion messages
+// still describe the graph state each hash encodes, but a match on any of them
+// now means "entityTupleKey no longer hashes Language, AND the graph is back at
+// that baseline". The gateOffDigest6742 branch says so directly, because that
+// is the one an accidental revert of #6862 alone would hit.
 const (
 	gateOffDigest6118Base = "a0a6ede910d8d0465d901153f483b27b8a57a565bdd79dd0104bef53786d9ca1"
 	gateOffDigest6118     = "387a9c36cb585b4d73828afc997744dbe02e6df347e0860054adf69431996d46"
@@ -629,6 +701,7 @@ const (
 	gateOffDigest6485     = "3ed5d943639276cd687131418577904de2c0fdcb1de846bd87f3816046f43443"
 	gateOffDigest6601     = "d073c83f287b2f6b3b93c0479b7dc55887ee292760b00217ebad1de0ecc0dcdf"
 	gateOffDigest6742     = "cb82b3285e410ea566ccdb4a44260cd858c4d6df0c210120e9d00129535edafe"
+	gateOffDigest6862     = "3a2e047ca1b7e4325e3b1fe625409be815afd47e80db8464836fee88c8670c4d"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -636,8 +709,14 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6742 {
+	if got == gateOffDigest6862 {
 		return
+	}
+	if got == gateOffDigest6742 {
+		t.Fatalf("gate-OFF graph hashes to the pre-#6862 tuple — entityTupleKey has " +
+			"stopped hashing e.Language. The graph itself is unchanged (142/287); what " +
+			"is gone is the digest's ability to see a wholesale language regression, " +
+			"which is exactly the hole #6862 measured and closed")
 	}
 	if got == gateOffDigest6601 {
 		t.Fatalf("gate-OFF graph reverted to the pre-#6742 baseline — C# class-hierarchy " +
@@ -673,10 +752,87 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6742 %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6742, gateOffDigest6601,
-		gateOffDigest6485, gateOffDigest6152, gateOffDigest6138, gateOffDigest6118,
-		gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6862 %s\n post-#6742 %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6862, gateOffDigest6742,
+		gateOffDigest6601, gateOffDigest6485, gateOffDigest6152, gateOffDigest6138,
+		gateOffDigest6118, gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
+}
+
+// TestSemanticDigestGradesEntityLanguage6862 pins, in behavioural terms rather
+// than as a hash, the property #6862 bought: the semantic digest MOVES when an
+// extractor re-stamps the language token on every entity it emits.
+//
+// This is deliberately not "the constant above changed". A pinned constant is a
+// diagnostic signature — it moves for any reason and gets re-baselined. This
+// test asserts the consequence directly, so it keeps holding across every future
+// re-pin, and it fails if entityTupleKey ever drops e.Language again.
+//
+// It has three parts because there are three independent ways for the tuple to
+// stop grading the field:
+//
+//  1. the format string drops it (unit-level: two entities differing ONLY in
+//     Language must not share a tuple key);
+//  2. the fixture stops carrying more than one language, which would make the
+//     field's presence in the tuple vacuous over this corpus;
+//  3. the end-to-end path: re-stamping every entity's language in the loaded
+//     gate-OFF graph must change semanticDigest6118. Part 3 is the wholesale
+//     regression from the issue, applied in memory so it needs no source mutant.
+func TestSemanticDigestGradesEntityLanguage6862(t *testing.T) {
+	// Part 1 — the tuple distinguishes on Language alone.
+	a := graph.Entity{Kind: "SCOPE.Operation", Name: "greet", QualifiedName: "a.greet",
+		Subtype: "func", SourceFile: "a.py", Language: "python", StartLine: 3, EndLine: 5}
+	b := a
+	b.Language = "zzlang"
+	if entityTupleKey(&a) == entityTupleKey(&b) {
+		t.Fatalf("entityTupleKey ignores Language: %q == %q (two entities identical "+
+			"except for the language token hash to the same content tuple)",
+			entityTupleKey(&a), entityTupleKey(&b))
+	}
+
+	fixture := writeSpanFixture6118(t)
+	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
+	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
+
+	// Part 2 — the fixture is not language-degenerate.
+	langs := map[string]int{}
+	for i := range off.Entities {
+		if l := off.Entities[i].Language; l != "" {
+			langs[l]++
+		}
+	}
+	if len(langs) < 5 {
+		t.Fatalf("fixture no longer spans enough languages for the field to be graded "+
+			"meaningfully: %d distinct non-empty languages %v (expected the documented "+
+			"7: python, csharp, typescript, java, rust, javascript, go)", len(langs), langs)
+	}
+	tagged := 0
+	for _, n := range langs {
+		tagged += n
+	}
+	if tagged < 100 {
+		t.Fatalf("only %d/%d entities carry a language at all — a wholesale language "+
+			"mutation would barely register in the digest", tagged, len(off.Entities))
+	}
+
+	// Part 3 — the wholesale regression moves the digest.
+	before := semanticDigest6118(off)
+	mutated := *off
+	mutated.Entities = append([]graph.Entity(nil), off.Entities...)
+	restamped := 0
+	for i := range mutated.Entities {
+		if mutated.Entities[i].Language == "python" {
+			mutated.Entities[i].Language = "zzlang"
+			restamped++
+		}
+	}
+	if restamped == 0 {
+		t.Fatal("no Python entity in the fixture graph — the wholesale mutation is a no-op")
+	}
+	if after := semanticDigest6118(&mutated); after == before {
+		t.Fatalf("re-stamping the language of all %d Python entities left the semantic "+
+			"digest at %s — the digest does not observe entity Language, which is the "+
+			"#6862 regression", restamped, before)
+	}
 }
 
 // TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain pins the shape
