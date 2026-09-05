@@ -56,6 +56,20 @@ All three directions of that comparison are graded — added, modified and **del
 direction is the one the gate's message promises ("commit the result, deletions included") and it
 is reachable: `pruneGenerated` deletes a generated page whose slug the registry no longer produces.
 
+**The old formulation could not see deletions at all.** `git add -N <dir>` STAGES a deletion, and
+`git diff` compares the work tree against the index, so the staged deletion leaves nothing to
+report:
+
+```
+$ rm d/a.md;     git diff --quiet -- d/; echo $?   # 1 — deletion visible
+$ git add -N d/; git diff --quiet -- d/; echo $?   # 0 — deletion GONE
+```
+
+The gate ran exactly that pair, in that order. The `git add -N` was added by #6354 to make untracked
+*additions* visible and it silently blinded *deletions* on the way, so for as long as it was there
+the gate promised a direction it could not observe. Do not reintroduce that pair —
+`TestWorkflowInvokesCheck` fails the build if `git add`/`git diff` reappear in the workflow.
+
 **Prune covers `by-language/` only.** `detail/` and `by-category/` are never pruned, so removing a
 record leaves its detail page behind as an orphan that no check reports — `gen` does not touch it,
 so the content delta is empty, and it equals `HEAD`, so the old `git diff` formulation was equally

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // The tests below grade `coverage check` — the single definition of the
@@ -337,6 +339,115 @@ func TestGateRosterMatchesTheWorkflow(t *testing.T) {
 		}
 		if strings.TrimSpace(got[i].Hint) == "" {
 			t.Errorf("step %q has no failure hint; a step that cannot say why it failed is the defect #6866 forbids", got[i].Name)
+		}
+	}
+
+	// The two hints the deleted workflow steps printed as `::error::`
+	// annotations, byte for byte. check.go's header CLAIMS they are
+	// preserved verbatim; without this the claim is unobserved, because
+	// assertStepFired reads the expected hint out of gateSteps() itself
+	// and so agrees with whatever the code says today. Copied from
+	// .github/workflows/coverage-docs.yml at 3bcb17807, lines 48 and 64.
+	verbatim := map[string]string{
+		"Verify registry.json is canonical (guards against recompaction, #2907)": "docs/coverage/registry.json is not canonical (likely whole-file re-serialized/compacted). Run 'go run ./tools/coverage fmt' locally and commit.",
+		"Verify docs are in sync with JSON":                                      "docs/coverage/ is out of sync with registry.json (stale, orphaned, or hand-added page). Run 'go run ./tools/coverage gen' locally and commit the result, deletions included.",
+	}
+	for _, st := range got {
+		want, pinned := verbatim[st.Name]
+		if !pinned {
+			continue
+		}
+		if st.Hint != want {
+			t.Errorf("step %q hint drifted from the message the workflow step printed.\n got: %q\nwant: %q", st.Name, st.Hint, want)
+		}
+		delete(verbatim, st.Name)
+	}
+	for name := range verbatim {
+		t.Errorf("no gate step named %q, so its verbatim hint is pinned to nothing", name)
+	}
+}
+
+// coverageDocsWorkflow is the workflow whose five steps `check` replaced.
+const coverageDocsWorkflow = ".github/workflows/coverage-docs.yml"
+
+// TestWorkflowInvokesCheck is the guard on the property #6866 actually
+// buys: that the step list exists in ONE place.
+//
+// Everything else here grades what `check` does when it runs. Nothing
+// graded that CI still runs it — reverting the workflow step to
+// `go run ./tools/coverage validate` left the whole Go suite green, so
+// the "one place" property rested on a YAML comment asking people not to
+// re-inline the steps. That is the issue's own defect class one level
+// out: a claim that reads as enforced and is not.
+//
+// The workflow is parsed as YAML rather than grepped, deliberately: the
+// comments in that file quote `go run ./tools/coverage validate` while
+// explaining why test.yml keeps its own copy, so a text search would
+// match prose and pass on a workflow that runs nothing at all.
+func TestWorkflowInvokesCheck(t *testing.T) {
+	path := filepath.Join(repoRoot(t), filepath.FromSlash(coverageDocsWorkflow))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", coverageDocsWorkflow, err)
+	}
+	var wf struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(data, &wf); err != nil {
+		t.Fatalf("parse %s: %v", coverageDocsWorkflow, err)
+	}
+	if len(wf.Jobs) == 0 {
+		t.Fatalf("%s declares no jobs; the parse is not seeing the file", coverageDocsWorkflow)
+	}
+
+	// Every ./tools/coverage invocation the workflow actually RUNS.
+	var invocations []string
+	var runBlocks []string
+	for _, job := range wf.Jobs {
+		for _, st := range job.Steps {
+			if strings.TrimSpace(st.Run) == "" {
+				continue
+			}
+			runBlocks = append(runBlocks, st.Run)
+			for _, line := range strings.Split(st.Run, "\n") {
+				line = strings.TrimSpace(line)
+				idx := strings.Index(line, "./tools/coverage")
+				if idx < 0 {
+					continue
+				}
+				rest := strings.Fields(line[idx+len("./tools/coverage"):])
+				if len(rest) == 0 {
+					t.Errorf("%s invokes ./tools/coverage with no subcommand: %q", coverageDocsWorkflow, line)
+					continue
+				}
+				invocations = append(invocations, rest[0])
+			}
+		}
+	}
+
+	if len(invocations) != 1 {
+		t.Fatalf("%s makes %d ./tools/coverage invocation(s) %v, want exactly 1 (`check`). More than one means the gate's steps have been re-inlined into the workflow — add them to gateSteps() instead, or #6866 recurs.",
+			coverageDocsWorkflow, len(invocations), invocations)
+	}
+	if invocations[0] != "check" {
+		t.Fatalf("%s runs `./tools/coverage %s`, want `check`. The workflow must call the one subcommand that IS the gate; anything else can drift from what a developer can run locally, which is the whole of #6866.",
+			coverageDocsWorkflow, invocations[0])
+	}
+
+	// The docs-sync step's git comparison must not come back either: it
+	// is the half of the gate that had no local equivalent, and `git
+	// add -N` additionally blinded the deletion direction (see
+	// docsSyncStep).
+	for _, block := range runBlocks {
+		for _, banned := range []string{"git add", "git diff"} {
+			if strings.Contains(block, banned) {
+				t.Errorf("%s runs %q again; the docs-sync comparison belongs in docsSyncStep, not the workflow:\n%s", coverageDocsWorkflow, banned, block)
+			}
 		}
 	}
 }

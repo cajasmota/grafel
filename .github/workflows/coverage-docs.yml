@@ -29,15 +29,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      # The AUTHORITATIVE, unconditional copy of this gate now lives in
+      # The AUTHORITATIVE, unconditional copy of this check now lives in
       # test.yml, which has no path filter on `pull_request` — see #6352 for
       # why the filter above could never fire on 76.8% of the cited paths.
+      # NOTE it is the *validate* check, step 1 of 5, that test.yml carries —
+      # not this whole gate. test.yml:268 runs `go run ./tools/coverage
+      # validate` and nothing more, deliberately: giving it the full `check`
+      # would add a `gen` to every PR in the repo.
       # This copy is deliberately RETAINED rather than moved, because it is not
       # redundant: this workflow also runs on `push: main`, a leg test.yml does
       # not subscribe to (test.yml reaches `push` only via release.yml's
       # workflow_call on a v* tag). Deleting it here would silently drop the
-      # post-merge run. It costs ~11s on the minority of runs that clear the
-      # path filter.
+      # post-merge validate — and, since #6866, the other four steps with it.
+      # It costs ~11s on the minority of runs that clear the path filter.
       #
       # ONE step, deliberately (#6866). This job used to list the gate's five
       # steps itself: three were `./tools/coverage` subcommands, and two —

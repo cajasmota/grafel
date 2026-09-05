@@ -139,33 +139,78 @@ func genStep(env *checkEnv) error {
 // docsSyncStep fails when `gen` CHANGED anything under docs/coverage/.
 //
 // The workflow expressed this as `git add -N docs/coverage/` followed by
-// `git diff --exit-code docs/coverage/`. The property both encode is the
-// same — "regenerating produced no change" — but the tree comparison is
-// the more faithful of the two, for two reasons:
+// `git diff --exit-code docs/coverage/`. Both encode the same intent —
+// "regenerating produced no change" — but they are NOT equivalent, and
+// the old one was half-blind.
 //
-//   - Untracked pages (#6354). `git diff` alone cannot see a file git
-//     does not track, so a page `gen` newly emitted was caught only
-//     indirectly, via whatever summary.md delta happened to link it; a
-//     page emitted with no summary reference was INVISIBLE to the gate.
-//     `git add -N` was bolted on to fix that. The before/after
-//     comparison has no such blind spot to patch: a path that did not
-//     exist before `gen` and does after is an addition by construction,
-//     tracked or not. The #6354 property is preserved, structurally
-//     rather than by workaround.
-//   - Dirty trees. `git diff docs/coverage/` also covers
-//     docs/coverage/registry.json — the very file a developer edits to
-//     make a coverage change. Running the gate mid-change therefore
-//     ALWAYS failed locally on an uncommitted registry edit, a failure
-//     CI can never see (its checkout is clean) and which has nothing to
-//     do with whether the docs are in sync. Grading `gen`'s own delta
-//     answers the question actually being asked and gives a developer
-//     with unrelated uncommitted work under docs/coverage/ a correct
-//     answer instead of a false failure. Pre-existing uncommitted
-//     changes are still surfaced — reported by reportWorkingTreeState
-//     before the gate runs — they simply do not fail the gate.
+// # `git add -N` blinded the deletion direction
 //
-// On a clean checkout, which is the only tree CI ever runs on, the two
-// formulations agree exactly.
+// `git add -N <dir>` stages a deletion of a tracked file under <dir>.
+// `git diff` compares the WORK TREE against the INDEX, so once the
+// deletion is staged there is nothing left for it to report:
+//
+//	rm d/a.md;      git diff --quiet -- d/   # exit 1 — deletion visible
+//	git add -N d/;  git diff --quiet -- d/   # exit 0 — deletion GONE
+//
+// The old gate ran exactly that pair, in that order. So it could never
+// observe a page `gen` PRUNED — the direction its own error message
+// promises ("commit the result, deletions included"). The `git add -N`
+// was introduced by #6354 to make untracked ADDITIONS visible; it
+// silently blinded deletions on the way. `pruneGenerated` is live (it
+// deletes a by-language page whose slug the registry stopped producing),
+// so this was reachable, not theoretical.
+//
+// The before/after content comparison sees both directions, because it
+// never consults git about what is tracked.
+//
+// # Untracked pages (#6354) are kept structurally
+//
+// `git diff` alone cannot see a file git does not track, so a page `gen`
+// newly emitted was caught only indirectly, via whatever summary.md
+// delta happened to link it; a page emitted with no summary reference
+// was invisible. `git add -N` was bolted on to patch that. The
+// before/after comparison has no such blind spot to patch: a path that
+// did not exist before `gen` and does after is an addition by
+// construction, tracked, untracked or .gitignore'd.
+//
+// # Dirty trees get a correct answer
+//
+// `git diff docs/coverage/` also covers docs/coverage/registry.json —
+// the very file a developer edits to make a coverage change. Running the
+// gate mid-change therefore ALWAYS failed locally on an uncommitted
+// registry edit: a divergence from HEAD that CI can never see (its
+// checkout is clean) and that says nothing about whether the docs are in
+// sync. Grading `gen`'s own delta answers the question actually being
+// asked. Pre-existing uncommitted changes are still surfaced — reported
+// by reportWorkingTreeState before the gate runs — they simply do not
+// fail the gate.
+//
+// # How the two compare on a clean checkout
+//
+// They agree on every defect class this gate exists to catch, and the
+// new formulation additionally catches two the old one could not:
+//
+//   - a pruned by-language orphan (old: PASS — the `add -N` bug above);
+//   - a newly emitted page that is .gitignore'd (old: PASS — git will
+//     not stage it, so `git diff` still cannot see it).
+//
+// One direction runs the other way, and it is worth stating precisely
+// because the obvious phrasing of it is wrong. The old formulation
+// graded "docs/coverage/ differs from HEAD", which is a SUPERSET of
+// "`gen` changed something": it also covered files under that directory
+// that `gen` never writes — in practice registry.json itself. So a mode
+// change (chmod +x docs/coverage/registry.json) fails under the old
+// formulation and passes under this one. Measured, both halves:
+//
+//   - on registry.json — old `git diff` exit 1, this step passes;
+//   - on a GENERATED page — both pass. renderToFile writes through
+//     os.CreateTemp + os.Rename, so the page ends up at the temp file's
+//     mode whatever it was before; `gen` normalises the mode rather than
+//     reporting it, and the old formulation saw nothing either.
+//
+// Neither is a defect class this gate exists to catch, and the
+// registry.json half is the same superset that produced the dirty-tree
+// false failure above. Stated here rather than chased.
 //
 // Note that `gen` has already rewritten the offending files by the time
 // this step reports. That is inherent to the gate (the workflow's `gen`
