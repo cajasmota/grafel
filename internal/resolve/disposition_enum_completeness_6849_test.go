@@ -6,62 +6,126 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 )
 
-// dispositionSourceFile is the single file that declares BOTH the Disposition
-// const block and the AllDispositions slice. The guard below reads the const
-// block from source rather than from a hand-written roster of names — a
-// hand-maintained roster would be the very defect it is guarding against, one
-// level up (#6849).
-const dispositionSourceFile = "refs.go"
+// dispositionSourceDir is the package directory the guard scans. It is the
+// DIRECTORY, not a single file, on purpose.
+//
+// The first cut of this guard parsed only refs.go, which is where the
+// Disposition const block lives today. That made it a FILE-scoped roster
+// guarding a slice-scoped roster — a constant declared in any other file of
+// this package was invisible to it, so the exact defect #6849 exists to
+// prevent (a Disposition that exists and never reaches AllDispositions) could
+// still be introduced with the whole package green. Scanning the directory is
+// what makes the guard enum-scoped rather than file-scoped.
+const dispositionSourceDir = "."
 
-// dispositionConst is one constant of the `Disposition = iota` const block as
-// it is actually written in refs.go. Value is the constant's iota value, which
-// is the index of its ValueSpec within the const block — `_` placeholders and
-// specs of other types still consume an iota slot, so the index is taken over
-// every spec in the block, not only the ones this walk keeps.
+// dispositionAnchorFile is where the const block lives today. It is asserted to
+// be among the files actually read (a layer-2 pin), but it is NOT the limit of
+// the scan — see dispositionSourceDir.
+const dispositionAnchorFile = "refs.go"
+
+// dispositionConst is one constant of type Disposition as it is actually
+// written in this package's source.
 type dispositionConst struct {
 	Name  string
 	Value int
+	File  string
 }
 
-// readDispositionSource returns the FULL contents of refs.go, having verified
-// against os.Stat that nothing truncated the read. #6834 layer 3: a source
-// scanner handed a partial file reports a clean tree for the part it never saw,
-// and a token check ("does the text contain DispositionExternalSQL?") cannot
-// tell a truncated file from a complete one.
-func readDispositionSource(t *testing.T) []byte {
+// readPackageGoSources returns the FULL contents of every non-test .go file in
+// dir, keyed by base name, having verified each length against os.Stat.
+//
+// #6834 layer 3: a source scanner handed a partial file reports a clean tree
+// for the part it never saw, and a token check ("does the text contain
+// DispositionExternalSQL?") cannot tell a truncated file from a complete one,
+// so the check is a byte-length comparison rather than a content probe.
+func readPackageGoSources(t *testing.T, dir string) map[string][]byte {
 	t.Helper()
 
-	info, err := os.Stat(dispositionSourceFile)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Fatalf("stat %s: %v", dispositionSourceFile, err)
+		t.Fatalf("read dir %s: %v", dir, err)
 	}
-	src, err := os.ReadFile(dispositionSourceFile)
-	if err != nil {
-		t.Fatalf("read %s: %v", dispositionSourceFile, err)
+
+	out := map[string][]byte{}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if int64(len(src)) != info.Size() {
+			t.Fatalf("read %d bytes of %s but os.Stat reports %d; the scan would silently "+
+				"skip the tail of the file", len(src), path, info.Size())
+		}
+		out[name] = src
 	}
-	if int64(len(src)) != info.Size() {
-		t.Fatalf("read %d bytes of %s but os.Stat reports %d; the scan would silently "+
-			"skip the tail of the file", len(src), dispositionSourceFile, info.Size())
+	if len(out) == 0 {
+		t.Fatalf("no non-test .go files found in %s; the scan has nothing to read", dir)
 	}
-	if info.Size() == 0 {
-		t.Fatalf("%s is empty; the scan has nothing to read", dispositionSourceFile)
-	}
-	return src
+	return out
 }
 
-// declaredDispositionsIn parses the given Go source and returns every constant
-// declared with the type Disposition, in source order.
+// constExprValue evaluates the value expression of a const spec sitting at
+// index idx of its const block.
+//
+// It deliberately understands only the two forms that can be evaluated with
+// certainty from the AST alone:
+//
+//	iota          -> idx  (the spec's position in the block)
+//	an int literal -> that literal
+//
+// Anything else — iota arithmetic (`iota + 1`), a reference to another
+// constant, a shifted expression — returns ok=false, and the caller FAILS
+// LOUDLY rather than guessing. Guessing is the dangerous direction: a wrong
+// value silently collides with a real member and makes the completeness guard
+// report success. There is no such form in this package today; if one is
+// added, the guard says so instead of quietly mis-grading it.
+func constExprValue(values []ast.Expr, idx int) (int, bool) {
+	if len(values) != 1 {
+		return 0, false
+	}
+	switch v := values[0].(type) {
+	case *ast.Ident:
+		if v.Name == "iota" {
+			return idx, true
+		}
+	case *ast.BasicLit:
+		if v.Kind == token.INT {
+			n, err := strconv.Atoi(v.Value)
+			if err != nil {
+				return 0, false
+			}
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+// declaredDispositionsIn parses one Go source file and returns every constant
+// declared with the type Disposition, in source order, plus the names of any
+// whose value could not be evaluated.
 //
 // Const-block type elision is handled: inside a `const (...)` group a spec with
-// neither a type nor values repeats the previous spec's type and expression, so
-// the last explicit type is carried forward for exactly that case. That is how
-// this particular block is written — only DispositionResolved carries the
+// neither a type nor values repeats the previous spec's type AND its value
+// expression, so both are carried forward for exactly that case. That is how
+// the Disposition block is written — only DispositionResolved carries the
 // `Disposition = iota` annotation.
-func declaredDispositionsIn(t *testing.T, filename string, src []byte) []dispositionConst {
+func declaredDispositionsIn(t *testing.T, filename string, src []byte) (consts []dispositionConst, unevaluable []string) {
 	t.Helper()
 
 	fset := token.NewFileSet()
@@ -70,13 +134,13 @@ func declaredDispositionsIn(t *testing.T, filename string, src []byte) []disposi
 		t.Fatalf("parse %s: %v", filename, err)
 	}
 
-	var out []dispositionConst
 	for _, decl := range file.Decls {
 		gen, ok := decl.(*ast.GenDecl)
 		if !ok || gen.Tok != token.CONST {
 			continue
 		}
 		var carriedType ast.Expr
+		var carriedValues []ast.Expr
 		// iota counts every spec in the block, including ones this walk
 		// discards, so the index comes from the block-wide loop.
 		for i, spec := range gen.Specs {
@@ -84,11 +148,12 @@ func declaredDispositionsIn(t *testing.T, filename string, src []byte) []disposi
 			if !ok {
 				continue
 			}
-			typ := vs.Type
-			if typ == nil && len(vs.Values) == 0 {
-				typ = carriedType // elided spec: repeats the previous type
+			typ, values := vs.Type, vs.Values
+			if typ == nil && len(values) == 0 {
+				// Elided spec: repeats the previous type and expression.
+				typ, values = carriedType, carriedValues
 			} else {
-				carriedType = typ
+				carriedType, carriedValues = typ, values
 			}
 			ident, ok := typ.(*ast.Ident)
 			if !ok || ident.Name != "Disposition" {
@@ -98,49 +163,98 @@ func declaredDispositionsIn(t *testing.T, filename string, src []byte) []disposi
 				if name.Name == "_" {
 					continue
 				}
-				out = append(out, dispositionConst{Name: name.Name, Value: i})
+				val, ok := constExprValue(values, i)
+				if !ok {
+					unevaluable = append(unevaluable, name.Name+" in "+filename)
+					continue
+				}
+				consts = append(consts, dispositionConst{Name: name.Name, Value: val, File: filename})
 			}
 		}
 	}
-	return out
+	return consts, unevaluable
 }
 
-// declaredDispositionsFromSource is the real-tree entry point: the full,
-// stat-verified contents of refs.go walked for Disposition constants.
+// declaredDispositionsFromSource is the real-tree entry point: every non-test
+// .go file of this package, read in full and walked for Disposition constants.
+// Results are sorted by (value, name) so the output is deterministic
+// independent of directory iteration order.
 func declaredDispositionsFromSource(t *testing.T) []dispositionConst {
 	t.Helper()
-	return declaredDispositionsIn(t, dispositionSourceFile, readDispositionSource(t))
+
+	sources := readPackageGoSources(t, dispositionSourceDir)
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var all []dispositionConst
+	var unevaluable []string
+	for _, name := range names {
+		consts, bad := declaredDispositionsIn(t, name, sources[name])
+		all = append(all, consts...)
+		unevaluable = append(unevaluable, bad...)
+	}
+	if len(unevaluable) > 0 {
+		t.Fatalf("could not evaluate the value of %d Disposition constant(s): %v\n"+
+			"The guard refuses to guess: a wrongly-derived value would collide with a real "+
+			"member and make the completeness check report success. Teach constExprValue the "+
+			"new form, or give the constant a plain iota / integer-literal value.",
+			len(unevaluable), unevaluable)
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].Value != all[j].Value {
+			return all[i].Value < all[j].Value
+		}
+		return all[i].Name < all[j].Name
+	})
+	return all
 }
 
 // dispositionCoverageProblems is the whole decision. It reports every way the
-// slice can fail to be an exact, duplicate-free enumeration of the declared
-// constants: a declared constant absent from the slice, a slice entry that no
-// constant declares, and a constant listed more than once.
+// declared enum and the slice can fail to be in exact correspondence:
 //
-// Order is deliberately NOT graded. AllDispositions documents itself as being
-// in "canonical order" for stable log output, but reordering it cannot make any
-// report wrong — every consumer sums or maps over it — so a guard that failed
-// on a reorder would be over-tight and would be deleted the first time someone
-// legitimately reordered the block.
+//   - missing    — a declared constant with no entry in the slice
+//   - extra      — a slice entry no constant declares
+//   - duplicated — a constant listed more than once (the slice is consumed as a
+//     set but declared as a slice; that asymmetry is #6830 in a third place)
+//   - aliased    — two constants sharing one value, so one bucket would be
+//     reported under two names
 //
-// Both this test file's real-tree guard and its detector test call THIS
-// function, so the detector cannot certify a decision the guard does not make.
+// Order is deliberately NOT graded. render.go:206 and cmd/grafel/index.go:3057
+// do emit their rows in slice order, so a reorder genuinely changes rendered
+// output — but only the ORDER of the rows, never a count, a percentage or a
+// denominator, because every consumer that computes anything sums or maps over
+// the slice. Nothing a reader tracks becomes wrong. A guard that failed on a
+// reorder would be over-tight and would be deleted the first time someone
+// reordered the block legitimately, taking the real checks with it.
+//
+// Both this file's real-tree guard and its detector test call THIS function, so
+// the detector cannot certify a decision the guard does not make.
 func dispositionCoverageProblems(declared []dispositionConst, all []Disposition) []string {
 	counts := map[Disposition]int{}
 	for _, d := range all {
 		counts[d]++
 	}
 	declaredByValue := map[Disposition]string{}
-	for _, c := range declared {
-		declaredByValue[Disposition(c.Value)] = c.Name
-	}
 
 	var problems []string
 	for _, c := range declared {
+		if prev, dup := declaredByValue[Disposition(c.Value)]; dup {
+			problems = append(problems, fmt.Sprintf(
+				"aliased: %s and %s both have value %d, so one bucket would be reported under two names",
+				prev, c.Name, c.Value))
+			continue
+		}
+		declaredByValue[Disposition(c.Value)] = c.Name
+
 		switch n := counts[Disposition(c.Value)]; {
 		case n == 0:
 			problems = append(problems, fmt.Sprintf(
-				"missing: %s (value %d) is declared but absent from AllDispositions", c.Name, c.Value))
+				"missing: %s (value %d, declared in %s) is absent from AllDispositions",
+				c.Name, c.Value, c.File))
 		case n > 1:
 			problems = append(problems, fmt.Sprintf(
 				"duplicated: %s (value %d) appears %d times in AllDispositions", c.Name, c.Value, n))
@@ -157,28 +271,36 @@ func dispositionCoverageProblems(declared []dispositionConst, all []Disposition)
 }
 
 // TestDeclaredDispositionsExtraction_NonVacuous is the floor under the
-// completeness guard below. If the extraction ever breaks — a renamed file, a
-// reworked const layout, a botched AST walk — it would find zero constants and
-// the completeness guard would pass by examining nothing (#6834 layers 1-3).
+// completeness guard below. If the extraction ever breaks — a moved const
+// block, a reworked layout, a botched AST walk, a scan pointed at the wrong
+// directory — it would find zero constants and the completeness guard would
+// pass by examining nothing (#6834 layers 1-3).
 //
 // The floor is deliberately NOT stated as a count against len(AllDispositions).
 // That comparand would make this test co-fire with the completeness guard on an
 // over-long slice, and a check that only ever fails alongside another one is
-// ungraded. Instead the floor is "found nothing at all" plus sentinels that pin
-// four long-lived constants by NAME and by iota VALUE — a walk that narrows to a
-// subset of the block, reads a truncated file, or is pointed at the wrong file
-// dies on the sentinels, independently of what the slice happens to contain.
+// ungraded.
+//
+// Honest note on the sentinels: only their NAME half can fail alone. A walk
+// that returned the right names with wrong VALUES necessarily disagrees with
+// AllDispositions by value too, so the completeness guard always co-fires on
+// that. The value assertions are kept for the error message — they say "the
+// walk misread the block" instead of "the slice is wrong" — not because they
+// close a gap nothing else covers.
 func TestDeclaredDispositionsExtraction_NonVacuous(t *testing.T) {
-	declared := declaredDispositionsFromSource(t)
-
-	if len(declared) == 0 {
-		t.Fatalf("extracted no Disposition constants from %s; the extraction is not reading the "+
-			"declarations and the completeness guard would be vacuous", dispositionSourceFile)
+	sources := readPackageGoSources(t, dispositionSourceDir)
+	if _, ok := sources[dispositionAnchorFile]; !ok {
+		t.Fatalf("the scan of %s did not read %s, which is where the Disposition const block "+
+			"lives; it is looking at the wrong place and the completeness guard would be vacuous",
+			dispositionSourceDir, dispositionAnchorFile)
 	}
 
-	// Sentinels pin that the walk reads the real names AND their real iota
-	// values — a walk that returned the right number of wrongly-valued
-	// constants would satisfy a bare population floor.
+	declared := declaredDispositionsFromSource(t)
+	if len(declared) == 0 {
+		t.Fatalf("extracted no Disposition constants from %s; the extraction is not reading the "+
+			"declarations and the completeness guard would be vacuous", dispositionSourceDir)
+	}
+
 	byName := map[string]int{}
 	for _, d := range declared {
 		byName[d.Name] = d.Value
@@ -193,7 +315,7 @@ func TestDeclaredDispositionsExtraction_NonVacuous(t *testing.T) {
 		got, ok := byName[name]
 		if !ok {
 			t.Errorf("extraction did not find %s in %s; the AST walk is not reading the declarations",
-				name, dispositionSourceFile)
+				name, dispositionSourceDir)
 			continue
 		}
 		if Disposition(got) != want {
@@ -210,9 +332,9 @@ func TestDeclaredDispositionsExtraction_NonVacuous(t *testing.T) {
 // problems, otherwise the guard fires on everything and grades nothing.
 func TestDispositionCoverageProblems_DetectsEachFailure(t *testing.T) {
 	declared := []dispositionConst{
-		{Name: "A", Value: 0},
-		{Name: "B", Value: 1},
-		{Name: "C", Value: 2},
+		{Name: "A", Value: 0, File: "a.go"},
+		{Name: "B", Value: 1, File: "a.go"},
+		{Name: "C", Value: 2, File: "a.go"},
 	}
 	complete := []Disposition{0, 1, 2}
 
@@ -225,17 +347,41 @@ func TestDispositionCoverageProblems_DetectsEachFailure(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		all  []Disposition
-		want string
+		name     string
+		declared []dispositionConst
+		all      []Disposition
+		want     string
 	}{
-		{"missing", []Disposition{0, 2}, "missing: B (value 1) is declared but absent from AllDispositions"},
-		{"extra", []Disposition{0, 1, 2, 9}, "extra: Disposition(9) appears 1 time(s) in AllDispositions but no constant declares it"},
-		{"duplicate", []Disposition{0, 1, 1, 2}, "duplicated: B (value 1) appears 2 times in AllDispositions"},
+		{
+			"missing", declared, []Disposition{0, 2},
+			"missing: B (value 1, declared in a.go) is absent from AllDispositions",
+		},
+		{
+			// The P4 shape: a constant declared in a DIFFERENT file of the
+			// package and never added to the slice.
+			"missing_from_another_file",
+			append(append([]dispositionConst{}, declared...), dispositionConst{Name: "D", Value: 3, File: "other.go"}),
+			complete,
+			"missing: D (value 3, declared in other.go) is absent from AllDispositions",
+		},
+		{
+			"extra", declared, []Disposition{0, 1, 2, 9},
+			"extra: Disposition(9) appears 1 time(s) in AllDispositions but no constant declares it",
+		},
+		{
+			"duplicate", declared, []Disposition{0, 1, 1, 2},
+			"duplicated: B (value 1) appears 2 times in AllDispositions",
+		},
+		{
+			"aliased",
+			append(append([]dispositionConst{}, declared...), dispositionConst{Name: "BAlias", Value: 1, File: "other.go"}),
+			complete,
+			"aliased: B and BAlias both have value 1, so one bucket would be reported under two names",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := dispositionCoverageProblems(declared, tc.all)
+			got := dispositionCoverageProblems(tc.declared, tc.all)
 			if len(got) != 1 || got[0] != tc.want {
 				t.Fatalf("problems = %v, want exactly [%q]", got, tc.want)
 			}
@@ -244,12 +390,15 @@ func TestDispositionCoverageProblems_DetectsEachFailure(t *testing.T) {
 }
 
 // TestDeclaredDispositionsIn_ReadsAnArbitraryConstBlock is #6834 layer 4 for
-// the AST walk itself: an in-memory source whose answer is known by
-// construction, including the two shapes that break naive walks — a `_`
-// placeholder that still consumes an iota slot, and a const block of a
-// different type that must be ignored entirely.
+// the AST walk itself: in-memory sources whose answers are known by
+// construction, including the shapes that break naive walks — a `_` placeholder
+// that still consumes an iota slot, a const block of a different type that must
+// be ignored entirely, a constant carrying an explicit integer value, an elided
+// spec repeating a literal rather than iota, and an expression the walk must
+// refuse to evaluate instead of guessing.
 func TestDeclaredDispositionsIn_ReadsAnArbitraryConstBlock(t *testing.T) {
-	src := []byte(`package p
+	t.Run("iota_underscore_and_foreign_block", func(t *testing.T) {
+		src := []byte(`package p
 
 type Disposition int
 type Other int
@@ -266,11 +415,60 @@ const (
 	AlsoIgnoredO
 )
 `)
-	got := declaredDispositionsIn(t, "synthetic.go", src)
-	want := []dispositionConst{
-		{Name: "AlphaD", Value: 0},
-		{Name: "BetaD", Value: 1},
-		{Name: "DeltaD", Value: 3},
+		got, bad := declaredDispositionsIn(t, "synthetic.go", src)
+		assertConsts(t, got, bad, []dispositionConst{
+			{Name: "AlphaD", Value: 0, File: "synthetic.go"},
+			{Name: "BetaD", Value: 1, File: "synthetic.go"},
+			{Name: "DeltaD", Value: 3, File: "synthetic.go"},
+		})
+	})
+
+	t.Run("explicit_values_and_literal_elision", func(t *testing.T) {
+		// This is the P4 shape at the AST level: a constant whose value is a
+		// plain literal, not an iota position. An index-based walk would read
+		// GammaD as 0 and silently collide it with the first real member.
+		src := []byte(`package p
+
+type Disposition int
+
+const GammaD Disposition = 8
+
+const (
+	HotelD Disposition = 40
+	IndiaD
+)
+`)
+		got, bad := declaredDispositionsIn(t, "other.go", src)
+		assertConsts(t, got, bad, []dispositionConst{
+			{Name: "GammaD", Value: 8, File: "other.go"},
+			{Name: "HotelD", Value: 40, File: "other.go"},
+			{Name: "IndiaD", Value: 40, File: "other.go"}, // elision repeats the literal
+		})
+	})
+
+	t.Run("unevaluable_expression_is_refused_not_guessed", func(t *testing.T) {
+		src := []byte(`package p
+
+type Disposition int
+
+const (
+	JulietD Disposition = iota + 1
+)
+`)
+		got, bad := declaredDispositionsIn(t, "arith.go", src)
+		if len(got) != 0 {
+			t.Errorf("guessed a value for an unevaluable expression: %v", got)
+		}
+		if len(bad) != 1 || bad[0] != "JulietD in arith.go" {
+			t.Fatalf("unevaluable = %v, want [\"JulietD in arith.go\"]", bad)
+		}
+	})
+}
+
+func assertConsts(t *testing.T, got []dispositionConst, bad []string, want []dispositionConst) {
+	t.Helper()
+	if len(bad) != 0 {
+		t.Fatalf("unexpected unevaluable constants: %v", bad)
 	}
 	if len(got) != len(want) {
 		t.Fatalf("extracted %v, want %v", got, want)
@@ -285,52 +483,62 @@ const (
 // TestAllDispositions_CoversTheEnumExactly is the guard #6849 asks for.
 //
 // AllDispositions drives BOTH the rows and the denominator of the resolution
-// table in internal/feedback (#6836) and the disposition_counts / samples maps
-// in cmd/grafel. The percentages there are normalised over the sum of the
+// table in internal/feedback (#6836) and the disposition_counts /
+// disposition_samples maps in cmd/grafel/index.go. Because this guard grades
+// the shared ROOT rather than any one consumer, it protects every consumer at
+// once — present and future — which is the property a per-consumer test cannot
+// have.
+//
+// The percentages in those reports are normalised over the sum of the
 // enumerated buckets, so a disposition missing from this slice does not merely
 // lose its row: its share is REDISTRIBUTED across the survivors, and the reader
 // gets a table that sums to 100%, is wrong, and reports no discrepancy
 // anywhere. A permanently-0.00% row would at least be visible.
 //
 // Measured at the time this guard was added (#6849): the slice and the enum
-// agreed exactly — 8 constants, 8 entries, no extras, no duplicates. So this is
-// a ratchet, not a repair.
+// agreed exactly — 8 constants, 8 entries, no extras, no duplicates, no
+// aliases. So this is a ratchet, not a repair.
 //
 // There is no exemption list. A Disposition that should not be reported should
 // not be declared; deleting the constant is the way to retire one.
 func TestAllDispositions_CoversTheEnumExactly(t *testing.T) {
 	declared := declaredDispositionsFromSource(t)
 	if len(declared) == 0 {
-		t.Fatalf("no Disposition constants extracted from %s; guard would be vacuous", dispositionSourceFile)
+		t.Fatalf("no Disposition constants extracted from %s; guard would be vacuous", dispositionSourceDir)
 	}
 
 	if problems := dispositionCoverageProblems(declared, AllDispositions); len(problems) > 0 {
 		t.Errorf("AllDispositions is not an exact, duplicate-free enumeration of the %d Disposition "+
-			"constants declared in %s:\n  %v\n"+
+			"constants declared in this package:\n  %v\n"+
 			"Every consumer (internal/feedback's resolution table, cmd/grafel's disposition_counts) "+
 			"normalises over this slice, so an inconsistency here silently rewrites every percentage.",
-			len(declared), dispositionSourceFile, problems)
+			len(declared), problems)
 	}
 }
 
 // TestDispositionString_HasALabelForEveryDeclaredConstant closes the escape
 // hatch named in #6849: Disposition.String() falls back to "unknown" for values
-// outside its switch, which is what lets an unenumerated value travel through
-// the reports without anything noticing. The fallback itself is left in place —
-// String() is total over the int domain and callers may hold a value read back
-// from disk — but no DECLARED constant may reach it.
+// outside its switch, which is what would let an unenumerated value travel
+// through the reports without anything noticing.
+//
+// The fallback itself is left in place — String() needs a terminal return
+// regardless, so totality over the int domain is free — but no DECLARED
+// constant may reach it. Note that nothing in internal/ or cmd/ currently
+// converts an int into a Disposition or deserialises one, so the fallback is
+// unreachable in practice today; that is a reason to leave it alone, not a
+// reason to rely on it.
 func TestDispositionString_HasALabelForEveryDeclaredConstant(t *testing.T) {
 	declared := declaredDispositionsFromSource(t)
 	if len(declared) == 0 {
-		t.Fatalf("no Disposition constants extracted from %s; guard would be vacuous", dispositionSourceFile)
+		t.Fatalf("no Disposition constants extracted from %s; guard would be vacuous", dispositionSourceDir)
 	}
 
 	seen := map[string]string{}
 	for _, c := range declared {
 		label := Disposition(c.Value).String()
 		if label == "unknown" {
-			t.Errorf("%s (value %d) has no case in Disposition.String() and renders as %q",
-				c.Name, c.Value, label)
+			t.Errorf("%s (value %d, declared in %s) has no case in Disposition.String() and renders as %q",
+				c.Name, c.Value, c.File, label)
 			continue
 		}
 		if prev, dup := seen[label]; dup {

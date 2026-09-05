@@ -306,10 +306,21 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 	// 3. Resolution vector sums to 100% ± 0.1%.
 	if r.ResolutionTotal > 0 {
 		// Summed over resolve.AllDispositions rather than a hand-listed set
-		// (#6836): a disposition missing from the vector must fail this check
-		// instead of silently shrinking the sum's scope. The dispositions
-		// partition the edges that have a target, so anything but 100% means a
-		// bucket double-counted or dropped one.
+		// (#6836), so this check follows the taxonomy instead of drifting from
+		// it. It catches a vector whose percentages do not add up — e.g. one
+		// assembled by a caller from a different source than report.go's.
+		//
+		// What it does NOT catch, despite an earlier version of this comment
+		// claiming otherwise (#6849): a disposition MISSING FROM
+		// resolve.AllDispositions. report.go:768-779 derives the denominator by
+		// summing DispositionCounts over that same slice and then divides each
+		// bucket by it, so this loop computes Σ(100·c_d / Σc_d) over an
+		// identical index set — exactly 100 for ANY subset. A duplicated member
+		// is invisible too: the double-count in the denominator and the
+		// double-iteration here cancel. Dropping a disposition therefore
+		// redistributes its share across the survivors and still sums to 100%,
+		// silently. Completeness of the slice is enforced at its root instead,
+		// by TestAllDispositions_CoversTheEnumExactly in internal/resolve.
 		sum := 0.0
 		for _, d := range resolve.AllDispositions {
 			sum += r.Resolution.Pct(d.String())

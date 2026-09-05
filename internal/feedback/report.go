@@ -51,9 +51,10 @@ type KindStats struct {
 // The breakdown is produced by the SAME classifier the indexer uses —
 // resolve.Index.ClassifyEndpoints — not by a private re-derivation, so the
 // report does not drift from the taxonomy it claims to report. That guarantee
-// is only as strong as resolve.AllDispositions being complete: it is a
-// hand-maintained slice, graded against nothing, so a Disposition added to the
-// enum and not to the slice would still go missing here. #6836: three of
+// is only as strong as resolve.AllDispositions being complete, and since #6849
+// that completeness is itself graded: TestAllDispositions_CoversTheEnumExactly
+// in internal/resolve scans the package for Disposition constants and fails if
+// the slice omits, duplicates, aliases or invents one. #6836: three of
 // six hand-maintained counters here had no increment and rendered a permanent
 // 0.00%; keying off resolve.AllDispositions removes the whole defect class,
 // because a disposition can no longer exist in the taxonomy and be silently
@@ -756,9 +757,9 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	// Resolution disposition vector, computed by the indexer's own classifier
 	// rather than re-derived here (#6836). One entry per resolve.AllDispositions
 	// member — a 0.00% is corpus-relative, never a disposition nothing counts.
-	// Caveat: AllDispositions is a hand-maintained slice and nothing grades it
-	// against the Disposition enum, so completeness of the table still rests on
-	// that slice staying in step.
+	// AllDispositions is hand-maintained, but since #6849 it is graded against
+	// the Disposition enum by TestAllDispositions_CoversTheEnumExactly in
+	// internal/resolve, so a disposition cannot exist and be missing here.
 	//
 	// Only ToID is populated on each EndpointPair, so ClassifyEndpoints
 	// records exactly one disposition per edge with a target and the counts
