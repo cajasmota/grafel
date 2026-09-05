@@ -49,16 +49,30 @@ func TestBicepPathIsNotMaskedAsDynamic6852(t *testing.T) {
 // looksLikeSourceFilePath rejects ANY string containing ':' before it ever
 // consults the extension list. So a `.bicep`-suffixed ToID is not a candidate
 // for the masking branch whether or not `.bicep` is in the allowlist.
+//
+// THE LAST ROW IS THE ONE THAT GRADES THE GUARD, and it is here because the
+// first three do NOT. Measured: deleting the ':' from the ContainsAny guard
+// (refs.go, `strings.ContainsAny(s, ": \\")`) leaves rows 1-3 green — every one
+// of them ends in `.bicep` or `:v1`, neither of which is in
+// sourceFileExtensions, so the extension loop rejects them on its own and the
+// ':' guard is never exercised. A test green for the reason it claims
+// independence from is not a test. The `…:go:src/app.go` row ends in `.go`,
+// which the extension list DOES accept, so it can only be rejected by the ':'
+// guard — and that mutant is dead only because this row exists.
 func TestBicepModuleTargetsAreNeverSourceFilePaths6852(t *testing.T) {
 	for _, to := range []string{
 		"scope:component:file:bicep:./modules/network.bicep",
 		"scope:component:file:bicep:modules/database.bicep",
 		"scope:component:external:bicep:br:contoso.azurecr.io/bicep/modules/storage:v1",
+		// Same structural-ref SHAPE, but with a tail the extension allowlist
+		// accepts. This is the only row whose verdict depends on the ':' guard.
+		"scope:component:file:go:src/app.go",
 	} {
 		if looksLikeSourceFilePath(to) {
-			t.Errorf("looksLikeSourceFilePath(%q) = true — a bicep module ToID is a "+
-				"structural ref, not a source path; the ':' guard must reject it "+
-				"regardless of the extension allowlist", to)
+			t.Errorf("looksLikeSourceFilePath(%q) = true — a structural ref is not a "+
+				"source path; the ':' guard must reject it BEFORE the extension "+
+				"allowlist is consulted, which is what the #6852 sourceFileExtensions "+
+				"decision rests on", to)
 		}
 	}
 }
