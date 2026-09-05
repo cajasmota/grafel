@@ -3,32 +3,136 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/entkinds"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
 // #6841. FrameworkClassKindPriority's doc used to claim that every bare kind
-// appears alongside its "SCOPE."-prefixed twin. Eleven rows violated it and
+// appears alongside its "SCOPE."-prefixed twin. Thirteen rows violated it and
 // nothing observed the claim, so the claim was cited twice as evidence that a
 // pair exists and was wrong both times.
 //
 // The claim is now per-row and lives in DATA (FrameworkClassKindTwins), not in
-// prose. These tests are what makes the data load-bearing: a row added to the
-// priority map with no declared twin state fails, a declaration that disagrees
-// with the map fails, and a declaration that says "nothing emits the opposite
-// spelling" fails the moment the enum gains it.
+// prose. These tests are what makes the data load-bearing.
+//
+// THE SCAN IS internal/entkinds, NOT A LOCAL MATCHER. The first version of
+// this guard rolled its own walk over internal/ and cmd/ looking for
+// double-quoted spellings. That was blind to the DOMINANT producer of exactly
+// these kinds: rule YAML writes them as UNQUOTED scalars (`entity_type:
+// Controller`, ×37 for Controller alone), so a rule pack that started minting
+// `SCOPE.Repository` left "Repository: TwinUnproduced" green — measured ALIVE.
+// entkinds.ScanRuleYAML reads those scalars and entkinds.ScanGoReferences
+// resolves `string(types.EntityKindX)` conversions, which a literal scan also
+// misses; both holes are the ones that package was built for (#6744, #6818).
 
-// cfOpposite is the spelling the twin declaration is about, mirrored here
-// rather than imported so the test does not inherit a bug in the helper it is
-// grading.
+// cfRepoRoot is the tree the scans read. runtime.Caller pins it to THIS source
+// file's directory, so the answer cannot depend on the working directory — and
+// it is the worktree that compiled this test, never a sibling checkout.
+func cfRepoRoot(t *testing.T) string {
+	t.Helper()
+	_, here, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(here), "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("scan root %s has no go.mod: %v", root, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "internal", "engine", "classfold.go")); err != nil {
+		t.Fatalf("scan root %s is not this tree: %v", root, err)
+	}
+	return root
+}
+
+var (
+	cfDeclOnce sync.Once
+	cfDeclRes  entkinds.Result
+	cfDeclErr  error
+	cfRefOnce  sync.Once
+	cfRefRes   entkinds.Result
+	cfRefErr   error
+)
+
+// cfDeclarations is every entity kind the tree DECLARES — Go composite-literal
+// `Kind:` fields plus rule-YAML `entity_type:`/`entity_mapping:` scalars.
+func cfDeclarations(t *testing.T) entkinds.Result {
+	t.Helper()
+	cfDeclOnce.Do(func() { cfDeclRes, cfDeclErr = entkinds.Scan(cfRepoRoot(t)) })
+	if cfDeclErr != nil {
+		t.Fatalf("entkinds.Scan: %v", cfDeclErr)
+	}
+	return cfDeclRes
+}
+
+// cfGoMentions is every Go MENTION — producer or consumer — of an unpaired
+// row's opposite spelling. Unlike Scan it sees a kind passed as a function
+// ARGUMENT (makeEntity(name, "SCOPE.Interface", …)) and a
+// `string(types.EntityKindPlugin)` conversion, which is where all three
+// produced twins actually live.
+func cfGoMentions(t *testing.T) entkinds.Result {
+	t.Helper()
+	cfRefOnce.Do(func() {
+		cfRefRes, cfRefErr = entkinds.ScanGoReferences(cfRepoRoot(t), cfUnpairedOpposites())
+	})
+	if cfRefErr != nil {
+		t.Fatalf("entkinds.ScanGoReferences: %v", cfRefErr)
+	}
+	return cfRefRes
+}
+
+// cfOpposite is the spelling a twin declaration is about, mirrored here rather
+// than imported so the test does not inherit a bug in the helper it grades.
 func cfOpposite(kind string) string {
 	if rest, ok := strings.CutPrefix(kind, "SCOPE."); ok {
 		return rest
 	}
 	return "SCOPE." + kind
+}
+
+// cfUnpairedOpposites is the opposite spelling of every row NOT declared
+// TwinInMap. The paired rows are excluded on purpose: their opposite is in the
+// map, so its mentions are not evidence of anything and enumerating every
+// mention of "SCOPE.Model" would bury the rows this issue is about.
+func cfUnpairedOpposites() []string {
+	out := make([]string, 0, len(FrameworkClassKindTwins))
+	for k, d := range FrameworkClassKindTwins {
+		if d.State != TwinInMap {
+			out = append(out, cfOpposite(k))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// cfFileMentions reports whether a repo-relative file contains lit. The file is
+// read WHOLE and the length asserted against os.Stat on the string the matcher
+// reads — a truncation between read and match would otherwise answer "no"
+// convincingly.
+func cfFileMentions(t *testing.T, rel, lit string) bool {
+	t.Helper()
+	p := filepath.Join(cfRepoRoot(t), filepath.FromSlash(rel))
+	st, err := os.Stat(p)
+	if err != nil {
+		t.Errorf("producer %s: %v", rel, err)
+		return false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Errorf("producer %s: %v", rel, err)
+		return false
+	}
+	s := string(b)
+	if int64(len(s)) != st.Size() {
+		t.Errorf("%s: matching %d of %d bytes — a truncated read hides the literal", rel, len(s), st.Size())
+		return false
+	}
+	return strings.Contains(s, lit)
 }
 
 func cfSortedKeys[V any](m map[string]V) []string {
@@ -43,7 +147,7 @@ func cfSortedKeys[V any](m map[string]V) []string {
 // Layer 1+2 of #6834's vacuity ladder for the DECLARATION itself: every row of
 // the map the fold actually consults must have a twin state, and no
 // declaration may name a row that is not in that map. A one-sided addition —
-// exactly what produced the eleven — cannot pass either direction.
+// exactly what produced the thirteen — cannot pass either direction.
 func TestClassKindTwins6841_DeclaresEveryPriorityRowAndOnlyThose(t *testing.T) {
 	for _, k := range cfSortedKeys(FrameworkClassKindPriority) {
 		if _, ok := FrameworkClassKindTwins[k]; !ok {
@@ -77,10 +181,13 @@ func TestClassKindTwins6841_StateAgreesWithTheMap(t *testing.T) {
 }
 
 // TwinUnproduced asserts a negative — "nothing can emit the opposite
-// spelling". types.IsValidEntityKind is the enum that decides what a producer
-// is allowed to emit, so an enum addition turns the declaration false and this
-// fires. That is the whole point: an accidental one-sided addition becomes
-// distinguishable from a deliberate one.
+// spelling". types.IsValidEntityKind is the enum that decides what a Go
+// producer is allowed to emit, so an enum addition turns the declaration false
+// and this fires.
+//
+// It is NOT sufficient on its own: the rule layer mints kinds that were never
+// in the enum (that is #6744's whole finding), which is what the scan below is
+// for.
 func TestClassKindTwins6841_UnproducedTwinIsNotAValidEntityKind(t *testing.T) {
 	checked := 0
 	for _, k := range cfSortedKeys(FrameworkClassKindTwins) {
@@ -98,200 +205,199 @@ func TestClassKindTwins6841_UnproducedTwinIsNotAValidEntityKind(t *testing.T) {
 	}
 }
 
-// A Produced* declaration names the files that mint the opposite spelling.
-// Grading it: the anchor list itself must be non-empty (emptying it is a
-// mutation this must catch), every named file must be read WHOLE (length
-// checked against os.Stat, #6834's truncation caution), and the exact spelling
-// must appear in it as a Go string literal.
-func TestClassKindTwins6841_ProducedTwinFilesActuallyMintTheSpelling(t *testing.T) {
-	root := filepath.Join("..", "..")
-	checked := 0
-	for _, k := range cfSortedKeys(FrameworkClassKindTwins) {
-		d := FrameworkClassKindTwins[k]
-		if d.State != TwinProducedNonClass && d.State != TwinProducedClassLike {
-			continue
-		}
-		if len(d.Producers) == 0 {
-			t.Errorf("%q is declared %v but names no producer file — the claim that something emits %q is unbacked",
-				k, d.State, cfOpposite(k))
-			continue
-		}
-		for _, rel := range d.Producers {
-			checked++
-			p := filepath.Join(root, filepath.FromSlash(rel))
-			st, err := os.Stat(p)
-			if err != nil {
-				t.Errorf("%q names producer %s: %v", k, rel, err)
-				continue
-			}
-			b, err := os.ReadFile(p)
-			if err != nil {
-				t.Errorf("%q names producer %s: %v", k, rel, err)
-				continue
-			}
-			s := string(b)
-			if int64(len(s)) != st.Size() {
-				t.Errorf("%s: matching %d bytes of a %d-byte file — a truncated read would make the spelling "+
-					"check pass or fail for the wrong reason", rel, len(s), st.Size())
-				continue
-			}
-			if !strings.Contains(s, `"`+cfOpposite(k)+`"`) {
-				t.Errorf("%q is declared %v with producer %s, but that file contains no %q string literal — "+
-					"the producer moved or was renamed and the declaration went stale", k, d.State, rel, cfOpposite(k))
-			}
-		}
-	}
-	if checked == 0 {
-		t.Fatal("no producer files were checked — the loop selected nothing")
-	}
-}
-
-// cfScanRoots are the trees a kind spelling can be minted in. Deliberately NOT
-// the repo root: .claude/worktrees/ holds full checkouts and a walk from there
-// would read other branches' copies of these very files.
-var cfScanRoots = []string{"internal", "cmd"}
-
-// cfSpellingSites walks cfScanRoots and returns every non-test source file that
-// contains any of the wanted spellings as a Go/YAML string literal, plus the
-// number of files and bytes it read (the caller grades those: a walk that read
-// nothing must not read as "no occurrences").
-func cfSpellingSites(t *testing.T, wanted []string) (map[string][]string, int, int64) {
-	t.Helper()
-	sites := make(map[string][]string, len(wanted))
-	files, bytesRead := 0, int64(0)
-	for _, root := range cfScanRoots {
-		p := filepath.Join("..", "..", root)
-		if _, err := os.Stat(p); err != nil {
-			t.Fatalf("scan root %s: %v", root, err)
-		}
-		err := filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if d.Name() == "testdata" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			name := d.Name()
-			ext := filepath.Ext(name)
-			if ext != ".go" && ext != ".yaml" && ext != ".yml" && ext != ".json" {
-				return nil
-			}
-			if strings.HasSuffix(name, "_test.go") {
-				return nil
-			}
-			// classfold.go names every spelling in the declarations
-			// themselves; counting it would make each row cite itself.
-			if filepath.ToSlash(path) == "../../internal/engine/classfold.go" {
-				return nil
-			}
-			st, serr := os.Stat(path)
-			if serr != nil {
-				return serr
-			}
-			b, rerr := os.ReadFile(path)
-			if rerr != nil {
-				return rerr
-			}
-			s := string(b)
-			// Length is asserted on the string the matcher actually reads,
-			// not on the byte slice: a truncation between read and match
-			// would otherwise slip past a check on b alone (#6834 layer 3).
-			if int64(len(s)) != st.Size() {
-				t.Errorf("%s: matching %d of %d bytes — a truncated read hides occurrences", path, len(s), st.Size())
-				return nil
-			}
-			files++
-			bytesRead += int64(len(s))
-			for _, w := range wanted {
-				if strings.Contains(s, `"`+w+`"`) {
-					rel := strings.TrimPrefix(filepath.ToSlash(path), "../../")
-					sites[w] = append(sites[w], rel)
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("walk %s: %v", root, err)
-		}
-	}
-	return sites, files, bytesRead
-}
-
-// TwinUnproduced asserts a negative about the WHOLE TREE, so the guard has to
-// read the whole tree. Every file mentioning the opposite spelling must be
-// declared as a known consumer site; an undeclared one is either a new producer
-// (the declaration is now false) or a new consumer nobody classified.
+// The scan's own health, as a local canary. Its own weakening is NOT observed
+// by another test here — neutering the floors below is a measured-ALIVE mutant
+// — and that is deliberate rather than overlooked: what actually anchors the
+// walk is internal/entkinds' own TestRepoSweepIsNotVacuous, which requires the
+// scan to have parsed EXACTLY the files an independent walk of the repository
+// finds. That is a derived floor, not a magic number, and it lives in the
+// package that owns the scanner.
 //
-// This is the check that distinguishes "deliberately unpaired" from "drifted":
-// downgrading a Produced* row to TwinUnproduced fails here even when the
-// spelling is outside types.AllEntityKinds, which is exactly the state
-// "SCOPE.Middleware" and "SCOPE.Interface" are in today.
-func TestClassKindTwins6841_UnproducedTwinHasNoUndeclaredSite(t *testing.T) {
-	wanted := make([]string, 0, len(FrameworkClassKindTwins))
-	declared := make(map[string]map[string]bool, len(FrameworkClassKindTwins))
+// What this adds locally is the FIND-CONTROLS, which a file count cannot give:
+// a kind the Go half must see in quantity, and a kind only the YAML half can
+// see. If either half stops resolving while still parsing every file, one of
+// these goes to zero.
+func TestClassKindTwins6841_ScanReadsBothHalvesOfTheTree(t *testing.T) {
+	res := cfDeclarations(t)
+	if res.GoFilesParsed < 1000 {
+		t.Errorf("Go half parsed %d files — too few to be this repository", res.GoFilesParsed)
+	}
+	if res.YAMLFilesParsed < 200 {
+		t.Errorf("YAML half parsed %d files — too few to be this rule tree", res.YAMLFilesParsed)
+	}
+	// Go find-control: a kind declared by Go composite literals all over the
+	// extractor tree. Zero here means the Go half is not resolving.
+	if n := len(res.SitesFor("SCOPE.Component")); n < 50 {
+		t.Errorf(`Go find-control: %d declaration sites for "SCOPE.Component", want >= 50`, n)
+	}
+	// YAML find-control, and the one that matters for #6841: "Controller" is
+	// declared ONLY as an unquoted rule-YAML scalar. A scan that reads Go but
+	// not YAML — the exact hole this guard's first version had — reports zero.
+	ctrl := res.SitesFor("Controller")
+	if len(ctrl) < 10 {
+		t.Errorf(`YAML find-control: %d declaration sites for "Controller", want >= 10 (rule YAML unread?)`, len(ctrl))
+	}
+	yaml := 0
+	for _, s := range ctrl {
+		if s.Origin == entkinds.OriginRuleYAML {
+			yaml++
+		}
+	}
+	if yaml == 0 {
+		t.Errorf(`YAML find-control: none of the %d "Controller" sites came from rule YAML`, len(ctrl))
+	}
+
+	refs := cfGoMentions(t)
+	if refs.GoFilesParsed < 1000 {
+		t.Errorf("reference scan parsed %d Go files — too few to be this repository", refs.GoFilesParsed)
+	}
+}
+
+// The claim TwinUnproduced actually makes: NOTHING IN THE TREE DECLARES the
+// opposite spelling. entkinds.Scan is both halves — Go composite-literal
+// `Kind:` fields and rule-YAML `entity_type:`/`entity_mapping:` scalars — so a
+// rule pack that starts minting `entity_type: SCOPE.Repository` fails here.
+// That is the failure this mechanism exists to prevent, in the surface where it
+// is most likely: the rule tree declares Controller ×37, Middleware ×29,
+// Task ×11, Implementation ×6, Plugin ×5 and Interface ×4 today.
+func TestClassKindTwins6841_UnproducedTwinIsDeclaredNowhere(t *testing.T) {
+	res := cfDeclarations(t)
+	checked := 0
 	for _, k := range cfSortedKeys(FrameworkClassKindTwins) {
 		if FrameworkClassKindTwins[k].State != TwinUnproduced {
 			continue
 		}
+		checked++
 		op := cfOpposite(k)
-		wanted = append(wanted, op)
-		declared[op] = make(map[string]bool)
-		for _, s := range FrameworkClassKindTwins[k].KnownSites {
-			declared[op][s] = true
+		for _, s := range res.SitesFor(op) {
+			t.Errorf("%q is declared TwinUnproduced, but %s declares it: %s. If that site EMITS the kind the "+
+				"row is no longer unpaired-by-vacuity and the fold needs a decision (#6841)", k, s.File, s)
 		}
 	}
-	if len(wanted) == 0 {
-		t.Fatal("no TwinUnproduced rows — this test grades that state and selected nothing")
-	}
-
-	sites, files, bytesRead := cfSpellingSites(t, wanted)
-	// Grade the scan itself (#6834 layer 1): a walk that read nothing would
-	// report every spelling as absent and pass.
-	if files < 500 || bytesRead < 1<<20 {
-		t.Fatalf("scan read %d files / %d bytes — too little to have covered internal/ and cmd/", files, bytesRead)
-	}
-	// Grade the scan's ability to FIND things (layer 4) against a spelling
-	// that is certainly present in the trees walked.
-	if control, _, _ := cfSpellingSites(t, []string{"SCOPE.Component"}); len(control["SCOPE.Component"]) < 10 {
-		t.Fatalf(`scan found "SCOPE.Component" in %d files — the matcher is not working`, len(control["SCOPE.Component"]))
-	}
-
-	for _, op := range wanted {
-		for _, f := range sites[op] {
-			if !declared[op][f] {
-				t.Errorf("%q occurs in %s, which is not a declared KnownSite. If that file EMITS the kind, the "+
-					"row is no longer TwinUnproduced and the fold needs a decision; if it only reads it, add the "+
-					"file to KnownSites with a note saying so (#6841)", op, f)
-			}
-		}
-		for f := range declared[op] {
-			found := false
-			for _, g := range sites[op] {
-				if g == f {
-					found = true
-				}
-			}
-			if !found {
-				t.Errorf("%q declares KnownSite %s, but the spelling no longer occurs there — stale declaration", op, f)
-			}
-		}
+	if checked == 0 {
+		t.Fatal("no TwinUnproduced rows were checked — the loop selected nothing")
 	}
 }
 
-// Positive control for the matcher above (#6834 layer 4): the containment test
-// must be able to both find and miss the spelling. Without this a matcher that
-// always returns true would pass the guard.
-func TestClassKindTwins6841_SpellingMatcherDetects(t *testing.T) {
-	hit := "ent := makeEntity(name, \"SCOPE.Interface\", \"trait\", file.Path)"
-	miss := "ent := makeEntity(name, \"SCOPE.Component\", \"trait\", file.Path)"
-	if !strings.Contains(hit, `"SCOPE.Interface"`) {
-		t.Error("matcher failed to detect a spelling that is present")
+// Every Go MENTION of an unpaired row's opposite spelling must be accounted
+// for by that row — as a Producer (it mints the kind) or a KnownSite (it only
+// reads one). Both directions: an undeclared mention fails, and a declared
+// file the spelling has left fails as stale.
+//
+// This is what holds the Produced* rows up. entkinds.ScanGoReferences resolves
+// `string(types.EntityKindPlugin)` and a kind passed as a function argument,
+// so deleting internal/engine/plugin_system_edges.go's emission — or Scala's
+// SCOPE.Interface — now fails here. A double-quote matcher saw the argument
+// form and missed the conversion entirely.
+//
+// classfold.go is itself in the scanned tree, so writing one of these spellings
+// as a bare Go literal HERE also has to be declared. That is the intended
+// reading: a row added to FrameworkClassKindPriority is a mention like any
+// other. It does not catch the Why/NotClassShaped prose, which mentions the
+// spellings inside longer strings — ScanGoReferences matches whole string
+// values, not substrings.
+func TestClassKindTwins6841_EveryGoMentionOfAnUnpairedTwinIsDeclared(t *testing.T) {
+	refs := cfGoMentions(t)
+	rows := 0
+	for _, k := range cfSortedKeys(FrameworkClassKindTwins) {
+		d := FrameworkClassKindTwins[k]
+		if d.State == TwinInMap {
+			continue
+		}
+		rows++
+		op := cfOpposite(k)
+		declared := map[string]bool{}
+		for _, f := range d.Producers {
+			declared[f] = true
+		}
+		for _, f := range d.KnownSites {
+			declared[f] = true
+		}
+		seen := map[string]bool{}
+		for _, s := range refs.SitesFor(op) {
+			seen[s.File] = true
+			if !declared[s.File] {
+				t.Errorf("%q is mentioned at %s:%d, which %q declares neither as a Producer nor a KnownSite. "+
+					"If that file EMITS the kind it is a Producer and the state may be wrong; if it only reads "+
+					"one, add it to KnownSites (#6841)", op, s.File, s.Line, k)
+			}
+		}
+		for f := range declared {
+			if !seen[f] {
+				t.Errorf("%q declares %s for %q, but the reference scan finds no mention of it there — "+
+					"stale declaration, or the producer was deleted", k, f, op)
+			}
+		}
 	}
-	if strings.Contains(miss, `"SCOPE.Interface"`) {
-		t.Error("matcher detected a spelling that is absent")
+	if rows == 0 {
+		t.Fatal("no unpaired rows were checked — the loop selected nothing")
+	}
+}
+
+// Each state's evidence must be COMPLETE, so that flipping a state is not a
+// one-character edit that nothing notices. These fields pin that the
+// classification was STATED, not that it is true; truth rests on the reading
+// recorded in Why. FoldSourceSubtype is not decoration — the exhibit below
+// folds with it.
+func TestClassKindTwins6841_EachStateCarriesItsRequiredEvidence(t *testing.T) {
+	states := map[ClassKindTwinState]int{}
+	for _, k := range cfSortedKeys(FrameworkClassKindTwins) {
+		d := FrameworkClassKindTwins[k]
+		states[d.State]++
+		switch d.State {
+		case TwinInMap:
+			if len(d.Producers) != 0 || len(d.KnownSites) != 0 {
+				t.Errorf("%q is TwinInMap and needs no evidence files, but names some", k)
+			}
+		case TwinUnproduced:
+			if len(d.Producers) != 0 {
+				t.Errorf("%q is TwinUnproduced but names producers %v — nothing emits the spelling, so "+
+					"there is nothing to produce it", k, d.Producers)
+			}
+			if d.FoldSourceSubtype != "" || d.NotClassShaped != "" {
+				t.Errorf("%q is TwinUnproduced: nothing emits the spelling, so it can be neither "+
+					"class-shaped nor not-class-shaped", k)
+			}
+		case TwinProducedNonClass:
+			if len(d.Producers) == 0 {
+				t.Errorf("%q is TwinProducedNonClass but names no producer — the claim that something "+
+					"emits %q is unbacked", k, cfOpposite(k))
+			}
+			if d.NotClassShaped == "" {
+				t.Errorf("%q is TwinProducedNonClass but does not say WHY the emitted records are never "+
+					"class-shaped. That reason is the whole difference from TwinProducedClassLike, which "+
+					"means there is a live fold miss", k)
+			}
+			if d.FoldSourceSubtype != "" {
+				t.Errorf("%q is TwinProducedNonClass but declares FoldSourceSubtype %q", k, d.FoldSourceSubtype)
+			}
+		case TwinProducedClassLike:
+			if len(d.Producers) == 0 {
+				t.Errorf("%q is TwinProducedClassLike but names no producer", k)
+			}
+			if !ClassLikeComponentSubtypes[d.FoldSourceSubtype] {
+				t.Errorf("%q is TwinProducedClassLike with FoldSourceSubtype %q, which is not in "+
+					"ClassLikeComponentSubtypes — then the paired SCOPE.Component is not a fold source and "+
+					"there is no miss to declare", k, d.FoldSourceSubtype)
+			}
+			if d.NotClassShaped != "" {
+				t.Errorf("%q is TwinProducedClassLike but also says it is not class-shaped: %q", k, d.NotClassShaped)
+			}
+			// The subtype is a claim about what the PRODUCER emits, so it is
+			// checked against the producer, not just against the allowlist:
+			// any class-like subtype would satisfy the check above.
+			for _, rel := range d.Producers {
+				if !cfFileMentions(t, rel, `"`+d.FoldSourceSubtype+`"`) {
+					t.Errorf("%q declares FoldSourceSubtype %q, but %s never writes that subtype literal — "+
+						"the exhibit folds a record shape the producer does not emit", k, d.FoldSourceSubtype, rel)
+				}
+			}
+		}
+	}
+	for _, s := range []ClassKindTwinState{TwinInMap, TwinUnproduced, TwinProducedNonClass, TwinProducedClassLike} {
+		if states[s] == 0 {
+			t.Errorf("no row declares %v — this test grades every state and one was never exercised", s)
+		}
 	}
 }
 
@@ -300,9 +406,9 @@ func TestClassKindTwins6841_SpellingMatcherDetects(t *testing.T) {
 // twin; this is it. A Scala `trait Repo` reaches the fold twice — the language
 // AST's SCOPE.Component/trait (a fold source, "trait" is in
 // ClassLikeComponentSubtypes) and internal/custom/scala/type_system.go's
-// SCOPE.Interface. Because SCOPE.Interface is not a survivor candidate the
-// pair does NOT fold, leaving two nodes for one class — the #1613 invariant
-// this table exists to enforce.
+// SCOPE.Interface. Because SCOPE.Interface is not a survivor candidate the pair
+// does NOT fold, leaving two nodes for one class — the #1613 invariant this
+// table exists to enforce.
 //
 // This pins the CURRENT behaviour, deliberately. Adding "SCOPE.Interface" to
 // the priority map would fix the node count but make the survivor carry a kind
@@ -320,13 +426,17 @@ func TestClassKindTwins6841_ProducedClassLikeTwinMissesTheFold(t *testing.T) {
 		t.Fatal("no TwinProducedClassLike row declared — this test grades that state and selected nothing")
 	}
 	for _, k := range classLike {
+		sub := FrameworkClassKindTwins[k].FoldSourceSubtype
 		twin := cfOpposite(k)
 		generic := types.EntityRecord{
-			Kind: "SCOPE.Component", Subtype: "trait", Name: "Repo",
+			Kind: "SCOPE.Component", Subtype: sub, Name: "Repo",
 			SourceFile: "a.scala", Language: "scala", StartLine: 3,
 		}
+		if !IsClassFoldSource(&generic) {
+			t.Fatalf("%q: SCOPE.Component subtype %q is not a fold source, so this exhibit proves nothing", k, sub)
+		}
 		typed := types.EntityRecord{
-			Kind: twin, Subtype: "trait", Name: "Repo",
+			Kind: twin, Subtype: sub, Name: "Repo",
 			SourceFile: "a.scala", Language: "scala", StartLine: 3,
 		}
 		out, folded := FoldFrameworkClassKinds([]types.EntityRecord{generic, typed}, nil)
@@ -335,8 +445,8 @@ func TestClassKindTwins6841_ProducedClassLikeTwinMissesTheFold(t *testing.T) {
 				"and FrameworkClassKindTwins[%q] must stop saying TwinProducedClassLike", twin, folded, k)
 		}
 		cfAssertRows(t, cfRows(out), []string{
-			"SCOPE.Component|Repo|trait|a.scala",
-			twin + "|Repo|trait|a.scala",
+			"SCOPE.Component|Repo|" + sub + "|a.scala",
+			twin + "|Repo|" + sub + "|a.scala",
 		})
 
 		// The bare spelling is the control: same records, same fold, one node.
@@ -347,15 +457,13 @@ func TestClassKindTwins6841_ProducedClassLikeTwinMissesTheFold(t *testing.T) {
 		if foldedBare != 1 {
 			t.Errorf("%s (bare control): folded=%d, want 1", k, foldedBare)
 		}
-		cfAssertRows(t, cfRows(outBare), []string{k + "|Repo|trait|a.scala"})
+		cfAssertRows(t, cfRows(outBare), []string{k + "|Repo|" + sub + "|a.scala"})
 	}
 }
 
-// FrameworkClassKindCanonRank is only ever consulted to break a tie between
-// two rows of FrameworkClassKindPriority, so a rank for a kind that is not in
-// that map can never be read. #6841 asked whether the sibling map has the same
-// unpaired shape: it does, on exactly the rows the priority map declares
-// unpaired, which this keeps true.
+// FrameworkClassKindCanonRank is only ever consulted to break a tie between two
+// rows of FrameworkClassKindPriority, so a rank for a kind that is not in that
+// map can never be read.
 func TestClassKindTwins6841_CanonRankRanksOnlyPriorityRows(t *testing.T) {
 	if len(FrameworkClassKindCanonRank) == 0 {
 		t.Fatal("FrameworkClassKindCanonRank is empty")
@@ -365,5 +473,36 @@ func TestClassKindTwins6841_CanonRankRanksOnlyPriorityRows(t *testing.T) {
 			t.Errorf("FrameworkClassKindCanonRank ranks %q, which is not a survivor candidate "+
 				"(absent from FrameworkClassKindPriority) — the rank is unreachable", k)
 		}
+	}
+}
+
+// #6841 asked whether the sibling map carries the same defect. It does not, and
+// this is the sentence in FrameworkClassKindCanonRank's doc that says so, made
+// observable: every row CanonRank leaves unpaired is a row FrameworkClassKindTwins
+// declares unpaired. Dropping "SCOPE.Model" from CanonRank while "Model" stays
+// makes the doc false, and this is what notices.
+//
+// The containment is one-way on purpose: Twins declares TestClass, Plugin,
+// Implementation, Interface and Task unpaired and CanonRank does not rank them
+// at all, which is not a pairing statement.
+func TestClassKindTwins6841_CanonRankUnpairedRowsAreDeclaredUnpaired(t *testing.T) {
+	checked := 0
+	for _, k := range cfSortedKeys(FrameworkClassKindCanonRank) {
+		if _, paired := FrameworkClassKindCanonRank[cfOpposite(k)]; paired {
+			continue
+		}
+		checked++
+		d, ok := FrameworkClassKindTwins[k]
+		if !ok {
+			continue // reported by DeclaresEveryPriorityRowAndOnlyThose
+		}
+		if d.State == TwinInMap {
+			t.Errorf("FrameworkClassKindCanonRank ranks %q without %q, but FrameworkClassKindTwins declares "+
+				"that pair TwinInMap — the two maps now disagree about the same pair, which is the claim in "+
+				"FrameworkClassKindCanonRank's doc (#6841)", k, cfOpposite(k))
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no unpaired CanonRank rows were checked — the loop selected nothing")
 	}
 }

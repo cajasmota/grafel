@@ -121,17 +121,30 @@ func (s ClassKindTwinState) String() string {
 // spelling as a Go string literal, so the claim goes stale loudly rather than
 // silently when a producer is renamed or removed.
 //
-// KnownSites is the same idea pointed the other way, for TwinUnproduced: it
-// lists every non-test file under internal/ and cmd/ that mentions the opposite
-// spelling as a string literal, each of which has been read and found to be a
-// CONSUMER (a switch arm, a source-text sniff). The guard rescans and fails on
-// any file not listed — so a new PRODUCER of the spelling cannot appear while
-// the row still claims nothing emits it.
+// KnownSites is the same list for files that only READ the spelling — a switch
+// arm, a map key, an enum declaration, a source-text sniff. Between them,
+// Producers and KnownSites must account for EVERY Go mention of the opposite
+// spelling that internal/entkinds.ScanGoReferences finds, in both directions:
+// an undeclared mention fails, and a declared file the spelling has left fails
+// as stale. That is what stops a new producer appearing while the row still
+// claims nothing emits it.
+//
+// NotClassShaped and FoldSourceSubtype are the evidence the two Produced states
+// require, so that flipping between them is not a one-word edit nothing
+// notices. They pin that the classification was STATED; the reading that makes
+// it true is in Why.
 type ClassKindTwin struct {
 	State      ClassKindTwinState
 	Producers  []string // repo-relative, slash-separated; Produced* states only
-	KnownSites []string // repo-relative, slash-separated; TwinUnproduced only
-	Why        string
+	KnownSites []string // repo-relative, slash-separated; files that only read it
+	// NotClassShaped says why the emitted records can never share a
+	// (source_file, name) with a fold source. Required by TwinProducedNonClass.
+	NotClassShaped string
+	// FoldSourceSubtype is the SCOPE.Component subtype the paired class node
+	// carries — it must be in ClassLikeComponentSubtypes, and the exhibit test
+	// folds with it. Required by TwinProducedClassLike.
+	FoldSourceSubtype string
+	Why               string
 }
 
 // FrameworkClassKindTwins declares the pairing state of EVERY row of
@@ -159,58 +172,72 @@ var FrameworkClassKindTwins = map[string]ClassKindTwin{
 	"SCOPE.Service": {State: TwinInMap},
 	"SCOPE.Schema":  {State: TwinInMap},
 
-	// ── Unpaired because the opposite spelling has no producer at all ──
+	// ── Unpaired because NOTHING DECLARES the opposite spelling ──
 	// Each of these is a kind the rule YAML emits bare (#6776 arm B5 added
-	// most of them to the enum under exactly that spelling). The prefixed
-	// form is not in types.AllEntityKinds and appears nowhere as a producer
-	// literal — "SCOPE.Controller" and "SCOPE.Task" occur only in CONSUMER
-	// switches (internal/enrichment, internal/links), which is defensive
-	// coding for a kind nothing emits, not evidence of one.
+	// most of them to the enum under exactly that spelling). The prefixed form
+	// is not in types.AllEntityKinds AND internal/entkinds.Scan — Go composite
+	// literals plus unquoted rule-YAML `entity_type:` scalars — reports zero
+	// declaration sites for it. The rule half matters: bare Controller is
+	// declared at 37 YAML sites and Middleware at 29, so the rule tree is the
+	// dominant producer of exactly these kinds and a scan that reads only Go
+	// would call any of them unproduced without looking.
 	"Controller": {
 		State:      TwinUnproduced,
 		KnownSites: []string{"internal/enrichment/candidates.go", "internal/enrichment/pricing.go"},
-		Why:        `both sites list "SCOPE.Controller" in a case arm beside bare "Controller" — consumers of a kind nothing emits`,
+		Why: `three consumer mentions, not two: candidates.go:101 and pricing.go:47 are case arms listing ` +
+			`"SCOPE.Controller" beside bare "Controller", and candidates.go:457 is a map-literal KEY. All read; ` +
+			`none emits`,
 	},
-	"Repository":     {State: TwinUnproduced, Why: `"SCOPE.Repository" appears nowhere`},
-	"Worker":         {State: TwinUnproduced, Why: `"SCOPE.Worker" appears nowhere`},
-	"Job":            {State: TwinUnproduced, Why: `"SCOPE.Job" appears nowhere`},
-	"Topic":          {State: TwinUnproduced, Why: `"SCOPE.Topic" appears nowhere; SCOPE.MessageTopic is a different kind, not this one prefixed`},
-	"TestClass":      {State: TwinUnproduced, Why: `"SCOPE.TestClass" appears nowhere`},
-	"Implementation": {State: TwinUnproduced, Why: `"SCOPE.Implementation" appears nowhere`},
+	"Repository":     {State: TwinUnproduced, Why: `"SCOPE.Repository" is declared and mentioned nowhere`},
+	"Worker":         {State: TwinUnproduced, Why: `"SCOPE.Worker" is declared and mentioned nowhere`},
+	"Job":            {State: TwinUnproduced, Why: `"SCOPE.Job" is declared and mentioned nowhere`},
+	"Topic":          {State: TwinUnproduced, Why: `"SCOPE.Topic" is declared and mentioned nowhere; SCOPE.MessageTopic is a different kind, not this one prefixed`},
+	"TestClass":      {State: TwinUnproduced, Why: `"SCOPE.TestClass" is declared and mentioned nowhere`},
+	"Implementation": {State: TwinUnproduced, Why: `"SCOPE.Implementation" is declared and mentioned nowhere`},
 	"Task": {
 		State:      TwinUnproduced,
 		KnownSites: []string{"internal/links/effect_propagation.go"},
-		Why:        `two case arms read "SCOPE.Task" beside bare "Task" — a consumer of a kind nothing emits`,
+		Why:        `two case arms (:587, :605) read "SCOPE.Task" beside bare "Task" — a consumer of a kind nothing emits`,
 	},
-	// The same case from the prefixed side: no producer emits the bare form.
-	"SCOPE.UIComponent": {State: TwinUnproduced, Why: `bare "UIComponent" appears nowhere`},
+	// The same case from the prefixed side: nothing declares the bare form.
+	"SCOPE.UIComponent": {State: TwinUnproduced, Why: `bare "UIComponent" is declared and mentioned nowhere`},
 	"SCOPE.GrpcService": {
 		State:      TwinUnproduced,
 		KnownSites: []string{"internal/engine/grpc_edges.go"},
-		Why:        `the one occurrence is strings.Contains(src, "GrpcService") — a sniff of the FILE's text, not a kind it emits`,
+		Why:        `the one mention (:328) is strings.Contains(src, "GrpcService") — a sniff of the FILE's text, not a kind it emits`,
 	},
 
 	// ── Unpaired, opposite spelling produced but never for a class ──
 	"Middleware": {
 		State:     TwinProducedNonClass,
 		Producers: []string{"internal/custom/scala/frameworks.go"},
-		Why: `the Scala framework extractor emits "SCOPE.Middleware" at nine sites, but every one names a ` +
-			`synthesised route/filter registration ("middleware:http4s:…", "middleware:akka:…") with subtype ` +
-			`"middleware" — never a class declaration — so it can never share a (source_file, name) with a fold source`,
+		NotClassShaped: `every one of the nine sites builds Name from a literal prefix — "middleware:http4s:"+mw, ` +
+			`"middleware:akka:"+directive, "middleware:play:filters:"+order — so the Name is a synthesised ` +
+			`registration key that no AST class node can carry, and the pair can never share a (source_file, name)`,
+		Why: `the Scala framework extractor emits "SCOPE.Middleware" at nine sites with subtype "middleware". ` +
+			`Note the subtype alone would NOT settle it: "middleware" IS in ClassLikeComponentSubtypes. The ` +
+			`Name shape is what settles it`,
 	},
 	"Plugin": {
 		State:     TwinProducedNonClass,
-		Producers: []string{"internal/types/kinds.go"},
-		Why: `"SCOPE.Plugin" is a real enum kind (types.EntityKindPlugin) emitted by ` +
-			`internal/engine/plugin_system_edges.go, but for a plugin REGISTRATION found in a build/config ` +
-			`file: Name is the plugin name and SourceFile the config, so it does not collide with a class node. ` +
-			`This is the row #6776 arm B8 cited as a classfold pair; it is not one`,
+		Producers: []string{"internal/engine/plugin_system_edges.go"},
+		// kinds.go is where the spelling is minted as an enum member
+		// (EntityKindPlugin, and its AllEntityKinds row); it emits no entity.
+		KnownSites: []string{"internal/types/kinds.go"},
+		NotClassShaped: `the pass fires on a build/config file and emits one entity per plugin REGISTRATION: ` +
+			`Name is the plugin name and SourceFile the config that registers it, so it does not key onto a ` +
+			`class node the language extractor emitted`,
+		Why: `"SCOPE.Plugin" is a real enum kind (types.EntityKindPlugin) reaching the graph through ` +
+			`plugin_system_edges.go:59's string(types.EntityKindPlugin) — a conversion a literal scan cannot ` +
+			`see, which is why this row rests on entkinds.ScanGoReferences. This is the row #6776 arm B8 cited ` +
+			`as a classfold pair; it is not one`,
 	},
 
 	// ── Unpaired, opposite spelling produced FOR A CLASS: a live miss ──
 	"Interface": {
-		State:     TwinProducedClassLike,
-		Producers: []string{"internal/custom/scala/type_system.go"},
+		State:             TwinProducedClassLike,
+		Producers:         []string{"internal/custom/scala/type_system.go"},
+		FoldSourceSubtype: "trait",
 		Why: `the Scala type-system extractor emits "SCOPE.Interface" for a trait and for an abstract class, ` +
 			`keyed on the declaration's own name and file — the same (source_file, name) the Scala AST ` +
 			`extractor emits SCOPE.Component subtype "trait"/"class" for, which IS a fold source. With no row ` +
@@ -243,9 +270,14 @@ var FrameworkClassKindTwins = map[string]ClassKindTwin{
 // declaration: it can only ever be consulted for a kind that is already a
 // survivor candidate there, so a rank for a kind absent from that map is
 // unreachable (asserted by TestClassKindTwins6841_CanonRankRanksOnlyPriorityRows).
-// The rows it leaves unpaired — Repository, Worker, Job, Topic, Middleware,
-// Controller — are exactly rows FrameworkClassKindTwins declares unpaired, so
-// the sibling map does NOT carry an independent version of #6841's defect.
+// Every row it leaves unpaired — Repository, Worker, Job, Topic, Middleware,
+// Controller — is a row FrameworkClassKindTwins declares unpaired, so the
+// sibling map does NOT carry an independent version of #6841's defect. That
+// containment is asserted by
+// TestClassKindTwins6841_CanonRankUnpairedRowsAreDeclaredUnpaired; it is
+// one-way on purpose, since a kind this map does not rank AT ALL (TestClass,
+// Plugin, Implementation, Interface, Task) makes no pairing statement either
+// way.
 var FrameworkClassKindCanonRank = map[string]int{
 	"Model": 5, "SCOPE.Model": 5,
 	"View": 5, "SCOPE.View": 5,
