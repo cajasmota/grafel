@@ -40,8 +40,28 @@ import (
 // on the files walked, must-scan anchors naming specific production files (a
 // floor alone does not catch an inverted .go/_test.go filter — inverting it
 // reads MORE files here), a byte-for-byte comparison of each anchor's collected
-// body against its size on disk (a token check is satisfied by a truncating
-// read), a floor on the anchor list itself, and a floor on the call sites found.
+// body against its size on disk, a floor on the anchor list itself, and a floor
+// on the call sites found.
+//
+// The length comparison and the token check overlap, and where they do NOT is
+// worth stating because the obvious reasoning about it is backwards. A LARGE
+// truncation is caught by either: the anchor tokens sit deep enough in their
+// files that a half-file prefix loses them. It is the SMALL cut the tokens miss
+// — a one-byte prefix keeps every token and still hides the tail of the file
+// from the matcher — and that is the cut the length comparison exists for. Both
+// are scored, the small one against the length check alone.
+//
+// WHAT IT COSTS, measured rather than waved at. This file is the dominant cost
+// of the package's suite: warm, internal/extractor runs in ~0.2s without it and
+// ~1.5s with it. It also holds every scanned body in memory at once — ~57MB
+// across ~4900 files — because the walk-integrity block must compare the EXACT
+// bytes handed to the parser against the file on disk, so the bodies have to
+// outlive the read. Dropping the non-test bodies after the parse would
+// recover almost all of that, and is not done here on purpose: it works only
+// while the anchor check runs before the scan, and an unstated ordering
+// invariant of that kind is the shape of defect this whole file exists to
+// remove. If the cost starts to matter, make the retention explicit rather than
+// incidental.
 //
 // WHY NOT internal/entkinds. entkinds does source scanning of exactly this
 // shape and is the right thing to reuse when it fits — but its two Go entry
@@ -66,6 +86,13 @@ const (
 	tagEntitiesLanguage = "TagEntitiesLanguage"
 )
 
+// rosterEntry is one caller package that does not tag, plus the tests that
+// grade the token its carrier keeps.
+type rosterEntry struct {
+	dir   string
+	tests []string
+}
+
 // nonTaggingCallers is the roster the prose used to carry: the caller packages
 // that do NOT run TagEntitiesLanguage, and are therefore the callers for which
 // the lang argument is load-bearing rather than cosmetic. Each names the tests
@@ -76,13 +103,6 @@ const (
 // Language with the extractor's own token, so the stated equivalence covers it.
 // A caller package that does NOT tag and is absent here is precisely the shape
 // the equivalence does not cover, and the guard fails on it.
-// rosterEntry is one caller package that does not tag, plus the tests that
-// grade the token its carrier keeps.
-type rosterEntry struct {
-	dir   string
-	tests []string
-}
-
 var nonTaggingCallers = []rosterEntry{
 	{"internal/extractors/bicep", []string{"TestBicep_CarrierShape_6852"}},
 	{"internal/extractors/hcl", []string{
@@ -121,6 +141,14 @@ func TestCarrierCallerSetIsGradedFromSource_6861(t *testing.T) {
 	// (7 entries today). minExternalCallers, below, is at today's exact count
 	// of 5 — #6852's remaining arms only ADD callers, so a floor there never
 	// needs revisiting downward.
+	//
+	// The anchors are REDUNDANCY, not seven independent checks: every walk
+	// mutant scored against this guard fires on the FIRST anchor
+	// (file_carrier.go), so any six of the seven could be dropped without a
+	// verdict changing. They are kept because which anchor a broken walk trips
+	// on is not a property to rely on, and because each names a file this guard
+	// makes a claim about. What the floor on the list catches is the case that
+	// does change a verdict: emptying it.
 	const minScannedNonTestFiles = 1500
 	const minAnchors = 6
 	mustScan := []struct {
@@ -218,6 +246,26 @@ func TestCarrierCallerSetIsGradedFromSource_6861(t *testing.T) {
 			"defect #6861 exists to remove", nExternal, minExternalCallers)
 	}
 
+	// hasTestFunc6861 is scoped to ONE package, and that scoping is graded
+	// here rather than left to the control test — the control passes synthetic
+	// always/never closures, so it never exercises the real lookup at all.
+	// Dropping the directory comparison would let a roster entry be satisfied
+	// by a test declared in any package in the tree, which is the permissive
+	// direction: the entry would keep claiming a grading test that does not
+	// exist where the caller is. Two assertions, one per direction, over names
+	// that really do and really do not live in bicep.
+	if !hasTestFunc6861(files, "internal/extractors/bicep", "TestBicep_CarrierShape_6852") {
+		t.Fatalf("hasTestFunc6861 did not find TestBicep_CarrierShape_6852 in " +
+			"internal/extractors/bicep, where it is declared — the lookup that backs every " +
+			"roster entry answers no for a test that exists")
+	}
+	if hasTestFunc6861(files, "internal/extractors/bicep", "TestErlang_CarrierIsLanguageTagged_6815") {
+		t.Fatalf("hasTestFunc6861 accepted a test declared in ANOTHER package " +
+			"(TestErlang_CarrierIsLanguageTagged_6815 lives in internal/extractors/erlang, not " +
+			"bicep) — the lookup is not scoped to the caller's own package, so a roster entry can " +
+			"be satisfied by a test that grades a different extractor entirely")
+	}
+
 	// ---- per-caller classification --------------------------------------
 	//
 	// The decision is a pure function of (callers, tagging, roster) so a
@@ -226,6 +274,18 @@ func TestCarrierCallerSetIsGradedFromSource_6861(t *testing.T) {
 	// SATISFIED on the live tree today, and a satisfied branch can be deleted
 	// without any test noticing unless something exercises it from the other
 	// side. TestCarrierCallerSetDecisionCatchesEachDrift_6861 is that side.
+	//
+	// GRADING STOPS AT THE t.Error LOOP BELOW, and that is stated rather than
+	// papered over. Deleting the call plus the loop — i.e. running the whole
+	// scan and then reporting nothing — PASSES, and no honest control inside
+	// this binary kills it: any wrapper asserting "the loop ran" would be one
+	// more terminal assertion with the same property one level out. What the
+	// loop is NOT is an ungraded no-op traded for a graded one: mutants that
+	// neuter the inputs it reports on (the tagging map, the roster, the scan)
+	// all die THROUGH this loop, so the wiring from scan to failure is
+	// exercised on every run. The residue is the deliberate deletion of a
+	// terminal assertion that currently passes, which is where this guard, like
+	// every other, stops.
 	problems := checkCallerSet6861(external, tags, nonTaggingCallers,
 		func(dir, name string) bool { return hasTestFunc6861(files, dir, name) })
 	for _, p := range problems {
@@ -471,6 +531,17 @@ func scanRepoGoFiles6861(t *testing.T, root string) []scannedFile {
 // carrier call, later in the flow but EARLIER in the file — erlang prepends the
 // carrier inside extractErlang and tags in Extract, which calls it. A
 // line-ordered check would report erlang as non-tagging, which is false.
+//
+// THE PACKAGE RULE OVER-APPROXIMATES, in the false-negative direction, and the
+// hole is stated rather than left to be discovered. Any TagEntitiesLanguage
+// call anywhere in the package marks the whole package as tagging — including
+// one in a different file, on a code path that never reaches the carrier, or in
+// a dead function called by nothing. Such a package silences the roster
+// requirement for the path that actually mints the carrier, which is a miss in
+// the very check this guard exists for. Closing it needs reachability from the
+// carrier call to the tag call, not a source scan; erlang is what rules out the
+// cheap approximations (line order, same function, same file), so this is the
+// coarsest rule that is not simply wrong about a live caller.
 func carrierScan6861(t *testing.T, files []scannedFile) (sites []callSite, tags map[string]bool) {
 	t.Helper()
 	tags = map[string]bool{}

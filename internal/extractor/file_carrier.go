@@ -53,8 +53,8 @@ import "github.com/cajasmota/grafel/internal/types"
 //     file which does have a path-anchored edge but whose extractor already
 //     minted a path-named container for it — emitting a second one would put
 //     two nodes under one id and make the rewrite target ambiguous. hcl (#6852)
-//     is the first caller for which this clause fires in production rather than
-//     only under a unit fixture: its file-level SCOPE.Component is named
+//     is a caller for which this clause fires in production rather than only
+//     under a unit fixture: its file-level SCOPE.Component is named
 //     BASENAME(path), which at a ROOT path ("main.tf") already IS the path, so
 //     a root .tf that reaches clause 3 takes this rejection while a nested one
 //     never does. Note "reaches": a root .tf with no top-level blocks emits no
@@ -72,8 +72,9 @@ import "github.com/cajasmota/grafel/internal/types"
 // That reordering is a mutant the fixture set kills:
 // TestFileCarrierFor_NoSecondCarrierWhenThePathNamedRecordComesLast_6815 exists
 // for it specifically, because the ordinary clause-3 case places the path-named
-// record first and cannot see it. No current caller emits in that order — which
-// is the reason to pin the property rather than to rely on it.
+// record first and cannot see it. The property is pinned rather than relied on
+// precisely because whether some caller emits in that order is not a fact this
+// file can hold.
 //
 // lang is stamped explicitly rather than taken from FileInput.Language so the
 // carrier cannot become the one record in an extraction that disagrees with the
@@ -100,17 +101,19 @@ import "github.com/cajasmota/grafel/internal/types"
 // cover — a non-tagging caller with no test grading its token. Adding a caller
 // therefore fails a test rather than silently ageing a comment.
 //
-// hcl is the first caller to pass a VARIABLE token rather than a literal: one
+// The token need not be a literal. hcl passes a VARIABLE: one
 // HCLExtractor.Extract serves both the "hcl" and "terraform" registrations, so
 // the two produce carriers that differ only in this field — which is what
 // TestHCLToken_ImportsFromEndResolves_6852 asserts.
 //
-// The returned record owns no relationships. Callers that DO have file-scoped
-// edges to re-home (proto's file-level CONTAINS) assign them afterwards; for
-// every caller so far the records that anchor on the path (per-import, or
-// bicep's per-module, or the file-level SCOPE.Component that hcl's
-// emitFileLevelRelationships already emits) still carry those IMPORTS edges
-// themselves, so hanging them off the carrier as well would double them.
+// The returned record owns no relationships, and the rule for a caller is
+// stated as a rule rather than as a fact about which callers exist. A caller
+// that has file-scoped edges to re-home (proto's file-level CONTAINS) assigns
+// them to the carrier afterwards. A caller whose path-anchored records already
+// carry the edges themselves — the per-import records, bicep's per-module ones,
+// the file-level SCOPE.Component hcl's emitFileLevelRelationships emits — must
+// not, or the edges double. Which callers fall on which side is not written
+// down here for the same reason the caller count is not: see #6861.
 func FileCarrierFor(path, lang string, records []types.EntityRecord) (types.EntityRecord, bool) {
 	if path == "" {
 		return types.EntityRecord{}, false
