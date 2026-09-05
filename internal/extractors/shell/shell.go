@@ -85,6 +85,26 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 	entities = append(entities, fnEntities...)
 
+	// #6852: makeImportStub anchors each `source`/`.` stub's IMPORTS on
+	// file.Path, and resolve/refs.go has no path→entity index, so that FROM
+	// end resolves only if some emitted record is NAMED after the file.
+	// buildScriptComponent names one BASENAME(file.Path) — which IS the path
+	// at a root path, the accident #6367 documents — but it is emitted only
+	// when the file declares a function, so a nested script and a
+	// function-less root script both dangled. The carrier is CONDITIONAL
+	// (#6815, #6518): most shell scripts source nothing, and an unconditional
+	// carrier would mint one bare orphan node per shell file across a whole
+	// repo — a change no recall-shaped assertion can see.
+	//
+	// Placement is load-bearing at BOTH ends. It must come AFTER pass 1 so
+	// FileCarrierFor clause 2 (some relationship's FromID == path) can see the
+	// import stubs, and AFTER pass 4 so clause 3 (no record is already named
+	// path) can see the script component — moving it above that append mints a
+	// second SCOPE.Component under the component's graph.EntityID, which does
+	// not hash Subtype (#6369/#6480). An import stub can be the path-named
+	// record too, at either depth, when a script sources itself.
+	entities = extractor.PrependFileCarrier(file.Path, "shell", entities)
+
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "shell")
 	extractor.TagEntitiesLanguage(entities, "shell")
