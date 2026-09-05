@@ -106,7 +106,8 @@ func main() {
 	defer f.Close()
 	fmt.Fprintf(f, `+"`"+`{"fixture":"stub","entity_expected":1,"entity_found":%%d,`+
 		`"entity_recall":%%f,"relationship_expected":0,"relationship_found":0,`+
-		`"relationship_recall":0.0,"forbidden_hits":0}`+"`"+`,
+		`"relationship_recall":0.0,"forbidden_hits":0,`+
+		`"entity_extracted_total":5,"relationship_extracted_total":3}`+"`"+`,
 		entityFound, float64(entityFound))
 }
 `, entityFound)

@@ -499,6 +499,11 @@ def make_fixture(root, prior_extra=None):
         "entity_found": 4, "entity_expected": 10,
         "relationship_found": 0, "relationship_expected": 0,
         "forbidden_hits": 0,
+        # #6488 arm D. Every report `grafel quality` writes carries these, and
+        # both `build` and `check` now read them, so the shared fixture carries
+        # them too: a fixture missing them would exercise the refusal paths in
+        # every unrelated test instead of the happy path those tests are about.
+        "entity_extracted_total": 12, "relationship_extracted_total": 7,
     })
     baseline = os.path.join(root, "baseline.json")
     prior = {
@@ -506,7 +511,8 @@ def make_fixture(root, prior_extra=None):
         "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
         "fixtures": {"demo-mini": {
             "entity_found": 4, "entity_expected": 10,
-            "relationship_found": 0, "relationship_expected": 0}},
+            "relationship_found": 0, "relationship_expected": 0,
+            "entity_extracted_total": 12, "relationship_extracted_total": 7}},
         "known_regressions": [],
     }
     prior.update(prior_extra or {})
@@ -1791,6 +1797,166 @@ class ForbiddenEntityHitsAreFatal(unittest.TestCase):
         would fail the whole corpus on a schema change."""
         rc, err = self._run_check({})
         self.assertEqual(rc, 0, f"a report with no forbidden_entity_hits key failed: {err}")
+
+
+class ExtractedTotalsAreGatedInTheGrowthDirection(unittest.TestCase):
+    """#6488 arm D. `entity_extracted_total` / `relationship_extracted_total`
+    are recorded per fixture and compared in the GROWTH direction only.
+
+    The gap: both totals were already computed (internal/quality/diff.go) and
+    published (internal/quality/report.go), and `observed()` dropped them. No
+    baseline could express "extraction must not grow", so unnamed over-emission
+    was ungated on all 31 fixtures — measured, not argued: restoring the
+    pre-#681 per-import placeholder entity in the Java extractor raises
+    java-spring-mini's entity_extracted_total 61 -> 86 and its
+    relationship_extracted_total 196 -> 221 while leaving all four gated
+    figures at 29/29 and 27/27 and both forbidden counts at 0, i.e. exit 0.
+
+    The risk this class grades is VACUITY: a number recorded and never read.
+    Every case below therefore observes `check`'s exit status, not the shape of
+    the baseline document.
+    """
+
+    def _run_check(self, report_extra=None, baseline_edit=None):
+        """Run `check` over the shared fixture, with the report and/or the
+        recorded baseline entry edited first. Returns (exit code, stderr)."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            golden, reports, baseline = make_fixture(root)
+            report_path = os.path.join(reports, "demo-mini.json")
+            with open(report_path) as fh:
+                rep = json.load(fh)
+            for key, val in (report_extra or {}).items():
+                if val is None:
+                    rep.pop(key, None)
+                else:
+                    rep[key] = val
+            with open(report_path, "w") as fh:
+                json.dump(rep, fh)
+            if baseline_edit is not None:
+                with open(baseline) as fh:
+                    doc = json.load(fh)
+                baseline_edit(doc["fixtures"]["demo-mini"])
+                with open(baseline, "w") as fh:
+                    json.dump(doc, fh)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = ratchet.check(golden, reports, baseline)
+            return rc, err.getvalue()
+
+    def test_unchanged_totals_pass(self):
+        """The negative control. Without it every case below scores the same on
+        a `check` that failed unconditionally."""
+        rc, err = self._run_check()
+        self.assertEqual(rc, 0, f"a report matching its baseline was failed: {err}")
+
+    def test_a_raised_entity_total_fails_and_names_the_fixture(self):
+        rc, err = self._run_check({"entity_extracted_total": 13})
+        self.assertEqual(
+            rc, 2,
+            "entity_extracted_total rose above the recorded floor and the "
+            "ratchet passed — unnamed entity over-emission is gated by nothing "
+            f"else. stderr: {err}")
+        self.assertIn("entity_extracted_total", err)
+        self.assertIn("demo-mini", err)
+
+    def test_a_raised_relationship_total_fails_and_names_the_fixture(self):
+        """The entity case alone does not distinguish a loop over both metrics
+        from a hard-coded read of the entity key."""
+        rc, err = self._run_check({"relationship_extracted_total": 8})
+        self.assertEqual(
+            rc, 2,
+            f"relationship_extracted_total rose and the ratchet passed: {err}")
+        self.assertIn("relationship_extracted_total", err)
+        self.assertIn("demo-mini", err)
+
+    def test_a_fallen_total_passes(self):
+        """The asymmetry, pinned. Growth is over-emission; a fall is an
+        extractor getting tighter, and failing it would put the gate red on
+        every legitimate improvement and train people to re-record blind."""
+        rc, err = self._run_check(
+            {"entity_extracted_total": 1, "relationship_extracted_total": 0})
+        self.assertEqual(rc, 0, f"a FALL in the extracted totals was failed: {err}")
+
+    def test_a_report_without_the_totals_is_not_a_silent_pass(self):
+        """The vacuity case. `int(rep.get(key, 0))` would read an absent key as
+        0, i.e. as a fall, and pass — so a binary that stopped emitting the
+        field would silently retire the gate rather than break it."""
+        rc, err = self._run_check(
+            {"entity_extracted_total": None, "relationship_extracted_total": None})
+        self.assertEqual(
+            rc, 2,
+            f"a report carrying neither extracted total passed the ratchet: {err}")
+        self.assertIn("entity_extracted_total", err)
+        self.assertIn("demo-mini", err)
+
+    def test_a_baseline_without_the_totals_demands_a_re_record(self):
+        """Distinct from the case above, and only this one fires when the
+        REPORT carries both totals: a baseline recorded before arm D records no
+        floor, and treating that as "nothing to compare" is how a schema
+        addition ungates the whole corpus in silence."""
+        def strip(entry):
+            entry.pop("entity_extracted_total", None)
+            entry.pop("relationship_extracted_total", None)
+        rc, err = self._run_check(baseline_edit=strip)
+        self.assertEqual(
+            rc, 2,
+            f"a baseline recording no extracted totals was accepted: {err}")
+        self.assertIn("--update-baseline", err)
+        self.assertIn("demo-mini", err)
+
+    def test_update_records_both_totals_after_the_recall_figures(self):
+        """`build` writes them, and writes them LAST. The order is asserted
+        because `serialize()` does not gate key order (its own docstring says
+        so) — `canon` feeds json.dumps a document parsed straight from disk, so
+        it echoes whatever order the file already has. internal/quality/
+        baseline_test.go pins the committed file's order; this pins the
+        writer's, and the two together are what keep them equal."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            make_repo(root)
+            golden, reports, baseline = make_fixture(root)
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            doc = ratchet.build(golden, reports, baseline)
+        self.assertEqual(
+            list(doc["fixtures"]["demo-mini"].keys()),
+            ["entity_found", "entity_expected",
+             "relationship_found", "relationship_expected",
+             "entity_extracted_total", "relationship_extracted_total"])
+        self.assertEqual(doc["fixtures"]["demo-mini"]["entity_extracted_total"], 12)
+        self.assertEqual(doc["fixtures"]["demo-mini"]["relationship_extracted_total"], 7)
+
+    def test_update_refuses_a_report_missing_EITHER_total(self):
+        """Recording a floor of 0 from an absent key would be worse than
+        refusing: every subsequent run would read its real total as growth.
+
+        Each key is deleted on its own. Deleting only the entity total leaves
+        the relationship half of build()'s refusal graded by nothing —
+        `EXTRACTED_TOTAL_KEYS[:1]` in build() survived exactly that test, and
+        the two halves of the loop are a masking pair until both are named.
+        """
+        for missing in ("entity_extracted_total", "relationship_extracted_total"):
+            with self.subTest(missing=missing):
+                with tempfile.TemporaryDirectory() as root, chdir(root):
+                    make_repo(root)
+                    golden, reports, baseline = make_fixture(root)
+                    path = os.path.join(reports, "demo-mini.json")
+                    with open(path) as fh:
+                        rep = json.load(fh)
+                    del rep[missing]
+                    with open(path, "w") as fh:
+                        json.dump(rep, fh)
+                    os.environ["QUALITY_RUN_STAMP"] = STAMP
+                    self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+                    with self.assertRaises(SystemExit) as ctx:
+                        ratchet.build(golden, reports, baseline)
+                    # Not any SystemExit: build() has several, and a test that
+                    # accepts them all goes green on an unrelated refusal. The
+                    # message must name the key that is actually missing, so
+                    # the two subtests cannot be satisfied by one branch.
+                    self.assertIn(missing, str(ctx.exception))
+                    self.assertIn("demo-mini", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -111,13 +111,47 @@ def load_report(reports_dir, name, stamp):
     return rep
 
 
+# #6488 arm D. The aggregate extraction totals, recorded per fixture and
+# compared in the growth direction only. Both are already computed by
+# internal/quality/diff.go and published by internal/quality/report.go; until
+# arm D `observed()` dropped them, so no baseline COULD express "extraction
+# must not grow" and unnamed over-emission was ungated on every fixture.
+#
+# The order of this tuple is the order `build()` writes the two keys in, after
+# the four recall figures. serialize() does not gate key order (see its
+# docstring), so the committed order is pinned separately in
+# internal/quality/baseline_test.go.
+EXTRACTED_TOTAL_KEYS = ("entity_extracted_total", "relationship_extracted_total")
+
+
 def observed(rep):
-    return {
+    """The report figures the baseline records, in the order it records them.
+
+    The four recall figures default to 0 when absent, which is the honest
+    reading: a report that found nothing found nothing.
+
+    The extracted totals do NOT default. Absent means "this run did not measure
+    it", which is a different fact from "it measured zero", and conflating them
+    is how the gate would retire itself: an absent key read as 0 is a FALL, and
+    a fall is allowed, so a binary that stopped emitting the field would pass
+    forever. Callers see the key missing from the returned mapping and say so.
+
+    A key that is PRESENT but not a number (null, a string) raises here rather
+    than failing as a gate. That is untested and left as is: the only writer is
+    internal/quality/report.go, which emits an int, and inventing a tolerant
+    reading of a malformed report would be a second way to guess at a figure
+    nobody measured.
+    """
+    obs = {
         "entity_found": int(rep.get("entity_found", 0)),
         "entity_expected": int(rep.get("entity_expected", 0)),
         "relationship_found": int(rep.get("relationship_found", 0)),
         "relationship_expected": int(rep.get("relationship_expected", 0)),
     }
+    for key in EXTRACTED_TOTAL_KEYS:
+        if key in rep:
+            obs[key] = int(rep[key])
+    return obs
 
 
 # Refs to try, in order, when nothing names the default branch explicitly. The
@@ -403,7 +437,21 @@ def build(golden_dir, reports_dir, baseline_path):
                 f"ratchet: no fresh quality report for fixture {name!r} in "
                 f"{reports_dir} — cannot record a baseline from an incomplete run"
             )
-        fixtures[name] = observed(rep)
+        obs = observed(rep)
+        # #6488 arm D. Recording a floor of 0 for a total the run never
+        # reported is worse than refusing to record at all: 0 is a floor no
+        # real total can hold, so every later run would read its own honest
+        # figure as growth and the gate would be red until someone re-recorded
+        # it away. Refuse loudly instead, and name what is missing.
+        for key in EXTRACTED_TOTAL_KEYS:
+            if key not in obs:
+                raise SystemExit(
+                    f"ratchet: the quality report for fixture {name!r} carries no "
+                    f"{key} — it was written by a binary that predates the "
+                    f"extracted-total gate. Rebuild grafel and re-run "
+                    f"`scripts/quality/run.sh --runs 1 --update-baseline`."
+                )
+        fixtures[name] = obs
     doc = {
         "_comment": (
             "Recorded must-have recall per golden fixture. This is a ratchet, "
@@ -530,6 +578,48 @@ def check(golden_dir, reports_dir, baseline_path):
                 failures.append(
                     f"{name}: {metric} changed {want} -> {got} — the fixture's "
                     f"expectations were edited; re-record with --update-baseline"
+                )
+
+        # #6488 arm D. The aggregate extraction totals, gated in ONE direction.
+        #
+        # Why not the strict `!=` used just above for the *_expected figures:
+        # those move only when a human edits a fixture's expected.json, so any
+        # change is an authored change and demanding a re-record costs nothing.
+        # The extracted totals move whenever ANY extractor gets better anywhere
+        # — a new edge kind, a widened pattern, a framework recognised — so a
+        # strict comparison would put this gate red on most legitimate
+        # extractor PRs. A gate that is red by default is a gate people
+        # re-record without reading, which is worse than no gate.
+        #
+        # Growth is the direction that carries the defect this exists to catch:
+        # over-emission (the pre-#681 Java import placeholders raised
+        # java-spring-mini's entity total 61 -> 86 and its relationship total
+        # 196 -> 221 with all four recall figures and both forbidden counts
+        # unmoved). A FALL is deliberately allowed and silent — it leaves the
+        # recorded floor higher than the truth, which weakens this gate until
+        # the next re-record but cannot make it lie.
+        for metric in EXTRACTED_TOTAL_KEYS:
+            if metric not in base:
+                failures.append(
+                    f"{name}: the baseline records no {metric} — it predates the "
+                    f"extracted-total gate, so nothing bounds this fixture's "
+                    f"emission; re-record with --update-baseline"
+                )
+                continue
+            if metric not in obs:
+                failures.append(
+                    f"{name}: the baseline records {metric} {int(base[metric])} but "
+                    f"this run's report does not carry the figure at all — nothing "
+                    f"measured it, so no total can be said to have held"
+                )
+                continue
+            want, got = int(base[metric]), obs[metric]
+            if got > want:
+                failures.append(
+                    f"{name}: {metric} GREW {want} -> {got} — extraction emitted "
+                    f"more than the recorded ceiling. If the new output is wanted, "
+                    f"record it with --update-baseline; if it is not, this is "
+                    f"over-emission no recall figure can see"
                 )
 
     if failures:

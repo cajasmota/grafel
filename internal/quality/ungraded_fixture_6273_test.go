@@ -119,6 +119,9 @@ func (h runShHarness) writeBaseline(t *testing.T, gated []string, excused ...str
 		fixtures[n] = map[string]any{
 			"entity_found": 1, "entity_expected": 1,
 			"relationship_found": 0, "relationship_expected": 0,
+			// #6488 arm D: a baseline entry with no extracted-total ceiling is
+			// a re-record demand, so a gated fixture here records one.
+			"entity_extracted_total": 5, "relationship_extracted_total": 3,
 		}
 	}
 	for _, n := range excused {
@@ -165,7 +168,7 @@ done
 cat > "$out" <<EOF
 {"fixture":"stub","entity_expected":1,"entity_found":1,"entity_recall":1.0,
  "relationship_expected":0,"relationship_found":0,"relationship_recall":0.0,
- "forbidden_hits":0}
+ "forbidden_hits":0,"entity_extracted_total":5,"relationship_extracted_total":3}
 EOF
 `
 	p := filepath.Join(h.root, "stub-grafel")
@@ -766,6 +769,7 @@ func fixtureSetTree(t *testing.T, n int, ungraded ...string) string {
 		fixtures[name] = map[string]any{
 			"entity_found": 1, "entity_expected": 1,
 			"relationship_found": 0, "relationship_expected": 0,
+			"entity_extracted_total": 5, "relationship_extracted_total": 3,
 		}
 	}
 	raw, err := json.Marshal(map[string]any{
