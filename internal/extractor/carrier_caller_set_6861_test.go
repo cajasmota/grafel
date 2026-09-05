@@ -75,10 +75,9 @@ import (
 const (
 	// prependFileCarrier and fileCarrierFor are the two exported entry points
 	// whose caller set this guard grades. Matching is on the call expression's
-	// final identifier, so
-	// it is independent of the import alias the caller uses — the javascript
-	// extractor imports this package as `extreg`, and a qualifier-anchored
-	// matcher would silently miss such a caller.
+	// final identifier, so it is independent of the import alias the caller
+	// uses — the javascript extractor imports this package as `extreg`, and a
+	// qualifier-anchored matcher would silently miss such a caller.
 	prependFileCarrier = "PrependFileCarrier"
 	fileCarrierFor     = "FileCarrierFor"
 	// tagEntitiesLanguage is the helper whose presence in a caller's package
@@ -86,8 +85,9 @@ const (
 	tagEntitiesLanguage = "TagEntitiesLanguage"
 )
 
-// rosterEntry is one caller package that does not tag, plus the tests that
-// grade the token its carrier keeps.
+// rosterEntry is one caller package that does not tag, plus the tests NAMED as
+// grading the token its carrier keeps. Named, not verified — see
+// nonTaggingCallers for exactly what an entry does and does not prove.
 type rosterEntry struct {
 	dir   string
 	tests []string
@@ -96,13 +96,47 @@ type rosterEntry struct {
 // nonTaggingCallers is the roster the prose used to carry: the caller packages
 // that do NOT run TagEntitiesLanguage, and are therefore the callers for which
 // the lang argument is load-bearing rather than cosmetic. Each names the tests
-// that grade its carrier's token — the tests that fail if lang is mutated to
-// "" — and the guard asserts those tests exist in that package.
+// that are meant to grade its carrier's token, and the guard asserts those
+// tests exist in that package.
 //
 // A caller package that tags needs no entry: TagEntitiesLanguage fills an empty
 // Language with the extractor's own token, so the stated equivalence covers it.
 // A caller package that does NOT tag and is absent here is precisely the shape
 // the equivalence does not cover, and the guard fails on it.
+//
+// # WHAT AN ENTRY DOES AND DOES NOT PROVE
+//
+// This is the one claim in this file that a reader is most likely to over-read,
+// so it is stated flatly. An entry is graded for the EXISTENCE and LOCATION of
+// the tests it names — a renamed test fails the guard, and a test of that name
+// in a different package does not satisfy it. Nothing here grades their
+// CONTENT. Replace the named test's body with `_ = t` and this guard still
+// reports the caller covered; add the empty-token mutant on top and the
+// caller's own package suite passes too. Two edits remove a caller's
+// empty-token grading entirely while the roster goes on saying the requirement
+// is met. Measured, not reasoned: both steps were run.
+//
+// So an entry is a WITNESS of coverage — a pointer for a human reader, and a
+// tripwire that fires when the caller set and the roster drift apart. It is not
+// proof that anything is graded. Pinning the property itself means running each
+// named test under the mutant it exists to kill, i.e. mutation testing in CI,
+// which is not affordable here; this is left undone deliberately rather than
+// approximated by something that reads stronger than it is.
+//
+// The named tests DO grade the token as of this commit — with
+// TestBicep_CarrierShape_6852 intact, mutating bicep's lang argument to "" dies
+// at file_carrier_6852_test.go:302 ("carrier Language = \"\", want \"bicep\"").
+// That is a measurement taken now, not a property this guard maintains, and the
+// distinction is the entire subject of #6861: file_carrier.go's MEASURED
+// paragraph was a true measurement too, on the day it was written.
+//
+// THE TAGGING HALF IS WEAKER STILL, not different in kind, and saying so here
+// keeps the two from looking unlike each other. A package is classed as covered
+// on the existence of a call expression named TagEntitiesLanguage anywhere in
+// its non-test sources: no test is named for it, so nothing is checked about
+// whether the tagging is observed by anything, and (see carrierScan6861) the
+// call need not even be on a path that runs. Both halves grade the existence of
+// a witness; neither grades the property the witness stands for.
 var nonTaggingCallers = []rosterEntry{
 	{"internal/extractors/bicep", []string{"TestBicep_CarrierShape_6852"}},
 	{"internal/extractors/hcl", []string{
