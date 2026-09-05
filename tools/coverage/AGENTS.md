@@ -52,6 +52,15 @@ Two behaviours worth knowing:
 `check` runs `gen`, so it rewrites generated pages in place — the same thing the workflow's `gen`
 step always did. They carry the `DO NOT EDIT` marker; nothing hand-authored is at risk.
 
+All three directions of that comparison are graded — added, modified and **deleted**. The deletion
+direction is the one the gate's message promises ("commit the result, deletions included") and it
+is reachable: `pruneGenerated` deletes a generated page whose slug the registry no longer produces.
+
+**Prune covers `by-language/` only.** `detail/` and `by-category/` are never pruned, so removing a
+record leaves its detail page behind as an orphan that no check reports — `gen` does not touch it,
+so the content delta is empty, and it equals `HEAD`, so the old `git diff` formulation was equally
+blind. That is a `gen` gap, not a gate gap, and it predates #6866.
+
 ## Line citations in `notes` (#6673)
 
 A cell's `cites` list is validated by path. The `file.go:N` references inside the cell's `notes`
