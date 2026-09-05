@@ -83,6 +83,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/repowalk"
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
@@ -507,10 +508,12 @@ func walkNonTestGoFiles(t *testing.T, root string, visit func(rel string, fset *
 				return err
 			}
 			if d.IsDir() {
-				switch d.Name() {
-				// .claude holds full worktree checkouts of this same repo;
-				// walking it would scan (and re-report) other branches' source.
-				case ".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build":
+				// The exclusion list is shared (#6846): ELEVEN hand-maintained
+				// copies had drifted into three different sets, two of them
+				// missing `.claude` outright. internal/repowalk states why
+				// each name is on it, and which four walks deliberately keep
+				// their own copy.
+				if repowalk.SkippedDir(d.Name()) {
 					return filepath.SkipDir
 				}
 				return nil

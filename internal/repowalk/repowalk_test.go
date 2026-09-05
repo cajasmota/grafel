@@ -11,42 +11,65 @@ import (
 	"github.com/cajasmota/grafel/internal/repowalk"
 )
 
-// internalRoot returns <repo>/internal, derived from this file's own location
-// at <repo>/internal/repowalk/repowalk_test.go.
+// skipped is the exact set SkippedDir is expected to name, written out here as
+// an INDEPENDENT REPLICA rather than read back out of the production switch.
 //
-// The lower-bound walk is rooted at internal/ rather than at the repository
-// root on purpose: internal/ contains no `.claude`, no `.git` and no
-// `node_modules`, so the walk below needs no exclusion list of its own beyond
-// the one literal it hard-codes. A lower bound that used SkippedDir to decide
-// where to descend could not see a SkippedDir that skips too much — it would
-// prune the very directories it is supposed to prove are inspected, find
-// nothing missing, and pass. That is #6834's defect, inside the test for it.
-func internalRoot(t *testing.T) string {
+// It has two jobs, and the second is the delicate one:
+//
+//  1. it is the expectation TestSkippedDir_SkipsEveryForeignTree asserts, and
+//  2. it is what sourceDirComponents prunes with.
+//
+// Job 2 must NOT be done with repowalk.SkippedDir. The lower bound below exists
+// to catch an exclusion list that grew to cover real source; a walk that pruned
+// with the predicate under test would prune exactly the directories it is
+// supposed to prove are read, find nothing missing, and pass. That is #6834's
+// defect inside the test written to catch it.
+//
+// The cost of the replica is that widening the production list AND this literal
+// together silently narrows the lower bound. That is a deliberate two-place
+// edit, visible in the diff, and it is the same trade internal/relkinds and
+// internal/types make for their independent floors (#6846).
+var skipped = []string{".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build"}
+
+// repoRoot returns the repository root, derived from this file's own location
+// at <repo>/internal/repowalk/repowalk_test.go.
+func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, here, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	return filepath.Dir(filepath.Dir(here))
+	return filepath.Clean(filepath.Join(filepath.Dir(here), "..", ".."))
 }
 
-// sourceDirNames returns the base name of every directory under internal/ that
-// directly contains at least one non-test .go file, along with one example
-// path per name for the failure message.
+// sourceDirComponents returns every directory NAME that lies on the path from
+// the repository root to a non-test .go file, mapped to one example path.
 //
-// `testdata` is excluded by a hard-coded literal, not by SkippedDir: fixtures
-// there are deliberate, some of them deliberately invalid, and they are not
-// source this repository's guards are meant to inspect.
-func sourceDirNames(t *testing.T) map[string]string {
+// Path COMPONENTS, not just the immediate parent directory. The immediate
+// parent alone leaves the most destructive widening invisible: `internal`,
+// `cmd` and `tools` hold no .go file directly, so an exclusion list widened
+// with "internal" hides the entire source tree while a parent-name-only domain
+// never mentions it. Components make every directory a guard must descend
+// THROUGH part of the lower bound, not just the ones it ends at.
+//
+// Rooted at the repository root, not at internal/: the guards that consume
+// SkippedDir (internal/atomicfile, the two internal/registry sweeps) are
+// repoRoot-rooted and do inspect cmd/ and tools/.
+func sourceDirComponents(t *testing.T) map[string]string {
 	t.Helper()
-	root := internalRoot(t)
+	root := repoRoot(t)
+	prune := map[string]bool{}
+	for _, name := range skipped {
+		prune[name] = true
+	}
+
 	out := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if d.Name() == "testdata" {
+			if path != root && prune[d.Name()] {
 				return filepath.SkipDir
 			}
 			return nil
@@ -55,14 +78,19 @@ func sourceDirNames(t *testing.T) map[string]string {
 		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			return nil
 		}
-		dir := filepath.Dir(path)
-		base := filepath.Base(dir)
-		if _, seen := out[base]; !seen {
-			rel, rerr := filepath.Rel(root, path)
-			if rerr != nil {
-				rel = path
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			return rerr
+		}
+		rel = filepath.ToSlash(rel)
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		if dir == "." {
+			return nil
+		}
+		for _, comp := range strings.Split(dir, "/") {
+			if _, seen := out[comp]; !seen {
+				out[comp] = rel
 			}
-			out[base] = filepath.ToSlash(rel)
 		}
 		return nil
 	})
@@ -73,55 +101,55 @@ func sourceDirNames(t *testing.T) map[string]string {
 }
 
 // TestSkippedDir_NeverHidesRepositorySource is the LOWER BOUND: it fails if the
-// exclusion list grows to cover a directory the guards are supposed to inspect.
+// exclusion list grows to cover a directory a guard must descend into to reach
+// this repository's own Go source.
 //
 // Every other test of an exclusion list in this repository grades the recall
 // direction — "is the foreign tree skipped?" — and a recall-shaped suite is
-// blind to over-firing. Widening this switch with real package names silently
+// blind to over-firing. Widening this switch with real directory names silently
 // narrows five guards at once: they then report a clean tree they never looked
 // at, which is the most direct cause of #6834's whole defect class.
 func TestSkippedDir_NeverHidesRepositorySource(t *testing.T) {
-	dirs := sourceDirNames(t)
+	dirs := sourceDirComponents(t)
 
 	// Layer 2/3 of the vacuity check: a count floor alone catches only "read
 	// anything". These anchors pin that the walk read the RIGHT tree — an
 	// inverted or misrooted filter scans plenty of files and clears a floor.
+	// The first three are the top-level trunks whose absence from a
+	// parent-directory-only domain was the gap this test used to have.
 	for _, want := range []string{
+		"internal", "cmd", "tools",
 		"engine", "graph", "extractors", "atomicfile",
 		"registry", "entkinds", "relkinds", "types", "repowalk",
 	} {
 		if _, ok := dirs[want]; !ok {
-			t.Fatalf("walk of internal/ found no non-test Go source in a directory named %q; "+
-				"the walk is not binding the repository, so anything it reports is meaningless", want)
+			t.Fatalf("walk of the repository found no non-test Go source under any directory "+
+				"named %q; the walk is not binding the tree, so anything it reports is meaningless", want)
 		}
 	}
-	if len(dirs) < 40 {
-		t.Fatalf("walk of internal/ found only %d directories holding non-test Go source; "+
-			"this repository has far more, so the walk is not binding the tree", len(dirs))
+	if len(dirs) < 150 {
+		t.Fatalf("walk of the repository found only %d directory names on the path to non-test "+
+			"Go source; this repository has far more, so the walk is not binding the tree", len(dirs))
 	}
 
 	var hidden []string
 	for name, example := range dirs {
 		if repowalk.SkippedDir(name) {
-			hidden = append(hidden, name+" (e.g. internal/"+example+")")
+			hidden = append(hidden, name+" (e.g. "+example+")")
 		}
 	}
 	sort.Strings(hidden)
 	if len(hidden) > 0 {
-		t.Errorf("SkippedDir excludes %d directories that hold this repository's own "+
-			"non-test Go source:\n  %s\n\n"+
+		t.Errorf("SkippedDir excludes %d directories that a guard must descend into to reach "+
+			"this repository's own non-test Go source:\n  %s\n\n"+
 			"Every guard built on SkippedDir walks past them and reports a clean tree it "+
 			"never read. An exclusion list may only name trees that are foreign to this "+
-			"repository (.git, vendored deps, fixtures, build output) — never a package "+
-			"the guards exist to inspect.",
+			"repository (.git, agent worktrees, vendored deps, fixtures, build output) — "+
+			"never a directory the guards exist to inspect, and never one they must pass "+
+			"through to reach it.",
 			len(hidden), strings.Join(hidden, "\n  "))
 	}
 }
-
-// skipped is the exact set SkippedDir is expected to name. Kept here rather
-// than read back out of the production switch: a test that derives its
-// expectation from the code under test asserts nothing.
-var skipped = []string{".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build"}
 
 // TestSkippedDir_SkipsEveryForeignTree is the recall direction: each foreign
 // tree is still excluded. Without this, deleting the switch body passes the
@@ -135,16 +163,6 @@ func TestSkippedDir_SkipsEveryForeignTree(t *testing.T) {
 	}
 }
 
-// TestSkippedDir_MatchesTheWholeNameOnly enumerates the space around each
-// skipped name rather than hand-picking attacks, and requires that only the
-// exact name is skipped.
-//
-// This is the over-firing direction at the string level. A `.claude` case
-// relaxed to strings.Contains(name, "claude") — the mutant that was ALIVE on
-// the whole registry package — takes `.claude-backup`, `claudex` and
-// `my-claude` with it, and each of those is an ordinary directory that may hold
-// source. Prefix, suffix, case-insensitive and dot-stripping relaxations are
-// covered by the same generated space.
 // upperFirst capitalises the first byte. The skipped names are ASCII, so this
 // is enough to generate the case-insensitivity attack without pulling in
 // strings.Title's deprecated Unicode word-boundary behaviour.
@@ -155,6 +173,16 @@ func upperFirst(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// TestSkippedDir_MatchesTheWholeNameOnly enumerates the space around each
+// skipped name rather than hand-picking attacks, and requires that only the
+// exact name is skipped.
+//
+// This is the over-firing direction at the string level. A `.claude` case
+// relaxed to strings.Contains(name, "claude") — the mutant that was ALIVE on
+// the whole registry package — takes `.claude-backup`, `claudex` and
+// `my-claude` with it, and each of those is an ordinary directory that may hold
+// source. Prefix, suffix, case-insensitive and dot-stripping relaxations are
+// covered by the same generated space.
 func TestSkippedDir_MatchesTheWholeNameOnly(t *testing.T) {
 	exact := map[string]bool{}
 	for _, name := range skipped {

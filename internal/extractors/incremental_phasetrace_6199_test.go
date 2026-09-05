@@ -13,11 +13,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/extractors"
+	"github.com/cajasmota/grafel/internal/repowalk"
 )
 
 // --- #6199: the phase trace must cover EVERY return path -------------------
@@ -230,21 +232,42 @@ type callSite struct {
 // findCallSites enumerates every call to name across the whole module, so the
 // "exactly one caller" half of the proof cannot rot when a second caller is
 // added in another package or another file.
+//
+// The wrapper's only job is the ROOT. Splitting the walk out (findCallSitesIn)
+// is what lets TestFindCallSitesIn_DoesNotDescendIntoAgentWorktrees drive it
+// over a synthetic tree; the risk of that split — a parameterised decision the
+// caller is then free to skip — is covered because
+// TestPhaseTrace_EveryReturnIsTraced consumes THIS function and requires
+// exactly one site, so a wrapper that lost the module root would find zero and
+// fail.
 func findCallSites(t *testing.T, name string) []callSite {
 	t.Helper()
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatalf("abs module root: %v", err)
 	}
+	return findCallSitesIn(t, root, name)
+}
+
+// findCallSitesIn is the walk, parameterised on its root.
+//
+// The exclusion list is repowalk.SkippedDir (#6846). It used to be a
+// hand-written `.git, node_modules, testdata, vendor` switch with NO .claude
+// case, and this walk is rooted at the MODULE root — so in any development
+// checkout every agent worktree contributed its own copy of every call site.
+// That made the "exactly one call site" assertion above fail outright, with no
+// parse error needed: worse than the atomicfile instance #6846 was filed for,
+// and firing on every local run rather than only on a mid-edit branch.
+func findCallSitesIn(t *testing.T, root, name string) []callSite {
+	t.Helper()
 	var sites []callSite
 	fset := token.NewFileSet()
-	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "testdata", "vendor":
+			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -1345,5 +1368,85 @@ func f() {
 					got, tc.want, tc.name, tc.src)
 			}
 		})
+	}
+}
+
+// TestFindCallSitesIn_DoesNotDescendIntoAgentWorktrees pins the #6846 fix on
+// this walk, which is rooted at the MODULE root and had no `.claude` case.
+//
+// This instance was strictly worse than the internal/atomicfile one #6846 was
+// filed for. That one needed a mid-edit parse error in a worktree to fire; this
+// one needs nothing but a worktree, because every checkout of this repository
+// contains internal/extractors/incremental.go and therefore its call to
+// tryIncremental. Every extra worktree adds a site, so
+// TestPhaseTrace_EveryReturnIsTraced's "exactly ONE call site" assertion failed
+// on every local run in a checkout with agent worktrees. Measured before the
+// fix, with one planted worktree:
+//
+//	incremental_phasetrace_6199_test.go:103: tryIncremental must have exactly
+//	ONE call site … found 2: [{shadowCaller …/.claude/worktrees/fake-agent/
+//	internal/extractors/shadow.go:3:27} {TryIncremental …/internal/extractors/
+//	incremental.go:427:8}]
+//
+// The tree is built here rather than taken from the ambient checkout: CI has no
+// worktrees, so an ambient-tree test would pass exactly where the bug does not
+// reproduce and stay silent where it does.
+func TestFindCallSitesIn_DoesNotDescendIntoAgentWorktrees(t *testing.T) {
+	root := t.TempDir()
+
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir for %s: %v", rel, err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+
+	const caller = `package p
+
+func Real() { tryIncremental() }
+`
+	// Ordinary source: MUST be found, or the test passes on a walk that reads
+	// nothing at all.
+	write("internal/extractors/incremental.go", caller)
+	// An agent worktree's copy: must NOT be found.
+	write(".claude/worktrees/agent-x/internal/extractors/incremental.go", caller)
+	// A directory whose name merely CONTAINS "claude" is ordinary source and
+	// must still be walked — the exclusion is an exact base-name match.
+	write(".claude-backup/internal/extractors/incremental.go", caller)
+
+	sites := findCallSitesIn(t, root, "tryIncremental")
+	var got []string
+	for _, s := range sites {
+		p := s.pos
+		if i := strings.Index(p, root); i == 0 {
+			p = strings.TrimPrefix(p[len(root):], string(filepath.Separator))
+		}
+		got = append(got, filepath.ToSlash(p))
+	}
+	sort.Strings(got)
+
+	want := []string{
+		".claude-backup/internal/extractors/incremental.go:3:15",
+		"internal/extractors/incremental.go:3:15",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("findCallSitesIn reported %v; want exactly %v.\n"+
+			"An extra entry under .claude/worktrees/ means the walk descended into an agent "+
+			"worktree (#6846); a missing entry means it stopped reading real source.", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("findCallSitesIn reported %v; want exactly %v", got, want)
+		}
+	}
+	for _, s := range sites {
+		if s.enclosing != "Real" {
+			t.Errorf("call site %s reported enclosing func %q, want \"Real\" — the walk is "+
+				"reading the file but not resolving what encloses the call", s.pos, s.enclosing)
+		}
 	}
 }

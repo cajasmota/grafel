@@ -434,9 +434,12 @@ func scanDeterministicTempNames(t *testing.T, root string) []tempNameOffence {
 			return err
 		}
 		if d.IsDir() {
-			// The exclusion list is shared (#6846): seven hand-maintained
-			// copies had already drifted apart, and #6842 fixed exactly one
-			// of them. internal/repowalk states why each name is on it.
+			// The exclusion list is shared (#6846): ELEVEN hand-maintained
+			// copies had already drifted into three different sets, TWO of
+			// them missing `.claude` outright, and #6842 fixed exactly one by
+			// hand. Seven share this list now; internal/repowalk states why
+			// each name is on it, and which four walks deliberately keep
+			// their own copy.
 			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
@@ -517,12 +520,17 @@ func tmpFor(dest string) string { return dest + ".tmp" }
 // t.TempDir() rather than relying on the ambient checkout, which would make it
 // pass vacuously exactly where it is needed least.
 //
-// The tree exercises all five vacuity layers at once: the scan must read
-// something (the ordinary package), read the RIGHT thing (that offence and no
-// other), read its full content (the offence is on the file's last line), the
-// matcher must fire, and the walk must ACT on the exclusion — a walk that
-// descends both trips the broken file's parse Fatalf and reports the shadow
-// offence.
+// The tree covers four of the five vacuity layers WITH OBSERVED MUTANTS —
+// layer 1, the scan must read something; layer 2, it must read the RIGHT thing
+// (that offence and no other, which is why the assertion is an exact set and
+// not a floor); layer 4, the matcher must fire; layer 5, the walk must ACT on
+// the exclusion, since a walk that descends both trips the broken file's parse
+// Fatalf and reports the shadow offence.
+//
+// Layer 3 — reading a file's FULL content — is satisfied only by construction
+// here: the offence sits on the last line of a three-line file, so a truncating
+// reader would miss it, but nothing in this package mutates the reader, so that
+// is an argument rather than a measurement. Do not read this test as grading it.
 func TestScanDeterministicTempNames_DoesNotDescendIntoAgentWorktrees(t *testing.T) {
 	root := t.TempDir()
 

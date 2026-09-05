@@ -508,9 +508,12 @@ func walkTestFiles(t *testing.T, root string, visit func(rel string, fset *token
 			return err
 		}
 		if d.IsDir() {
-			// The exclusion list is shared (#6846): seven hand-maintained
-			// copies had already drifted apart, and #6842 fixed exactly one
-			// of them. internal/repowalk states why each name is on it.
+			// The exclusion list is shared (#6846): ELEVEN hand-maintained
+			// copies had already drifted into three different sets, TWO of
+			// them missing `.claude` outright, and #6842 fixed exactly one by
+			// hand. Seven share this list now; internal/repowalk states why
+			// each name is on it, and which four walks deliberately keep
+			// their own copy.
 			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
@@ -533,5 +536,82 @@ func walkTestFiles(t *testing.T, root string, visit func(rel string, fset *token
 	})
 	if err != nil {
 		t.Fatalf("walk %s: %v", root, err)
+	}
+}
+
+// TestUnpinnedHomeSweepSkipsWorktreeCheckouts pins that THIS sweep's walk
+// refuses to descend into .claude — the twin of
+// TestHandRolledHomeSweepSkipsWorktreeCheckouts in
+// home_sweep_guard_6178_test.go, which #6842 added for the walk ~30 lines away
+// in this same package while leaving this one ungraded.
+//
+// That gap was measured, not assumed: before this test, neutralising the
+// exclusion here (`if false && repowalk.SkippedDir(d.Name())`) left the whole
+// internal/registry package GREEN, while the same mutant at the 6178 walk was
+// caught. Two walks in one package, one graded and one not.
+//
+// The condition is built under t.TempDir() because the obvious spelling — run
+// the real sweep and assert nothing under .claude was reported — is vacuous in
+// CI, where no .claude directory exists at all.
+func TestUnpinnedHomeSweepSkipsWorktreeCheckouts(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, src string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatalf("mkdir for %s: %v", rel, err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+
+	offender := `package p
+import "testing"
+func TestOffender(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+}`
+
+	// Positive control, deliberately NESTED: the walk must still descend to it.
+	// A root-level control would survive both a "skip everything" mutant and a
+	// "never descend past the root" one.
+	write("internal/cli/offender_test.go", offender)
+
+	// A parseable offender inside a worktree checkout. This is the assertion
+	// that keeps working even if broken_test.go below were ever repaired: a
+	// walk that descends but happens to meet only valid Go still reports
+	// offences under paths the two ledgers can never name.
+	write(".claude/worktrees/agent-x/internal/cli/shadow_test.go", offender)
+
+	// Unparseable Go, standing in for an unrelated in-flight branch mid-edit.
+	// walkTestFiles t.Fatalf's on any parse error, so a descending walk fails
+	// this test outright — the exact way a worktree breaks this guard locally.
+	write(".claude/worktrees/agent-x/internal/cli/broken_test.go", "package p\n\nfunc (\n")
+
+	// A directory whose name merely CONTAINS "claude" is ordinary source and
+	// must still be scanned: the exclusion is an exact base-name match, not a
+	// substring one.
+	write(".claude-backup/internal/cli/offender_test.go", offender)
+
+	var got []string
+	for _, o := range scanUnpinnedGrafelHome(t, root) {
+		got = append(got, o.File)
+	}
+	sort.Strings(got)
+
+	want := []string{
+		".claude-backup/internal/cli/offender_test.go",
+		"internal/cli/offender_test.go",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("sweep reported %v; want exactly %v.\n"+
+			"An extra entry under .claude/worktrees/ means the walk descended into an agent "+
+			"worktree (#6846); a missing entry means it stopped reading real source.", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("sweep reported %v; want exactly %v", got, want)
+		}
 	}
 }

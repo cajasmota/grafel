@@ -485,9 +485,12 @@ func scanHandRolledHomePaths(t *testing.T, root string) []homePathOffence {
 			return err
 		}
 		if d.IsDir() {
-			// The exclusion list is shared (#6846): seven hand-maintained
-			// copies had already drifted apart, and #6842 fixed exactly one
-			// of them. internal/repowalk states why each name is on it.
+			// The exclusion list is shared (#6846): ELEVEN hand-maintained
+			// copies had already drifted into three different sets, TWO of
+			// them missing `.claude` outright, and #6842 fixed exactly one by
+			// hand. Seven share this list now; internal/repowalk states why
+			// each name is on it, and which four walks deliberately keep
+			// their own copy.
 			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
