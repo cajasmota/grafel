@@ -129,8 +129,10 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	// IsResolvedToID (hex OR "ext:"). That comparison is no longer valid, and its
 	// failure is the POINT of #6836: the report now runs the indexer's real
 	// classifier, which routes ext:-stamped reflection builtins to `dynamic`
-	// rather than to an external bucket (#95). Four golden edges sit in exactly
-	// that gap, so an ext:-inclusive identity would now be asserting the bug.
+	// rather than to an external bucket (#95). Six ext:-stamped edges are
+	// routed that way; the NET effect on this identity is four, because two
+	// non-ext: stdlib callees move the other way into external-known. An
+	// ext:-inclusive identity would now be asserting the bug.
 	var total, hexResolved, extPrefixed int
 	for i := range doc.Relationships {
 		toID := doc.Relationships[i].ToID
@@ -161,7 +163,9 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	// D3b — the three dispositions #6836 found dead must be ALIVE on real data.
 	// Before the fix external-unknown, bug-resolver and dynamic were wired to
 	// counters nothing incremented and rendered a permanent 0.00%; on this
-	// fixture they carry 59 + 17 + 90 of 796 edges. A hand-built fixture alone
+	// fixture they carry 53 + 17 + 90 of 796 edges (measured on THIS branch —
+	// 59 was the pre-TrimPrefix external-unknown count). A hand-built fixture
+	// alone
 	// would not have caught the original defect, because the defect was that no
 	// corpus could ever move these.
 	for _, d := range []string{"external-unknown", "bug-resolver", "dynamic"} {

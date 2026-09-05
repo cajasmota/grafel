@@ -512,33 +512,65 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			// The exclusion is ClassifyEndpoints' — it records a disposition
 			// only for a non-empty endpoint. The guard below therefore does
 			// not CAUSE the exclusion; it avoids allocating pairs that would
-			// be skipped. Deleting it is behaviour-neutral (verified: the
-			// mutant that drops it is equivalent under the whole suite), so
-			// do not read it as the thing keeping empty edges out of the
-			// denominator.
+			// be skipped. Deleting it is behaviour-neutral (its mutant is
+			// equivalent under the whole suite), so do not read it as the
+			// thing keeping empty edges out of the denominator.
 			//
-			// ToOriginal reconstructs the PRE-resolution stub, which the
-			// persisted graph does not store. Two cases, and both are exact:
+			// That neutrality holds ONLY because ResolutionTotal is summed
+			// from DispositionCounts rather than from len(endpoints). These
+			// two are a masking pair: dropping the guard alone is equivalent,
+			// and switching the total to len(endpoints) alone is equivalent,
+			// but doing BOTH counts empty-target edges in the denominator.
+			// Whichever you touch, keep the other.
+			//
+			// ToOriginal APPROXIMATES the pre-resolution stub, which the
+			// persisted graph does not store. Read the three cases honestly —
+			// only the first is exact:
 			//
 			//   - Unresolved stub: the resolver left the endpoint verbatim,
-			//     so ToID IS the original stub.
-			//   - "ext:<pkg>": the external synthesiser rewrote a bare stub
-			//     `<pkg>` to `ext:<pkg>`, so trimming the prefix recovers it.
+			//     so ToID IS the original stub. Exact.
+			//   - Hex entity ID: the original stub is gone, but
+			//     classifyDispositionLang short-circuits on isHexID before it
+			//     reads ToOriginal at all, so the loss cannot matter.
+			//   - "ext:…": APPROXIMATE. The synthesiser stores a CANONICAL
+			//     name, not the stub it saw (synth.go — `canonical` may be
+			//     `<pkg>:<leaf>`), so `ext:fastapi:Depends` trims to
+			//     "fastapi:Depends" when the stub was "Depends". 14 of the 82
+			//     distinct ext: ids in testdata/golden are canonicalised this
+			//     way, and the fixture even holds BOTH `ext:ArrayList` and
+			//     `ext:java:ArrayList` — one stub canonicalised two ways.
 			//
-			// The trim is load-bearing, not cosmetic. classifyDispositionLang
-			// runs its dynamic-pattern check on the ORIGINAL stub BEFORE the
-			// ext:-prefix check, precisely so reflection builtins the
-			// synthesiser stamped `ext:` (Python getattr/eval, JS Function —
-			// they sit in the stdlib stop-list) land in `dynamic` rather than
-			// `external-unknown` (#95). The catalog matches `getattr` and not
-			// `ext:getattr`, so passing ToID unstripped silently defeats that:
-			// measured on testdata/golden, it moves 6 of 796 edges out of
-			// `dynamic` and into `external-unknown`. Pinned by
+			// The approximation is bounded to ONE consumer: ToOriginal is read
+			// only by the dynamic-pattern check. That check's per-language
+			// catalogs anchor ^…$ on LEAF names, so a `<pkg>:<leaf>` form
+			// fails to match exactly as the un-trimmed `ext:<leaf>` form would
+			// — the error direction is always "not dynamic", never a false
+			// dynamic. Verified on testdata/golden: trimming the prefix and
+			// taking the last colon-separated leaf produce identical verdicts
+			// on every ext: edge.
+			//
+			// It is NOT a no-op, which is why the trim is here at all.
+			// classifyDispositionLang runs the dynamic check on the ORIGINAL
+			// stub BEFORE the ext:-prefix check, precisely so stdlib callees
+			// the synthesiser stamped `ext:` land in `dynamic` rather than
+			// `external-unknown` (#95). The catalogs match `insert` and not
+			// `ext:insert`, so passing ToID unstripped silently defeats that:
+			// measured on testdata/golden it moves 6 of 796 edges out of
+			// `dynamic` — `ext:print` (zig), `ext:filter` (clojure),
+			// `ext:first` (swift), `ext:insert` (lua and elixir), `ext:all`
+			// (elixir). These are stdlib leaf-callee dispatch, NOT reflection
+			// primitives; no getattr/eval/Function edge exists in the corpus.
+			// Pinned by
 			// TestResolution_ExtPrefixedDynamicBuiltinIsDynamicNotExternal.
 			//
-			// A hex ToID short-circuits on isHexID before ToOriginal is read
-			// at all, so losing the original stub for rewritten edges is
-			// harmless.
+			// The residual gap is real and worth naming: an Elixir `Repo
+			// .insert` canonicalised to `ecto:insert` trims to "ecto:insert"
+			// and lands in `external-unknown`, where the indexer — which still
+			// holds the raw stub "insert" — says `dynamic`. That is a silent
+			// disagreement with `orient view=stats`. It does not occur in
+			// testdata/golden (checked above), and closing it needs the
+			// synthesiser to persist the pre-canonical stub, not more guessing
+			// here.
 			if rel.ToID != "" {
 				endpoints = append(endpoints, resolve.EndpointPair{
 					ToID:       rel.ToID,

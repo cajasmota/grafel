@@ -164,9 +164,12 @@ func TestResolution_DynamicIsSeparatedFromBugExtractor(t *testing.T) {
 // testdata/golden, that moves 6 of 796 edges from `dynamic` into
 // `external-unknown`. Trimming the prefix recovers the stub exactly.
 //
-// external-unknown is pinned at 0 as well as dynamic at 100: asserting only
-// that dynamic is non-zero would survive a classifier that double-counted the
-// edge into both buckets.
+// The two 0.00% clauses do NOT add independent coverage: `dynamic | 100.00%`
+// already forces every other bucket to zero, so neither can reject an input
+// the dynamic clause accepts. They are kept as a readable statement of where
+// the edge would otherwise land — the pre-#95 answer is external-unknown —
+// and are named here rather than justified as a double-count guard, which is
+// an assertion this test does not make.
 func TestResolution_ExtPrefixedDynamicBuiltinIsDynamicNotExternal(t *testing.T) {
 	rel := graph.Relationship{ID: "r1", FromID: "e1a", ToID: "ext:getattr", Kind: "CALLS"}
 	rel = rel.WithProperties(map[string]string{"language": "python"})
@@ -179,6 +182,38 @@ func TestResolution_ExtPrefixedDynamicBuiltinIsDynamicNotExternal(t *testing.T) 
 		if !strings.Contains(sec, want) {
 			t.Errorf("missing %q — an ext:-stamped reflection builtin is dynamic dispatch (#95):\n%s", want, sec)
 		}
+	}
+}
+
+// TestResolution_ExternalSQLCanFire (#6836, R4) observes that `external-sql`
+// is a REACHABLE disposition and not a decorative row.
+//
+// It is 0.00% on testdata/golden and on every other fixture here, and a
+// 0.00% row is exactly what #6836 was filed about. The difference between an
+// honest zero and a dead one is whether ANYTHING can move it, and until this
+// test existed that rested on a doc comment — a prose claim nothing checks,
+// in the fix for that defect class. The stub shape is the resolver's
+// (scope:dataaccess:<file>#<driver>:<op>:<table>), so this pins the report's
+// ability to surface it, not the classifier's rule.
+func TestResolution_ExternalSQLCanFire(t *testing.T) {
+	sec := renderResolution(t, resolutionFixtureEntities(), []graph.Relationship{
+		{ID: "r1", FromID: "e1a", ToID: "scope:dataaccess:app/db.py#psycopg2:select:users", Kind: "QUERIES"},
+	})
+	if !strings.Contains(sec, "| external-sql | 100.00% |") {
+		t.Errorf("external-sql never fires — it would be a permanently-zero row:\n%s", sec)
+	}
+}
+
+// TestResolution_UnclassifiedCanFire (#6836, R4) is the same observation for
+// `unclassified`, the other disposition that is 0.00% on every fixture in
+// this package. A trailing-colon stub names no kind and no name, so the
+// classifier falls through every bucket to Unclassified.
+func TestResolution_UnclassifiedCanFire(t *testing.T) {
+	sec := renderResolution(t, resolutionFixtureEntities(), []graph.Relationship{
+		{ID: "r1", FromID: "e1a", ToID: "Foo:", Kind: "CALLS"},
+	})
+	if !strings.Contains(sec, "| unclassified | 100.00% |") {
+		t.Errorf("unclassified never fires — it would be a permanently-zero row:\n%s", sec)
 	}
 }
 

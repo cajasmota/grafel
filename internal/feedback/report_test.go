@@ -204,14 +204,19 @@ func TestGenerate_ContainsDeclaresDontReduceOrphan(t *testing.T) {
 }
 
 func TestGenerate_ResolutionDisposition(t *testing.T) {
-	// Disposition is derived STRUCTURALLY from the ToID shape — the same
-	// classification orient/grafel_stats uses — NOT from a Properties["resolution"]
-	// tag the pipeline never writes. A 16-hex ToID is resolved, an ext:-prefixed
-	// ToID is external, any other non-empty ToID is unresolved. Those three are
-	// the whole vector: the finer external-known/unknown and
-	// bug-extractor/bug-resolver/dynamic splits need the resolver's allowlist,
-	// name index and pre-resolution stubs, which the persisted graph does not
-	// carry, so this report no longer claims to measure them (#6836).
+	// Disposition comes from the INDEXER'S OWN classifier —
+	// resolve.Index.ClassifyEndpoints, the same one behind
+	// orient/grafel_stats — not from a private re-derivation here and not
+	// from a Properties["resolution"] tag.
+	//
+	// The vector carries one entry per resolve.AllDispositions member (eight
+	// today), not one per shape the ToID can take. The four edges below
+	// exercise three of them; external-unknown, bug-resolver, dynamic,
+	// external-sql and unclassified are covered in
+	// report_resolution_6836_test.go. "ext:react" is on the compiled-in
+	// allowlist, which is what makes it external-KNOWN rather than unknown —
+	// a distinction the report can draw because it consults the allowlist
+	// predicate (#6836).
 	entities := repeat(makeEntity("e1", "X", "SCOPE.Function", "go", "x.go", 1), 50)
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "aabb112233445566", Kind: "CALLS"}, // hex → resolved
