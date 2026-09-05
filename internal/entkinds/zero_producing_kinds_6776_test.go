@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"testing"
-
-	"github.com/cajasmota/grafel/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -86,59 +84,31 @@ func TestZeroProducingKinds6776_SiteCountsHold(t *testing.T) {
 	}
 }
 
-// TestZeroProducingKinds6776_StayOnTheLedgerOrInTheEnum records the arm-B1
-// decision as an assertion: none of the eight was deleted, so each is STILL
-// ACCOUNTED FOR — either deferred on ruleDeclaredKindsDeferred, or declared in
-// types.AllEntityKinds() by a later arm. What it forbids is the third state:
-// gone from both, which is the ledger shrinking because capability was deleted.
+// # Why there is no TestZeroProducingKinds6776_StayOnTheLedger any more
 //
-// It is deliberately obstructive, and the obstruction survived arm B5. B5
-// migrated seven of the eight (Decorator, Fixture, Implementation, Interface,
-// Relationship, TestClass, TestConfig) into the enum, which is the LEGITIMATE
-// way off the ledger; the earlier form of this test would have forced B5 to
-// delete those rows from zeroProducingKinds6776, taking their 17-site pin and
-// the engine-side firing table's non-vacuity with them. The pin is the arm-B1
-// evidence, so the test moved and the table did not.
+// There used to be one, asserting that all eight stayed on
+// ruleDeclaredKindsDeferred. #6776 arm B5 declared seven of them in
+// types.AllEntityKinds(), which is the LEGITIMATE way off that ledger, so the
+// test had to go or be widened. It was first widened to "on the ledger OR in
+// the enum, never neither" — and review then showed that widened form COULD
+// NOT REJECT ANYTHING ALONE, so it is deleted rather than kept as a guard that
+// looks like one:
 //
-// Varies: which of the two accounted-for states each kind is in — after B5 the
-// eight are split seven-in-the-enum / one-on-the-ledger (Template, a deferred
-// twin), so a mutant that checks only one of the two disjuncts fails.
-// Holds constant: the eight kinds and their site counts, pinned above.
-func TestZeroProducingKinds6776_StayOnTheLedgerOrInTheEnum(t *testing.T) {
-	// Both disjuncts must be exercised, or this degenerates into the one-sided
-	// check it replaced and stops grading the branch it was widened for.
-	var ledgered, declared int
-	for k := range zeroProducingKinds6776 {
-		onLedger := false
-		if _, ok := ruleDeclaredKindsDeferred[k]; ok {
-			onLedger = true
-			ledgered++
-		}
-		inEnum := types.IsValidEntityKind(k)
-		if inEnum {
-			declared++
-		}
-		// NOT asserted here: the BOTH state (ledgered AND declared). It is
-		// already impossible to reach past TestNoUndeclaredRuleEntityKinds'
-		// stale half, which fires for any ledger entry the live scan stops
-		// producing — and every one of these eight has live YAML sites, pinned
-		// above. A check here would be a second guard that can only ever fire
-		// when that one does, which grades nothing and hides which of the two
-		// is load-bearing.
-		if !onLedger && !inEnum {
-			t.Errorf("%s is neither on ruleDeclaredKindsDeferred nor in types.AllEntityKinds(). Arm "+
-				"B1 measured its rule(s) as LIVE "+
-				"(internal/engine/zero_producing_rule_kinds_6776_test.go), so this is capability "+
-				"quietly deleted to lower a count. If the rule really went, say which and why here "+
-				"and drop the entry from zeroProducingKinds6776 — deliberately, not silently.", k)
-		}
-	}
-	if ledgered == 0 {
-		t.Errorf("no zero-producing kind is on the ledger any more; delete this test's ledger " +
-			"disjunct rather than leaving an arm of it ungraded")
-	}
-	if declared == 0 {
-		t.Errorf("no zero-producing kind is in the enum; the enum disjunct is ungraded, so this " +
-			"test is still the one-sided check it was widened away from")
-	}
-}
+//   - to fire, a kind here must be off BOTH accounts;
+//   - if its rule-YAML sites are still live, the live scan produces a kind that
+//     is neither valid nor ledgered, and TestNoUndeclaredRuleEntityKinds'
+//     unexpected half fails first, naming the file and line;
+//   - if the sites are gone, TestZeroProducingKinds6776_SiteCountsHold above
+//     fails, because these counts are pinned against the live scan.
+//
+// There is no third input. Two guards that only ever fire together are
+// indistinguishable from one guard, and the deleted test was the redundant one
+// in both pairs — the same reasoning that kept a BOTH-state check out of it.
+//
+// So the arm-B1 property — the eight are never quietly deleted to lower a
+// count — is carried by TestZeroProducingKinds6776_SiteCountsHold (their 17
+// sites must still exist) and by TestNoUndeclaredRuleEntityKinds (a kind off
+// the ledger must be in the enum). Removing a row from zeroProducingKinds6776
+// remains a deliberate act: it costs the site pin, and the engine-side firing
+// table in internal/engine/zero_producing_rule_kinds_6776_test.go pins the same
+// 17 sites independently.

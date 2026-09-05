@@ -191,8 +191,10 @@ var pinnedEntityKindVocabulary = []string{
 // next author reconciles it by deleting the wrong one.
 //
 // Varies: nothing — a live observation of the pinned literal.
-// Holds constant: the roster. Strict `<` is what makes ONE loop grade BOTH
-// claims: `>` catches unsorted, `==` catches a duplicate.
+// Holds constant: the roster. The two claims are graded by two SEPARATE
+// comparisons in one loop — `==` rejects a duplicate, `>` rejects an
+// out-of-order pair — and each was scored with its own mutant, so neither
+// branch is carried by the other.
 func TestEntityKindVocabularyIsStrictlyIncreasing(t *testing.T) {
 	if len(pinnedEntityKindVocabulary) < 10 {
 		t.Fatalf("premise: the roster holds %d values, so this loop grades nothing",
@@ -208,7 +210,8 @@ func TestEntityKindVocabularyIsStrictlyIncreasing(t *testing.T) {
 		}
 		if prev > cur {
 			t.Errorf("pinnedEntityKindVocabulary is not sorted: [%d]=%q comes after [%d]=%q. "+
-				"Its doc comment says sorted, and the paste-back roster the bump guard prints is",
+				"Its doc comment says sorted, and the paste-back roster the bump guard prints on "+
+				"failure is sorted, so an unsorted pin diverges from the text you are told to paste.",
 				i, cur, i-1, prev)
 		}
 	}

@@ -489,13 +489,34 @@ const (
 	// already on disk is restated and KindVocabularyVersion does not move (see
 	// the doc on that constant).
 	//
-	// These thirteen are exactly the rule-declared kinds whose Go identifier
-	// was FREE. The remaining twelve on internal/entkinds' ledger — Component,
-	// Config, Constraint, Endpoint, Model, Operation, Plugin, Route, Schema,
-	// Service, Template, View — each already have an `EntityKind<Name>`
+	// These thirteen are exactly the rule-declared kinds whose GO IDENTIFIER
+	// was free — that is the whole of the selection rule, and it is narrower
+	// than it sounds. The remaining twelve on internal/entkinds' ledger —
+	// Component, Config, Constraint, Endpoint, Model, Operation, Plugin, Route,
+	// Schema, Service, Template, View — each already have an `EntityKind<Name>`
 	// constant bound to a `SCOPE.`-prefixed value, so declaring the un-prefixed
-	// spelling would add a second enum member meaning the same thing. That is a
-	// synonym decision, not a mechanical add, and it is deferred to arms B6-B8.
+	// spelling could not even be written without inventing a second Go name.
+	// That is a synonym decision, not a mechanical add, and it is deferred to
+	// arms B6-B8.
+	//
+	// WHAT THAT RULE DOES NOT SAY IS THAT NO SYNONYM EXISTS. Four of the
+	// thirteen have a live `SCOPE.`-prefixed twin that a Go producer emits
+	// TODAY, as a bare string literal, and that is itself outside this enum:
+	//
+	//   "SCOPE.Middleware"   internal/custom/scala/frameworks.go   (9 sites)
+	//   "SCOPE.Relationship" internal/custom/kotlin/orm_schema.go  (5 sites)
+	//   "SCOPE.Interface"    internal/custom/scala/type_system.go  (2 sites)
+	//   "SCOPE.Dependency"   internal/custom/java/dropwizard.go    (1 site)
+	//
+	// So after this arm `"Middleware"` is a valid kind while `"SCOPE.Middleware"`
+	// is not, for the same concept. Nothing depends on the pair being reconciled
+	// and nothing breaks, but it IS the synonym state, reached from the other
+	// side — and saying otherwise would be this issue's own defect. These sites
+	// are invisible to internal/entkinds.ScanGo because each passes the kind as
+	// a FUNCTION ARGUMENT (makeEntity(id, kind, ...)) rather than as a `Kind:`
+	// field, which is precisely the call-site hole arm B4 documented and left
+	// open; that is why an empty goPrefixedKindsDeferred does not contradict
+	// this list. Reconciling the four is not in scope here.
 	//
 	// Eight rule-declared kinds produce zero entities on both corpora, and
 	// SEVEN OF THOSE EIGHT ARE IN THIS BLOCK (Decorator, Fixture,
