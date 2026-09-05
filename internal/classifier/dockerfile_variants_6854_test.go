@@ -121,6 +121,19 @@ var acceptedDockerShapes6854 = []dockerVariantCase{
 //	Dockerfile.a.b                 a multi-segment variant: the rule takes one
 //	                               segment, not "everything after the dot".
 //	dockerfile.dev                 the case-sensitive half of the rule.
+//	Dockerfile-dev                 the SEPARATOR. The rule cuts `stem + "."`
+//	Containerfile-prod             and nothing else; a hyphen is not the Docker
+//	app/Dockerfile-slim            variant convention. These three exist
+//	                               because a review mutant that ALSO cut
+//	                               `stem + "-"` was ALIVE against the whole
+//	                               suite: every other part of the accept
+//	                               predicate — stem, dot count, case, the
+//	                               denylist, both shape rules — was graded,
+//	                               and the separator that gates all of them was
+//	                               not. `Dockerfile-dev` appeared nowhere in
+//	                               this package, tests included. The nested row
+//	                               holds the DEPTH axis explicitly rather than
+//	                               by luck, since path.Base runs first.
 //
 // DELIBERATELY ABSENT: rows for a DIRECTORY named Dockerfile
 // (`Dockerfile/README`, `src/Dockerfile/notes`). They passed, but they could not
@@ -142,6 +155,15 @@ var forbiddenDockerShapes6854 = []dockerVariantCase{
 	{"dockerfile.dev", "", "prefix form is case-sensitive, as the bare-name table is"},
 	{"DOCKERFILE.dev", "", "prefix form is case-sensitive, as the bare-name table is"},
 	{"Containerfilex", "", "no separator, Containerfile stem"},
+
+	// THE SEPARATOR IS A DOT AND ONLY A DOT. A hyphenated name is not the
+	// Docker variant convention and must not classify. Ungraded until a review
+	// mutant that widened the cut to `stem + "-"` survived every package that
+	// could see it; the production predicate is unchanged, it was simply
+	// unobserved.
+	{"Dockerfile-dev", "", "the separator is a dot; a hyphen is not the variant convention"},
+	{"Containerfile-prod", "", "the separator is a dot, for the Containerfile stem too"},
+	{"app/Dockerfile-slim", "", "the separator is a dot at a nested depth too — path.Base runs first, so the depth axis is held here explicitly"},
 
 	// State/format/encoding suffixes. These are NOT covered by the
 	// extension-lookup ordering — the router claims none of them — so each is
