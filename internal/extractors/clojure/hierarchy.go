@@ -1,0 +1,442 @@
+// hierarchy.go — Clojure protocol/interface conformance: `defrecord`,
+// `deftype`, `extend-type`, `extend-protocol` and `(:gen-class)` (#6370).
+//
+// Before this, clojure emitted NO hierarchy edge by any of the three paths a
+// language can get one, all three verified for clojure specifically rather
+// than inherited from the issue's list:
+//
+//  1. this package contained no "EXTENDS"/"IMPLEMENTS" literal at all — its
+//     edge vocabulary was CALLS / CONTAINS / IMPORTS only;
+//  2. "clojure" is absent from `supportedLanguages` in
+//     `internal/extractors/cross/hierarchy/extractor.go` (14 entries);
+//  3. `internal/engine/rules/clojure/` exists but declares zero
+//     `relationship:` rules — the pack is frameworks/orms/build-tools only.
+//
+// `deftypeRE` reached the declaration HEAD and stopped at the name, so "what
+// implements this protocol" returned empty — indistinguishable from "nothing
+// does".
+//
+// # The discriminator is TOKEN SHAPE AT PAREN-DEPTH 1, not position counting
+//
+// In `deftype`/`defrecord`/`extend-type`/`extend-protocol` the tail is an
+// alternating sequence, at depth 1, of BARE SYMBOLS (the supertypes) and
+// LISTS (the method implementations):
+//
+//	(defrecord Foo [a b]
+//	  Bar                        ; depth-1 symbol  -> supertype
+//	  (m [_] (println a) helper) ; depth-1 list    -> skipped whole
+//	  java.lang.Runnable         ; depth-1 symbol  -> supertype
+//	  (run [_] ...))
+//
+// The field vector needs no special reasoning and gets none: `[a b]` is simply
+// one more depth-1 token that is neither a symbol nor a list, and the same is
+// true of a map (`extend`'s method map) and of a keyword. So there is no
+// "skip the first N tokens" rule to get wrong when a form omits or adds one —
+// the shape decides, and it decides the same way for every one of these forms.
+//
+// The depth fence is the load-bearing one. `helper` and `println` above are
+// symbols too; they are excluded because they sit at depth 2. Delete the depth
+// test and every identifier in every method body becomes a supertype. `let`
+// and `letfn` bindings are covered by the same fence and need no rule of their
+// own — they are at depth >= 2 by construction.
+//
+// # `extend-protocol` is INVERTED, and nothing but the keyword says so
+//
+//	(extend-type    MyType  ProtoA ProtoB)  ; MyType    IMPLEMENTS ProtoA/ProtoB
+//	(extend-protocol MyProto TypeA TypeB)   ; TypeA/TypeB IMPLEMENTS MyProto
+//
+// Both forms are "one head symbol then an alternating tail", so a single code
+// path that reads the head as the subject emits every `extend-protocol` edge
+// BACKWARDS while producing exactly the same edge COUNT. That is why the two
+// keywords take different arms of the switch in scanClojureHierarchy, and why
+// TestClojureHierarchy_ExtendProtocolIsInverted asserts owner->target pairs
+// rather than counting rows: a row-count assertion passes with every edge
+// reversed.
+//
+// # Edge kinds: a ladder, decided by the KEYWORD, never by the target's name
+//
+//   - defrecord / deftype / extend-type / extend-protocol -> IMPLEMENTS.
+//     None of these forms has class inheritance: every depth-1 symbol in them
+//     is a protocol, a Java/host interface, or Object/clojure.lang.* — all
+//     conformance. The one residual ambiguity (is `Bar` a protocol or a Java
+//     interface?) does not need answering, because BOTH answers are IMPLEMENTS.
+//   - (:gen-class :extends X)    -> EXTENDS   (a real host superclass).
+//   - (:gen-class :implements [A B]) -> IMPLEMENTS.
+//
+// Every arm is selected by the reader macro or keyword the scanner is standing
+// in — a syntactic fact, decidable per file, needing no cross-file type
+// resolution. Nothing here resembles `csLooksLikeInterfaceName`
+// (internal/extractors/csharp/hierarchy.go), which guesses the kind from the
+// target's spelling and is self-documented as wrong in both directions.
+//
+// # What is deliberately NOT handled
+//
+//   - `defprotocol` / `definterface` are NOT scanned, and the reason is not
+//     "they have no supertypes" (true, but not the reason). Their tails admit
+//     keyword/value OPTION pairs — `(defprotocol P :extend-via-metadata true
+//     (m [this]))` — whose VALUE is a bare depth-1 symbol. Running the scan
+//     over them would emit `P IMPLEMENTS true`. They are excluded at the call
+//     site, by keyword, rather than filtered afterwards.
+//     TestClojureHierarchy_DefprotocolAndDefinterfaceAreNotScanned pins it.
+//   - `reify` and `proxy` produce ANONYMOUS instances. There is no named
+//     entity to anchor the edge on, and an edge with no owning component is
+//     the file-anchored shape internal/extractors/file_anchored_rels_guard_test.go
+//     forbids. Out of scope.
+//   - `defmulti` is not scanned either: `(defmulti area class)` has a bare
+//     depth-1 symbol that is a DISPATCH FUNCTION, not a supertype.
+//
+// # Why the edges are emitted HERE and not by registering clojure in
+// # cross/hierarchy
+//
+// That pass invents its own graph nodes: for every type it addEntity's a
+// SCOPE.Component for the type AND another for each named parent.
+// extractClojure already emits one SCOPE.Component per defrecord/deftype, so
+// registering clojure there would mint a duplicate component per type with the
+// edges anchored on the pass's own node rather than on the one the rest of the
+// clojure graph uses. That is why #6335 emitted F#'s edges from the F#
+// extractor, #6437 groovy's, #6804 nim's and #6810 pony's.
+// TestClojureHierarchy_NoDuplicateComponents guards both halves.
+//
+// # The anchor, and the recall limit it buys
+//
+// A `defrecord`/`deftype` edge is anchored on the component the SAME form
+// produced, matched by the byte offset of the form's opening paren — not by
+// name, so two same-named forms in one file cannot cross-contaminate.
+//
+// An `extend-type`/`extend-protocol` edge names an IMPLEMENTER that the form
+// itself does not declare. It is anchored on a SCOPE.Component this extractor
+// already emits for that name IN THE SAME FILE, and when there is none the
+// edge is DROPPED. That is a real recall limit — `(extend-type
+// java.lang.String Proto)` yields nothing — and it is deliberate: the only
+// alternatives are to synthesise a component for the implementer (which mints
+// a duplicate node whenever the type is declared in another file, the exact
+// defect this file avoids by not registering in cross/hierarchy) or to anchor
+// the edge on the file (forbidden by the guard test).
+// TestClojureHierarchy_ExtendTypeOnAForeignTypeIsDropped_KnownDivergence pins
+// the limit so it is a recorded decision rather than a silent zero.
+package clojure
+
+import (
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/cajasmota/grafel/internal/types"
+)
+
+// clojureHierarchyHeadRE matches the head of every form whose tail is scanned:
+// the opening paren, the keyword, and the symbol that follows it.
+//
+// The keyword list is the whole ladder-selection mechanism, so it is
+// deliberately exhaustive rather than a prefix: `defprotocol`, `definterface`
+// and `defmulti` are ABSENT for the reasons in the package header, and adding
+// one is a behaviour change that the corresponding test will catch.
+//
+// The captured symbol's charset admits `.` and `/` — unlike `deftypeRE`'s name
+// charset — because `extend-type`'s subject is routinely a host or
+// namespace-qualified name (`java.util.Date`, `other.ns/Rec`). A charset
+// without them would truncate the symbol mid-token and produce a wrong owner
+// rather than no owner.
+var clojureHierarchyHeadRE = regexp.MustCompile(
+	`(?m)^\s*\((defrecord|deftype|extend-type|extend-protocol)\s+([\w\-\?!\*'+]+(?:[\./][\w\-\?!\*'+]+)*)`)
+
+// clojureTargetRE validates one depth-1 token as a usable type name. It is
+// fully anchored at both ends so that a token which is merely PREFIXED by a
+// name — `^:private`, `:keyword`, `#_discard`, `'quoted`, a number — is
+// rejected WHOLE instead of half-matching into a wrong edge. `.` and `/` are
+// admitted for the same reason as above: `java.lang.Runnable` and
+// `other.ns/Proto` are the common targets, and without them both are missed.
+var clojureTargetRE = regexp.MustCompile(`^[A-Za-z_][\w\-\?!\*'+]*(?:[\./][\w\-\?!\*'+]+)*$`)
+
+// clojureGenClassExtendsRE and clojureGenClassImplementsRE read the two
+// keyword-delimited slots of a `(:gen-class ...)` directive. They are applied
+// ONLY to the text of that directive (see genClassEdges), never to the whole
+// ns form: `:extends` is a legal keyword anywhere, and a file-wide search
+// would read one out of `(:require [x :refer [:extends]])`.
+var (
+	clojureGenClassExtendsRE = regexp.MustCompile(
+		`:extends\s+([\w\-\?!\*'+]+(?:[\./][\w\-\?!\*'+]+)*)`)
+	clojureGenClassImplementsRE = regexp.MustCompile(`:implements\s+\[([^\]]*)\]`)
+)
+
+// clojureHierarchy is the whole per-file hierarchy result.
+//
+// byForm keys defrecord/deftype edges by the byte offset of their form's
+// opening paren, which is what ties an edge to the component that the SAME
+// form produced. byName keys extend-type/extend-protocol edges by the
+// IMPLEMENTER's name, the only handle those forms give. nsEdges carries the
+// (:gen-class) edges, which belong to the namespace component.
+type clojureHierarchy struct {
+	byForm  map[int][]types.RelationshipRecord
+	byName  map[string][]types.RelationshipRecord
+	nsEdges []types.RelationshipRecord
+}
+
+func (h *clojureHierarchy) forForm(open int) []types.RelationshipRecord {
+	if h == nil {
+		return nil
+	}
+	return h.byForm[open]
+}
+
+func (h *clojureHierarchy) forName(name string) []types.RelationshipRecord {
+	if h == nil {
+		return nil
+	}
+	return h.byName[name]
+}
+
+// scanClojureHierarchy reads `src` and returns every hierarchy edge it states.
+//
+// It scans a SANITISED copy of the source, not `src` itself: string literals
+// and `;` comments are blanked by the pre-existing stripStringsAndComments,
+// and `(comment ...)` forms by blankCommentForms. Both are length-preserving,
+// so every offset in the result indexes back into the ORIGINAL `src`
+// unchanged — which is what lets byForm keys be compared against offsets the
+// entity loop computes from the raw source.
+//
+// Sanitising is where fences 2 and 3 live and they are not decorative: today
+// `deftypeRE` runs on raw `src`, and its `^\s*\(` ALLOWS leading whitespace,
+// so an indented `(defrecord X ...)` inside a `(comment ...)` block or inside
+// a multi-line docstring is already matched and already produces an ENTITY.
+// That entity over-fire is pre-existing and untouched here; what this scan
+// guarantees is that no EDGE joins it. Delete either sanitiser and the
+// corresponding fixture forbidden row fires.
+func scanClojureHierarchy(src string) *clojureHierarchy {
+	clean := blankCommentForms(stripStringsAndComments(src))
+	h := &clojureHierarchy{
+		byForm: map[int][]types.RelationshipRecord{},
+		byName: map[string][]types.RelationshipRecord{},
+	}
+
+	for _, m := range clojureHierarchyHeadRE.FindAllStringSubmatchIndex(clean, -1) {
+		kw := clean[m[2]:m[3]]
+		head := clean[m[4]:m[5]]
+		open := strings.LastIndexByte(clean[:m[4]], '(')
+		if open < 0 {
+			continue
+		}
+		line := strings.Count(clean[:open], "\n") + 1
+		syms := depth1Symbols(clean, m[5])
+
+		switch kw {
+		case "defrecord", "deftype":
+			// The supertypes are the depth-1 symbols; the field vector is
+			// skipped by shape, not by counting.
+			h.byForm[open] = appendImplements(nil, head, syms, line, "clojure_"+kw+"_body")
+		case "extend-type":
+			// Head is the SUBJECT, tail symbols are the protocols.
+			h.byName[head] = appendImplements(h.byName[head], head, syms, line, "clojure_extend_type")
+		case "extend-protocol":
+			// INVERTED: head is the PROTOCOL, tail symbols are implementers.
+			for _, s := range syms {
+				h.byName[s] = appendImplements(h.byName[s], s, []string{head}, line, "clojure_extend_protocol")
+			}
+		}
+	}
+
+	h.nsEdges = genClassEdges(clean)
+	return h
+}
+
+// appendImplements adds one IMPLEMENTS record per valid, non-self, not-yet-seen
+// target. Dedup is per call AND against what is already in `out`, so a type
+// that is both `(defrecord Foo [] P ...)` and `(extend-type Foo P)` states one
+// fact and gets one edge.
+func appendImplements(out []types.RelationshipRecord, owner string, targets []string, line int, provenance string) []types.RelationshipRecord {
+	seen := map[string]bool{}
+	for _, r := range out {
+		if r.Kind == "IMPLEMENTS" {
+			seen[r.ToID] = true
+		}
+	}
+	for _, t := range targets {
+		if !clojureTargetRE.MatchString(t) || t == owner || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, newHierarchyEdge(t, "IMPLEMENTS", line, provenance))
+	}
+	return out
+}
+
+// newHierarchyEdge builds one embedded hierarchy relationship.
+//
+// FromID is deliberately left EMPTY. The assembly loop stamps the owning
+// record's own entity id, the only value that anchors the edge on the
+// COMPONENT. A non-empty non-hex FromID (e.g. the file path) would be
+// rewritten by ReferencesEmbedded onto the FILE entity, merging every type in
+// a multi-type file onto one node — the defect fixed in #6295 and #6298 and
+// now guarded by internal/extractors/file_anchored_rels_guard_test.go.
+//
+// ToID is the symbol as WRITTEN, qualifier and all: unlike Pony, where the
+// qualifier is a package alias that must be erased to bind, a Clojure target
+// is either a namespace-qualified protocol or a fully-qualified Java class,
+// and in both cases the written form is the resolvable one.
+//
+// types.Props is a key-SORTED slice whose Get binary-searches it (#6802), so
+// the keys are set through Set rather than written as a literal.
+func newHierarchyEdge(to, kind string, line int, provenance string) types.RelationshipRecord {
+	var props types.Props
+	props.Set("line", strconv.Itoa(line))
+	props.Set("provenance", provenance)
+	return types.RelationshipRecord{
+		// FromID intentionally empty — see the doc comment above.
+		ToID:       to,
+		Kind:       kind,
+		Properties: props,
+	}
+}
+
+// genClassEdges reads `(ns foo (:gen-class :extends b.Base :implements [x.A]))`.
+//
+// This is the ONLY place in the language where a real superclass is named, and
+// it is the only arm that emits EXTENDS. The two slots are keyword-delimited
+// rather than positional, so they are read by keyword; the containing
+// directive is located structurally (balanced parens from `(:gen-class`) so
+// that the keywords are only ever read inside it.
+func genClassEdges(clean string) []types.RelationshipRecord {
+	i := strings.Index(clean, "(:gen-class")
+	if i < 0 {
+		return nil
+	}
+	if j := i + len("(:gen-class"); j < len(clean) && !isClojureBreak(clean[j]) {
+		return nil
+	}
+	end := matchParen(clean, i)
+	body := clean[i:end]
+	line := strings.Count(clean[:i], "\n") + 1
+
+	var out []types.RelationshipRecord
+	if m := clojureGenClassExtendsRE.FindStringSubmatch(body); m != nil && clojureTargetRE.MatchString(m[1]) {
+		out = append(out, newHierarchyEdge(m[1], "EXTENDS", line, "clojure_gen_class_extends"))
+	}
+	if m := clojureGenClassImplementsRE.FindStringSubmatch(body); m != nil {
+		seen := map[string]bool{}
+		for _, f := range strings.Fields(m[1]) {
+			if !clojureTargetRE.MatchString(f) || seen[f] {
+				continue
+			}
+			seen[f] = true
+			out = append(out, newHierarchyEdge(f, "IMPLEMENTS", line, "clojure_gen_class_implements"))
+		}
+	}
+	return out
+}
+
+// depth1Symbols returns the bare symbol tokens at paren-depth 1 of the form
+// whose interior the caller is already inside, scanning from byte offset
+// `from` to the form's closing paren.
+//
+// THIS IS THE FENCE. Tokens are collected only while depth == 1; `(`, `[` and
+// `{` all raise the depth, so a method implementation list, a field vector, a
+// method map and every binding form nested in any of them are crossed whole
+// and contribute nothing. Remove the `depth == 1` test and every identifier in
+// every method body is reported as a supertype.
+//
+// Non-symbol depth-1 tokens are not special-cased here; they are collected as
+// tokens and rejected by clojureTargetRE, which is anchored at both ends.
+func depth1Symbols(clean string, from int) []string {
+	var out []string
+	depth := 1
+	i := from
+	for i < len(clean) {
+		ch := clean[i]
+		switch {
+		case ch == '(' || ch == '[' || ch == '{':
+			depth++
+			i++
+		case ch == ')' || ch == ']' || ch == '}':
+			depth--
+			if depth == 0 {
+				return out
+			}
+			i++
+		case isClojureSpace(ch):
+			i++
+		default:
+			j := i
+			for j < len(clean) && !isClojureBreak(clean[j]) {
+				j++
+			}
+			if j == i {
+				j++ // never stall on a byte isClojureBreak calls a break but no case above claimed
+			}
+			if depth == 1 {
+				out = append(out, clean[i:j])
+			}
+			i = j
+		}
+	}
+	return out
+}
+
+// blankCommentForms replaces every `(comment ...)` form with spaces, preserving
+// length and newlines so that offsets and line numbers computed on the result
+// still index the original source.
+//
+// `(comment ...)` is idiomatic Clojure — a rich-comment block of scratch forms
+// at the bottom of a file — and its contents are NOT evaluated. Without this,
+// an indented `(defrecord Scratch [] Proto ...)` inside one would produce a
+// real IMPLEMENTS edge, because deftypeRE's `^\s*\(` allows leading whitespace.
+//
+// The name is matched WHOLE: the byte after "comment" must be a break, so
+// `(commentary ...)` is left alone. Blanking the form's own parens as well as
+// its interior keeps the surrounding depth count balanced.
+func blankCommentForms(s string) string {
+	b := []byte(s)
+	const kw = "(comment"
+	for i := 0; i+len(kw) <= len(b); i++ {
+		if b[i] != '(' || string(b[i:i+len(kw)]) != kw {
+			continue
+		}
+		if i+len(kw) < len(b) && !isClojureBreak(b[i+len(kw)]) {
+			continue
+		}
+		end := matchParen(string(b), i)
+		for k := i; k < end; k++ {
+			if b[k] != '\n' {
+				b[k] = ' '
+			}
+		}
+		i = end - 1
+	}
+	return string(b)
+}
+
+// matchParen returns the offset just past the paren matching the `(` at
+// `open`, or len(s) when the form is unterminated. An unterminated form is
+// treated as running to end of file, which is what the pre-existing
+// findFormEnd does for entity end-lines.
+func matchParen(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return len(s)
+}
+
+func isClojureSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == ','
+}
+
+// isClojureBreak reports whether `c` ends a token. Note that `'` and `^` are
+// NOT breaks: they are legal inside symbol names (`foo'`), and a LEADING one
+// is rejected by clojureTargetRE's anchored start instead, which keeps
+// `'Quoted` and `^:private` out as whole tokens rather than splitting them
+// into a break plus a valid-looking name.
+func isClojureBreak(c byte) bool {
+	switch c {
+	case '(', ')', '[', ']', '{', '}', '"', ';':
+		return true
+	}
+	return isClojureSpace(c)
+}

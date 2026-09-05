@@ -27,6 +27,19 @@
 //     (`scope:operation:method:clojure:<file>:<name>`) for operations and
 //     a bare-name reference for nested components.
 //
+// Issue #6370 — protocol/interface conformance:
+//
+//   - IMPLEMENTS edges are embedded on each defrecord / deftype component
+//     for the protocols and host interfaces named at paren-depth 1 of its
+//     body, and on the component an extend-type / extend-protocol form
+//     names as the implementer.
+//   - EXTENDS / IMPLEMENTS edges are embedded on the namespace component
+//     for `(:gen-class :extends X :implements [A B])`.
+//
+// See hierarchy.go for the depth-1 token-shape rule, why extend-protocol
+// is inverted relative to extend-type, and what is deliberately not
+// handled.
+//
 // No tree-sitter grammar for Clojure is bundled in smacker/go-tree-sitter,
 // so this extractor parses Clojure with regular expressions plus a
 // hand-rolled paren walker. Registers itself via init() and is imported
@@ -127,6 +140,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 func extractClojure(src, filePath string) []types.EntityRecord {
 	var entities []types.EntityRecord
 
+	// 0. Hierarchy edges (#6370). Scanned once, off a sanitised copy of the
+	// source; see hierarchy.go for why the scan does not share deftypeRE.
+	hier := scanClojureHierarchy(src)
+
 	// 1. Namespace component (if present) + IMPORTS edges from its body.
 	nsName, nsForm, nsStartByte := findNsForm(src)
 	imports := collectImports(nsForm)
@@ -146,6 +163,10 @@ func extractClojure(src, filePath string) []types.EntityRecord {
 			EndLine:            endLine,
 			Signature:          "(ns " + nsName + ")",
 			EnrichmentRequired: false,
+			// (:gen-class :extends/:implements) names a real host
+			// superclass and interfaces; the namespace component is the
+			// entity the ns form declares, so it owns those edges.
+			Relationships: hier.nsEdges,
 		}
 	}
 
@@ -230,6 +251,11 @@ func extractClojure(src, filePath string) []types.EntityRecord {
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		endLine := findFormEnd(src, m[0])
 
+		// The form's opening paren is the key that ties this component to
+		// the edges scanned out of the SAME form — by offset, not by name,
+		// so two same-named declarations cannot swap edges.
+		open := strings.LastIndexByte(src[:m[2]], '(')
+
 		rec := types.EntityRecord{
 			Name:               name,
 			Kind:               "SCOPE.Component",
@@ -243,9 +269,30 @@ func extractClojure(src, filePath string) []types.EntityRecord {
 			Properties: map[string]string{
 				"imports": importsCSV,
 			},
+			Relationships: hier.forForm(open),
 		}
 		comps = append(comps, compOffset{idx: len(entities), name: name})
 		entities = append(entities, rec)
+	}
+
+	// 3b. extend-type / extend-protocol edges name an implementer that the
+	// form does not itself declare, so they attach to whichever component
+	// THIS FILE declares under that name. A foreign implementer has no
+	// anchor here and its edge is dropped — see the hierarchy.go header.
+	for _, cp := range comps {
+		rec := &entities[cp.idx]
+		have := make(map[string]bool, len(rec.Relationships))
+		for _, r := range rec.Relationships {
+			have[r.Kind+" "+r.ToID] = true
+		}
+		for _, r := range hier.forName(cp.name) {
+			key := r.Kind + " " + r.ToID
+			if have[key] {
+				continue
+			}
+			have[key] = true
+			rec.Relationships = append(rec.Relationships, r)
+		}
 	}
 
 	// 4. CONTAINS edges from namespace → operations + components.
