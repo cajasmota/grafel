@@ -63,6 +63,8 @@ func run(argv []string, stdout, stderr io.Writer) error {
 		return cmdDelta(rest, stdout)
 	case "parity":
 		return cmdParity(rest, stdout)
+	case "check":
+		return cmdCheck(rest, stdout, stderr)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
@@ -88,6 +90,9 @@ subcommands:
   gaps      list missing/partial records (--language, --category, --json)
   stats     counters across the registry (--json)
   validate  schema + cite-exists + duplicate-id + stale checks
+  check     run the WHOLE coverage-docs gate: validate, backfill --check, fmt --check, gen,
+            and the docs-in-sync comparison. This is the single definition of the gate --
+            .github/workflows/coverage-docs.yml runs this one command (#6866). (--repo-root, --file)
   gen       regenerate docs/coverage/*.md from docs/coverage/registry.json (--out, --file)
   fmt       rewrite registry.json in canonical form (--check verifies only; CI guard against recompaction)
   discover  catalog capabilities from repo signals; emit proposal + orphans + drift (--registry, --repo-root, --json, --include-orphans, --include-drift)

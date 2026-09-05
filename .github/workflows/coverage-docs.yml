@@ -29,38 +29,29 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      # The AUTHORITATIVE, unconditional copy of this check now lives in
+      # The AUTHORITATIVE, unconditional copy of this gate now lives in
       # test.yml, which has no path filter on `pull_request` — see #6352 for
-      # why the filter below could never fire on 76.8% of the cited paths.
+      # why the filter above could never fire on 76.8% of the cited paths.
       # This copy is deliberately RETAINED rather than moved, because it is not
       # redundant: this workflow also runs on `push: main`, a leg test.yml does
       # not subscribe to (test.yml reaches `push` only via release.yml's
       # workflow_call on a v* tag). Deleting it here would silently drop the
-      # post-merge validate. It costs ~11s on the minority of runs that clear
-      # the path filter.
-      - name: Validate schema + cites
-        run: go run ./tools/coverage validate
-      - name: Guard against incomplete grouped records (#2971)
-        run: go run ./tools/coverage backfill --check
-      - name: Verify registry.json is canonical (guards against recompaction, #2907)
-        run: |
-          if ! go run ./tools/coverage fmt --check; then
-            echo "::error::docs/coverage/registry.json is not canonical (likely whole-file re-serialized/compacted). Run 'go run ./tools/coverage fmt' locally and commit."
-            exit 1
-          fi
-      - name: Regenerate docs
-        run: go run ./tools/coverage gen
-      # `git diff` alone cannot see an UNTRACKED file, so a page that `gen`
-      # newly emits under docs/coverage/ was caught only indirectly — via the
-      # summary.md delta that happened to link it. A page emitted without a
-      # summary reference was invisible to this gate (#6354). `git add -N`
-      # (intent-to-add) registers untracked paths so the very next `git diff`
-      # renders them as real additions, which both fires the exit code and
-      # prints the offending path in the diff the step already emits.
-      - name: Verify docs are in sync with JSON
-        run: |
-          git add -N docs/coverage/
-          if ! git diff --exit-code docs/coverage/; then
-            echo "::error::docs/coverage/ is out of sync with registry.json (stale, orphaned, or hand-added page). Run 'go run ./tools/coverage gen' locally and commit the result, deletions included."
-            exit 1
-          fi
+      # post-merge run. It costs ~11s on the minority of runs that clear the
+      # path filter.
+      #
+      # ONE step, deliberately (#6866). This job used to list the gate's five
+      # steps itself: three were `./tools/coverage` subcommands, and two —
+      # `gen`, then a comparison against working-tree state — existed nowhere
+      # but in this file. There was therefore NO local command that reproduced
+      # the gate: all three subcommands could exit 0 on a tree CI was red on,
+      # which cost PR #6864 two CI cycles. The step list now lives in exactly
+      # one place, gateSteps() in tools/coverage/check.go, so the workflow and
+      # the local command CANNOT drift as steps are added. Do not re-inline the
+      # steps here — add them to gateSteps() and both sides get them.
+      #
+      # `check` still reports each step separately and keeps each step's
+      # error annotation, so a failure names which of the five failed and what
+      # to run; and it keeps the #6354 property that a page `gen` newly emits
+      # (untracked, possibly unreferenced by summary.md) fails the gate.
+      - name: Run the coverage-docs gate (tools/coverage/check.go gateSteps)
+        run: go run ./tools/coverage check

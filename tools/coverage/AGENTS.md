@@ -10,7 +10,8 @@ The `coverage` command maintains the grafel capabilities registry at `docs/cover
 
 ## Files
 
-- `main.go` — CLI dispatcher; subcommands: `list`, `get`, `add`, `update`, `gaps`, `stats`, `validate`, `gen`, `discover`, `map-status`, `parity`
+- `main.go` — CLI dispatcher; subcommands: `list`, `get`, `add`, `update`, `gaps`, `stats`, `validate`, `gen`, `check`, `discover`, `map-status`, `parity`
+- `check.go` — **`gateSteps()` is the coverage-docs gate** (#6866). `.github/workflows/coverage-docs.yml` runs `go run ./tools/coverage check` and nothing else, so the workflow cannot drift from what you can run locally. See "Reproducing the CI gate" below.
 - `schema.go` — registry + record shape
 - `parity.go` — READ-ONLY coverage parity probe (#3876): flags flagship→sibling asymmetry (a capability credited on one framework but missing on same-language siblings in the same `(language, category, subcategory)` group). Uniform-scaffold (all-missing) cells are suppressed by design. `--strict` is a CI gate.
 - `store.go` — load / save / canonical ordering of `registry.json`
@@ -21,6 +22,35 @@ The `coverage` command maintains the grafel capabilities registry at `docs/cover
 - `generate.go` + `templates/` — markdown rendering of `docs/coverage/{summary.md,by-language/,by-category/,detail/}`
 - `discover.go` / `map_status.go` — bootstrap helpers
 - `buckets.go` / `languages.go` / `views.go` — projection helpers used by templates
+
+## Reproducing the CI gate (#6866)
+
+```
+go run ./tools/coverage check
+```
+
+That is the whole `coverage-docs` job. Before #6866 the job listed five steps itself; three were
+subcommands (`validate`, `backfill --check`, `fmt --check`) and two — `gen`, then a comparison
+against working-tree state — existed nowhere but the YAML. So all three subcommands could exit 0 on
+a tree CI was red on, which is exactly what happened twice on PR #6864.
+
+**Add a step by adding it to `gateSteps()`, never to the workflow.** One list, no second copy to
+forget. Every step carries a `Hint` — the operator-facing `::error::` annotation — because a gate
+that cannot say *which* of its five checks failed is worse than the five steps it replaced.
+
+Two behaviours worth knowing:
+
+- **What fails the gate is what `gen` itself changes**, measured as a before/after content
+  comparison of `docs/coverage/`, not a diff against `HEAD`. That keeps the #6354 property (a page
+  `gen` newly emits fails the gate even though `git diff` alone cannot see an untracked file) and
+  drops a false failure the `git diff docs/coverage/` formulation had: `registry.json` lives under
+  `docs/coverage/`, so an uncommitted registry edit — the normal state mid-change — failed the gate
+  locally for a reason CI can never reproduce.
+- **Uncommitted changes under `docs/coverage/` are reported, not fatal.** `check` prints them
+  before running anything, read-only (`git status --porcelain`; it never touches your index).
+
+`check` runs `gen`, so it rewrites generated pages in place — the same thing the workflow's `gen`
+step always did. They carry the `DO NOT EDIT` marker; nothing hand-authored is at risk.
 
 ## Line citations in `notes` (#6673)
 
