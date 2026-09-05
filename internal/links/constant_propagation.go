@@ -230,12 +230,12 @@ func (r *Resolver) resolveDepth(repo, file, ident string, depth int, seen map[st
 // It walks every repo graph, sniffs every supported-language file once,
 // builds the symbol table + import index, and emits one RESOLVES_TO link
 // per resolved use-site identifier. Returns a PassResult with the link
-// count and a Resolver the caller can use to feed downstream passes.
-func runConstantPropagationPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (PassResult, *Resolver, error) {
+// count.
+func runConstantPropagationPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (PassResult, error) {
 	res := PassResult{Pass: "constant_propagation"}
 	resolver := buildResolver(graphs)
 	if resolver == nil {
-		return res, nil, nil
+		return res, nil
 	}
 
 	// Emit one Link per file-scope binding that resolved via a cross-file
@@ -308,10 +308,10 @@ func runConstantPropagationPass(graphs []repoGraph, paths Paths, rejects map[str
 		// the method-segregated rewrite logic in RunAllPasses.
 		sidecar := strings.TrimSuffix(paths.Links, ".json") + "-resolves-to.json"
 		if err := writeResolvesToDoc(sidecar, links); err != nil {
-			return res, resolver, fmt.Errorf("write resolves-to doc: %w", err)
+			return res, fmt.Errorf("write resolves-to doc: %w", err)
 		}
 	}
-	return res, resolver, nil
+	return res, nil
 }
 
 // buildResolver constructs the in-memory symbol table + import index from
@@ -433,117 +433,6 @@ func indexFileForLookup(idx map[string]string, file string) {
 	dotted := strings.ReplaceAll(strings.TrimSuffix(file, ext), "/", ".")
 	addIfFree(dotted)
 }
-
-// applyResolverToConsumerHTTP rewrites the `path` property of every
-// consumer-side http_endpoint_call entity whose url_kind is
-// "dynamic_baseurl" by substituting the leading `/{ident}` placeholder
-// with the substrate-resolved literal value (when one is available).
-//
-// Returns the number of entities mutated. Safe to call with a nil
-// Resolver — the function is a no-op when the substrate produced no
-// bindings.
-//
-// The rewrite mutates only the in-memory entityNode.Properties map; the
-// per-repo graph.fb / graph.json files on disk are left untouched.
-// Downstream link passes consume the in-memory state, so the substrate
-// lift propagates without persisting the rewritten path back to disk.
-func applyResolverToConsumerHTTP(graphs []repoGraph, resolver *Resolver) int {
-	if resolver == nil {
-		return 0
-	}
-	mutated := 0
-	for ri := range graphs {
-		g := &graphs[ri]
-		for ei := range g.Entities {
-			e := &g.Entities[ei]
-			if !isHTTPEndpointLink(e.Kind) {
-				continue
-			}
-			if e.Properties == nil {
-				continue
-			}
-			if e.Properties.Get("url_kind") != "dynamic_baseurl" {
-				continue
-			}
-			callerFile := e.Properties.Get("caller_file")
-			if callerFile == "" {
-				callerFile = e.SourceFile
-			}
-			path := e.Properties.Get("path")
-			if path == "" {
-				continue
-			}
-			ident := leadingTemplateIdent(path)
-			if ident == "" {
-				continue
-			}
-			rr := resolver.Resolve(g.Repo, callerFile, ident)
-			if rr.Value == "" {
-				continue
-			}
-			// Substitute and re-classify. Strip any URL scheme + host so
-			// the result lines up with the producer-side path index.
-			replaced := stripURLPrefix(rr.Value) + path[len("/{"+ident+"}"):]
-			if replaced == "" || replaced[0] != '/' {
-				replaced = "/" + replaced
-			}
-			e.Properties.Set("path", replaced)
-			e.Properties.Set("url_kind", "literal")
-			e.Properties.Set("substrate_resolved_value", rr.Value)
-			e.Properties.Set("substrate_resolved_via", joinSteps(rr.Steps))
-			e.Properties.Set("substrate_confidence", fmt.Sprintf("%.2f", rr.Confidence))
-			mutated++
-		}
-	}
-	return mutated
-}
-
-// leadingTemplateIdent returns the bare identifier name when path begins
-// with `/{ident}/` or `/{ident}` (no trailing slash); returns "" when the
-// leading segment is not a single-identifier template placeholder.
-func leadingTemplateIdent(path string) string {
-	if !strings.HasPrefix(path, "/{") {
-		return ""
-	}
-	rest := path[2:]
-	close := strings.IndexByte(rest, '}')
-	if close <= 0 {
-		return ""
-	}
-	ident := rest[:close]
-	// Conservative: identifier characters only (letters, digits, underscore,
-	// dollar). Reject anything else so we never substitute on a generic
-	// path-parameter placeholder like `{id}`.
-	for _, r := range ident {
-		if !(r == '_' || r == '$' ||
-			(r >= '0' && r <= '9') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= 'a' && r <= 'z')) {
-			return ""
-		}
-	}
-	return ident
-}
-
-// stripURLPrefix removes the protocol + host prefix from a fully-qualified
-// URL, leaving the path component. URLs without a scheme are returned
-// unchanged.
-func stripURLPrefix(s string) string {
-	for _, scheme := range []string{"https://", "http://"} {
-		if strings.HasPrefix(s, scheme) {
-			rest := s[len(scheme):]
-			if slash := strings.IndexByte(rest, '/'); slash >= 0 {
-				return rest[slash:]
-			}
-			return ""
-		}
-	}
-	return s
-}
-
-// joinSteps is a small helper used by the consumer-HTTP rewriter to
-// serialise a Steps slice into a comma-joined provenance trace.
-func joinSteps(steps []string) string { return strings.Join(steps, ",") }
 
 // resolvesToDocument is the on-disk shape of <group>-links-resolves-to.json.
 type resolvesToDocument struct {

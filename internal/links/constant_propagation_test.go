@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-
-	"github.com/cajasmota/grafel/internal/types"
 )
 
 func writeFile(t *testing.T, dir, rel, content string) {
@@ -75,85 +73,6 @@ fetch(`+"`"+`${API_URL}/things`+"`"+`);
 	}
 	if got.Confidence > 0.6 {
 		t.Errorf("cross-file confidence = %v, want ≤0.6 (min over chain)", got.Confidence)
-	}
-}
-
-// TestApplyResolverDynamicBaseURL exercises the consumer-side http rewriter:
-// a dynamic_baseurl consumer with a /{apiUrl}/things path should be rewritten
-// to /things after substrate substitutes apiUrl → "https://api.example.com".
-func TestApplyResolverDynamicBaseURL(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, root, "src/app.ts", `const apiUrl = process.env.VITE_API_URL ?? "https://api.example.com";
-fetch(`+"`"+`${apiUrl}/things`+"`"+`);
-`)
-	graphs := []repoGraph{{
-		Repo:     "repo-a",
-		FileRoot: root,
-		Entities: []entityNode{
-			{
-				ID:         "h1",
-				Name:       "GET /{apiUrl}/things",
-				Kind:       "http_endpoint_call",
-				SourceFile: "src/app.ts",
-				Properties: types.PropsFromMap(map[string]string{
-					"verb":        "GET",
-					"path":        "/{apiUrl}/things",
-					"url_kind":    "dynamic_baseurl",
-					"caller_file": "src/app.ts",
-				}),
-			},
-		},
-	}}
-	r := buildResolver(graphs)
-	if r == nil {
-		t.Fatal("expected non-nil resolver")
-	}
-	mutated := applyResolverToConsumerHTTP(graphs, r)
-	if mutated != 1 {
-		t.Fatalf("mutated = %d, want 1", mutated)
-	}
-	e := graphs[0].Entities[0]
-	if e.Properties.Get("path") != "/things" {
-		t.Errorf("rewritten path = %q, want /things", e.Properties.Get("path"))
-	}
-	if e.Properties.Get("url_kind") != "literal" {
-		t.Errorf("url_kind = %q, want literal", e.Properties.Get("url_kind"))
-	}
-	if e.Properties.Get("substrate_resolved_value") != "https://api.example.com" {
-		t.Errorf("substrate_resolved_value missing or wrong: %+v", e.Properties)
-	}
-}
-
-// TestLeadingTemplateIdent covers the path-parsing helper boundary cases.
-func TestLeadingTemplateIdent(t *testing.T) {
-	cases := map[string]string{
-		"/{apiUrl}/things": "apiUrl",
-		"/{apiUrl}":        "apiUrl",
-		"/things":          "",
-		"/{}/foo":          "",
-		"":                 "",
-		"/{api-url}/x":     "", // hyphen not an ident char
-		"/{a.b}/x":         "", // dot not allowed in leading ident
-	}
-	for in, want := range cases {
-		if got := leadingTemplateIdent(in); got != want {
-			t.Errorf("leadingTemplateIdent(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-// TestStripURLPrefix covers the URL prefix trimmer.
-func TestStripURLPrefix(t *testing.T) {
-	cases := map[string]string{
-		"https://api.example.com/v1": "/v1",
-		"http://x.com":               "",
-		"/already/path":              "/already/path",
-		"nothost":                    "nothost",
-	}
-	for in, want := range cases {
-		if got := stripURLPrefix(in); got != want {
-			t.Errorf("stripURLPrefix(%q) = %q, want %q", in, got, want)
-		}
 	}
 }
 
