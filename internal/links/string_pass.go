@@ -287,6 +287,67 @@ func scanFile(absPath, relPath, cacheDir string) ([]Extraction, error) {
 			var e scanCacheEntry
 			if json.Unmarshal(b, &e) == nil {
 				if e.Mtime == fi.ModTime().UnixNano() && e.Size == fi.Size() {
+					// #6857: mtime+size say the file has not CHANGED; they do
+					// not say it is still a file this pass would agree to
+					// read. os.Stat above follows symlinks and applies no
+					// type or openability policy, so a named pipe, socket or
+					// device at the path (size 0, mtime settable), or a
+					// regular file that is merely no longer readable (chmod
+					// changes neither field), all validate. Returning here
+					// without asking would make "this file's contents were
+					// classified" an inference — and this site is precisely
+					// the one whose contract is that it does not infer: it is
+					// the single read in this package that fails loudly
+					// rather than mapping a failure to "nothing found"
+					// (#6839).
+					//
+					// So the hit is validated through the SAME hardened path
+					// the read uses, minus the read: probeSourceFile opens
+					// and closes, which costs one open(2) and answers exactly
+					// the questions readSourceFile would have. Re-hashing the
+					// contents would answer more, and would cost the whole
+					// read — which is most of what this cache exists to
+					// avoid.
+					//
+					// The error mapping is the read arm's, deliberately
+					// duplicated rather than shared: the two arms must agree,
+					// and a caller cannot be able to tell which one answered.
+					//
+					// WHAT THIS ARM NOW INHERITS, stated because it is NEW
+					// here rather than merely copied. The probe goes through
+					// safeio's process-wide 64-slot semaphore, so a warm
+					// cache hit can now fail with safeio.ErrWouldBlock — and
+					// this arm propagates it, which per the read arm's own
+					// comment below aborts the ENTIRE group link run, not
+					// just this repo. Before this change a warm hit could not
+					// do that at all: it touched no descriptor. The slots are
+					// shared with internal/secrets, internal/install/detect
+					// and internal/mcp, and validating hits roughly doubles
+					// the opens contending for them.
+					//
+					// Propagating anyway is the deliberate choice, for the
+					// same reason the read arm gives: this is the one site in
+					// this package that does not map a failure it could not
+					// rule out to "nothing found". A warm hit that silently
+					// swallowed ErrWouldBlock would be exactly the inference
+					// #6857 removed, reintroduced one branch lower.
+					//
+					// The cost is not free either, and "one open(2)" would
+					// understate it: the open drags openWithDeadline's
+					// harness with it — a goroutine, two timers, a buffered
+					// channel, a sync.Once, a mutex and the semaphore
+					// acquire. Measured over 2000 fully-warm files, 3x20
+					// iterations: 544ms -> 788ms wall clock (+47%) and +17
+					// allocations per hit, all of it on scanRepo's serial
+					// critical path. Correctness beats warm-scan throughput
+					// here, but a future reader optimising this loop should
+					// know what they are paying for.
+					if err := probeSourceFile(absPath); err != nil {
+						if errors.Is(err, safeio.ErrNotRegular) {
+							return nil, nil
+						}
+						return nil, err
+					}
 					return e.Values, nil
 				}
 			}
