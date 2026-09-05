@@ -20,9 +20,9 @@
 // twelve more offenders over one corpus, with three further ones behind
 // languages that corpus never reaches — so #6815 fixed three of at least
 // fifteen, and the total is unbounded above until every registered language is
-// driven. #6852 tracks the rest, one language at a time; bicep landed first and
-// terraform/hcl second. Read the caller list from source (grep
-// PrependFileCarrier), not from any count written here.
+// driven. #6852 tracks the rest, one language at a time. The caller list is
+// read from source by carrier_caller_set_6861_test.go; no count of callers is
+// written anywhere in this file.
 
 package extractor
 
@@ -79,37 +79,38 @@ import "github.com/cajasmota/grafel/internal/types"
 // carrier cannot become the one record in an extraction that disagrees with the
 // classifier token every other record carries (proto's #6356 trap).
 //
-// MEASURED grading status of that parameter, stated rather than implied: a
-// WRONG token is caught (mutating erlang's "erlang" to "beam" fails
-// TestErlang_CarrierIsLanguageTagged_6815), and so, now, is an EMPTY one.
-// THREE of the FIVE current callers — erlang/extractor.go:738, nim/nim.go:115,
-// groovy/groovy.go:69 — run extractor.TagEntitiesLanguage afterwards, and that
-// helper fills an empty Language with the extractor's own token, so for those
-// three passing "" is equivalent under the suite. The other TWO,
-// bicep/extractor.go:152 (#6852) and hcl/extractor.go:150 (#6852), do NOT tag,
-// so their carriers keep whatever token this parameter is given: mutating it to
-// "" fails TestBicep_CarrierShape_6852, and independently
-// TestTerraform_CarrierShape_6852 and TestHCLToken_ImportsFromEndResolves_6852.
-// That is the caller shape the parameter exists for, and it is graded twice
-// over rather than hypothetical.
+// The grading status of that parameter is INVARIANT, and is stated here as an
+// invariant rather than as a count of callers (#6861). A WRONG token is caught
+// for every caller (mutating erlang's "erlang" to "beam" fails
+// TestErlang_CarrierIsLanguageTagged_6815). An EMPTY one is caught only for a
+// caller that does NOT run extractor.TagEntitiesLanguage: that helper fills an
+// empty Language with the extractor's own token, so for a caller that tags,
+// passing "" is equivalent under the suite, while a caller that does not tag
+// keeps whatever token this parameter is given. The second shape is the one the
+// parameter exists for.
 //
-// hcl is also the first caller to pass a VARIABLE token rather than a literal:
-// one HCLExtractor.Extract serves both the "hcl" and "terraform" registrations,
-// so the two produce carriers that differ only in this field — which is what
+// WHICH callers are which is deliberately NOT written down here. This paragraph
+// stated it as a MEASURED fact three times — "all three current callers", then
+// "THREE of the FOUR", then "THREE of the FIVE" — and #6852's language arms
+// falsified it twice in two consecutive PRs, with ten arms still queued. The
+// roster now lives in a test that reads it out of the source tree on every run:
+// carrier_caller_set_6861_test.go enumerates the non-test callers of
+// PrependFileCarrier / FileCarrierFor, classifies each by whether its package
+// calls TagEntitiesLanguage, and FAILS on a caller the invariant above does not
+// cover — a non-tagging caller with no test grading its token. Adding a caller
+// therefore fails a test rather than silently ageing a comment.
+//
+// hcl is the first caller to pass a VARIABLE token rather than a literal: one
+// HCLExtractor.Extract serves both the "hcl" and "terraform" registrations, so
+// the two produce carriers that differ only in this field — which is what
 // TestHCLToken_ImportsFromEndResolves_6852 asserts.
-//
-// This paragraph has gone stale once per language added to the caller set, and
-// nothing relates it to the callers themselves — #6861 tracks grading the
-// caller set from source so the claim stops drifting. Until then: re-derive it
-// (grep for PrependFileCarrier and for TagEntitiesLanguage in the same package)
-// rather than trusting the count above.
 //
 // The returned record owns no relationships. Callers that DO have file-scoped
 // edges to re-home (proto's file-level CONTAINS) assign them afterwards; for
-// erlang, nim, groovy, bicep and hcl the per-import (bicep: per-module; hcl:
-// the file-level SCOPE.Component emitFileLevelRelationships already emits)
-// records still carry the IMPORTS edges themselves, so hanging them off the
-// carrier as well would double them.
+// every caller so far the records that anchor on the path (per-import, or
+// bicep's per-module, or the file-level SCOPE.Component that hcl's
+// emitFileLevelRelationships already emits) still carry those IMPORTS edges
+// themselves, so hanging them off the carrier as well would double them.
 func FileCarrierFor(path, lang string, records []types.EntityRecord) (types.EntityRecord, bool) {
 	if path == "" {
 		return types.EntityRecord{}, false
