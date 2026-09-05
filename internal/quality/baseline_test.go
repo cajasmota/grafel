@@ -1,6 +1,7 @@
 package quality
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -42,6 +43,25 @@ type baselineFixture struct {
 	EntityExpected      int  `json:"entity_expected"`
 	RelFound            int  `json:"relationship_found"`
 	RelExpected         int  `json:"relationship_expected"`
+
+	// #6488 arm D. The aggregate extraction totals. Pointers, not ints,
+	// because absence is the failure this models: a zero-valued int is
+	// indistinguishable from a key that was never written, and "no ceiling was
+	// recorded for this fixture" is exactly what must not read as a figure.
+	EntityExtractedTotal *int `json:"entity_extracted_total"`
+	RelExtractedTotal    *int `json:"relationship_extracted_total"`
+}
+
+// fixtureKeyOrder is the order scripts/quality/ratchet.py's build() inserts
+// keys into a per-fixture entry, and therefore the order --update-baseline
+// writes them in.
+var fixtureKeyOrder = []string{
+	"entity_found",
+	"entity_expected",
+	"relationship_found",
+	"relationship_expected",
+	"entity_extracted_total",
+	"relationship_extracted_total",
 }
 
 const (
@@ -159,6 +179,167 @@ func TestBaselineRecordedCountsAreSane(t *testing.T) {
 				"it cannot fail, so it is not a gate", name)
 		}
 	}
+}
+
+// TestBaselineRecordsAnExtractionCeiling checks that every graded fixture
+// carries both aggregate extraction totals, and that each one is at least the
+// must-have count it is a superset of (Refs #6488 arm D).
+//
+// What this observes is presence and internal consistency of the recorded
+// figures — NOT that the ratchet compares them. That is graded in
+// scripts/quality/test_ratchet.py, which runs `check` and reads its exit
+// status; nothing about a number sitting in a JSON file can show it is read.
+//
+// The reason presence needs a gate of its own: ratchet.py's check() treats a
+// fixture whose baseline entry carries no total as a failure demanding a
+// re-record, and that failure is only ever seen by whoever runs the quality
+// job. This test is in the cheap `go test` leg, so a baseline that lost a
+// ceiling — a hand-edit, a bad merge, a stale --update-baseline from a binary
+// that predates the field — is reported on the PR that does it.
+func TestBaselineRecordsAnExtractionCeiling(t *testing.T) {
+	doc := loadBaseline(t)
+	for name, base := range doc.Fixtures {
+		if base.ExpectationsMissing {
+			continue
+		}
+		if base.EntityExtractedTotal == nil {
+			t.Errorf("fixture %q: no entity_extracted_total — nothing bounds how "+
+				"many entities it may emit; run %q", name, doc.Regenerate)
+		} else if *base.EntityExtractedTotal < base.EntityFound {
+			t.Errorf("fixture %q: entity_extracted_total %d is below entity_found %d — "+
+				"the ceiling cannot be under the floor it contains",
+				name, *base.EntityExtractedTotal, base.EntityFound)
+		}
+		if base.RelExtractedTotal == nil {
+			t.Errorf("fixture %q: no relationship_extracted_total — nothing bounds "+
+				"how many relationships it may emit; run %q", name, doc.Regenerate)
+		} else if *base.RelExtractedTotal < base.RelFound {
+			t.Errorf("fixture %q: relationship_extracted_total %d is below "+
+				"relationship_found %d — the ceiling cannot be under the floor it "+
+				"contains", name, *base.RelExtractedTotal, base.RelFound)
+		}
+	}
+}
+
+// TestBaselineFixtureKeysAreInWriterOrder pins the ORDER of the keys inside
+// every per-fixture entry of the committed baseline.json (Refs #6488 arm D).
+//
+// This is not covered by the canonicality gate below, and that is not an
+// assumption: serialize() in scripts/quality/ratchet.py hands json.dumps a
+// document `canon` parsed straight back from disk, and json.dumps emits a
+// mapping's own insertion order — so canon's output echoes whatever order the
+// FILE already has and every reordering round-trips clean. serialize()'s
+// docstring says as much; it was re-read against the code before this test was
+// written, and it holds.
+//
+// Order matters here for the reason canonicality matters at all: baseline.json
+// is generated, and the next legitimate --update-baseline rewrites it in the
+// writer's order. If the committed order differs, that regeneration shows up
+// as churn on lines nobody touched, which is what hides the one deliberate
+// figure a baseline diff exists to show. Arm D inserted two keys per entry, so
+// a disagreement between build()'s insertion order and the committed order is
+// live for the first time.
+//
+// The writer's own order is pinned separately, in
+// test_update_records_both_totals_after_the_recall_figures in
+// scripts/quality/test_ratchet.py. Neither test alone says the two agree; both
+// name the same sequence, so a change to one that is not made to the other
+// goes red.
+func TestBaselineFixtureKeysAreInWriterOrder(t *testing.T) {
+	raw, err := os.ReadFile(baselinePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", baselinePath, err)
+	}
+	got := fixtureEntryKeys(t, raw)
+	if len(got) == 0 {
+		t.Fatalf("%s: parsed no fixture entries — the reader, not the file, is "+
+			"what this test would otherwise be grading", baselinePath)
+	}
+	for name, keys := range got {
+		if !slicesEqual(keys, fixtureKeyOrder) {
+			t.Errorf("fixture %q: keys are %v, want %v — regenerate with %q "+
+				"rather than hand-editing", name, keys, fixtureKeyOrder,
+				loadBaseline(t).Regenerate)
+		}
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// fixtureEntryKeys returns, per fixture name, the keys of that fixture's entry
+// in the order they appear in the raw bytes. encoding/json's map decoding
+// throws that order away, so this walks the token stream instead.
+//
+// Every value inside a fixture entry is a scalar today; one that is not is a
+// shape change this reader must not silently skip over, so it fails.
+func fixtureEntryKeys(t *testing.T, raw []byte) map[string][]string {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	mustToken := func() json.Token {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("%s: reading token: %v", baselinePath, err)
+		}
+		return tok
+	}
+	expectDelim := func(want rune, what string) {
+		tok := mustToken()
+		if d, ok := tok.(json.Delim); !ok || rune(d) != want {
+			t.Fatalf("%s: expected %q at %s, got %v", baselinePath, want, what, tok)
+		}
+	}
+
+	expectDelim('{', "top level")
+	for dec.More() {
+		key, ok := mustToken().(string)
+		if !ok {
+			t.Fatalf("%s: top-level key is not a string", baselinePath)
+		}
+		if key != "fixtures" {
+			// Skip the value, whatever shape it has.
+			var discard json.RawMessage
+			if err := dec.Decode(&discard); err != nil {
+				t.Fatalf("%s: skipping %q: %v", baselinePath, key, err)
+			}
+			continue
+		}
+		out := map[string][]string{}
+		expectDelim('{', "fixtures")
+		for dec.More() {
+			name, ok := mustToken().(string)
+			if !ok {
+				t.Fatalf("%s: fixture name is not a string", baselinePath)
+			}
+			expectDelim('{', "fixture "+name)
+			var keys []string
+			for dec.More() {
+				k, ok := mustToken().(string)
+				if !ok {
+					t.Fatalf("%s: fixture %q has a non-string key", baselinePath, name)
+				}
+				if d, isDelim := mustToken().(json.Delim); isDelim {
+					t.Fatalf("%s: fixture %q key %q holds a %v, not a scalar — this "+
+						"reader would skip past it", baselinePath, name, k, d)
+				}
+				keys = append(keys, k)
+			}
+			expectDelim('}', "end of fixture "+name)
+			out[name] = keys
+		}
+		return out
+	}
+	t.Fatalf("%s: no fixtures object", baselinePath)
+	return nil
 }
 
 // TestBaselineMeasuredOnIsReachable guards the one field whose entire job is to

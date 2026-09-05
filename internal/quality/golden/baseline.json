@@ -1,195 +1,257 @@
 {
   "_comment": "Recorded must-have recall per golden fixture. This is a ratchet, not a target: recall may not drop below these figures, and any rise must be recorded here. Regenerate with `scripts/quality/run.sh --runs 1 --update-baseline`.",
   "version": 1,
-  "measured_at": "2026-09-02",
-  "measured_on": "18748824b",
+  "measured_at": "2026-09-05",
+  "measured_on": "dab49ec0e",
   "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
   "fixtures": {
     "angular-http-mini": {
       "entity_found": 23,
       "entity_expected": 23,
       "relationship_found": 18,
-      "relationship_expected": 18
+      "relationship_expected": 18,
+      "entity_extracted_total": 83,
+      "relationship_extracted_total": 239
     },
     "clojure-protocols-mini": {
       "entity_found": 12,
       "entity_expected": 12,
       "relationship_found": 11,
-      "relationship_expected": 11
+      "relationship_expected": 11,
+      "entity_extracted_total": 20,
+      "relationship_extracted_total": 47
     },
     "csharp-aspnet-core-mini": {
       "entity_found": 4,
       "entity_expected": 5,
       "relationship_found": 13,
-      "relationship_expected": 13
+      "relationship_expected": 13,
+      "entity_extracted_total": 57,
+      "relationship_extracted_total": 110
     },
     "csharp-hangfire-mini": {
       "entity_found": 5,
       "entity_expected": 5,
       "relationship_found": 15,
-      "relationship_expected": 15
+      "relationship_expected": 15,
+      "entity_extracted_total": 36,
+      "relationship_extracted_total": 66
     },
     "csharp-quartz-net-mini": {
       "entity_found": 5,
       "entity_expected": 5,
       "relationship_found": 16,
-      "relationship_expected": 16
+      "relationship_expected": 16,
+      "entity_extracted_total": 23,
+      "relationship_extracted_total": 45
     },
     "elixir-phoenix-mini": {
       "entity_found": 22,
       "entity_expected": 22,
       "relationship_found": 9,
-      "relationship_expected": 10
+      "relationship_expected": 10,
+      "entity_extracted_total": 79,
+      "relationship_extracted_total": 181
     },
     "erlang-otp-mini": {
       "entity_found": 20,
       "entity_expected": 20,
       "relationship_found": 26,
-      "relationship_expected": 26
+      "relationship_expected": 26,
+      "entity_extracted_total": 22,
+      "relationship_extracted_total": 53
     },
     "express-baseurl-mini": {
       "entity_found": 8,
       "entity_expected": 8,
       "relationship_found": 5,
-      "relationship_expected": 5
+      "relationship_expected": 5,
+      "entity_extracted_total": 41,
+      "relationship_extracted_total": 93
     },
     "go-chi-mini": {
       "entity_found": 20,
       "entity_expected": 20,
       "relationship_found": 19,
-      "relationship_expected": 19
+      "relationship_expected": 19,
+      "entity_extracted_total": 71,
+      "relationship_extracted_total": 207
     },
     "graphql-schema-mini": {
       "entity_found": 8,
       "entity_expected": 8,
       "relationship_found": 6,
-      "relationship_expected": 6
+      "relationship_expected": 6,
+      "entity_extracted_total": 34,
+      "relationship_extracted_total": 82
     },
     "groovy-grails-mini": {
       "entity_found": 13,
       "entity_expected": 16,
       "relationship_found": 15,
-      "relationship_expected": 18
+      "relationship_expected": 18,
+      "entity_extracted_total": 23,
+      "relationship_extracted_total": 53
     },
     "haskell-warp-mini": {
       "entity_found": 24,
       "entity_expected": 24,
       "relationship_found": 24,
-      "relationship_expected": 24
+      "relationship_expected": 24,
+      "entity_extracted_total": 36,
+      "relationship_extracted_total": 168
     },
     "java-quartz-mini": {
       "entity_found": 6,
       "entity_expected": 7,
       "relationship_found": 18,
-      "relationship_expected": 18
+      "relationship_expected": 18,
+      "entity_extracted_total": 25,
+      "relationship_extracted_total": 59
     },
     "java-spring-mini": {
       "entity_found": 29,
       "entity_expected": 29,
       "relationship_found": 27,
-      "relationship_expected": 27
+      "relationship_expected": 27,
+      "entity_extracted_total": 61,
+      "relationship_extracted_total": 196
     },
     "kotlin-spring-mini": {
       "entity_found": 23,
       "entity_expected": 24,
       "relationship_found": 14,
-      "relationship_expected": 19
+      "relationship_expected": 19,
+      "entity_extracted_total": 55,
+      "relationship_extracted_total": 118
     },
     "lisp-clos-mini": {
       "entity_found": 11,
       "entity_expected": 11,
       "relationship_found": 7,
-      "relationship_expected": 7
+      "relationship_expected": 7,
+      "entity_extracted_total": 17,
+      "relationship_extracted_total": 28
     },
     "nim-objects-mini": {
       "entity_found": 21,
       "entity_expected": 21,
       "relationship_found": 11,
-      "relationship_expected": 11
+      "relationship_expected": 11,
+      "entity_extracted_total": 22,
+      "relationship_extracted_total": 40
     },
     "php-slim-mini": {
       "entity_found": 5,
       "entity_expected": 5,
       "relationship_found": 2,
-      "relationship_expected": 2
+      "relationship_expected": 2,
+      "entity_extracted_total": 14,
+      "relationship_extracted_total": 16
     },
     "pony-traits-mini": {
       "entity_found": 21,
       "entity_expected": 21,
       "relationship_found": 11,
-      "relationship_expected": 11
+      "relationship_expected": 11,
+      "entity_extracted_total": 37,
+      "relationship_extracted_total": 71
     },
     "proto-mini": {
       "entity_found": 19,
       "entity_expected": 19,
       "relationship_found": 17,
-      "relationship_expected": 17
+      "relationship_expected": 17,
+      "entity_extracted_total": 31,
+      "relationship_extracted_total": 55
     },
     "python-django-mini": {
       "entity_found": 29,
       "entity_expected": 29,
       "relationship_found": 12,
-      "relationship_expected": 13
+      "relationship_expected": 13,
+      "entity_extracted_total": 98,
+      "relationship_extracted_total": 255
     },
     "python-dramatiq-mini": {
       "entity_found": 4,
       "entity_expected": 4,
       "relationship_found": 13,
-      "relationship_expected": 13
+      "relationship_expected": 13,
+      "entity_extracted_total": 17,
+      "relationship_extracted_total": 31
     },
     "python-fastapi-mini": {
       "entity_found": 5,
       "entity_expected": 5,
       "relationship_found": 4,
-      "relationship_expected": 4
+      "relationship_expected": 4,
+      "entity_extracted_total": 28,
+      "relationship_extracted_total": 57
     },
     "python-rq-mini": {
       "entity_found": 3,
       "entity_expected": 3,
       "relationship_found": 12,
-      "relationship_expected": 12
+      "relationship_expected": 12,
+      "entity_extracted_total": 22,
+      "relationship_extracted_total": 43
     },
     "rust-tokio-mini": {
       "entity_found": 16,
       "entity_expected": 16,
       "relationship_found": 13,
-      "relationship_expected": 13
+      "relationship_expected": 13,
+      "entity_extracted_total": 31,
+      "relationship_extracted_total": 63
     },
     "scala-play-mini": {
       "entity_found": 23,
       "entity_expected": 23,
       "relationship_found": 5,
-      "relationship_expected": 10
+      "relationship_expected": 10,
+      "entity_extracted_total": 81,
+      "relationship_extracted_total": 201
     },
     "solidity-mini": {
       "entity_found": 40,
       "entity_expected": 40,
       "relationship_found": 14,
-      "relationship_expected": 14
+      "relationship_expected": 14,
+      "entity_extracted_total": 59,
+      "relationship_extracted_total": 142
     },
     "swift-package-mini": {
       "entity_found": 6,
       "entity_expected": 6,
       "relationship_found": 7,
-      "relationship_expected": 7
+      "relationship_expected": 7,
+      "entity_extracted_total": 7,
+      "relationship_extracted_total": 13
     },
     "swift-swiftui-mini": {
       "entity_found": 36,
       "entity_expected": 42,
       "relationship_found": 38,
-      "relationship_expected": 43
+      "relationship_expected": 43,
+      "entity_extracted_total": 72,
+      "relationship_extracted_total": 185
     },
     "typescript-react-mini": {
       "entity_found": 21,
       "entity_expected": 21,
       "relationship_found": 13,
-      "relationship_expected": 17
+      "relationship_expected": 17,
+      "entity_extracted_total": 89,
+      "relationship_extracted_total": 274
     },
     "vbnet-mini": {
       "entity_found": 22,
       "entity_expected": 22,
       "relationship_found": 33,
-      "relationship_expected": 33
+      "relationship_expected": 33,
+      "entity_extracted_total": 94,
+      "relationship_extracted_total": 215
     }
   },
   "known_regressions": [],

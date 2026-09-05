@@ -77,13 +77,18 @@ func newRatchetFixture(t *testing.T, entityFound int, priorKnown []map[string]an
 		"relationship_found":    0,
 		"relationship_expected": 0,
 		"forbidden_hits":        0,
+		// #6488 arm D: `check` and `update` both read the extracted totals, and
+		// a report without them is a refusal, not a pass — so this synthetic
+		// report carries what a real one does.
+		"entity_extracted_total":       5,
+		"relationship_extracted_total": 3,
 	})
 
 	baseline := filepath.Join(root, "baseline.json")
 	write(baseline, map[string]any{
 		"version":           1,
 		"regenerate":        "scripts/quality/run.sh --runs 1 --update-baseline",
-		"fixtures":          map[string]any{"demo-mini": map[string]any{"entity_found": 4, "entity_expected": 10, "relationship_found": 0, "relationship_expected": 0}},
+		"fixtures":          map[string]any{"demo-mini": map[string]any{"entity_found": 4, "entity_expected": 10, "relationship_found": 0, "relationship_expected": 0, "entity_extracted_total": 5, "relationship_extracted_total": 3}},
 		"known_regressions": priorKnown,
 	})
 	return ratchetFixture{golden: golden, reports: reports, baseline: baseline, stamp: stamp}
