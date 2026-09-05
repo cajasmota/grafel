@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/resolve"
 )
 
 // resolutionSection returns ONLY the text of "## 3. Resolution Disposition",
 // up to the next "## " heading. Every assertion in this file is scoped through
 // it: a whole-output strings.Contains survives deleting the very section it
-// claims to check, and several of the strings below (the word "dynamic", the
-// word "external") legitimately appear elsewhere in the rendered report.
+// claims to check, and several of the strings below ("dynamic", "external")
+// legitimately appear elsewhere in the rendered report.
 func resolutionSection(t *testing.T, out string) string {
 	t.Helper()
 	const head = "## 3. Resolution Disposition"
@@ -27,11 +28,20 @@ func resolutionSection(t *testing.T, out string) string {
 	return rest
 }
 
+// resolutionFixtureEntities returns the 50 entities every fixture below needs
+// to clear minEntitiesForReport, plus any extra the caller supplies. The extras
+// exist so a stub can be made to NAME something in the graph (bug-resolver) or
+// name nothing (bug-extractor) — that distinction is the resolver name index's,
+// and it is the whole reason those two are separate dispositions.
+func resolutionFixtureEntities(extra ...graph.Entity) []graph.Entity {
+	base := repeat(makeEntity("e1", "X", "SCOPE.Function", "go", "x.go", 1), 50)
+	return append(base, extra...)
+}
+
 // renderResolution generates a report over one document and returns just its
 // resolution section.
-func renderResolution(t *testing.T, rels []graph.Relationship) string {
+func renderResolution(t *testing.T, entities []graph.Entity, rels []graph.Relationship) string {
 	t.Helper()
-	entities := repeat(makeEntity("e1", "X", "SCOPE.Function", "go", "x.go", 1), 50)
 	r, err := Generate(context.Background(), []*graph.Document{makeDoc(entities, rels)}, Opts{})
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -43,104 +53,152 @@ func renderResolution(t *testing.T, rels []graph.Relationship) string {
 	return resolutionSection(t, sb.String())
 }
 
-// TestResolution_TableOmitsRowsTheShapeClassifierCannotProduce (#6836) pins
-// that the resolution table renders ONLY the three dispositions a ToID-shape
-// classifier can actually produce.
+// TestResolution_EveryDispositionInTheTaxonomyHasARow (#6836) pins that the
+// table is driven by resolve.AllDispositions rather than a hand-written list.
 //
-// The report reads a PERSISTED graph: for each edge it has the final ToID and
-// nothing else. That shape supports exactly three outcomes — 16-hex (bound),
-// "ext:"-prefixed (external), any other non-empty stub (unresolved). The finer
-// six-way taxonomy in internal/resolve (external-known vs external-unknown;
-// bug-extractor vs bug-resolver vs dynamic) needs inputs this report never
-// receives: the ExternalAllowlist, the resolver's name Index, and the
-// PRE-resolution stub. So external-unknown / bug-resolver / dynamic rows can
-// never be non-zero here, and a permanent "0.00%" is a false measurement
-// rather than a missing one.
-func TestResolution_TableOmitsRowsTheShapeClassifierCannotProduce(t *testing.T) {
-	sec := renderResolution(t, []graph.Relationship{
+// The defect this replaces was three rows wired to counters nothing
+// incremented, rendering a permanent 0.00% under a footer claiming all six
+// dispositions had been evaluated. The structural fix is that rows and counts
+// come from the SAME source — the classifier's own taxonomy — so a disposition
+// can no longer exist in resolve and be silently absent from, or unfed by, the
+// table. This test fails if either side is hand-maintained again.
+func TestResolution_EveryDispositionInTheTaxonomyHasARow(t *testing.T) {
+	sec := renderResolution(t, resolutionFixtureEntities(), []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "aabb112233445566", Kind: "CALLS"},
-		{ID: "r2", FromID: "e1c", ToID: "ext:react", Kind: "IMPORTS"},
-		{ID: "r3", FromID: "e1e", ToID: "SomeBareStub", Kind: "CALLS"},
 	})
-
-	// Row forms, not bare words: the caveat prose below the table names
-	// "dynamic dispatch" and "unknown externals" on purpose, and a bare-word
-	// negative would fail on the explanation instead of on a row.
-	for _, dead := range []string{"| external-unknown |", "| bug-resolver |", "| dynamic |"} {
-		if strings.Contains(sec, dead) {
-			t.Errorf("resolution table still renders %s — that counter can never be non-zero:\n%s", dead, sec)
-		}
+	if len(resolve.AllDispositions) < 6 {
+		t.Fatalf("taxonomy unexpectedly small (%d) — fixture assumption broken", len(resolve.AllDispositions))
 	}
-	for _, live := range []string{"| resolved |", "| external |", "| unresolved |"} {
-		if !strings.Contains(sec, live) {
-			t.Errorf("resolution table is missing %s:\n%s", live, sec)
+	for _, d := range resolve.AllDispositions {
+		row := "| " + d.String() + " |"
+		if !strings.Contains(sec, row) {
+			t.Errorf("resolution table has no row for disposition %q:\n%s", d.String(), sec)
 		}
 	}
 }
 
-// TestResolution_ExtPrefixedEdgesAreExternalNotUnresolved (#6836) pins the
-// external bucket in BOTH directions: an "ext:"-prefixed ToID must be counted
-// external, and must NOT leak into resolved or unresolved. Asserting only that
-// external is non-zero would survive a classifier that counts every edge in
-// every bucket, so all three percentages are pinned exactly.
-func TestResolution_ExtPrefixedEdgesAreExternalNotUnresolved(t *testing.T) {
-	sec := renderResolution(t, []graph.Relationship{
+// TestResolution_ExternalKnownAndUnknownAreSeparated (#6836) is the first of
+// the three rows that were structurally dead before this change.
+//
+// "ext:react" is on the compiled-in allowlist; "ext:not_a_real_pkg_xyzzy" is
+// not. Both persist in the graph with the SAME "ext:" prefix, so a ToID-shape
+// classifier cannot tell them apart and reported both as external-known; only
+// the allowlist predicate can, and the report now consults it. Both
+// percentages are pinned so a classifier that collapsed the two back into one
+// bucket fails, in either direction.
+func TestResolution_ExternalKnownAndUnknownAreSeparated(t *testing.T) {
+	sec := renderResolution(t, resolutionFixtureEntities(), []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "ext:react", Kind: "IMPORTS"},
-		{ID: "r2", FromID: "e1c", ToID: "ext:django.db", Kind: "IMPORTS"},
-		{ID: "r3", FromID: "e1e", ToID: "aabb112233445566", Kind: "CALLS"},
-		{ID: "r4", FromID: "e1g", ToID: "SomeBareStub", Kind: "CALLS"},
+		{ID: "r2", FromID: "e1c", ToID: "ext:not_a_real_pkg_xyzzy", Kind: "IMPORTS"},
 	})
 	for _, want := range []string{
-		"| resolved | 25.00% |",
-		"| external | 50.00% |",
-		"| unresolved | 25.00% |",
+		"| external-known | 50.00% |",
+		"| external-unknown | 50.00% |",
 	} {
 		if !strings.Contains(sec, want) {
-			t.Errorf("missing %q in resolution section:\n%s", want, sec)
+			t.Errorf("missing %q — known and unknown externals must not share a bucket:\n%s", want, sec)
 		}
 	}
 }
 
-// TestResolution_DynamicAndResolverMissStubsCountAsUnresolved (#6836) uses
-// stubs that internal/resolve's full classifier WOULD split three ways —
-// a Python reflection builtin (dynamic), a bare name that exists in the graph
-// (bug-resolver), and a "Kind:Name" stub that does not (bug-extractor). The
-// persisted ToID makes them indistinguishable, so all three must land in the
-// single honest "unresolved" bucket at 100%, with the other two buckets empty.
-func TestResolution_DynamicAndResolverMissStubsCountAsUnresolved(t *testing.T) {
-	sec := renderResolution(t, []graph.Relationship{
-		{ID: "r1", FromID: "e1a", ToID: "getattr", Kind: "CALLS"},
-		{ID: "r2", FromID: "e1c", ToID: "X", Kind: "CALLS"},
-		{ID: "r3", FromID: "e1e", ToID: "SCOPE.Function:Nowhere", Kind: "CALLS"},
+// TestResolution_BugResolverIsSeparatedFromBugExtractor (#6836) is the second
+// dead row.
+//
+// Both stubs below are raw, unresolved and identical in SHAPE. The only thing
+// that separates them is whether the name exists in the graph: "Widget" does
+// (an entity is added for it), "NoSuchNameAnywhere" does not. That lookup is
+// the resolver name index's, which is why the report now builds one. Bug-
+// extractor at 100% — the pre-change behaviour — must fail here.
+func TestResolution_BugResolverIsSeparatedFromBugExtractor(t *testing.T) {
+	entities := resolutionFixtureEntities(
+		makeEntity("w1", "Widget", "SCOPE.Class", "go", "w.go", 1),
+	)
+	sec := renderResolution(t, entities, []graph.Relationship{
+		{ID: "r1", FromID: "e1a", ToID: "Widget", Kind: "CALLS"},
+		{ID: "r2", FromID: "e1c", ToID: "NoSuchNameAnywhere", Kind: "CALLS"},
 	})
 	for _, want := range []string{
-		"| resolved | 0.00% |",
-		"| external | 0.00% |",
-		"| unresolved | 100.00% |",
+		"| bug-resolver | 50.00% |",
+		"| bug-extractor | 50.00% |",
 	} {
 		if !strings.Contains(sec, want) {
-			t.Errorf("missing %q in resolution section:\n%s", want, sec)
+			t.Errorf("missing %q — a stub naming a real entity is a resolver miss, not an extractor bug:\n%s", want, sec)
+		}
+	}
+}
+
+// TestResolution_DynamicIsSeparatedFromBugExtractor (#6836) is the third dead
+// row. A Python reflection builtin is intrinsically runtime-dispatched, not an
+// extractor defect, and the pre-change ToID-shape classifier counted it as
+// bug-extractor — inflating the headline bug bucket with edges nobody can fix.
+//
+// The edge carries Properties["language"], which is what gates the per-language
+// dynamic catalog; the non-dynamic stub alongside it holds bug-extractor
+// non-zero so this cannot pass by classifying everything dynamic.
+func TestResolution_DynamicIsSeparatedFromBugExtractor(t *testing.T) {
+	dyn := graph.Relationship{ID: "r1", FromID: "e1a", ToID: "getattr", Kind: "CALLS"}
+	dyn = dyn.WithProperties(map[string]string{"language": "python"})
+	sec := renderResolution(t, resolutionFixtureEntities(), []graph.Relationship{
+		dyn,
+		{ID: "r2", FromID: "e1c", ToID: "NoSuchNameAnywhere", Kind: "CALLS"},
+	})
+	for _, want := range []string{
+		"| dynamic | 50.00% |",
+		"| bug-extractor | 50.00% |",
+	} {
+		if !strings.Contains(sec, want) {
+			t.Errorf("missing %q — reflection dispatch is not an extractor bug:\n%s", want, sec)
+		}
+	}
+}
+
+// TestResolution_ExtPrefixedDynamicBuiltinIsDynamicNotExternal (#6836, #95)
+// pins the ToOriginal reconstruction, which is the one place this report has
+// to rebuild an input the persisted graph does not store.
+//
+// The external synthesiser stamps reflection builtins with an "ext:" prefix
+// because they sit in the stdlib stop-list, and classifyDispositionLang runs
+// its dynamic check on the ORIGINAL stub BEFORE the ext: check specifically so
+// those land in `dynamic`. The dynamic catalog matches "getattr" and NOT
+// "ext:getattr", so feeding it the raw ToID silently defeats #95 — measured on
+// testdata/golden, that moves 6 of 796 edges from `dynamic` into
+// `external-unknown`. Trimming the prefix recovers the stub exactly.
+//
+// external-unknown is pinned at 0 as well as dynamic at 100: asserting only
+// that dynamic is non-zero would survive a classifier that double-counted the
+// edge into both buckets.
+func TestResolution_ExtPrefixedDynamicBuiltinIsDynamicNotExternal(t *testing.T) {
+	rel := graph.Relationship{ID: "r1", FromID: "e1a", ToID: "ext:getattr", Kind: "CALLS"}
+	rel = rel.WithProperties(map[string]string{"language": "python"})
+	sec := renderResolution(t, resolutionFixtureEntities(), []graph.Relationship{rel})
+	for _, want := range []string{
+		"| dynamic | 100.00% |",
+		"| external-unknown | 0.00% |",
+		"| external-known | 0.00% |",
+	} {
+		if !strings.Contains(sec, want) {
+			t.Errorf("missing %q — an ext:-stamped reflection builtin is dynamic dispatch (#95):\n%s", want, sec)
 		}
 	}
 }
 
 // TestResolution_FooterDoesNotClaimEveryEdgeWasExamined (#6836) pins the
 // denominator label. The total counts edges with a NON-EMPTY ToID only: an
-// empty-ToID edge is iterated and then skipped ("nothing to resolve"), so
-// calling the total "edges examined" overstates it. Two hex edges plus two
-// empty-ToID edges must bucket as 1-5, not as the 6-20 that four "examined"
-// edges would suggest, and the footer must say what it excluded.
+// empty-ToID edge has nothing to resolve, so it is skipped, and calling the
+// total "edges examined" overstates it.
+//
+// Both surviving percentages are pinned: if an empty-target edge were given a
+// disposition it would land in some bucket and move them. A count-bucket
+// assertion would not catch that — countRangeLabel returns "1-5" for anything
+// up to 5, so 2 and 4 are indistinguishable through it.
 func TestResolution_FooterDoesNotClaimEveryEdgeWasExamined(t *testing.T) {
-	sec := renderResolution(t, []graph.Relationship{
+	sec := renderResolution(t, resolutionFixtureEntities(), []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "aabb112233445566", Kind: "CALLS"},
 		{ID: "r2", FromID: "e1c", ToID: "aabb112233445577", Kind: "CALLS"},
 		{ID: "r3", FromID: "e1e", ToID: "", Kind: "CALLS"},
 		{ID: "r4", FromID: "e1g", ToID: "", Kind: "CALLS"},
 	})
-	// If an empty-ToID edge were dispositioned instead of skipped it would
-	// land in some bucket and move these two numbers; pinning both directions
-	// catches that without relying on the coarse count bucket below.
-	for _, want := range []string{"| resolved | 100.00% |", "| unresolved | 0.00% |"} {
+	for _, want := range []string{"| resolved | 100.00% |", "| bug-extractor | 0.00% |"} {
 		if !strings.Contains(sec, want) {
 			t.Errorf("missing %q — empty-ToID edges must carry no disposition:\n%s", want, sec)
 		}
@@ -150,24 +208,5 @@ func TestResolution_FooterDoesNotClaimEveryEdgeWasExamined(t *testing.T) {
 	}
 	if !strings.Contains(sec, "empty") {
 		t.Errorf("footer does not say that empty-target edges are excluded:\n%s", sec)
-	}
-	if !strings.Contains(sec, "1-5") {
-		t.Errorf("expected the 2 non-empty-ToID edges to bucket as 1-5:\n%s", sec)
-	}
-}
-
-// TestResolution_SectionStatesWhatTheShapeClassifierCannotSplit (#6836).
-// Deleting the three rows removes a false zero; without a caveat it would also
-// silently remove the reader's only signal that "external" mixes allowlisted
-// and unknown packages, and that "unresolved" mixes extractor bugs, resolver
-// misses and dynamic dispatch. The section must say so.
-func TestResolution_SectionStatesWhatTheShapeClassifierCannotSplit(t *testing.T) {
-	sec := renderResolution(t, []graph.Relationship{
-		{ID: "r1", FromID: "e1a", ToID: "aabb112233445566", Kind: "CALLS"},
-	})
-	for _, want := range []string{"ToID shape", "unknown", "dynamic"} {
-		if !strings.Contains(sec, want) {
-			t.Errorf("resolution section does not mention %q:\n%s", want, sec)
-		}
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/resolve"
 )
 
 // Render writes the markdown feedback report to w. Section order is stable.
@@ -194,18 +196,15 @@ func Render(w io.Writer, r *Report) error {
 	} else {
 		rv := r.Resolution
 		fmt.Fprintf(w, "| Disposition | Percentage |\n|---|---|\n")
-		fmt.Fprintf(w, "| resolved | %.2f%% |\n", rv.ResolvedPct)
-		fmt.Fprintf(w, "| external | %.2f%% |\n", rv.ExternalPct)
-		fmt.Fprintf(w, "| unresolved | %.2f%% |\n\n", rv.UnresolvedPct)
-		// Say what these three buckets do NOT separate. The report used to
-		// render external-unknown / bug-resolver / dynamic rows at a permanent
-		// 0.00%, which read as "measured, and zero" when the truth is that the
-		// persisted graph cannot tell those cases apart (#6836).
-		fmt.Fprintf(w, "Classified by ToID shape alone, which is all a persisted graph retains. "+
-			"`external` does not separate allowlisted packages from unknown ones, and `unresolved` "+
-			"does not separate extractor bugs from resolver misses or from dynamic dispatch: those "+
-			"splits need the resolver's allowlist, name index and pre-resolution stubs, none of "+
-			"which survive into the graph this report reads.\n\n")
+		// Rows are driven by resolve.AllDispositions, not by a hand-written
+		// list: before #6836 three of six rows were wired to counters nothing
+		// incremented and rendered a permanent 0.00%. Iterating the taxonomy
+		// makes that shape impossible — every disposition the classifier can
+		// return has a row, and every row is fed by the classifier.
+		for _, d := range resolve.AllDispositions {
+			fmt.Fprintf(w, "| %s | %.2f%% |\n", d.String(), rv.Pct(d.String()))
+		}
+		fmt.Fprintf(w, "\n")
 		fmt.Fprintf(w, "_Edges with a target to resolve: %s (edges with an empty target are excluded)_\n\n",
 			countRangeLabel(r.ResolutionTotal))
 	}

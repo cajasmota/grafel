@@ -228,14 +228,14 @@ func TestGenerate_ResolutionDisposition(t *testing.T) {
 	if r.ResolutionTotal != 4 {
 		t.Errorf("expected ResolutionTotal=4, got %d", r.ResolutionTotal)
 	}
-	if r.Resolution.ResolvedPct != 25.0 {
-		t.Errorf("expected resolved 25%%, got %.1f%%", r.Resolution.ResolvedPct)
+	if r.Resolution.Pct("resolved") != 25.0 {
+		t.Errorf("expected resolved 25%%, got %.1f%%", r.Resolution.Pct("resolved"))
 	}
-	if r.Resolution.ExternalPct != 25.0 {
-		t.Errorf("expected external 25%%, got %.1f%%", r.Resolution.ExternalPct)
+	if r.Resolution.Pct("external-known") != 25.0 {
+		t.Errorf("expected external-known 25%%, got %.1f%%", r.Resolution.Pct("external-known"))
 	}
-	if r.Resolution.UnresolvedPct != 50.0 {
-		t.Errorf("expected unresolved 50%%, got %.1f%%", r.Resolution.UnresolvedPct)
+	if r.Resolution.Pct("bug-extractor") != 50.0 {
+		t.Errorf("expected bug-extractor 50%%, got %.1f%%", r.Resolution.Pct("bug-extractor"))
 	}
 }
 
@@ -319,9 +319,9 @@ func TestRender_FullReport(t *testing.T) {
 		SourceWindow:       SourceWindowStats{TotalWithWindow: 90, TotalEntities: 100, PctComplete: 90.0},
 		OrphanByKind:       map[string]KindStats{"function": {Total: 80, OrphanCount: 16, OrphanPct: 20.0}},
 		Resolution: ResolutionVector{
-			ResolvedPct:   70.0,
-			ExternalPct:   20.0,
-			UnresolvedPct: 10.0,
+			ByDisposition: map[string]float64{
+				"resolved": 70.0, "external-known": 20.0, "bug-extractor": 10.0,
+			},
 		},
 		ResolutionTotal: 200,
 		FrameworkHits:   map[string]int{"gin": 15},

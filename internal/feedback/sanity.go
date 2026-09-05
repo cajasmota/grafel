@@ -3,6 +3,8 @@ package feedback
 import (
 	"fmt"
 	"math"
+
+	"github.com/cajasmota/grafel/internal/resolve"
 )
 
 // orphanRateFailThreshold is the per-kind orphan rate (percent, exclusive)
@@ -303,13 +305,15 @@ func runSanityChecks(r *Report) ([]SanityResult, int) {
 
 	// 3. Resolution vector sums to 100% ± 0.1%.
 	if r.ResolutionTotal > 0 {
-		// Three buckets, not six: the vector carries exactly the dispositions
-		// a ToID shape can produce (#6836). They partition the non-empty-ToID
-		// edges, so a sum other than 100% means a bucket double-counted or
-		// dropped an edge.
-		sum := r.Resolution.ResolvedPct +
-			r.Resolution.ExternalPct +
-			r.Resolution.UnresolvedPct
+		// Summed over resolve.AllDispositions rather than a hand-listed set
+		// (#6836): a disposition missing from the vector must fail this check
+		// instead of silently shrinking the sum's scope. The dispositions
+		// partition the edges that have a target, so anything but 100% means a
+		// bucket double-counted or dropped one.
+		sum := 0.0
+		for _, d := range resolve.AllDispositions {
+			sum += r.Resolution.Pct(d.String())
+		}
 		passed := math.Abs(sum-100.0) <= 0.1
 		note := ""
 		if !passed {

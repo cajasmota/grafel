@@ -14,9 +14,9 @@ func TestRunSanityChecks_AllPass(t *testing.T) {
 			"function": {Total: 50, OrphanCount: 10, OrphanPct: 20.0},
 		},
 		Resolution: ResolutionVector{
-			ResolvedPct:   70.0,
-			ExternalPct:   20.0,
-			UnresolvedPct: 10.0,
+			ByDisposition: map[string]float64{
+				"resolved": 70.0, "external-known": 20.0, "bug-extractor": 10.0,
+			},
 		},
 		ResolutionTotal:        100,
 		FrameworkFilesDetected: 5,
@@ -93,9 +93,9 @@ func TestRunSanityChecks_ResolutionVectorOff(t *testing.T) {
 		EntitiesByLanguage: map[string]int{"python": 200},
 		OrphanByKind:       map[string]KindStats{},
 		Resolution: ResolutionVector{
-			ResolvedPct:   50.0,
-			ExternalPct:   20.0,
-			UnresolvedPct: 15.0, // sum = 85, not 100
+			ByDisposition: map[string]float64{
+				"resolved": 50.0, "external-known": 20.0, "bug-extractor": 15.0, // sum = 85, not 100
+			},
 		},
 		ResolutionTotal: 100,
 		FrameworkHits:   map[string]int{},

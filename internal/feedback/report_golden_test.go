@@ -2,6 +2,7 @@ package feedback
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -116,21 +117,32 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	if r.ResolutionTotal == 0 {
 		t.Errorf("D3: ResolutionTotal is zero; disposition must be derived from ToID shape")
 	}
-	if r.Resolution.UnresolvedPct == 0 && r.Resolution.ResolvedPct == 0 && r.Resolution.ExternalPct == 0 {
+	if r.Resolution.Pct("bug-extractor") == 0 && r.Resolution.Pct("resolved") == 0 && r.Resolution.Pct("external-known") == 0 {
 		t.Errorf("D3: resolution vector is all-zero; expected a resolved/external/unresolved split")
 	}
-	// The resolved fraction (hex + ext) must equal the ToID-derived import
-	// fidelity computed the SAME way grafel_stats/orient does, over the same
-	// edge universe the collector examined (every non-empty ToID).
-	var total, resolved int
+	// D3a — the `resolved` bucket must equal the HEX-ToID fraction exactly.
+	// classifyDispositionLang short-circuits on isHexID before it looks at
+	// anything else, and isHexID is the same 16-lowercase-hex test
+	// IsResolvedToID applies, so this is an identity and not an approximation.
+	//
+	// This clause used to compare resolved+external against the whole of
+	// IsResolvedToID (hex OR "ext:"). That comparison is no longer valid, and its
+	// failure is the POINT of #6836: the report now runs the indexer's real
+	// classifier, which routes ext:-stamped reflection builtins to `dynamic`
+	// rather than to an external bucket (#95). Four golden edges sit in exactly
+	// that gap, so an ext:-inclusive identity would now be asserting the bug.
+	var total, hexResolved, extPrefixed int
 	for i := range doc.Relationships {
 		toID := doc.Relationships[i].ToID
 		if toID == "" {
 			continue
 		}
 		total++
-		if resolve.IsResolvedToID(toID) {
-			resolved++
+		switch {
+		case len(toID) == 16 && resolve.IsHexString(toID):
+			hexResolved++
+		case strings.HasPrefix(toID, "ext:"):
+			extPrefixed++
 		}
 	}
 	if total == 0 {
@@ -139,16 +151,32 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	if r.ResolutionTotal != total {
 		t.Errorf("D3: ResolutionTotal=%d, want %d (non-empty-ToID edges)", r.ResolutionTotal, total)
 	}
-	wantResolvedPct := 100.0 * float64(resolved) / float64(total)
-	gotResolvedPct := r.Resolution.ResolvedPct + r.Resolution.ExternalPct
+	wantResolvedPct := 100.0 * float64(hexResolved) / float64(total)
+	gotResolvedPct := r.Resolution.Pct("resolved")
 	if diff := gotResolvedPct - wantResolvedPct; diff > 0.01 || diff < -0.01 {
-		t.Errorf("D3: resolved+external = %.3f%%, want %.3f%% (ToID-derived fidelity)",
+		t.Errorf("D3a: resolved = %.3f%%, want %.3f%% (hex-ToID fraction)",
 			gotResolvedPct, wantResolvedPct)
+	}
+
+	// D3b — the three dispositions #6836 found dead must be ALIVE on real data.
+	// Before the fix external-unknown, bug-resolver and dynamic were wired to
+	// counters nothing incremented and rendered a permanent 0.00%; on this
+	// fixture they carry 59 + 17 + 90 of 796 edges. A hand-built fixture alone
+	// would not have caught the original defect, because the defect was that no
+	// corpus could ever move these.
+	for _, d := range []string{"external-unknown", "bug-resolver", "dynamic"} {
+		if r.Resolution.Pct(d) <= 0 {
+			t.Errorf("D3b: %s is %.3f%% on the golden fixture — #6836 regression (it was a permanently dead counter)",
+				d, r.Resolution.Pct(d))
+		}
+	}
+	if extPrefixed == 0 {
+		t.Fatal("D3b: fixture has no ext:-prefixed edges, so the external split is untested here")
 	}
 
 	t.Logf("golden FB: entities=%d rels=%d | D1 window=%.1f%% (%d) | D2 classLike=%d | D3 total=%d resolved+ext=%.2f%% bug=%.2f%%",
 		len(doc.Entities), len(doc.Relationships),
 		r.SourceWindow.PctComplete, r.SourceWindow.TotalWithWindow,
 		r.FieldExtractionRate.ClassTotal,
-		r.ResolutionTotal, gotResolvedPct, r.Resolution.UnresolvedPct)
+		r.ResolutionTotal, gotResolvedPct, r.Resolution.Pct("bug-extractor"))
 }

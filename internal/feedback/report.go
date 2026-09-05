@@ -7,13 +7,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/external"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/resolve"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // minEntitiesForReport is the hard floor below which the report is suppressed
 // to avoid statistically unreliable metrics and fingerprinting risk.
 const minEntitiesForReport = 50
+
+// externalStubPrefix is the marker the external synthesiser puts in front of
+// a bare stub it decided is an out-of-tree package ("react" -> "ext:react").
+// Trimmed to recover the pre-resolution stub — see the ToOriginal note in
+// Generate.
+const externalStubPrefix = "ext:"
 
 // Opts controls report generation behaviour.
 type Opts struct {
@@ -38,30 +46,28 @@ type KindStats struct {
 }
 
 // ResolutionVector holds the disposition breakdown for graph relationships,
-// to the resolution a ToID SHAPE can actually support.
+// as one percentage per resolve.Disposition.
 //
-// This report reads a PERSISTED graph: per edge it has the final ToID and
-// nothing else. Three outcomes are derivable from that — a 16-hex bound entity
-// ID, an "ext:"-prefixed external, and any other non-empty stub the resolver
-// never bound — and this struct carries exactly those three.
-//
-// internal/resolve's Disposition taxonomy is finer (it splits external into
-// known/unknown and unresolved into bug-extractor / bug-resolver / dynamic),
-// but every one of those splits needs an input the persisted graph does not
-// retain: the ExternalAllowlist (known vs unknown), the resolver's name Index
-// (bug-resolver vs bug-extractor) and the PRE-resolution stub plus its language
-// (dynamic). Fields for those three dispositions existed here and were never
-// written, rendering a permanent and false "0.00%" (#6836); they are gone
-// rather than wired up, because there is nothing here to wire them to.
+// The breakdown is produced by the SAME classifier the indexer uses —
+// resolve.Index.ClassifyEndpoints — not by a private re-derivation, so the
+// report cannot drift from the taxonomy it claims to report. #6836: three of
+// six hand-maintained counters here had no increment and rendered a permanent
+// 0.00%; keying off resolve.AllDispositions removes the whole defect class,
+// because a disposition can no longer exist in the taxonomy and be silently
+// absent from the table.
 type ResolutionVector struct {
-	// ResolvedPct — ToID is a 16-char lowercase-hex entity ID.
-	ResolvedPct float64
-	// ExternalPct — ToID is "ext:"-prefixed. Mixes allowlisted (known) and
-	// unknown externals; the allowlist is not available here.
-	ExternalPct float64
-	// UnresolvedPct — ToID is a non-empty stub of any other shape. Mixes
-	// extractor bugs, resolver misses and intrinsically dynamic dispatch.
-	UnresolvedPct float64
+	// ByDisposition maps a Disposition's canonical name (resolve.Disposition
+	// .String(), e.g. "external-unknown") to its share of ResolutionTotal in
+	// percent. An entry is present for EVERY member of
+	// resolve.AllDispositions, so a 0.00% here means "none in this corpus" —
+	// a corpus-relative zero — never "not measured".
+	ByDisposition map[string]float64
+}
+
+// Pct returns the percentage recorded for the named disposition, or 0 when
+// the vector is empty (ResolutionTotal == 0).
+func (v ResolutionVector) Pct(disposition string) float64 {
+	return v.ByDisposition[disposition]
 }
 
 // EntityKindLang is one row in the entity kind × language table.
@@ -258,11 +264,14 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	}
 	var classCandidates []classCandidate
 
-	// Resolution disposition counters.
+	// Resolution disposition inputs. Rather than re-deriving a private
+	// classification from the ToID shape, the report feeds the real
+	// classifier: resolve.BuildIndex over every entity in the group (it
+	// answers "does this name exist?", which is what separates bug-resolver
+	// from bug-extractor) and one EndpointPair per edge with a target.
 	var (
-		resResolved   int
-		resExternal   int
-		resUnresolved int
+		entityRecs []types.EntityRecord
+		endpoints  []resolve.EndpointPair
 	)
 
 	annotated := 0
@@ -312,6 +321,20 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			entityKind[e.ID] = kind
 			entityLang[e.ID] = lang
 			entitySubtype[e.ID] = e.Subtype
+
+			// Feed the resolver's name index (see endpoints below). Only the
+			// fields BuildIndex reads are copied — it keys on kind, name,
+			// qualified name and location, and never looks at content.
+			entityRecs = append(entityRecs, types.EntityRecord{
+				ID:            e.ID,
+				Name:          e.Name,
+				QualifiedName: e.QualifiedName,
+				Kind:          e.Kind,
+				Subtype:       e.Subtype,
+				SourceFile:    e.SourceFile,
+				StartLine:     e.StartLine,
+				Language:      e.Language,
+			})
 
 			// Initialise edge summary so even no-edge entities appear.
 			if _, ok := entityEdges[e.ID]; !ok {
@@ -474,33 +497,54 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 				}
 			}
 
-			// Resolution disposition, derived STRUCTURALLY from the edge ToID shape
-			// — the same classification `orient view=stats` uses to compute import
-			// fidelity (internal/resolve.IsResolvedToID / IsBugEdgeToID). The
-			// pipeline never writes a Properties["resolution"] tag, so the previous
-			// property switch always reported "no resolution property found on
-			// edges". A 16-hex ToID is a bound entity ID (resolved); an ext:-prefixed
-			// ToID is an external; any other non-empty ToID is an unresolved stub.
-			// Empty ToIDs carry no disposition — they are examined here and then
-			// skipped, which is why ResolutionTotal is not "edges examined".
+			// Resolution disposition. Collect one EndpointPair per edge that
+			// HAS a target; the classification itself is delegated to
+			// resolve.Index.ClassifyEndpoints after both passes, so this
+			// report and `orient view=stats` speak the same taxonomy by
+			// construction (#6836 — a private re-derivation here could only
+			// tell resolved / ext: / other apart, and the three dispositions
+			// it could not produce were rendered as a permanent 0.00%).
 			//
-			// These three are ALL the shape can support, and the vector carries
-			// exactly three buckets as a result. resolve's Disposition splits
-			// external into known/unknown by ExternalAllowlist, and unresolved
-			// into bug-extractor / bug-resolver / dynamic by the resolver's name
-			// Index and the pre-resolution stub — none of which survive into the
-			// persisted graph this report reads (#6836).
-			switch {
-			case rel.ToID == "":
-				// no disposition — nothing to resolve
-			case resolve.IsResolvedToID(rel.ToID):
-				if len(rel.ToID) > 4 && rel.ToID[:4] == "ext:" {
-					resExternal++
-				} else {
-					resResolved++
-				}
-			default:
-				resUnresolved++
+			// An empty ToID carries no disposition: there is nothing to
+			// resolve, so it is excluded from ResolutionTotal, which is why
+			// that total is NOT "edges examined".
+			//
+			// The exclusion is ClassifyEndpoints' — it records a disposition
+			// only for a non-empty endpoint. The guard below therefore does
+			// not CAUSE the exclusion; it avoids allocating pairs that would
+			// be skipped. Deleting it is behaviour-neutral (verified: the
+			// mutant that drops it is equivalent under the whole suite), so
+			// do not read it as the thing keeping empty edges out of the
+			// denominator.
+			//
+			// ToOriginal reconstructs the PRE-resolution stub, which the
+			// persisted graph does not store. Two cases, and both are exact:
+			//
+			//   - Unresolved stub: the resolver left the endpoint verbatim,
+			//     so ToID IS the original stub.
+			//   - "ext:<pkg>": the external synthesiser rewrote a bare stub
+			//     `<pkg>` to `ext:<pkg>`, so trimming the prefix recovers it.
+			//
+			// The trim is load-bearing, not cosmetic. classifyDispositionLang
+			// runs its dynamic-pattern check on the ORIGINAL stub BEFORE the
+			// ext:-prefix check, precisely so reflection builtins the
+			// synthesiser stamped `ext:` (Python getattr/eval, JS Function —
+			// they sit in the stdlib stop-list) land in `dynamic` rather than
+			// `external-unknown` (#95). The catalog matches `getattr` and not
+			// `ext:getattr`, so passing ToID unstripped silently defeats that:
+			// measured on testdata/golden, it moves 6 of 796 edges out of
+			// `dynamic` and into `external-unknown`. Pinned by
+			// TestResolution_ExtPrefixedDynamicBuiltinIsDynamicNotExternal.
+			//
+			// A hex ToID short-circuits on isHexID before ToOriginal is read
+			// at all, so losing the original stub for rewritten edges is
+			// harmless.
+			if rel.ToID != "" {
+				endpoints = append(endpoints, resolve.EndpointPair{
+					ToID:       rel.ToID,
+					ToOriginal: strings.TrimPrefix(rel.ToID, externalStubPrefix),
+					Language:   rel.PropGet("language"),
+				})
 			}
 		}
 	}
@@ -674,18 +718,28 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		r.FieldExtractionRate.ZeroFieldsPct = 100.0 * float64(classZeroFields) / float64(classCount)
 	}
 
-	// Resolution disposition vector. The three buckets partition the edges
-	// with a non-empty ToID, so they sum to 100% (sanity check 3 pins that);
-	// edges with an empty ToID are outside the denominator entirely.
-	total := resResolved + resExternal + resUnresolved
+	// Resolution disposition vector, computed by the indexer's own classifier
+	// so the report cannot drift from the taxonomy (#6836). One entry per
+	// resolve.AllDispositions member — a 0.00% is corpus-relative, never a
+	// disposition nothing counts.
+	//
+	// Only ToID is populated on each EndpointPair, so ClassifyEndpoints
+	// records exactly one disposition per edge with a target and the counts
+	// sum to len(endpoints).
+	idx := resolve.BuildIndex(entityRecs)
+	dispStats := idx.ClassifyEndpoints(endpoints, external.IsKnownExternalPackage)
+	total := 0
+	for _, d := range resolve.AllDispositions {
+		total += dispStats.DispositionCounts[d]
+	}
 	r.ResolutionTotal = total
 	if total > 0 {
 		tf := float64(total)
-		r.Resolution = ResolutionVector{
-			ResolvedPct:   100.0 * float64(resResolved) / tf,
-			ExternalPct:   100.0 * float64(resExternal) / tf,
-			UnresolvedPct: 100.0 * float64(resUnresolved) / tf,
+		byDisposition := make(map[string]float64, len(resolve.AllDispositions))
+		for _, d := range resolve.AllDispositions {
+			byDisposition[d.String()] = 100.0 * float64(dispStats.DispositionCounts[d]) / tf
 		}
+		r.Resolution = ResolutionVector{ByDisposition: byDisposition}
 	}
 
 	// Suppress report if too few entities.
