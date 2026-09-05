@@ -356,31 +356,100 @@ func TestBackfillAndValidateAgreeOnCompleteness(t *testing.T) {
 // the collapse actually changed, on its own, so it cannot be lost inside
 // the agreement test above.
 //
-// Before #6868 this record passed `validate` clean and failed only at
-// `backfill --check`. It is not a contrived shape: planBackfill's own
-// doc comment names it ("a freshly `add`-ed record has an empty flat
-// capabilities map and IsGrouped()==false"). Re-gating validate's
-// completeness call on rec.IsGrouped() makes this test red.
+// Before #6868 these records passed `validate` clean and failed only at
+// `backfill --check`. Not a contrived shape: planBackfill's own doc
+// comment names it ("a freshly `add`-ed record has an empty flat
+// capabilities map and IsGrouped()==false").
+//
+// It runs over EVERY un-grouped shape rather than one, because
+// "un-grouped" is three distinct values of rec.Capabilities and a
+// re-gating predicate can readmit them one at a time. Two mutants,
+// each an early return in validateGroupedCompleteness, are what these
+// subcases exist to kill:
+//
+//	if len(rec.Capabilities) == 0 { return }                     // nil + empty
+//	if !rec.IsGrouped() && len(rec.Capabilities) > 0 { return }  // flat
+//
+// The second was ALIVE until this test grew its third subcase: the
+// flat-shaped record already had a test (subcategory_test.go's
+// flat-shape-forbidden case) but nothing asserted its COMPLETENESS, so
+// validate could stop reporting it silently.
 func TestValidateFlagsTaxonomyRecordThatCarriesNoGroups(t *testing.T) {
-	reg := &Registry{SchemaVersion: SchemaVersion, Records: []Record{ungroupedRecord()}}
-	if reg.Records[0].IsGrouped() {
-		t.Fatal("the record under test must NOT be grouped; that is the whole point of it")
+	// The one lane asserted by name in every subcase, so no assertion
+	// can be satisfied by an unrelated completeness message.
+	const namedLane = `lane key "route_extraction" (group "Routing")`
+
+	cases := []struct {
+		name string
+		caps map[string]Capability
+		// absent is a declared lane the record DOES carry, and which
+		// must therefore NOT be reported. Empty when the record carries
+		// nothing.
+		present string
+	}{
+		{
+			// What `coverage add` leaves in memory.
+			name: "nil capabilities",
+			caps: nil,
+		},
+		{
+			// What `"capabilities": {}` on disk loads as. Spelled with
+			// the explicit literal so a census of this shape by grep
+			// finds it — the nil case above does not match that search.
+			name: "explicitly empty capabilities",
+			caps: map[string]Capability{},
+		},
+		{
+			// Flat shape under a taxonomy subcategory. Also an error for
+			// a different reason (flat-shape-forbidden), which is why
+			// its completeness went unobserved.
+			name:    "non-empty flat capabilities",
+			caps:    map[string]Capability{"endpoint_synthesis": {Status: StatusFull}},
+			present: "endpoint_synthesis",
+		},
 	}
-	got := completenessMessages(reg)
-	if len(got) == 0 {
-		t.Fatal("validate reported no completeness error for a record whose subcategory taxonomy it satisfies none of")
-	}
-	// Name one specific declared lane, so the assertion cannot be
-	// satisfied by an unrelated completeness message.
-	wantKey := `lane key "route_extraction" (group "Routing")`
-	found := false
-	for _, e := range got {
-		if strings.Contains(e, wantKey) {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("expected %s to be reported; got:\n%s", wantKey, strings.Join(got, "\n"))
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := ungroupedRecord()
+			rec.Capabilities = tc.caps
+			reg := &Registry{SchemaVersion: SchemaVersion, Records: []Record{rec}}
+			if reg.Records[0].IsGrouped() {
+				t.Fatal("the record under test must NOT be grouped; that is the whole point of it")
+			}
+
+			got := completenessMessages(reg)
+			if len(got) == 0 {
+				t.Fatal("validate reported no completeness message for a record whose subcategory taxonomy it satisfies almost none of")
+			}
+			found := false
+			for _, e := range got {
+				if strings.Contains(e, namedLane) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("expected %s to be reported; got:\n%s", namedLane, strings.Join(got, "\n"))
+			}
+
+			// A cell the record DOES carry is not reported, whatever
+			// shape carries it. Without this the subcase would pass on a
+			// predicate that ignored the presence set entirely.
+			if tc.present != "" {
+				needle := `lane key "` + tc.present + `"`
+				for _, e := range got {
+					if strings.Contains(e, needle) {
+						t.Fatalf("%q is present on the record but was reported missing:\n%s", tc.present, e)
+					}
+				}
+			}
+
+			// And the count still equals what backfill would seed, so
+			// this cannot drift from the agreement invariant.
+			if n := len(planBackfill(reg, "", "")); n != len(got) {
+				t.Fatalf("backfill would seed %d cell(s), validate reported %d", n, len(got))
+			}
+		})
 	}
 }
 
