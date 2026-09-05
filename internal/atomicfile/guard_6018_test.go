@@ -46,12 +46,15 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/repowalk"
 )
 
 // notYetConverted lists the files that STILL build a deterministic temp name,
@@ -431,8 +434,10 @@ func scanDeterministicTempNames(t *testing.T, root string) []tempNameOffence {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "vendor", "testdata", "dist", "build":
+			// The exclusion list is shared (#6846): seven hand-maintained
+			// copies had already drifted apart, and #6842 fixed exactly one
+			// of them. internal/repowalk states why each name is on it.
+			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -474,4 +479,82 @@ func repoRoot(t *testing.T) string {
 	}
 	// here = <root>/internal/atomicfile/guard_6018_test.go
 	return filepath.Clean(filepath.Join(filepath.Dir(here), "..", ".."))
+}
+
+// ---------------------------------------------------------------------------
+// #6846 — the walk must not descend into agent worktrees
+// ---------------------------------------------------------------------------
+
+// writeGoFile writes body to root/rel, creating parents.
+func writeGoFile(t *testing.T, root, rel, body string) string {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", rel, err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write %s: %v", rel, err)
+	}
+	return path
+}
+
+// offenderSource is a minimal non-test Go file carrying one of the three
+// spellings the guard catches, so a walk that reaches it MUST report it.
+const offenderSource = `package p
+
+func tmpFor(dest string) string { return dest + ".tmp" }
+`
+
+// TestScanDeterministicTempNames_DoesNotDescendIntoAgentWorktrees pins the
+// #6846 fix AT THE CALL SITE.
+//
+// .claude/worktrees/ holds full checkouts of this same repository. Before this
+// fix the guard's walk parsed every one of them, so in any development
+// checkout it reported offences under paths the notYetConverted ledger can
+// never name, and t.Fatalf'd on any mid-edit parse error in an unrelated
+// in-flight branch. CI has no worktrees there, which is why it survived from
+// #6018 through #6842 — so this test builds the condition itself under
+// t.TempDir() rather than relying on the ambient checkout, which would make it
+// pass vacuously exactly where it is needed least.
+//
+// The tree exercises all five vacuity layers at once: the scan must read
+// something (the ordinary package), read the RIGHT thing (that offence and no
+// other), read its full content (the offence is on the file's last line), the
+// matcher must fire, and the walk must ACT on the exclusion — a walk that
+// descends both trips the broken file's parse Fatalf and reports the shadow
+// offence.
+func TestScanDeterministicTempNames_DoesNotDescendIntoAgentWorktrees(t *testing.T) {
+	root := t.TempDir()
+
+	// Ordinary source: MUST be reported. Without this the test would pass on a
+	// walk that reads nothing at all.
+	writeGoFile(t, root, "internal/pkg/writer.go", offenderSource)
+
+	// An agent worktree: a full second copy of the tree. Its offence must NOT
+	// be reported, and its mid-edit parse error must not fail this package.
+	writeGoFile(t, root, ".claude/worktrees/agent-x/internal/pkg/writer.go", offenderSource)
+	writeGoFile(t, root, ".claude/worktrees/agent-x/internal/pkg/broken.go", "package p\n\nfunc (\n")
+
+	// A directory that merely CONTAINS "claude" is ordinary source and must
+	// still be scanned — the exclusion is an exact base-name match, not a
+	// substring one.
+	writeGoFile(t, root, ".claude-backup/internal/pkg/writer.go", offenderSource)
+
+	var got []string
+	for _, o := range scanDeterministicTempNames(t, root) {
+		got = append(got, o.file)
+	}
+	sort.Strings(got)
+
+	want := []string{".claude-backup/internal/pkg/writer.go", "internal/pkg/writer.go"}
+	if len(got) != len(want) {
+		t.Fatalf("scan reported %v; want exactly %v.\n"+
+			"An extra entry under .claude/worktrees/ means the walk descended into an agent "+
+			"worktree (#6846); a missing entry means it stopped reading real source.", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("scan reported %v; want exactly %v", got, want)
+		}
+	}
 }

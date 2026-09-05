@@ -59,6 +59,12 @@ func looksLikeRelationshipKind(s string) bool {
 
 // walkGoFiles collects all .go files under root, skipping testdata/ and
 // vendor/ subtrees.
+//
+// This is NOT internal/repowalk.SkippedDir (#6846) and is not a drifted copy of
+// it. Its only caller roots it at <repo>/internal, where `.git`, `.claude`,
+// `node_modules`, `dist` and `build` do not exist — so the names it omits are
+// unreachable rather than missing — and it carries `fixtures`, a name the
+// shared list does not have. Different root, different set, on purpose.
 func walkGoFiles(root string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
