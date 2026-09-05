@@ -307,16 +307,25 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			// EndLine == 0 for every FB-loaded entity.
 			//
 			// CORRECTION (#6827): that is no longer true of the schema. #6236
-			// added the slot — fbwriter.buildEntity now writes EndLine and
-			// fbEntityToGraphEntity reads it back — so end lines DO survive a
-			// round trip through a graph.fb written since then. The check stays
-			// one-sided anyway, for two reasons that are about data and not
-			// about the schema: every graph.fb written BEFORE #6236 still loads
-			// with EndLine == 0 (testdata/golden is one), and no measurement
-			// exists of how many entities the extractors actually give an end
-			// line. Widening this to a span check is a separate change that
-			// needs a corpus number first; it must not be done on the strength
-			// of the slot existing.
+			// added the slot — internal/graph/fbwriter/writer.go writes EndLine
+			// and fbEntityToGraphEntity reads it back — so end lines CAN
+			// survive a round trip now. Nor is the pre-#6236 population a
+			// reason: those files are not loaded span-less, they are REJECTED
+			// (load.go's minSupportedFBFormatVersion is fbversion.Version = 6,
+			// and #6236 raised it precisely to force the reindex that
+			// repopulates spans), so that population is empty by construction.
+			//
+			// The check stays one-sided on a live measurement instead. The
+			// golden fixture is a POST-#6236 v6 graph.fb — a12a59321
+			// regenerated it — and TestGenerate_GoldenFB still observes 0 of
+			// its 672 entities carrying an EndLine. So the current writer, on
+			// the current schema, round-trips a real multi-language graph with
+			// no spans at all. Extractors do set EndLine in many places
+			// (~110 files under internal/extractor*), but no CORPUS-WIDE
+			// measurement of how often it reaches a loaded graph exists, and
+			// 0/672 is the only number there is. Widening this to a span check
+			// needs that corpus number first; it must not be done on the
+			// strength of the slot existing.
 			//
 			// Until then the metric is start-line-only and the rendered label
 			// says so — see the caption in render.go. Do not restore a label

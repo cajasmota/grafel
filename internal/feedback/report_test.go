@@ -18,14 +18,19 @@ import (
 // the graph.fb Entity table had no end-line slot, so every FB-loaded entity
 // came back with EndLine == 0 no matter what the extractor emitted.
 //
-// #6236 has since added the slot, so an end line now survives a round trip
-// through a graph.fb written after it (internal/graph/load.go
-// fbEntityToGraphEntity reads e.EndLine()). This helper still withholds
-// EndLine on purpose: every graph.fb written before #6236 loads with
-// EndLine == 0, and no measurement exists of how often the extractors set one,
-// so the span-less shape remains the conservative case the source-window
-// metric must hold up under. See #6827 for the label that used to claim
-// otherwise.
+// #6236 has since added the slot, so an end line CAN survive a round trip now
+// (internal/graph/load.go fbEntityToGraphEntity reads e.EndLine()). This helper
+// still withholds EndLine on purpose, but not for that reason and not because
+// of legacy files — a graph.fb older than v6 is rejected outright by
+// load.go's version gate, so no span-less legacy graph ever reaches this
+// package. The reason is a live measurement: testdata/golden is a POST-#6236
+// v6 graph.fb and TestGenerate_GoldenFB still finds 0 of its 672 entities
+// carrying an EndLine. Span-less is what the current writer actually produces,
+// so it stays the case this package's fixtures reproduce.
+//
+// #6827: this contract is now ENFORCED by TestMakeEntity_IsSpanLess rather
+// than merely described. It was prose only until then, and adding an EndLine
+// to the literal below left the whole package green.
 func makeEntity(id, name, kind, lang, srcFile string, startLine int) graph.Entity {
 	return graph.Entity{
 		ID:         id,
