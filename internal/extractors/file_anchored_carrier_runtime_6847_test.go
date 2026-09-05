@@ -134,17 +134,16 @@ import (
 // line. To ADD one: do not. A new offender is the defect this file exists to
 // catch; adding a line to keep it green is the failure mode #6834 names.
 var knownMissingCarrier6847 = map[string]string{
-	"astro":     "extractor.go:328 `FromID: filePath` on IMPORTS; no carrier emitted",
-	"clojure":   "path-anchored IMPORTS; no carrier emitted",
-	"cobol":     "path-anchored IMPORTS (COPY members); no carrier emitted",
-	"crystal":   "extractor.go:161 `FromID: filePath` on IMPORTS; no carrier emitted",
-	"dart":      "path-anchored IMPORTS; no carrier emitted",
-	"fsharp":    "extractor.go:673 `FromID: filePath` on IMPORTS; no carrier emitted",
-	"html":      "path-anchored IMPORTS (script/link refs); no carrier emitted",
-	"lua":       "lua.go:540 `FromID: file.Path` on IMPORTS; no carrier emitted",
-	"shell":     "shell.go:260 `FromID: file.Path` on IMPORTS (source/.); no carrier emitted",
-	"terraform": "hcl/relationships.go:160 and :180 `FromID: path` on IMPORTS; no carrier emitted",
-	"zig":       "zig.go:272 `FromID: filePath` on IMPORTS; no carrier emitted",
+	"astro":   "extractor.go:328 `FromID: filePath` on IMPORTS; no carrier emitted",
+	"clojure": "path-anchored IMPORTS; no carrier emitted",
+	"cobol":   "path-anchored IMPORTS (COPY members); no carrier emitted",
+	"crystal": "extractor.go:161 `FromID: filePath` on IMPORTS; no carrier emitted",
+	"dart":    "path-anchored IMPORTS; no carrier emitted",
+	"fsharp":  "extractor.go:673 `FromID: filePath` on IMPORTS; no carrier emitted",
+	"html":    "path-anchored IMPORTS (script/link refs); no carrier emitted",
+	"lua":     "lua.go:540 `FromID: file.Path` on IMPORTS; no carrier emitted",
+	"shell":   "shell.go:260 `FromID: file.Path` on IMPORTS (source/.); no carrier emitted",
+	"zig":     "zig.go:272 `FromID: filePath` on IMPORTS; no carrier emitted",
 }
 
 // exercisedLanguages6847 is the exact set of registered languages the corpus

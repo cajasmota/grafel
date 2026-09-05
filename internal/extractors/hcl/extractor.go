@@ -127,6 +127,28 @@ func (e *HCLExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		records = append(records, *fc)
 	}
 
+	// #6852 — the module and provider IMPORTS edges keep the file path as
+	// their FromID (relationships.go, two sites; #120 keeps it there on
+	// purpose), but the file-level component emitted just above is named the
+	// BASENAME, so for any NESTED .tf nothing carries the path as its Name and
+	// that FROM end resolved to nothing: internal/resolve/refs.go has no
+	// path→entity index. PrependFileCarrier is the CONDITIONAL form #6815 and
+	// #6518 settled on — unconditional would add one bare orphan node per .tf
+	// file across a whole repo, including the many that declare only resources,
+	// variables and outputs and anchor nothing at all.
+	//
+	// ONE carrier serves BOTH anchoring sites: they share this same `path`
+	// value, so the resolution requirement is one string.
+	//
+	// Placed AFTER the emitFileLevelRelationships append, and that is
+	// load-bearing in both directions. The anchored IMPORTS edges live on THAT
+	// record, so before it clause 2 ("some relationship has FromID == path")
+	// can never hold and the carrier would never be minted; and at a ROOT path
+	// that record's basename Name already IS the path, so clause 3 ("no record
+	// is already named path") is what stops a second SCOPE.Component/file being
+	// minted under the same id.
+	records = extractor.PrependFileCarrier(file.Path, lang, records)
+
 	span.SetAttributes(
 		attribute.String("language", lang),
 		attribute.Int("file_line_count", lineCount),
