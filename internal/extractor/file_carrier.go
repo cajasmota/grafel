@@ -63,6 +63,19 @@ import "github.com/cajasmota/grafel/internal/types"
 //     property of every root .tf. Pinned end-to-end by
 //     TestTerraform_RootPathGetsNoSecondCarrier_6852, with the block-less case
 //     pinned separately by TestTerraform_EmptyFileGetsNoCarrier_6852.
+//     fsharp (#6852) is another such caller, reached by a different route.
+//     (No ordinal, and no roster of which callers those are: this paragraph is
+//     inside the file whose doctrine below says the caller set is deliberately
+//     not written down here, having been stated as measured fact three times
+//     and falsified twice — #6861.) The route: nothing fsharp emits is named
+//     after the file as a rule, but moduleRE captures
+//     a dotted `[\w.]+`, so a ROOT file Core.fs declaring `module Core.fs`
+//     emits a SCOPE.Component named exactly the path — and since graph.EntityID
+//     does not hash Subtype, a carrier there would land a second node under the
+//     module record's id (the #6369/#6480 hazard). Pinned by
+//     TestFSharp_ModuleNamedLikeThePathGetsNoSecondCarrier_6852, whose nested
+//     subtest is the contrast that stops it passing on a carrier that is never
+//     emitted at all.
 //
 // Clause 3 is checked for EVERY record, before the loop may short-circuit on
 // clause 2 being satisfied — deliberately, and the order is load-bearing.

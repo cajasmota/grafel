@@ -519,7 +519,22 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// + emits RENDERS, stamps Cmd dispatch USES edges).
 	applyElmishFeliz(src, filePath, imports, entities)
 
-	return entities
+	// #6852: buildImportEntities anchors each `open` placeholder's IMPORTS on
+	// filePath, and nothing above is NAMED after the file — every record is
+	// named after a module, namespace, type, operation, DU case or active
+	// pattern. resolve/refs.go has no path→entity index, so that FROM end
+	// resolved to nothing and the raw path reached the graph. The carrier is
+	// CONDITIONAL (#6815, #6518): an .fs file with no `open` anchors nothing,
+	// and an unconditional carrier would mint one bare orphan node per source
+	// file across a whole repo — a change no recall-shaped assertion can see.
+	//
+	// Placement is load-bearing: FileCarrierFor clause 2 asks whether some
+	// record already anchors on the path, so the call must come AFTER the
+	// import placeholders exist. Clause 3 matters here too — a root file
+	// `Core.fs` declaring `module Core.fs` already emits a record named
+	// exactly the path, and graph.EntityID does not hash Subtype, so a second
+	// SCOPE.Component would land under the module record's id (#6369/#6480).
+	return extractor.PrependFileCarrier(filePath, "fsharp", entities)
 }
 
 // classifyTypeSubtype determines the F# type subtype from the declaration context.

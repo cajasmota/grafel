@@ -139,7 +139,6 @@ var knownMissingCarrier6847 = map[string]string{
 	"cobol":   "path-anchored IMPORTS (COPY members); no carrier emitted",
 	"crystal": "extractor.go:161 `FromID: filePath` on IMPORTS; no carrier emitted",
 	"dart":    "path-anchored IMPORTS; no carrier emitted",
-	"fsharp":  "extractor.go:673 `FromID: filePath` on IMPORTS; no carrier emitted",
 	"lua":     "lua.go:540 `FromID: file.Path` on IMPORTS; no carrier emitted",
 	"shell":   "shell.go:260 `FromID: file.Path` on IMPORTS (source/.); no carrier emitted",
 	"zig":     "zig.go:272 `FromID: filePath` on IMPORTS; no carrier emitted",
