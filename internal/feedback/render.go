@@ -196,11 +196,13 @@ func Render(w io.Writer, r *Report) error {
 	} else {
 		rv := r.Resolution
 		fmt.Fprintf(w, "| Disposition | Percentage |\n|---|---|\n")
-		// Rows are driven by resolve.AllDispositions, not by a hand-written
-		// list: before #6836 three of six rows were wired to counters nothing
+		// Rows are driven by resolve.AllDispositions, not by a list maintained
+		// here: before #6836 three of six rows were wired to counters nothing
 		// incremented and rendered a permanent 0.00%. Iterating the taxonomy
-		// makes that shape impossible — every disposition the classifier can
-		// return has a row, and every row is fed by the classifier.
+		// removes that failure mode for every disposition the slice names —
+		// each gets a row, and each row is fed by the classifier. It does NOT
+		// cover a Disposition that reaches the enum without reaching
+		// AllDispositions, which nothing currently checks.
 		for _, d := range resolve.AllDispositions {
 			fmt.Fprintf(w, "| %s | %.2f%% |\n", d.String(), rv.Pct(d.String()))
 		}

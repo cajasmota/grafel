@@ -50,7 +50,10 @@ type KindStats struct {
 //
 // The breakdown is produced by the SAME classifier the indexer uses —
 // resolve.Index.ClassifyEndpoints — not by a private re-derivation, so the
-// report cannot drift from the taxonomy it claims to report. #6836: three of
+// report does not drift from the taxonomy it claims to report. That guarantee
+// is only as strong as resolve.AllDispositions being complete: it is a
+// hand-maintained slice, graded against nothing, so a Disposition added to the
+// enum and not to the slice would still go missing here. #6836: three of
 // six hand-maintained counters here had no increment and rendered a permanent
 // 0.00%; keying off resolve.AllDispositions removes the whole defect class,
 // because a disposition can no longer exist in the taxonomy and be silently
@@ -500,10 +503,10 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			// Resolution disposition. Collect one EndpointPair per edge that
 			// HAS a target; the classification itself is delegated to
 			// resolve.Index.ClassifyEndpoints after both passes, so this
-			// report and `orient view=stats` speak the same taxonomy by
-			// construction (#6836 — a private re-derivation here could only
-			// tell resolved / ext: / other apart, and the three dispositions
-			// it could not produce were rendered as a permanent 0.00%).
+			// report and `orient view=stats` read the same taxonomy from the
+			// same code (#6836 — a private re-derivation here could only tell
+			// resolved / ext: / other apart, and the three dispositions it
+			// could not produce were rendered as a permanent 0.00%).
 			//
 			// An empty ToID carries no disposition: there is nothing to
 			// resolve, so it is excluded from ResolutionTotal, which is why
@@ -751,9 +754,11 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 	}
 
 	// Resolution disposition vector, computed by the indexer's own classifier
-	// so the report cannot drift from the taxonomy (#6836). One entry per
-	// resolve.AllDispositions member — a 0.00% is corpus-relative, never a
-	// disposition nothing counts.
+	// rather than re-derived here (#6836). One entry per resolve.AllDispositions
+	// member — a 0.00% is corpus-relative, never a disposition nothing counts.
+	// Caveat: AllDispositions is a hand-maintained slice and nothing grades it
+	// against the Disposition enum, so completeness of the table still rests on
+	// that slice staying in step.
 	//
 	// Only ToID is populated on each EndpointPair, so ClassifyEndpoints
 	// records exactly one disposition per edge with a target and the counts
