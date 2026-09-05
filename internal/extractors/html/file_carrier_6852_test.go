@@ -20,14 +20,22 @@ package html_test
 // serves them all. The ledger row (#6847) says "script/link refs"; <img>
 // anchors identically and is covered here too.
 //
-// The SELF-CLOSING <script src="..."/> site is deliberately absent from the
-// fixture set below, and the reason is a measurement rather than an oversight:
-// tree-sitter's HTML grammar treats <script> as a RAW-TEXT element, so
-// `<script src="x"/>` never becomes a self_closing_tag node — it opens a
-// script_element whose unterminated raw text swallows the rest of the document,
-// and the whole file extracts to ZERO records. A fixture for that site would
-// assert nothing about the carrier; the branch is unreachable through this
-// syntax, not merely untested here.
+// The SELF-CLOSING <script> site is STRUCTURALLY DEAD, not merely untested, and
+// the argument is from the grammar rather than from a fixture that happened to
+// come back empty. tree-sitter-html v0.23.2's grammar.js defines
+// `self_closing_tag` over `$._start_tag_name` (grammar.js:95-97), and
+// src/scanner.c's scan_start_tag_name emits START_TAG_NAME only in its
+// `default:` branch — a tag whose tag_for_name is SCRIPT gets
+// SCRIPT_START_TAG_NAME instead (and STYLE gets STYLE_START_TAG_NAME). So no
+// self_closing_tag node can ever carry tag_name == "script", case-insensitively,
+// and visitSelfClosingTag's "script" case is unreachable for every input.
+//
+// TestHTML_SelfClosingScriptSiteIsDead_6852 pins that rather than arguing it: a
+// document whose <script> is written self-closing yields no script_include
+// record at all, while the <img> beside it and the carrier are both emitted. If
+// a future tree-sitter bump ever routes that spelling to self_closing_tag, the
+// pin goes red — which is exactly when a reader needs to know that a sixth
+// producer has become live and ungraded.
 //
 // MULTIPLICITY IS THE AXIS THIS ARM ADDS. bicep had one anchored edge shape and
 // terraform two; a real html page routinely references many scripts and
@@ -367,6 +375,52 @@ func TestHTML_SelfReferencingRefGetsNoSecondCarrier_6852(t *testing.T) {
 			t.Errorf("  kind=%q subtype=%q name=%q qname=%q quality=%v",
 				r.Kind, r.Subtype, r.Name, r.QualifiedName, r.QualityScore)
 		}
+	}
+}
+
+// TestHTML_SelfClosingScriptSiteIsDead_6852 pins the one buildAssetImportRel
+// call site this file's fixture set does not drive — visitSelfClosingTag's
+// "script" case — as unreachable, so the claim above is a pin and not an
+// argument.
+//
+// The grammar reason is in the header. What is asserted here is the OBSERVABLE
+// consequence: the self-closing <script> contributes no script_include record,
+// while the <img> beside it and the carrier are both emitted. Asserting the
+// neighbours matters — a fixture that only checked "no script_include" would
+// pass just as well if the whole document failed to parse, which is the shape
+// of vacuity that would hide the site becoming live under some OTHER tag.
+func TestHTML_SelfClosingScriptSiteIsDead_6852(t *testing.T) {
+	const path = "src/pages/index.html"
+	const src = `<html><head><script src="/static/a.js"/></head><body><img src="/static/b.png"></body></html>`
+	recs := extractHTML6852(t, src, path)
+
+	var script, img, carrier int
+	for _, r := range recs {
+		switch {
+		case r.Subtype == "script_include":
+			script++
+		case r.Subtype == "image_include":
+			img++
+		case r.Name == path:
+			carrier++
+		}
+	}
+	if script != 0 {
+		t.Errorf("a self-closing <script src=.../> produced %d script_include record(s) — "+
+			"visitSelfClosingTag's \"script\" case has become REACHABLE (grammar.js routes "+
+			"self_closing_tag through $._start_tag_name, which scanner.c never emits for a "+
+			"SCRIPT tag), so a sixth anchoring producer is now live and this file's fixture "+
+			"set does not drive it", script)
+	}
+	// The neighbours are the anti-vacuity half: without them "0 script_include"
+	// is satisfied by a document that produced nothing at all.
+	if img != 1 {
+		t.Errorf("premise: want 1 image_include from the <img> beside the self-closing "+
+			"<script>, got %d — the document did not parse as this test assumes", img)
+	}
+	if carrier != 1 {
+		t.Errorf("premise: want exactly 1 carrier named %q (the <img> anchors), got %d",
+			path, carrier)
 	}
 }
 
