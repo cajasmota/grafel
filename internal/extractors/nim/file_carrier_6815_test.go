@@ -76,14 +76,15 @@ proc greet(name: string): string =
 }
 
 // Axis VARIED: the import FORM — `include` rather than `import`. HELD CONSTANT:
-// one proc, one module named, no plain `import` line. Nim's collectImports
-// feeds three syntaxes into the same edge producer; a carrier keyed on the
-// `import` regex alone would pass the case above and leave this one dangling.
+// the proc, BYTE FOR BYTE with the case above; one module named; no plain
+// `import` line. Nim's collectImports feeds three syntaxes into the same edge
+// producer; a carrier keyed on the `import` regex alone would pass the case
+// above and leave this one dangling.
 func TestNim_IncludeGetsAFileCarrier_6815(t *testing.T) {
 	src := `include prelude
 
 proc greet(name: string): string =
-  result = name
+  result = name.toUpperAscii()
 `
 	recs := extractNim6815(t, src)
 	if n := len(nimFileAnchoredImports6815(recs)); n != 1 {
@@ -94,11 +95,15 @@ proc greet(name: string): string =
 	}
 }
 
-// OVER-FIRING control. Axis VARIED: imports absent. HELD CONSTANT: the same
-// proc, byte for byte, as the first case.
+// OVER-FIRING control. Axis VARIED: the import line, absent. HELD CONSTANT: the
+// proc, BYTE FOR BYTE with TestNim_ImportGetsAFileCarrier_6815 above — this
+// source is that one with the `import strutils` line and its blank line
+// deleted, and nothing else. The two erlang and groovy control pairs are
+// byte-for-byte in the same way; nim's used to differ in the proc body while
+// the comment claimed it did not.
 func TestNim_NoCarrierWithoutAnythingToCarry_6815(t *testing.T) {
 	src := `proc greet(name: string): string =
-  result = name
+  result = name.toUpperAscii()
 `
 	recs := extractNim6815(t, src)
 	if n := len(nimFileAnchoredImports6815(recs)); n != 0 {
@@ -123,7 +128,7 @@ func TestNim_OneCarrierPerFileNotPerImport_6815(t *testing.T) {
 from os import getEnv
 
 proc greet(name: string): string =
-  result = name
+  result = name.toUpperAscii()
 `
 	recs := extractNim6815(t, src)
 	if n := len(nimFileAnchoredImports6815(recs)); n != 4 {

@@ -23,18 +23,38 @@ import "github.com/cajasmota/grafel/internal/types"
 // relationships a real FROM end, and ok=false when no such entity should be
 // emitted.
 //
-// The carrier is emitted when BOTH clauses hold. Each rejects on its own:
+// The carrier is emitted when ALL THREE clauses hold. Each rejects on its own,
+// and each is graded by a mutant that only that clause's fixture kills:
 //
-//  1. Some relationship in records has FromID == path. This is the exact
+//  1. path is non-empty. A nameless carrier is not a carrier — it would resolve
+//     nothing and add a blank node. That clause alone rejects records that DO
+//     carry an anchoring relationship (an empty FromID trivially equals an empty
+//     path), which is why it is tested separately and not folded into clause 2.
+//     Pinned by TestFileCarrierFor_EmptyPathNeverCarries_6815.
+//  2. Some relationship in records has FromID == path. This is the exact
 //     resolution requirement — refs.go has no path→entity index, so a
 //     path-valued FromID resolves if and only if some emitted node carries that
 //     exact string as its Name. A file with entities but no path-anchored edge
 //     needs no carrier and gets none; that clause alone rejects, e.g., an
-//     erlang module that declares functions and imports nothing.
-//  2. No record in records is ALREADY named path. That clause alone rejects a
+//     erlang module that declares functions and imports nothing. Pinned by
+//     TestFileCarrierFor_NoCarrierWhenNoEdgeIsPathAnchored_6815 and, for the
+//     narrower "some OTHER file's path is not this file's anchor" reading, by
+//     TestFileCarrierFor_AnotherFilesAnchorDoesNotCount_6815.
+//  3. No record in records is ALREADY named path. That clause alone rejects a
 //     file which does have a path-anchored edge but whose extractor already
 //     minted a path-named container for it — emitting a second one would put
 //     two nodes under one id and make the rewrite target ambiguous.
+//
+// Clause 3 is checked for EVERY record, before the loop may short-circuit on
+// clause 2 being satisfied — deliberately, and the order is load-bearing.
+// Hoisting the `if anchored { continue }` above the Name test would stop the
+// scan as soon as anchoring is established, so a path-named record emitted
+// AFTER the anchoring one would go unseen and a second carrier would be minted.
+// That reordering is a mutant the fixture set kills:
+// TestFileCarrierFor_NoSecondCarrierWhenThePathNamedRecordComesLast_6815 exists
+// for it specifically, because the ordinary clause-3 case places the path-named
+// record first and cannot see it. No current caller emits in that order — which
+// is the reason to pin the property rather than to rely on it.
 //
 // lang is stamped explicitly rather than taken from FileInput.Language so the
 // carrier cannot become the one record in an extraction that disagrees with the

@@ -84,6 +84,37 @@ func TestFileCarrierFor_NoSecondCarrierWhenOneIsAlreadyNamedAfterThePath_6815(t 
 	}
 }
 
+// CLAUSE 2 ALONE rejects, REORDERED. Axis VARIED: the POSITION of the
+// path-named record — after the anchoring record instead of before it. HELD
+// CONSTANT: both records, their contents, and the verdict, which must not
+// depend on emission order.
+//
+// This is a separate case rather than a table row on the one above because the
+// two grade different mutants. The case above is satisfied by an
+// implementation that stops scanning for a path-named record as soon as
+// anchoring is established (hoisting `if anchored { continue }` above the Name
+// check): the path-named record is seen first there, so the early exit is never
+// reached. Under that implementation THIS case mints a second carrier — two
+// nodes under one id, which is exactly the ambiguous rewrite target clause 2
+// exists to prevent.
+//
+// NOT justified by a known in-tree emission order: none of the three callers
+// mints a path-named container at all today, so neither ordering is currently
+// produced by a real extractor. That is the reason to pin it rather than a
+// reason not to — clause 2's correctness must not rest on an ordering
+// assumption nothing in the tree states or enforces.
+func TestFileCarrierFor_NoSecondCarrierWhenThePathNamedRecordComesLast_6815(t *testing.T) {
+	recs := []types.EntityRecord{
+		recWithRel("cache.hrl", types.RelationshipRecord{
+			FromID: carrierPath, ToID: "cache.hrl", Kind: "IMPORTS"}),
+		{Name: carrierPath, Kind: "SCOPE.Component", Subtype: "file", SourceFile: carrierPath},
+	}
+	if _, ok := FileCarrierFor(carrierPath, "erlang", recs); ok {
+		t.Fatal("a record named after this path rejects wherever it sits in the slice, " +
+			"not only when it precedes the anchoring record")
+	}
+}
+
 // Any edge kind anchors, not only IMPORTS: the resolution requirement is about
 // the FromID, not about the kind. Axis VARIED: the relationship Kind. HELD
 // CONSTANT: the anchoring FromID.
