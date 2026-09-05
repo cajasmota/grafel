@@ -103,9 +103,9 @@ Unlike Java, where the file itself is a `SCOPE.Component` that `expected.json`
 can name as `from_name`, nothing in a proto graph was named `user.proto`, so
 the resolver left those edges dangling on the FROM side (the #6298 offender in
 `internal/extractors/file_anchored_rels_guard_test.go`).
-`internal/quality/diff.go`'s `resolveExpectedEdge` needs at least one resolvable
-`from` candidate before it can match anything — there is no `from_bare_name` —
-so any row spelling this edge was **unsatisfiable**: red forever, telling you
+`internal/quality/diff.go`'s `resolveExpectedEdge` needed at least one resolvable
+`from` candidate before it could match anything — there was no `from_bare_name`
+until #6488 arm C added one — so any row spelling this edge was **unsatisfiable**: red forever, telling you
 nothing. Measured at the time: reverting `fileContainsSchemaRel` to
 `BuildOperationStructuralRef` (the exact pre-#6422 defect) left this fixture at
 **18/18 entities, 16/16 relationships, 0 forbidden hits** — completely green.

@@ -104,6 +104,18 @@ type missingRelationship struct {
 	ToFileMatchedNothing   bool `json:"to_file_matched_nothing,omitempty"`
 }
 
+// fromLabel names a row's FROM endpoint for a human or machine report. A
+// from_bare_name row (#6488 arm C) states no from_name — its carrier is a raw
+// string — so without the fallback such a row prints as ` --[IMPORTS]--> x`,
+// identifying nothing in a fixture with three modules. It mirrors the fallback
+// the TO side has always had at every one of these call sites.
+func fromLabel(er ExpectedRelationship) string {
+	if er.FromName != "" {
+		return er.FromName
+	}
+	return er.FromBareName
+}
+
 // ToJSON converts an in-memory Report to its persisted shape.
 func (r *Report) ToJSON() *JSONReport {
 	jr := &JSONReport{
@@ -144,7 +156,7 @@ func (r *Report) ToJSON() *JSONReport {
 			to = rr.Expected.ToBareName
 		}
 		jr.MissingRelationships = append(jr.MissingRelationships, missingRelationship{
-			From:                   rr.Expected.FromName,
+			From:                   fromLabel(rr.Expected),
 			FromKind:               rr.Expected.FromKind,
 			Kind:                   rr.Expected.Kind,
 			To:                     to,
@@ -162,7 +174,7 @@ func (r *Report) ToJSON() *JSONReport {
 			to = fh.Expected.ToBareName
 		}
 		jr.Forbidden = append(jr.Forbidden, missingRelationship{
-			From:     fh.Expected.FromName,
+			From:     fromLabel(fh.Expected),
 			FromKind: fh.Expected.FromKind,
 			Kind:     fh.Expected.Kind,
 			To:       to,
@@ -272,6 +284,25 @@ func (r *Report) WriteHuman(w io.Writer) {
 				diag = fmt.Sprintf("  (root cause: FIXTURE ROW — %s names a path no such entity"+
 					" is under; the entity IS extracted, in another file, so this row can never"+
 					" match; fix the path)", strings.Join(badPaths, " and "))
+			// #6488 arm C, and BEHIND the wrong-path arm above for the same
+			// reason every other arm is: a row that also mistyped its from_file
+			// has a concrete authoring error to fix first.
+			//
+			// Ahead of the endpoint arms, though, because a from_bare_name row
+			// resolves no from entity BY DESIGN — the carrier is a raw string,
+			// which is the whole reason the field exists — so "from-entity not
+			// extracted" fires on every miss of every such row and names the
+			// wrong culprit. Here the endpoints are as good as they will ever
+			// get and the edge is simply absent, which is the extractor's.
+			//
+			// !FromResolved is load-bearing rather than decorative: a
+			// from_bare_name equal to an entity's ID DOES resolve, can match
+			// through the ordinary literal-ID path, and must keep the normal
+			// diagnostics. See TestFromBareNameEqualToAnEntityIDKeepsTheOrdinaryDiagnostic_6488.
+			case rr.Expected.FromBareName != "" && !rr.FromResolved:
+				diag = fmt.Sprintf("  (root cause: no edge was emitted from the raw carrier"+
+					" %q — from_bare_name names a string, not an entity, so there is no"+
+					" from-entity to be missing)", strings.TrimSpace(rr.Expected.FromBareName))
 			case !rr.FromResolved && !rr.ToResolved:
 				diag = "  (root cause: NEITHER endpoint extracted)"
 			case !rr.FromResolved:
@@ -298,7 +329,7 @@ func (r *Report) WriteHuman(w io.Writer) {
 				diag = "  (both endpoints exist; edge not emitted)"
 			}
 			fmt.Fprintf(w, "    - %s --[%s]--> %s%s\n",
-				rr.Expected.FromName, rr.Expected.Kind, to, diag)
+				fromLabel(rr.Expected), rr.Expected.Kind, to, diag)
 		}
 	}
 
@@ -329,7 +360,7 @@ func (r *Report) WriteHuman(w io.Writer) {
 				to = fh.Expected.ToBareName
 			}
 			fmt.Fprintf(w, "    - %s --[%s]--> %s\n",
-				fh.Expected.FromName, fh.Expected.Kind, to)
+				fromLabel(fh.Expected), fh.Expected.Kind, to)
 		}
 	}
 }

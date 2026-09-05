@@ -361,6 +361,13 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// string resolve to an entity?" — does not depend on which kind it became.
 	nameIsEntity := make(map[string]bool, len(doc.Entities))
 	idIsEntity := make(map[string]bool, len(doc.Entities))
+	// The from-side twin of idIsEntity, keyed EXACTLY (#6488 arm C). It is a
+	// separate map rather than a reuse because the two answer different
+	// questions: idIsEntity is folded to match the EqualFold comparison the
+	// to-side bare path uses, while a from_bare_name is compared literally, so
+	// folding here would report a carrier as resolved that the matcher can
+	// never reach — the over-claim these flags exist to avoid.
+	idIsEntityExact := make(map[string]bool, len(doc.Entities))
 	for k := range doc.Entities {
 		e := &doc.Entities[k]
 		kn := e.Kind + "\x00" + e.Name
@@ -379,6 +386,7 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		}
 		if id := strings.TrimSpace(e.ID); id != "" {
 			idIsEntity[strings.ToLower(id)] = true
+			idIsEntityExact[id] = true
 		}
 	}
 
@@ -566,7 +574,45 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 				}
 			}
 		}
-		fromResolved := len(fromCands) > 0
+		// #6488 arm C: the raw carrier string is a from candidate in its own
+		// right. Before this, every match path below was nested inside the
+		// loop over fromCands, so an edge whose FromID is a file path — the
+		// cross-language IMPORTS convention of #120 — could not be matched by
+		// ANY row in a language that emits no extractor.FileEntity to carry
+		// that path (erlang, nim, groovy; the graph-side repair is #6815).
+		// MEASURED on erlang-otp-mini before this change: deleting the
+		// `-include` IMPORTS edge left the report byte-identical.
+		//
+		// Trimmed, because a stray space in expected.json is an authoring slip;
+		// NOT folded, because the match below is a literal lookup on the edge's
+		// FromID and a path that differs in case is a different path. Blank is
+		// no candidate at all — otherwise "" joins the candidates on every row
+		// that leaves the field unset and matches any empty-FromID edge.
+		fromBare := strings.TrimSpace(er.FromBareName)
+
+		// fromResolved answers "does this row's FROM endpoint correspond to an
+		// extracted entity", and is deliberately NOT satisfied by the field
+		// merely being set — that is #6487's defect, and recall cannot see it
+		// because a row that matches matches either way. A bare carrier equal
+		// to an entity's ID does resolve: such a row can match through the
+		// ordinary literal-ID path.
+		//
+		// Asymmetry with the to side, on purpose: to_bare_name also counts a
+		// string equal to an entity's NAME as resolved, because #6476 pairs
+		// that with a to_bare_name_is_entity flag that redirects the
+		// diagnostic. There is no from-side flag, so counting a name here would
+		// only suppress "from-entity not extracted" and blame the extractor for
+		// a row that cannot match. See
+		// TestFromBareNameEqualToAnEntityNameIsNotResolved_6488.
+		//
+		// The inner `fromBare != ""` is EQUIVALENT UNDER ANY INPUT, not merely
+		// ungraded: idIsEntityExact is built under `if id := TrimSpace(e.ID);
+		// id != ""`, so it can never hold the empty key and the lookup alone
+		// would already answer false. It is kept because it states the
+		// precondition at the point of use — the append guard below spells the
+		// same test and IS load-bearing — and removed nothing can be observed
+		// by a test, so no test claims to grade it.
+		fromResolved := len(fromCands) > 0 || (fromBare != "" && idIsEntityExact[fromBare])
 
 		// Candidate "to" entities OR bare-name target.
 		var toCands []*graph.Entity
@@ -614,21 +660,35 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 		bareIsEntityName := bare != "" && !bareIsEntityID && nameIsEntity[bare]
 		toResolved := len(toCands) > 0 || bareIsEntityID || bareIsEntityName
 
+		// The from IDs this row may match on: every resolved candidate, plus
+		// the raw carrier string when the row named one (#6488 arm C). Folding
+		// the bare carrier in HERE, rather than repeating the match paths under
+		// a second loop, is what keeps "how a row matches" a single answer: a
+		// bare from reaches the to_bare_name paths and the resolved-target path
+		// alike, and neither can drift from the other.
+		fromIDs := make([]string, 0, len(fromCands)+1)
+		for _, fc := range fromCands {
+			fromIDs = append(fromIDs, fc.ID)
+		}
+		if fromBare != "" {
+			fromIDs = append(fromIDs, fromBare)
+		}
+
 		// First pass: try the strict (from, to, kind) triple lookup over
 		// every candidate combination.
-		for _, fc := range fromCands {
+		for _, fid := range fromIDs {
 			for _, tc := range toCands {
-				if r, ok := relByTriple[relKey{fc.ID, tc.ID, er.Kind}]; ok {
+				if r, ok := relByTriple[relKey{fid, tc.ID, er.Kind}]; ok {
 					return r, fromResolved, toResolved, false
 				}
 			}
 			if er.ToBareName != "" {
-				if r, ok := relByTriple[relKey{fc.ID, er.ToBareName, er.Kind}]; ok {
+				if r, ok := relByTriple[relKey{fid, er.ToBareName, er.Kind}]; ok {
 					return r, fromResolved, true, false
 				}
 				// Bare-name comparison is whitespace-insensitive; the
 				// indexer may emit a slightly mangled stub.
-				for _, r := range relByKindFrom[er.Kind+"\x00"+fc.ID] {
+				for _, r := range relByKindFrom[er.Kind+"\x00"+fid] {
 					if strings.EqualFold(strings.TrimSpace(r.ToID), strings.TrimSpace(er.ToBareName)) {
 						return r, fromResolved, true, false
 					}

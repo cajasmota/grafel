@@ -137,17 +137,44 @@ type ExpectedEntity struct {
 // django.db.models.Model.objects.filter), the harness also accepts an
 // edge whose ToID matches ToBareName directly (no entity lookup required).
 type ExpectedRelationship struct {
-	FromName   string `json:"from_name"`
-	FromKind   string `json:"from_kind,omitempty"`
-	FromFile   string `json:"from_file,omitempty"`
-	Kind       string `json:"kind"`
-	ToName     string `json:"to_name,omitempty"`
-	ToKind     string `json:"to_kind,omitempty"`
-	ToFile     string `json:"to_file,omitempty"`
-	ToBareName string `json:"to_bare_name,omitempty"`
-	MustExist  bool   `json:"must_exist"`
-	NiceToHave bool   `json:"nice_to_have,omitempty"`
-	Note       string `json:"note,omitempty"`
+	FromName string `json:"from_name"`
+	FromKind string `json:"from_kind,omitempty"`
+	FromFile string `json:"from_file,omitempty"`
+	// FromBareName is the FROM-side analogue of ToBareName (#6488 arm C): it
+	// matches an edge whose FromID is a RAW STRING rather than an entity ID.
+	//
+	// It exists because such an edge was unassertable by construction, not
+	// merely unasserted. Every match path in resolveExpectedEdge used to be
+	// nested inside the loop over the from-entity candidates, so a row whose
+	// carrier is not an entity had no route to a match at all. The population
+	// is real and is the cross-language IMPORTS convention of #120: erlang, nim
+	// and groovy anchor include/import edges on the file PATH and emit no
+	// extractor.FileEntity carrying it, so nothing in those graphs can be named
+	// as the from endpoint (the graph-side repair is #6815).
+	//
+	// The comparison is exact after trimming the fixture's value — a stray
+	// space in expected.json is an authoring slip, a case difference is a
+	// different path. A blank (or whitespace-only) value is no candidate at
+	// all, so the overwhelming majority of rows, which set this field to
+	// nothing, cannot match an edge emitted with an empty FromID.
+	//
+	// Setting it alongside from_name is legal and means "either": both are
+	// candidates, exactly as the row's to side already admits a resolved target
+	// and a bare one together.
+	//
+	// It does NOT make from_resolved true. A row can match through this field
+	// while its from endpoint resolves to nothing, and that combination is the
+	// finding such a row records — the edge hangs off a carrier that does not
+	// exist. See TestMatchedFromBareNameRowStillReportsFromResolvedFalse_6488.
+	FromBareName string `json:"from_bare_name,omitempty"`
+	Kind         string `json:"kind"`
+	ToName       string `json:"to_name,omitempty"`
+	ToKind       string `json:"to_kind,omitempty"`
+	ToFile       string `json:"to_file,omitempty"`
+	ToBareName   string `json:"to_bare_name,omitempty"`
+	MustExist    bool   `json:"must_exist"`
+	NiceToHave   bool   `json:"nice_to_have,omitempty"`
+	Note         string `json:"note,omitempty"`
 }
 
 // LoadFixture reads expected.json from the given fixture directory.
