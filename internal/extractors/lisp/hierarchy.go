@@ -167,8 +167,8 @@ import (
 )
 
 // lispSuperclassNameRE matches ONE superclass name, whole. Group 1 is an
-// optional package qualifier (`sb-mop:` or `sb-mop::`) and group 2 the bare
-// symbol. Being anchored at both ends is what rejects anything that is not a
+// optional package qualifier (`sb-mop:` or `sb-mop::` — BOTH forms are graded,
+// and separately) and group 2 the bare symbol. Being anchored at both ends is what rejects anything that is not a
 // plain symbol — a stray reader macro, a keyword-only token — instead of
 // half-matching it into a wrong edge.
 //
@@ -179,11 +179,36 @@ import (
 //   - `^` alone decides `('quoted)`: without it the match simply starts at `q`
 //     and emits `x EXTENDS quoted`
 //     (TestLispHierarchy_QuoteReaderMacroIsNotHalfMatched).
+//
 //   - `$` alone decides a token with an interior non-symbol byte: `foo,bar`
 //     half-matches to `foo` without `$` and to `bar` without `^`, so that one
 //     input kills each deletion in a different direction and neither anchor
 //     can hide behind the other
 //     (TestLispHierarchy_TokenWithAnInteriorSeparatorIsRejectedWhole).
+//
+//   - the LEADING character class of group 2 excludes `:`, which is the only
+//     thing that rejects a keyword-only token such as `:initarg` written
+//     DIRECTLY in the superclass list
+//     (TestLispHierarchy_KeywordInTheSuperclassListIsDropped, with
+//     TestLispHierarchy_KeywordBesideARealNameDropsOnlyTheKeyword asserting the
+//     rejection is per TOKEN, not per group). This clause was ungraded for two
+//     rounds: `:initarg` appeared only inside NESTED slot lists, where
+//     lispBalancedGroup rejects the group before this regex is consulted, so
+//     the nesting guard masked it the same way it masked the anchor.
+//
+//   - the `?` in `::?` is what accepts the internal-symbol form `pkg::sym`
+//     alongside `pkg:sym`. Narrowing it to `:` LOSES the edge entirely, and the
+//     single-colon row does not reach it
+//     (TestLispHierarchy_DoubleColonQualifierIsErasedToo). The opposite
+//     narrowing — requiring two colons — is graded by
+//     TestLispHierarchy_PackageQualifierErasedIntoBaseProperty.
+//
+//   - `'` is absent from the leading class but PRESENT in the trailing one, so
+//     `foo'bar` is taken as ONE symbol. That is now graded, but it is probably
+//     the WRONG answer — `'` terminates a token in the CL reader — so it is
+//     pinned as a known divergence rather than quietly widened or quietly
+//     narrowed
+//     (TestLispHierarchy_InteriorApostropheIsKeptInTheSymbol_KnownDivergence).
 //
 // The token splitter above it is graded on its own axis too: `strings.Fields`
 // accepts ANY whitespace run inside the group, and `(alpha\tbeta\n gamma)` is

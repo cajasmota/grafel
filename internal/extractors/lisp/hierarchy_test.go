@@ -501,3 +501,71 @@ func TestLispHierarchy_OmittedSuperclassListWithFlatSlotsEmitsWrongEdges_KnownDi
 	wantEdges(t, extendsEdges(t, src),
 		"flat->name", "flat->legs", "dog->animal")
 }
+
+// TestLispHierarchy_KeywordInTheSuperclassListIsDropped grades the clause the
+// package header has always asserted and nothing observed: that a KEYWORD-only
+// token is rejected by lispSuperclassNameRE on its own.
+//
+// The token must sit DIRECTLY in the superclass list. `:initarg` appears six
+// other times in this file and every one of them is inside a NESTED slot list,
+// where lispBalancedGroup rejects the whole group before the leaf regex is
+// consulted — so the nesting guard masked this clause exactly as it previously
+// masked the anchor (see TestLispHierarchy_NestedFormInsideTheGroupEmitsNothing).
+// Adding `:` to the LEADING character class of the bare-symbol group, leaving
+// both anchors intact, was ALIVE against the whole unit suite and the golden
+// gate before this row existed, and emits `x EXTENDS :initarg` — an edge to a
+// keyword, which names no class.
+func TestLispHierarchy_KeywordInTheSuperclassListIsDropped(t *testing.T) {
+	if got := extendsEdges(t, "(defclass x (:initarg) ())\n"); got != nil {
+		t.Fatalf("EXTENDS = %v, want none — a keyword is not a class name", got)
+	}
+}
+
+// TestLispHierarchy_KeywordBesideARealNameDropsOnlyTheKeyword varies ONE axis
+// against the row above: a valid symbol shares the list with the keyword. It
+// asserts the rejection is PER TOKEN rather than per group — the good name
+// still yields its edge — so a producer that discards the whole list on one bad
+// token fails here while passing the pure-keyword row.
+func TestLispHierarchy_KeywordBesideARealNameDropsOnlyTheKeyword(t *testing.T) {
+	wantEdges(t, extendsEdges(t, "(defclass x (animal :initarg) ())\n"), "x->animal")
+}
+
+// TestLispHierarchy_DoubleColonQualifierIsErasedToo grades the `?` in the
+// `::?` alternation, which the regex's own doc names (`sb-mop:` or `sb-mop::`)
+// and which TestLispHierarchy_PackageQualifierErasedIntoBaseProperty does not
+// reach: that row uses a SINGLE colon, so narrowing `::?` to `:` leaves it
+// green. It varies ONLY the colon count.
+//
+// A CL internal-symbol reference `pkg::sym` is the documented second half of
+// the qualifier claim; with `::?` narrowed to `:` the token matches nothing at
+// all and the edge is LOST, not mis-targeted. Both halves are asserted here —
+// ToID erased to the bare symbol, `base` carrying the written form — for the
+// same #6802 reason the single-colon row gives.
+func TestLispHierarchy_DoubleColonQualifierIsErasedToo(t *testing.T) {
+	src := "(defclass x (sb-mop::internal-thing) ())\n"
+	wantEdges(t, extendsEdges(t, src), "x->internal-thing")
+	rels := edgesFor(t, src, "x")
+	if len(rels) != 1 {
+		t.Fatalf("relationships = %d, want 1", len(rels))
+	}
+	if got := rels[0].Properties.Get("base"); got != "sb-mop::internal-thing" {
+		t.Fatalf("base = %q, want the written form", got)
+	}
+}
+
+// TestLispHierarchy_InteriorApostropheIsKeptInTheSymbol_KnownDivergence grades
+// the one remaining ungraded clause of lispSuperclassNameRE: `'` is absent from
+// the leading character class (which is what
+// TestLispHierarchy_QuoteReaderMacroIsNotHalfMatched grades) but PRESENT in the
+// trailing one, so `foo'bar` is accepted as a single symbol.
+//
+// This pins today's answer while recording that it is probably the WRONG one:
+// in Common Lisp `'` is a terminating macro character, so the reader sees `foo`
+// followed by `(quote bar)`, and the honest edge would be `x EXTENDS foo`.
+// Changing it is a behaviour change outside this issue's scope and would need
+// its own scoring, so the clause is graded rather than quietly widened or
+// quietly removed. Whoever narrows the trailing class gets a failure here
+// naming the decision.
+func TestLispHierarchy_InteriorApostropheIsKeptInTheSymbol_KnownDivergence(t *testing.T) {
+	wantEdges(t, extendsEdges(t, "(defclass x (foo'bar) ())\n"), "x->foo'bar")
+}
