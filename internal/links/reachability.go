@@ -143,13 +143,28 @@ type reachabilityDocument struct {
 
 	// DegradedRepos names the repos that produced an Unknown set, and
 	// UnreadableEntryPointFiles counts the files that could not be read.
-	// Consumers that report dead code must present a degraded repo's result
-	// as partial rather than complete (#6839).
+	// grafel_dead_code decodes both and returns them alongside its list, so a
+	// caller sees that a degraded repo's answer is partial rather than
+	// complete (#6839). No other consumer reads this document.
 	DegradedRepos             []string `json:"degraded_repos,omitempty"`
 	UnreadableEntryPointFiles int      `json:"unreadable_entry_point_files,omitempty"`
 
 	Entries []reachabilityEntry `json:"entries"`
 }
+
+// readSourceFileForReachability is this pass's source read, indirected
+// through a package-level var for one reason: #6839's predicate turns on
+// the ERROR CLASS a read fails with, and two of the classes it must treat
+// as failures cannot be produced on a real filesystem without planting a
+// FIFO or a socket. safeio.ErrWouldBlock in particular is reachable only
+// from safeio's process-global slot saturation (64 abandoned opens), and
+// fs.ErrPermission is not reachable at all when the tests run as root.
+// Without a seam those branches would be asserted only by prose.
+//
+// Production never reassigns it. The tests that do restore it via
+// t.Cleanup, and they still drive the whole pass and assert the stamped
+// property — the seam replaces the filesystem, not the code under test.
+var readSourceFileForReachability = readSourceFile
 
 // runReachabilityPass computes reachability + dead-code marking across
 // all repos in the group. Returns a PassResult so RunAllPasses can fold
@@ -253,6 +268,22 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 				fileSet[f] = true
 			}
 		}
+		// #6839: resolve the source root ONCE and check it is a directory we
+		// can see. Per-file fs.ErrNotExist below is read as "that file
+		// genuinely is not there"; at the ROOT level the same inference is
+		// wrong — a root that moved makes every file ErrNotExist while the
+		// code all still exists, which is exactly #6839's harm. So a missing
+		// root degrades the repo instead of being exempted file by file.
+		srcRoot := repoSourcePathFor(g.Repo)
+		if srcRoot == "" {
+			srcRoot = g.FileRoot
+		}
+		srcRootOK := false
+		if srcRoot != "" {
+			if fi, err := os.Stat(srcRoot); err == nil && fi.IsDir() {
+				srcRootOK = true
+			}
+		}
 		for file := range fileSet {
 			lang := substrate.LanguageForPath(file)
 			if lang == "" {
@@ -262,21 +293,29 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 			if sniff == nil {
 				continue
 			}
-			srcRoot := repoSourcePathFor(g.Repo)
-			if srcRoot == "" {
-				srcRoot = g.FileRoot
+			if !srcRootOK {
+				// The whole sniffed entry-point class is unavailable for this
+				// repo. Record it once and stop — reading further files can
+				// only produce the same answer.
+				repoUnreadable = append(repoUnreadable, "<source root: "+srcRoot+">")
+				fmt.Fprintf(os.Stderr,
+					"grafel: warning: reachability: %s: source root %q is missing or not a "+
+						"directory; entry-points cannot be sniffed and dead-code marking is "+
+						"suppressed for this repo\n", g.Repo, srcRoot)
+				break
 			}
 			abs := filepath.Join(srcRoot, file)
-			content, err := readSourceFile(abs, maxSourceFileBytes)
+			content, err := readSourceFileForReachability(abs, maxSourceFileBytes)
 			if err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
-					// A file that is not there is a KNOWN fact, not a failed
-					// read: nothing was hidden, so the pre-#6839 skip is
-					// right and dead-code marking stays enabled. This is
-					// routine — a graph indexed from a source tree that has
-					// since moved has every file in this arm — and treating
-					// it as degraded would suppress the pass's entire output
-					// on the commonest input it sees.
+					// The source root exists (checked above) but this file
+					// under it does not. That is a KNOWN fact rather than a
+					// failed read — nothing about the file was hidden from
+					// the pass — so the pre-#6839 skip is right and dead-code
+					// marking stays enabled. The dangerous shape of the same
+					// error, a root that moved so EVERY file reports
+					// ErrNotExist while the code exists, is caught by the
+					// srcRootOK guard above and degrades the repo.
 					continue
 				}
 				// #6839: skip the file (safeio's doc forbids the SILENCE, not

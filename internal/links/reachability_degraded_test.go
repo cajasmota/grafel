@@ -2,11 +2,16 @@ package links
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/safeio"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -66,6 +71,15 @@ func readReachabilityDoc(t *testing.T, links string) reachabilityDocument {
 	return doc
 }
 
+func propOfKey(g repoGraph, id, key string) string {
+	for _, e := range g.Entities {
+		if e.ID == id {
+			return e.Properties.Get(key)
+		}
+	}
+	return "<missing entity>"
+}
+
 func propOf(g repoGraph, id string) string {
 	for _, e := range g.Entities {
 		if e.ID == id {
@@ -94,7 +108,8 @@ func TestReachabilityUnreadableEntryPointFileDoesNotClaimDead(t *testing.T) {
 	for i := range g.Entities {
 		if g.Entities[i].ID == "orphanFn" {
 			g.Entities[i].Properties = types.Props{}
-			g.Entities[i].Properties.Set("reachable", "false")
+			g.Entities[i].Properties.Set("reachable", "true")
+			g.Entities[i].Properties.Set("reachable_via", "sniff:cli_main:main")
 		}
 	}
 	graphs := []repoGraph{g}
@@ -112,6 +127,10 @@ func TestReachabilityUnreadableEntryPointFileDoesNotClaimDead(t *testing.T) {
 	}
 	// 2. Proven-reachable entities are still stamped — a lost seed can only
 	//    ADD reachability, never remove it, so "true" stays sound.
+	if got := propOfKey(graphs[0], "orphanFn", "reachable_via"); got != "" {
+		t.Errorf("orphanFn: a stale reachable_via must not outlive the verdict it "+
+			"justified; got %q", got)
+	}
 	if got := propOf(graphs[0], "ep1"); got != "true" {
 		t.Errorf("ep1 (graph-encoded seed) should still be reachable=true, got %q", got)
 	}
@@ -133,6 +152,32 @@ func TestReachabilityUnreadableEntryPointFileDoesNotClaimDead(t *testing.T) {
 	}
 	if len(doc.DegradedRepos) != 1 || doc.DegradedRepos[0] != "repo-a" {
 		t.Errorf("doc.degraded_repos: want [repo-a], got %v", doc.DegradedRepos)
+	}
+	if doc.UnreadableEntryPointFiles != 1 {
+		t.Errorf("doc.unreadable_entry_point_files: want 1, got %d", doc.UnreadableEntryPointFiles)
+	}
+	// The counter has to reach the operator-facing stats sidecar under the
+	// name it is documented with, not just live on the struct.
+	statsPath := filepath.Join(t.TempDir(), "g-link-pass-stats.json")
+	if err := writeLinkPassStats(statsPath, &RunResult{Group: "g", Results: []PassResult{res}}); err != nil {
+		t.Fatalf("writeLinkPassStats: %v", err)
+	}
+	statsBuf, err := os.ReadFile(statsPath)
+	if err != nil {
+		t.Fatalf("stats sidecar: %v", err)
+	}
+	var stats struct {
+		Passes []struct {
+			Pass                  string `json:"pass"`
+			UnreadableSourceFiles int    `json:"unreadable_source_files"`
+		} `json:"passes"`
+	}
+	if err := json.Unmarshal(statsBuf, &stats); err != nil {
+		t.Fatalf("unmarshal stats sidecar: %v", err)
+	}
+	if len(stats.Passes) != 1 || stats.Passes[0].UnreadableSourceFiles != 1 {
+		t.Errorf("link-pass-stats unreadable_source_files: want 1 for the reachability pass, got %+v",
+			stats.Passes)
 	}
 	if doc.Unknown == 0 {
 		t.Errorf("doc.unknown: want >0 (entities whose reachability is undetermined), got 0")
@@ -256,5 +301,136 @@ func TestReachabilityDegradationIsScopedToItsOwnRepo(t *testing.T) {
 	}
 	if goodRows == 0 {
 		t.Errorf("sidecar: want unreachable rows for repo-good, got 0")
+	}
+}
+
+// TestReachabilitySelfReferentialSymlinkDegrades adds a THIRD real error
+// class, produced on a real filesystem inside t.TempDir() and independent of
+// both the process's uid (unlike chmod) and safeio's stat-first refusal
+// (unlike the directory fixture): a self-referential symlink, which the
+// kernel fails with ELOOP.
+func TestReachabilitySelfReferentialSymlinkDegrades(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	p := filepath.Join(root, "src", "handler.go")
+	if err := os.Symlink(p, p); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+	// Prove the premise the test rests on: this path really does fail to
+	// read, and with neither of the classes the other tests inject.
+	if _, err := readSourceFile(p, maxSourceFileBytes); err == nil {
+		t.Fatalf("premise failed: self-referential symlink read succeeded")
+	} else if errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("premise failed: want a read FAILURE, got fs.ErrNotExist: %v", err)
+	}
+
+	graphs := []repoGraph{reachabilityFixture("repo-a", root)}
+	paths := Paths{Links: filepath.Join(t.TempDir(), "g-links.json")}
+	res, err := runReachabilityPass("g", graphs, paths)
+	if err != nil {
+		t.Fatalf("runReachabilityPass: %v", err)
+	}
+	if got := propOf(graphs[0], "orphanFn"); got != "" {
+		t.Errorf("orphanFn: an ELOOP read is a failure, not an answer; want unstamped, got %q", got)
+	}
+	if res.UnreadableSourceFiles != 1 {
+		t.Errorf("PassResult.UnreadableSourceFiles: want 1, got %d", res.UnreadableSourceFiles)
+	}
+}
+
+// TestReachabilityDegradesOnEveryReadFailureClass grades the predicate
+// across the error CLASSES, not just the one a temp directory can produce.
+// safeio.ErrWouldBlock is reachable only from safeio's process-global slot
+// saturation and fs.ErrPermission is unreachable when the suite runs as
+// root, so both are injected through the pass's read seam — while the pass
+// itself, and the assertion on the stamped property, stay real.
+//
+// Without this table, widening the fs.ErrNotExist exemption to "|| ErrPermission"
+// or "|| ErrWouldBlock" — the exact widening #6839 exists to forbid, and the
+// one safeio's package doc singles out — stays green.
+func TestReachabilityDegradesOnEveryReadFailureClass(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		degrades bool
+	}{
+		{"not_regular", safeio.ErrNotRegular, true},
+		{"would_block", safeio.ErrWouldBlock, true},
+		{"permission", fs.ErrPermission, true},
+		{"wrapped_permission", fmt.Errorf("open x: %w", fs.ErrPermission), true},
+		{"eloop", syscall.ELOOP, true},
+		{"generic_io", errors.New("input/output error"), true},
+		// The one exemption, and the only one: an absent file under a root
+		// that exists is an answer, not a failure.
+		{"not_exist", fs.ErrNotExist, false},
+		{"wrapped_not_exist", fmt.Errorf("open x: %w", fs.ErrNotExist), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, "src/handler.go", reachabilityFixtureSrc)
+
+			injected := tc.err
+			readSourceFileForReachability = func(string, int64) ([]byte, error) {
+				return nil, injected
+			}
+			t.Cleanup(func() { readSourceFileForReachability = readSourceFile })
+
+			graphs := []repoGraph{reachabilityFixture("repo-a", root)}
+			paths := Paths{Links: filepath.Join(t.TempDir(), "g-links.json")}
+			res, err := runReachabilityPass("g", graphs, paths)
+			if err != nil {
+				t.Fatalf("runReachabilityPass: %v", err)
+			}
+
+			got := propOf(graphs[0], "orphanFn")
+			doc := readReachabilityDoc(t, paths.Links)
+			if tc.degrades {
+				if got != "" {
+					t.Errorf("%v: reachability could not be computed, so orphanFn must be "+
+						"unstamped; got %q", injected, got)
+				}
+				if res.UnreadableSourceFiles == 0 || len(doc.DegradedRepos) != 1 {
+					t.Errorf("%v: want the skip REPORTED; got unreadable=%d degraded=%v",
+						injected, res.UnreadableSourceFiles, doc.DegradedRepos)
+				}
+				return
+			}
+			if got != "false" {
+				t.Errorf("%v: an absent file is an answer, not a failure — orphanFn must "+
+					"still be reachable=false; got %q", injected, got)
+			}
+			if res.UnreadableSourceFiles != 0 || len(doc.DegradedRepos) != 0 {
+				t.Errorf("%v: must not be reported as a read failure; got unreadable=%d degraded=%v",
+					injected, res.UnreadableSourceFiles, doc.DegradedRepos)
+			}
+		})
+	}
+}
+
+// TestReachabilityMissingSourceRootDegrades closes the case the
+// fs.ErrNotExist exemption would otherwise swallow whole: when the repo's
+// source ROOT is gone, every file under it reports ErrNotExist while the
+// code itself exists — exempting file by file would stamp the entire repo
+// dead, which is #6839's original harm.
+func TestReachabilityMissingSourceRootDegrades(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "moved-away")
+
+	graphs := []repoGraph{reachabilityFixture("repo-a", root)}
+	paths := Paths{Links: filepath.Join(t.TempDir(), "g-links.json")}
+	res, err := runReachabilityPass("g", graphs, paths)
+	if err != nil {
+		t.Fatalf("runReachabilityPass: %v", err)
+	}
+	if got := propOf(graphs[0], "orphanFn"); got != "" {
+		t.Errorf("orphanFn: the source root is missing, so NOTHING about this repo's "+
+			"reachability was computed; want unstamped, got %q", got)
+	}
+	sidecar := readReachabilityDoc(t, paths.Links)
+	if res.UnreadableSourceFiles != 1 || len(sidecar.DegradedRepos) != 1 {
+		t.Errorf("want the missing root reported once; got unreadable=%d degraded=%v",
+			res.UnreadableSourceFiles, sidecar.DegradedRepos)
 	}
 }

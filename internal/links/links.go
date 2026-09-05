@@ -191,13 +191,18 @@ type PassResult struct {
 	// reports how much candidate signal the suffix matcher found for them. (#2813)
 	ResidualCandidates int
 
-	// UnreadableSourceFiles is the number of scanned-source-tree files this
-	// pass tried to read and could not (#6839). safeio refuses non-regular
-	// files, times out on a would-block open and bounds every read, so a
-	// failure here is a file the pass never saw the contents of. Counting it
-	// is what keeps the skip "bounded and REPORTED" rather than silent — see
-	// internal/safeio's package doc. Surfaced in the link-pass-stats sidecar
-	// so an MCP/CLI caller can see that a pass ran on partial input.
+	// UnreadableSourceFiles is the number of scanned-source-tree reads this
+	// pass attempted and could not complete (#6839) — a non-regular file, a
+	// permission failure, a would-block open, an unresolvable symlink, or a
+	// missing source root. Not counted: a file that is simply absent under a
+	// root that exists, which is an answer rather than a failure.
+	//
+	// Counting it is what keeps the skip "bounded and REPORTED" rather than
+	// silent — see internal/safeio's package doc. It is written to
+	// <group>-link-pass-stats.json as unreadable_source_files; no MCP tool
+	// projects that field today, so it is an operator-facing record, not a
+	// wired-up signal. The wired-up signal is the reachability sidecar's
+	// degraded_repos, which grafel_dead_code returns.
 	UnreadableSourceFiles int
 }
 
