@@ -494,9 +494,8 @@ const (
 	// than it sounds. The other twelve on internal/entkinds' ledger each
 	// already have an `EntityKind<Name>` constant bound to a `SCOPE.`-prefixed
 	// value, so declaring the un-prefixed spelling needs a second Go name.
-	// Arm B6 migrates four of them (see the block below); Config, Constraint,
-	// Endpoint, Operation, Plugin, Route, Service and Template remain deferred
-	// to arms B7-B8.
+	// Arms B6 and B7 migrate eight of them (see the blocks below);
+	// Constraint, Endpoint, Plugin and Template remain deferred to arm B8.
 	//
 	// WHAT THAT RULE DOES NOT SAY IS THAT NO SYNONYM EXISTS. Four of the
 	// thirteen have a live `SCOPE.`-prefixed twin that a Go producer emits
@@ -578,6 +577,45 @@ const (
 	EntityKindModelBare     EntityKind = "Model"
 	EntityKindSchemaBare    EntityKind = "Schema"
 	EntityKindViewBare      EntityKind = "View"
+
+	// #6776 arm B7 — the next four rule-YAML-declared kinds whose obvious Go
+	// identifier was already taken by a `SCOPE.`-prefixed constant. Same
+	// `Bare` suffix, same reason: it names the SPELLING, not a second concept,
+	// and arm B6's block records why a same-concept pair is the shipped graph
+	// rather than a pending decision (classfold.go:34-38, #1700).
+	//
+	// Each pair was read at its cited site before being relied on:
+	//
+	//   Operation — internal/resolve/refs.go:1940, isOperationKind, is
+	//               literally `k == "SCOPE.Operation" || k == "Operation"`.
+	//   Route     — internal/enrichment/candidates.go:98 and
+	//               internal/enrichment/pricing.go:38 each list "Route" beside
+	//               "SCOPE.Route" in ONE case arm; both mean the HTTP route.
+	//   Service   — classfold.go:44/62 pairs "Service":100 with
+	//               "SCOPE.Service":100 and :91 gives both canon-rank 4. The
+	//               same construct is also extracted twice over: a docker
+	//               compose service is bare `Service` from
+	//               internal/engine/rules/docker/frameworks/docker_compose.yaml:39
+	//               and "SCOPE.Service" from
+	//               internal/patterns/docker_compose_extractor.go:68.
+	//   Config    — both spellings name a configuration file: rule YAML emits
+	//               bare `Config` for one (ansible_core.yaml:31,34;
+	//               docker_compose.yaml:30,33) and
+	//               internal/patterns/config_detector.go:49 emits
+	//               "SCOPE.Config" subtype "config_file" for one.
+	//
+	// The grounding for this batch carried a caveat that the Config twin uses
+	// a SYNTHETIC SourceFile for id collapse. Two things about it, neither of
+	// which blocks the add: config_detector.go passes the REAL filePath to
+	// makeEntity, so the caveat does not describe that producer; and
+	// IsValidEntityKind is membership in a string set that never reads
+	// SourceFile, so an id-shaping difference could not bear on it either way.
+	//
+	// Spellings unchanged, so KindVocabularyVersion does not move.
+	EntityKindConfigBare    EntityKind = "Config"
+	EntityKindOperationBare EntityKind = "Operation"
+	EntityKindRouteBare     EntityKind = "Route"
+	EntityKindServiceBare   EntityKind = "Service"
 )
 
 // AllEntityKinds returns every EntityKind that grafel extractors are
@@ -639,11 +677,12 @@ func AllEntityKinds() []EntityKind {
 		// #6776 arm B2: declared since the messaging split and never listed
 		// here — the SOLE omission from this list, in either direction.
 		//
-		// The population is 86 constants of type EntityKind, of which 85 are
+		// The population is 90 constants of type EntityKind, of which 89 are
 		// NAMED EntityKind*; the odd one out is HTTPEndpointKindLegacy, which
 		// is EntityKind-typed under a different name and was already listed.
 		// (It was 63/62 until arm B4 added six below, 69/68 until arm B5 added
-		// thirteen more, and 82/81 until arm B6 added four.) Both counts and the set
+		// thirteen more, 82/81 until arm B6 added four, and 86/85 until arm B7
+		// added four.) Both counts and the set
 		// equality are pinned by
 		// TestEntityKindDeclarations6776_MatchAllEntityKindsExactly rather than
 		// asserted here, so this comment cannot go stale unobserved.
@@ -718,6 +757,12 @@ func AllEntityKinds() []EntityKind {
 		EntityKindModelBare,
 		EntityKindSchemaBare,
 		EntityKindViewBare,
+		// #6776 arm B7: four more bare spellings whose SCOPE.-prefixed twin is
+		// live in the same graph — see the const block for the read sites.
+		EntityKindConfigBare,
+		EntityKindOperationBare,
+		EntityKindRouteBare,
+		EntityKindServiceBare,
 	}
 }
 

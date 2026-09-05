@@ -118,22 +118,30 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 // another's and each is reported independently.
 //
 // The rows are NOT all distinct axes, and saying so would be this issue's own
-// defect: Route and Config are the SAME axis — un-prefixed rule-declared kinds
-// — and no validator permissiveness admits one without the other. They are both
-// present because both are named by internal/graph/fbwriter's arm-A fixture,
-// which hard-fails "fixture is inert" if either becomes valid, so pinning them
-// from this side documents that live cross-package dependency rather than
-// widening coverage. The genuinely separate mechanisms are: un-prefixed
-// rule-declared (Route/Config), the not-promoted synthetic (File), the other B3
-// ledger (ChannelEvent), prefix-stripping (Workflow), near-miss spelling
-// (SCOPE.Workflows), and re-admitting a retired kind (SCOPE.ExternalAPI).
+// defect: Endpoint and Plugin are the SAME axis — un-prefixed rule-declared
+// kinds — and no validator permissiveness admits one without the other. They
+// are both present because both are named by internal/graph/fbwriter's arm-A
+// fixture, which hard-fails "fixture is inert" if either becomes valid, so
+// pinning them from this side documents that live cross-package dependency
+// rather than widening coverage. The genuinely separate mechanisms are:
+// un-prefixed rule-declared (Endpoint/Plugin), the not-promoted synthetic
+// (File), the other B3 ledger (ChannelEvent), prefix-stripping (Workflow),
+// near-miss spelling (SCOPE.Workflows), and re-admitting a retired kind
+// (SCOPE.ExternalAPI).
+//
+// These two rows held Route and Config until #6776 arm B7 declared both. They
+// were re-picked from the four kinds still on internal/entkinds' ledger
+// (Constraint, Endpoint, Plugin, Template) and moved in the SAME commit as the
+// fbwriter fixture they mirror, because that fixture is what makes the pair a
+// documented dependency rather than two arbitrary strings.
 //
 // Varies: the shape of the non-member. Holds constant: the validator.
 //
-//	Route, Config          un-prefixed rule-declared kinds — #6776 arm B5..n's
-//	                       worklist, and the values internal/graph/fbwriter's
-//	                       arm-A fixture asserts are still invalid. ONE axis,
-//	                       two rows, for the reason above.
+//	Endpoint, Plugin       un-prefixed rule-declared kinds — what remains of
+//	                       #6776 arm B8's worklist, and the values
+//	                       internal/graph/fbwriter's arm-A fixture asserts are
+//	                       still invalid. ONE axis, two rows, for the reason
+//	                       above.
 //	File                   the commit-coupling synthetic, deliberately NOT
 //	                       promoted (894 entities of an internal artefact)
 //	ChannelEvent           a Go producer's UN-prefixed kind: B4 promoted the
@@ -145,8 +153,8 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 //	SCOPE.ExternalAPI      retired by #6451; re-admitting it would undo that
 func TestEntityKindEnum6776_B4_KindsOutsideTheEnumStayOutside(t *testing.T) {
 	for axis, kind := range map[string]string{
-		"rule-declared, arm B5's worklist (fbwriter's arm-A fixture depends on it)": "Route",
-		"rule-declared, the largest such population":                                "Config",
+		"rule-declared, arm B8's worklist (fbwriter's arm-A fixture depends on it)": "Endpoint",
+		"rule-declared, the second row of that same axis":                           "Plugin",
 		"the commit-coupling synthetic, deliberately not promoted":                  "File",
 		"a Go producer's un-prefixed kind, on the other B3 ledger":                  "ChannelEvent",
 		"the prefix-stripped spelling of a kind B4 DID promote":                     "Workflow",

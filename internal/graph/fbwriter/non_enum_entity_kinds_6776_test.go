@@ -64,7 +64,7 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 	}
 	// And these must NOT be, or "absent from the enum" is meaningless here.
 	// Both are real #6744 ledger entries, not invented strings.
-	for _, invalid := range []string{"Route", "Config"} {
+	for _, invalid := range []string{"Endpoint", "Plugin"} {
 		if types.IsValidEntityKind(invalid) {
 			t.Fatalf("fixture is inert: %q is expected to be ABSENT FROM THE ENUM but IsValidEntityKind accepts it", invalid)
 		}
@@ -75,9 +75,9 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 			entFixture("a", string(types.EntityKindFunction)),
 			entFixture("b", string(types.EntityKindFunction)),
 			entFixture("c", string(types.EntityKindModule)),
-			entFixture("d", "Route"),
-			entFixture("e", "Route"),
-			entFixture("f", "Config"),
+			entFixture("d", "Endpoint"),
+			entFixture("e", "Endpoint"),
+			entFixture("f", "Plugin"),
 		},
 	}
 
@@ -92,7 +92,7 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 		t.Errorf("Entities = %d, want 3 (6 entities written, 3 with a kind absent from the enum)", rep.Entities)
 	}
 	if rep.EntityDistinctKinds != 2 {
-		t.Errorf("EntityDistinctKinds = %d, want 2 (Route, Config)", rep.EntityDistinctKinds)
+		t.Errorf("EntityDistinctKinds = %d, want 2 (Endpoint, Plugin)", rep.EntityDistinctKinds)
 	}
 	if rep.EntityKindsClean() {
 		t.Error("EntityKindsClean() = true, but 3 entities with non-enum kinds were written")
@@ -102,11 +102,11 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 	for _, k := range rep.EntityKinds {
 		got[k.Kind] = k.Entities
 	}
-	if got["Route"] != 2 {
-		t.Errorf("Route entities = %d, want 2 (report: %+v)", got["Route"], rep.EntityKinds)
+	if got["Endpoint"] != 2 {
+		t.Errorf("Endpoint entities = %d, want 2 (report: %+v)", got["Endpoint"], rep.EntityKinds)
 	}
-	if got["Config"] != 1 {
-		t.Errorf("Config entities = %d, want 1 (report: %+v)", got["Config"], rep.EntityKinds)
+	if got["Plugin"] != 1 {
+		t.Errorf("Plugin entities = %d, want 1 (report: %+v)", got["Plugin"], rep.EntityKinds)
 	}
 	for _, valid := range []string{string(types.EntityKindFunction), string(types.EntityKindModule)} {
 		if _, bad := got[valid]; bad {
@@ -117,7 +117,7 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 	// The names, not just the total: a bare count says something is wrong,
 	// the names say what, and what is the input to the migration ranking.
 	sum := rep.EntitySummary()
-	for _, want := range []string{"Route", "Config"} {
+	for _, want := range []string{"Endpoint", "Plugin"} {
 		if !strings.Contains(sum, want) {
 			t.Errorf("EntitySummary() = %q, missing non-enum kind name %q", sum, want)
 		}
@@ -175,7 +175,7 @@ func TestEntityKindReportIsEmptyButSCANNEDForAnAllEnumGraph(t *testing.T) {
 	}
 	// And a nil tally must survive being handed an entity kind, since that is
 	// exactly what graphFitsSingleBuilder does on every probed entity.
-	noTally.observeEntity("Route")
+	noTally.observeEntity("Endpoint")
 	if noTally.report().Scanned {
 		t.Error("a nil tally reports Scanned=true after observing an entity")
 	}
@@ -228,7 +228,7 @@ func TestEntityKindReportCapsTheListButNotTheCounts(t *testing.T) {
 func TestWriteGraphGenReportWiresTheFlatEntityProducerPath(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "0")
-	const nonEnum = "Route"
+	const nonEnum = "Endpoint"
 	if types.IsValidEntityKind(nonEnum) {
 		t.Fatalf("fixture is inert: %q is a valid entity kind, so the flat path has nothing "+
 			"non-enum to report; pick one still on internal/entkinds' ledger", nonEnum)
@@ -267,8 +267,8 @@ func TestWriteGraphGenReportWiresTheSegmentedEntityProducerPath(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "1")
 	t.Setenv("GRAFEL_SEGMENT_BYTES", "512")
-	// "Controller" until #6776 arm B5 declared it.
-	const nonEnum = "Config"
+	// "Controller" until arm B5 declared it, "Config" until arm B7.
+	const nonEnum = "Plugin"
 	if types.IsValidEntityKind(nonEnum) {
 		t.Fatalf("fixture is inert: %q is a valid entity kind", nonEnum)
 	}
@@ -310,18 +310,35 @@ func TestWriteGraphGenReportWiresTheSegmentedEntityProducerPath(t *testing.T) {
 // Holds constant: the document — one enum kind plus two kinds the enum does
 // NOT hold (both live #6744 ledger entries). This pins the "counts, never
 // drops" contract — dropping would be the very "looked at nothing, reported
-// clean" failure the arm exists to avoid. "Schema" stood where "Operation"
-// now does until #6776 arm B6 migrated it into the enum; it was swapped so the
-// document keeps covering the non-enum side, which is the side that can be
-// dropped.
+// clean" failure the arm exists to avoid. These two slots have been re-picked
+// once per migration arm as their occupants became valid: "Schema"/"Route"
+// were swapped for "Operation"/"Endpoint" (arm B6, then arm B7), and
+// "Operation" for "Template" (arm B7). Each swap keeps the document covering
+// the non-enum side, which is the side that can be dropped.
 func TestEntityKindsAreCountedNotDropped(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "0")
+	// The document's mix is the whole point, so it is ASSERTED rather than
+	// described — and asserted about THE SAME STRINGS the document is built
+	// from, since a guard that reads its own literals leaves the fixture free
+	// to ignore it. Measured: before this, swapping "Template" for the valid
+	// "Model" in the document left the test green.
+	enumKind := string(types.EntityKindFunction)
+	nonEnumKinds := []string{"Endpoint", "Template"}
+	if !types.IsValidEntityKind(enumKind) {
+		t.Fatalf("fixture is inert: %q must be IN the enum", enumKind)
+	}
+	for _, k := range nonEnumKinds {
+		if types.IsValidEntityKind(k) {
+			t.Fatalf("fixture is inert: %q has been migrated into the enum, so this document no "+
+				"longer covers the droppable side; re-pick from internal/entkinds' ledger", k)
+		}
+	}
 	doc := &graph.Document{
 		Entities: []graph.Entity{
-			entFixture("a", string(types.EntityKindFunction)),
-			entFixture("b", "Route"),
-			entFixture("c", "Operation"),
+			entFixture("a", enumKind),
+			entFixture("b", nonEnumKinds[0]),
+			entFixture("c", nonEnumKinds[1]),
 		},
 	}
 	if _, _, err := WriteGraphGenReport(dir, doc); err != nil {
@@ -335,7 +352,7 @@ func TestEntityKindsAreCountedNotDropped(t *testing.T) {
 	for _, e := range loaded.Entities {
 		kinds[e.Kind] = true
 	}
-	for _, want := range []string{string(types.EntityKindFunction), "Route", "Operation"} {
+	for _, want := range append([]string{enumKind}, nonEnumKinds...) {
 		if !kinds[want] {
 			t.Errorf("entity kind %q was DROPPED from the written graph — arm A counts, it never drops", want)
 		}
@@ -355,8 +372,8 @@ func TestApplyToSidecarCarriesTheEntityHalf(t *testing.T) {
 		Entities:            17,
 		EntityDistinctKinds: NonEnumKindListCap + 4,
 		EntityKinds: []NonEnumEntityKind{
-			{Kind: "Route", Entities: 11},
-			{Kind: "Config", Entities: 6},
+			{Kind: "Endpoint", Entities: 11},
+			{Kind: "Plugin", Entities: 6},
 		},
 	}
 	var side graph.GraphStatsSidecar
@@ -374,8 +391,8 @@ func TestApplyToSidecarCarriesTheEntityHalf(t *testing.T) {
 		t.Errorf("EntityDistinctKindsNotInEnum = %d, want %d — it must be the uncapped count, not len(EntityKinds)=%d",
 			side.EntityDistinctKindsNotInEnum, NonEnumKindListCap+4, len(rep.EntityKinds))
 	}
-	if side.EntityKindsNotInEnum["Route"] != 11 || side.EntityKindsNotInEnum["Config"] != 6 {
-		t.Errorf("EntityKindsNotInEnum = %v, want Route:11 Config:6", side.EntityKindsNotInEnum)
+	if side.EntityKindsNotInEnum["Endpoint"] != 11 || side.EntityKindsNotInEnum["Plugin"] != 6 {
+		t.Errorf("EntityKindsNotInEnum = %v, want Endpoint:11 Plugin:6", side.EntityKindsNotInEnum)
 	}
 
 	// An unscanned report must leave the flag false, so a consumer can tell
@@ -402,7 +419,7 @@ func TestApplyToSidecarCarriesTheEntityHalf(t *testing.T) {
 // merged.
 func TestEntitySummaryIsSeparableFromTheRelationshipSummary(t *testing.T) {
 	doc := &graph.Document{
-		Entities:      []graph.Entity{entFixture("a", "Route")},
+		Entities:      []graph.Entity{entFixture("a", "Endpoint")},
 		Relationships: []graph.Relationship{relFixture("OWNS", "a", "b")},
 	}
 	_, rep, err := marshalWithReport(doc)
@@ -413,8 +430,8 @@ func TestEntitySummaryIsSeparableFromTheRelationshipSummary(t *testing.T) {
 	if relSum == "" || entSum == "" {
 		t.Fatalf("fixture is inert: Summary()=%q EntitySummary()=%q — both must be non-empty here", relSum, entSum)
 	}
-	if strings.Contains(relSum, "Route") {
-		t.Errorf("Summary() = %q — the relationship line names the entity kind Route", relSum)
+	if strings.Contains(relSum, "Endpoint") {
+		t.Errorf("Summary() = %q — the relationship line names the entity kind Endpoint", relSum)
 	}
 	if strings.Contains(entSum, "OWNS") {
 		t.Errorf("EntitySummary() = %q — the entity line names the relationship kind OWNS", entSum)
@@ -433,13 +450,12 @@ func TestEntitySummaryIsSeparableFromTheRelationshipSummary(t *testing.T) {
 // every one of these must be COUNTABLE at the write path before anyone ranks
 // the migration by declaration-site count.
 var ruleDeclaredKinds6776 = []string{
-	"Config", "Constraint", "Endpoint", "Operation",
-	"Plugin", "Route", "Service", "Template",
+	"Constraint", "Endpoint", "Plugin", "Template",
 }
 
 // TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath
 //
-// Varies: the entity kind, across ALL 8 ledger entries — the name of this
+// Varies: the entity kind, across ALL 4 ledger entries — the name of this
 // test says "every", so the body drives every one of them, individually, and
 // asserts a per-kind count rather than a total that one lucky kind could
 // satisfy.
@@ -451,8 +467,8 @@ var ruleDeclaredKinds6776 = []string{
 // zero for it that means "not measurable" rather than "not produced", and
 // those are the two answers a migration ranking must never confuse.
 func TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath(t *testing.T) {
-	if len(ruleDeclaredKinds6776) != 8 {
-		t.Fatalf("ledger transcription has %d entries, want 8 (see internal/entkinds)", len(ruleDeclaredKinds6776))
+	if len(ruleDeclaredKinds6776) != 4 {
+		t.Fatalf("ledger transcription has %d entries, want 4 (see internal/entkinds)", len(ruleDeclaredKinds6776))
 	}
 	for _, kind := range ruleDeclaredKinds6776 {
 		t.Run(kind, func(t *testing.T) {
@@ -501,7 +517,7 @@ func TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted(t *testing.T) {
 	// what the measurement actually saw; SCOPE.ZZNotAKind is invented so this
 	// test keeps failing a prefix exemption even if SCOPE.Process is later
 	// added to the enum. Both must be outside it TODAY or the fixture is inert.
-	const realPrefixed, inventedPrefixed, unprefixed = "SCOPE.Process", "SCOPE.ZZNotAKind", "Route"
+	const realPrefixed, inventedPrefixed, unprefixed = "SCOPE.Process", "SCOPE.ZZNotAKind", "Endpoint"
 	for _, k := range []string{realPrefixed, inventedPrefixed, unprefixed} {
 		if types.IsValidEntityKind(k) {
 			if k == realPrefixed {
