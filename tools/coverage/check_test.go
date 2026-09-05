@@ -477,13 +477,23 @@ func stepNamed(t *testing.T, name string) gateStep {
 // record missing a cell its subcategory taxonomy declares must be caught.
 //
 // It exercises the step directly rather than through the whole gate,
-// because the two guards MASK each other: validateGroupedCompleteness is
-// the validate-time mirror of this same check and, with
-// completenessGateIsError true, it reports the identical gap as a
-// validate ERROR one step earlier. So no whole-gate input can attribute
-// a failure to the backfill step today — running it in isolation is the
-// only way to grade it rather than grade validate twice. (Deleting the
-// step from gateSteps() still fails this test: stepNamed cannot find it.)
+// because validate MASKS it: validateGroupedCompleteness runs the same
+// predicate (missingTaxonomyCells) and, with completenessGateIsError
+// true, reports the identical gap as a validate ERROR one step earlier.
+// So no whole-gate input can attribute a failure to the backfill step
+// while that constant is true — running it in isolation is the only way
+// to grade it rather than grade validate twice. (Deleting the step from
+// gateSteps() still fails this test: stepNamed cannot find it.)
+//
+// #6868 note, because the earlier version of this comment overstated
+// it: the masking was NOT total when it was written. validate's copy of
+// the check only ran for rec.IsGrouped() records, so a record whose
+// subcategory declares a taxonomy but which carries no grouped cells
+// failed the whole gate at step 2/5, attributably. That divergence is
+// gone — the two now share one predicate by construction — so the
+// masking is now total, and deliberate. Why the step is kept anyway:
+// TestCompletenessSeverityKnobDecidesWhoCatchesIt. That the two guards
+// cannot drift apart again: TestBackfillAndValidateAgreeOnCompleteness.
 func TestCheckFailsOnBackfillGap(t *testing.T) {
 	root := newGateTree(t)
 	regPath := filepath.Join(root, filepath.FromSlash(defaultRegistryPath))

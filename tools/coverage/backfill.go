@@ -25,78 +25,107 @@ type seedPlan struct {
 }
 
 // planBackfill computes the set of lane cells that are declared by each
-// grouped record's subcategory group taxonomy but absent from the
-// record's cells. It mutates nothing — callers decide whether to seed.
+// record's subcategory group taxonomy but absent from the record's
+// cells. It mutates nothing — callers decide whether to seed.
 //
-// Only GROUPED records whose subcategory carries a group taxonomy are
-// considered. A lane key is "declared" if it appears in the subcategory's
-// group taxonomy; its canonical owning group is groupForCapability (the
-// first group in render order that lists the key), mirroring the
-// auto-placement in cmdUpdate. A key already present anywhere on the
-// record (any group) is never re-seeded — this is the no-clobber
-// guarantee. framework_specific cells are deliberately ignored: the
-// completeness denominator here is the canonical lane set only.
+// Every record whose SUBCATEGORY carries a group taxonomy is considered,
+// whether or not the record is currently in the grouped shape — the
+// comment this replaced said "only GROUPED records", which was never
+// what the code did and is the misreading #6868 was filed on.
+// framework_specific cells are deliberately ignored: the completeness
+// denominator here is the canonical lane set only.
 //
 // langFilter / subFilter, when non-empty, scope the plan to a single
-// language slug / subcategory slug.
+// language slug / subcategory slug. Note that they scope the PLAN, not
+// the predicate: validate's completeness check is unscoped, so a filtered
+// `backfill --check` is deliberately narrower than `validate` and the
+// agreement invariant is stated over the unfiltered plan.
+//
+// The per-record decision lives in missingTaxonomyCells, which is also
+// what validate's completeness check runs — see that function.
 func planBackfill(reg *Registry, langFilter, subFilter string) []seedPlan {
 	var plans []seedPlan
 	for i := range reg.Records {
 		rec := &reg.Records[i]
-		// Gate on whether the record's SUBCATEGORY declares a group
-		// taxonomy, not on the record's current IsGrouped() state. A
-		// freshly `add`-ed record has an empty flat capabilities map
-		// and IsGrouped()==false, but if its subcategory has a group
-		// taxonomy it still needs backfilling into that taxonomy.
-		if rec.Subcategory == "" || !validSubcategory(rec.Category, rec.Subcategory) {
-			continue
-		}
-		groups := groupsForSubcategory(rec.Subcategory)
-		if len(groups) == 0 {
-			continue
-		}
 		if langFilter != "" && rec.Language != langFilter {
 			continue
 		}
 		if subFilter != "" && rec.Subcategory != subFilter {
 			continue
 		}
-		existing := rec.AllCapabilities()
-		// Walk the taxonomy in canonical render order and seed each
-		// declared key exactly once, into its canonical owning group.
-		// A key declared under multiple groups (e.g. db_effect) is owned
-		// by the first group in render order — groupForCapability returns
-		// precisely that group, so seeding stays deterministic.
-		seeded := map[string]struct{}{}
-		for _, g := range groups {
-			for _, key := range g.Keys {
-				if _, ok := existing[key]; ok {
-					continue
-				}
-				if _, done := seeded[key]; done {
-					continue
-				}
-				owner := groupForCapability(rec.Subcategory, key)
-				if owner == "" {
-					owner = uncategorizedGroup
-				}
-				if owner != g.Name {
-					// Defer to the canonical owning group; we'll reach it
-					// later in the render-order walk.
-					continue
-				}
-				seeded[key] = struct{}{}
-				plans = append(plans, seedPlan{
-					RecordID: rec.ID,
-					Language: rec.Language,
-					Group:    owner,
-					Key:      key,
-				})
-			}
-		}
+		plans = append(plans, missingTaxonomyCells(rec)...)
 	}
 	sortSeedPlans(plans)
 	return plans
+}
+
+// missingTaxonomyCells is THE grouped-completeness predicate: the lane
+// cells rec's subcategory group taxonomy declares but rec does not
+// carry. It is the ONLY implementation of that decision in this tool —
+// `backfill` (plan/--dry-run/--check) and `validate`'s
+// validateGroupedCompleteness both call it, and neither re-derives it.
+//
+// That single-implementation property is the point (#6868). The two used
+// to be separate walks described as mirrors of each other, and they were
+// not mirrors: this one gates on whether the record's SUBCATEGORY
+// declares a group taxonomy, while validate's copy only ran for records
+// with rec.IsGrouped() true. A freshly `add`-ed record has an empty flat
+// capabilities map and IsGrouped()==false, so validate's copy skipped
+// the exact record shape backfill exists to fill, and the two guards
+// disagreed on it. TestBackfillAndValidateAgreeOnCompleteness grades
+// that they no longer can.
+//
+// A lane key is "declared" if it appears in the subcategory's group
+// taxonomy; its canonical owning group is groupForCapability (the first
+// group in render order that lists the key), mirroring the auto-placement
+// in cmdUpdate. A key already present anywhere on the record (any group)
+// is never reported — this is the no-clobber guarantee. Order is the
+// taxonomy's render order; callers that need a total order sort.
+func missingTaxonomyCells(rec *Record) []seedPlan {
+	// Gate on whether the record's SUBCATEGORY declares a group
+	// taxonomy, not on the record's current IsGrouped() state.
+	if rec.Subcategory == "" || !validSubcategory(rec.Category, rec.Subcategory) {
+		return nil
+	}
+	groups := groupsForSubcategory(rec.Subcategory)
+	if len(groups) == 0 {
+		return nil
+	}
+	existing := rec.AllCapabilities()
+	// Walk the taxonomy in canonical render order and report each
+	// declared key exactly once, under its canonical owning group.
+	// A key declared under multiple groups (e.g. db_effect) is owned
+	// by the first group in render order — groupForCapability returns
+	// precisely that group, so the result stays deterministic.
+	var out []seedPlan
+	seen := map[string]struct{}{}
+	for _, g := range groups {
+		for _, key := range g.Keys {
+			if _, ok := existing[key]; ok {
+				continue
+			}
+			if _, done := seen[key]; done {
+				continue
+			}
+			owner := groupForCapability(rec.Subcategory, key)
+			if owner == "" {
+				owner = uncategorizedGroup
+			}
+			if owner != g.Name {
+				// Defer to the canonical owning group; we'll reach it
+				// later in the render-order walk.
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, seedPlan{
+				RecordID: rec.ID,
+				Language: rec.Language,
+				Group:    owner,
+				Key:      key,
+			})
+		}
+	}
+	return out
 }
 
 // sortSeedPlans orders plans by (RecordID, Group, Key) so dry-run output

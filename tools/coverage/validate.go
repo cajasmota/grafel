@@ -96,6 +96,10 @@ func validateRegistry(reg *Registry, repoRoot string) *ValidationResult {
 		if rec.HasFrameworkSpecific() {
 			validateFrameworkSpecific(res, prefix, rec, repoRoot, idx)
 		}
+		// Completeness is a property of the record's SUBCATEGORY, not of
+		// which capability shape the record currently carries, so it runs
+		// for every record — see validateGroupedCompleteness.
+		validateGroupedCompleteness(res, prefix, &reg.Records[i])
 	}
 
 	sort.Strings(res.Errors)
@@ -197,50 +201,58 @@ func validateGroupedRecord(res *ValidationResult, prefix string, rec Record, rep
 			validateCapabilityCell(res, capPrefix, caps[k], repoRoot, idx)
 		}
 	}
-	validateGroupedCompleteness(res, prefix, rec)
 }
 
 // validateGroupedCompleteness reports lane cells declared by the record's
-// subcategory group taxonomy but absent from the record. It is the
-// validate-time mirror of the `backfill` subcommand: every key the
-// taxonomy promises should have an explicit cell. AllCapabilities (lane
-// cells only — framework_specific is deliberately excluded) is the
-// presence set. Messages are appended in SORTED order so output is
-// deterministic regardless of map iteration. Subcategories without a
-// group taxonomy are skipped (nothing to be complete against).
+// subcategory group taxonomy but absent from the record: every key the
+// taxonomy promises should have an explicit cell.
+//
+// It does NOT re-derive that decision. missingTaxonomyCells (backfill.go)
+// is the single implementation, and this function only renders its result
+// as validation messages — so `validate` and `backfill --check` cannot
+// disagree about what "incomplete" means, which they previously did for
+// any record whose subcategory has a taxonomy but whose own capabilities
+// are not yet in the grouped shape (#6868). That is also why the call
+// site is validateRegistry's record loop rather than
+// validateGroupedRecord: the predicate self-gates on the SUBCATEGORY, so
+// gating the call on rec.IsGrouped() would reintroduce exactly the
+// divergence this collapse removes.
+//
+// Messages are sorted so output is deterministic regardless of map
+// iteration; validateRegistry sorts Errors and Warnings globally
+// afterward, so local ordering here is for readability.
 //
 // Severity is governed by completenessGateIsError: while false these are
-// warnings (advisory, never fail CI). validateRegistry sorts Errors and
-// Warnings globally afterward, so local ordering here is for readability.
-func validateGroupedCompleteness(res *ValidationResult, prefix string, rec Record) {
-	if rec.Subcategory == "" || !validSubcategory(rec.Category, rec.Subcategory) {
+// warnings (advisory, never fail CI) and the `backfill --check` gate step
+// is the only thing that fails on an incomplete record.
+func validateGroupedCompleteness(res *ValidationResult, prefix string, rec *Record) {
+	missing := missingTaxonomyCells(rec)
+	if len(missing) == 0 {
 		return
 	}
-	groups := groupsForSubcategory(rec.Subcategory)
-	if len(groups) == 0 {
-		return
-	}
-	present := rec.AllCapabilities()
-	var msgs []string
-	seen := map[string]struct{}{}
-	for _, g := range groups {
-		for _, key := range g.Keys {
-			if _, ok := present[key]; ok {
-				continue
-			}
-			if _, dup := seen[key]; dup {
-				continue
-			}
-			seen[key] = struct{}{}
-			owner := groupForCapability(rec.Subcategory, key)
-			if owner == "" {
-				owner = uncategorizedGroup
-			}
-			msgs = append(msgs, fmt.Sprintf("%s: lane key %q (group %q) declared by subcategory %q taxonomy but absent from record", prefix, key, owner, rec.Subcategory))
-		}
+	msgs := make([]string, 0, len(missing))
+	for _, m := range missing {
+		msgs = append(msgs, fmt.Sprintf("%s: lane key %q (group %q) declared by subcategory %q taxonomy but absent from record", prefix, m.Key, m.Group, rec.Subcategory))
 	}
 	sort.Strings(msgs)
-	if completenessGateIsError {
+	recordCompletenessMessages(res, msgs, completenessGateIsError)
+}
+
+// recordCompletenessMessages files the completeness messages on the
+// blocking or the advisory channel.
+//
+// asError is a parameter rather than a direct read of
+// completenessGateIsError so the knob-false world can be OBSERVED by
+// running it, not argued about: with asError false the messages are
+// warnings, res.HasErrors() stays false, and `validate` therefore cannot
+// fail an incomplete record — which is the entire reason the
+// `backfill --check` gate step is kept despite being redundant today
+// (#6868). TestCompletenessSeverityKnobDecidesWhoCatchesIt drives both
+// values, and TestCompletenessGateSeverityIsHonoured is the control that
+// validateGroupedCompleteness still passes the constant rather than a
+// hardcoded true.
+func recordCompletenessMessages(res *ValidationResult, msgs []string, asError bool) {
+	if asError {
 		res.Errors = append(res.Errors, msgs...)
 	} else {
 		res.Warnings = append(res.Warnings, msgs...)
