@@ -129,7 +129,6 @@ import (
 // catch; adding a line to keep it green is the failure mode #6834 names.
 var knownMissingCarrier6847 = map[string]string{
 	"astro":     "extractor.go:328 `FromID: filePath` on IMPORTS; no carrier emitted",
-	"bicep":     "extractor.go:296 `FromID: path` on IMPORTS; `.bicep` is also absent from refs.go sourceFileExtensions, so it counts as bug-extractor rather than Dynamic",
 	"clojure":   "path-anchored IMPORTS; no carrier emitted",
 	"cobol":     "path-anchored IMPORTS (COPY members); no carrier emitted",
 	"crystal":   "extractor.go:161 `FromID: filePath` on IMPORTS; no carrier emitted",

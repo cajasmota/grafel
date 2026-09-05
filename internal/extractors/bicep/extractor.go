@@ -135,6 +135,22 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	records = append(records, extractVars(src, path)...)
 	records = append(records, extractOutputs(src, path)...)
 
+	// #6852 — the module IMPORTS edge keeps the file path as its FromID (#120,
+	// and TestBicep_ImportsKeepsFilePathAnchor pins it), but nothing bicep
+	// emits is NAMED after the file, so that FROM end resolved to nothing:
+	// internal/resolve/refs.go has no path→entity index, and a path-valued
+	// FromID resolves only onto a record carrying that exact string as its
+	// Name. PrependFileCarrier is the CONDITIONAL form #6815 and #6518 settled
+	// on — it mints the carrier only when some relationship is actually
+	// anchored on the path. Unconditional would add one bare orphan node per
+	// .bicep file across a whole repo, including the many that declare only
+	// resources/params and no module at all.
+	//
+	// Placed on this branch only: the bicepconfig.json branch above returns
+	// entities with no relationships whatsoever, so it anchors nothing and the
+	// helper would be a guaranteed no-op there.
+	records = extractor.PrependFileCarrier(path, lang, records)
+
 	span.SetAttributes(
 		attribute.String("language", lang),
 		attribute.Int("file_line_count", lineCount),
