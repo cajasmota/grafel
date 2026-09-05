@@ -37,14 +37,31 @@ type KindStats struct {
 	OrphanPct   float64
 }
 
-// ResolutionVector holds the disposition breakdown for graph relationships.
+// ResolutionVector holds the disposition breakdown for graph relationships,
+// to the resolution a ToID SHAPE can actually support.
+//
+// This report reads a PERSISTED graph: per edge it has the final ToID and
+// nothing else. Three outcomes are derivable from that — a 16-hex bound entity
+// ID, an "ext:"-prefixed external, and any other non-empty stub the resolver
+// never bound — and this struct carries exactly those three.
+//
+// internal/resolve's Disposition taxonomy is finer (it splits external into
+// known/unknown and unresolved into bug-extractor / bug-resolver / dynamic),
+// but every one of those splits needs an input the persisted graph does not
+// retain: the ExternalAllowlist (known vs unknown), the resolver's name Index
+// (bug-resolver vs bug-extractor) and the PRE-resolution stub plus its language
+// (dynamic). Fields for those three dispositions existed here and were never
+// written, rendering a permanent and false "0.00%" (#6836); they are gone
+// rather than wired up, because there is nothing here to wire them to.
 type ResolutionVector struct {
-	ResolvedPct        float64
-	ExternalKnownPct   float64
-	ExternalUnknownPct float64
-	BugExtractorPct    float64
-	BugResolverPct     float64
-	DynamicPct         float64
+	// ResolvedPct — ToID is a 16-char lowercase-hex entity ID.
+	ResolvedPct float64
+	// ExternalPct — ToID is "ext:"-prefixed. Mixes allowlisted (known) and
+	// unknown externals; the allowlist is not available here.
+	ExternalPct float64
+	// UnresolvedPct — ToID is a non-empty stub of any other shape. Mixes
+	// extractor bugs, resolver misses and intrinsically dynamic dispatch.
+	UnresolvedPct float64
 }
 
 // EntityKindLang is one row in the entity kind × language table.
@@ -144,8 +161,13 @@ type Report struct {
 	OrphanLeafByKind map[string]KindStats
 
 	// Section 3 — Resolution Disposition
-	Resolution      ResolutionVector
-	ResolutionTotal int // total edges examined
+	Resolution ResolutionVector
+	// ResolutionTotal is the number of edges carrying a NON-EMPTY ToID —
+	// the denominator of ResolutionVector. It is NOT the number of edges
+	// examined: an edge with an empty ToID is iterated and then skipped
+	// (there is nothing to resolve), so it appears in TotalRelationships
+	// and not here (#6836).
+	ResolutionTotal int
 
 	// Section 4 — Framework Recognition
 	FrameworkHits          map[string]int // framework → entity count
@@ -238,12 +260,9 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 
 	// Resolution disposition counters.
 	var (
-		resResolved        int
-		resExternalKnown   int
-		resExternalUnknown int
-		resBugExtractor    int
-		resBugResolver     int
-		resDynamic         int
+		resResolved   int
+		resExternal   int
+		resUnresolved int
 	)
 
 	annotated := 0
@@ -461,19 +480,27 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			// pipeline never writes a Properties["resolution"] tag, so the previous
 			// property switch always reported "no resolution property found on
 			// edges". A 16-hex ToID is a bound entity ID (resolved); an ext:-prefixed
-			// ToID is a known external (external-known); any other non-empty ToID is
-			// an unresolved stub (bug-extractor). Empty ToIDs carry no disposition.
+			// ToID is an external; any other non-empty ToID is an unresolved stub.
+			// Empty ToIDs carry no disposition — they are examined here and then
+			// skipped, which is why ResolutionTotal is not "edges examined".
+			//
+			// These three are ALL the shape can support, and the vector carries
+			// exactly three buckets as a result. resolve's Disposition splits
+			// external into known/unknown by ExternalAllowlist, and unresolved
+			// into bug-extractor / bug-resolver / dynamic by the resolver's name
+			// Index and the pre-resolution stub — none of which survive into the
+			// persisted graph this report reads (#6836).
 			switch {
 			case rel.ToID == "":
 				// no disposition — nothing to resolve
 			case resolve.IsResolvedToID(rel.ToID):
 				if len(rel.ToID) > 4 && rel.ToID[:4] == "ext:" {
-					resExternalKnown++
+					resExternal++
 				} else {
 					resResolved++
 				}
 			default:
-				resBugExtractor++
+				resUnresolved++
 			}
 		}
 	}
@@ -647,18 +674,17 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 		r.FieldExtractionRate.ZeroFieldsPct = 100.0 * float64(classZeroFields) / float64(classCount)
 	}
 
-	// Resolution disposition vector.
-	total := resResolved + resExternalKnown + resExternalUnknown + resBugExtractor + resBugResolver + resDynamic
+	// Resolution disposition vector. The three buckets partition the edges
+	// with a non-empty ToID, so they sum to 100% (sanity check 3 pins that);
+	// edges with an empty ToID are outside the denominator entirely.
+	total := resResolved + resExternal + resUnresolved
 	r.ResolutionTotal = total
 	if total > 0 {
 		tf := float64(total)
 		r.Resolution = ResolutionVector{
-			ResolvedPct:        100.0 * float64(resResolved) / tf,
-			ExternalKnownPct:   100.0 * float64(resExternalKnown) / tf,
-			ExternalUnknownPct: 100.0 * float64(resExternalUnknown) / tf,
-			BugExtractorPct:    100.0 * float64(resBugExtractor) / tf,
-			BugResolverPct:     100.0 * float64(resBugResolver) / tf,
-			DynamicPct:         100.0 * float64(resDynamic) / tf,
+			ResolvedPct:   100.0 * float64(resResolved) / tf,
+			ExternalPct:   100.0 * float64(resExternal) / tf,
+			UnresolvedPct: 100.0 * float64(resUnresolved) / tf,
 		}
 	}
 

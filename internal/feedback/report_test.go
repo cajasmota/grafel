@@ -207,13 +207,17 @@ func TestGenerate_ResolutionDisposition(t *testing.T) {
 	// Disposition is derived STRUCTURALLY from the ToID shape — the same
 	// classification orient/grafel_stats uses — NOT from a Properties["resolution"]
 	// tag the pipeline never writes. A 16-hex ToID is resolved, an ext:-prefixed
-	// ToID is external-known, any other non-empty ToID is an unresolved stub.
+	// ToID is external, any other non-empty ToID is unresolved. Those three are
+	// the whole vector: the finer external-known/unknown and
+	// bug-extractor/bug-resolver/dynamic splits need the resolver's allowlist,
+	// name index and pre-resolution stubs, which the persisted graph does not
+	// carry, so this report no longer claims to measure them (#6836).
 	entities := repeat(makeEntity("e1", "X", "SCOPE.Function", "go", "x.go", 1), 50)
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "aabb112233445566", Kind: "CALLS"}, // hex → resolved
-		{ID: "r2", FromID: "e1c", ToID: "ext:react", Kind: "IMPORTS"},      // ext → external-known
-		{ID: "r3", FromID: "e1e", ToID: "SomeBareStub", Kind: "CALLS"},     // stub → bug-extractor
-		{ID: "r4", FromID: "e1g", ToID: "pkg.Unresolved", Kind: "CALLS"},   // stub → bug-extractor
+		{ID: "r2", FromID: "e1c", ToID: "ext:react", Kind: "IMPORTS"},      // ext → external
+		{ID: "r3", FromID: "e1e", ToID: "SomeBareStub", Kind: "CALLS"},     // stub → unresolved
+		{ID: "r4", FromID: "e1g", ToID: "pkg.Unresolved", Kind: "CALLS"},   // stub → unresolved
 	}
 	doc := makeDoc(entities, rels)
 
@@ -227,11 +231,11 @@ func TestGenerate_ResolutionDisposition(t *testing.T) {
 	if r.Resolution.ResolvedPct != 25.0 {
 		t.Errorf("expected resolved 25%%, got %.1f%%", r.Resolution.ResolvedPct)
 	}
-	if r.Resolution.ExternalKnownPct != 25.0 {
-		t.Errorf("expected external-known 25%%, got %.1f%%", r.Resolution.ExternalKnownPct)
+	if r.Resolution.ExternalPct != 25.0 {
+		t.Errorf("expected external 25%%, got %.1f%%", r.Resolution.ExternalPct)
 	}
-	if r.Resolution.BugExtractorPct != 50.0 {
-		t.Errorf("expected bug-extractor 50%%, got %.1f%%", r.Resolution.BugExtractorPct)
+	if r.Resolution.UnresolvedPct != 50.0 {
+		t.Errorf("expected unresolved 50%%, got %.1f%%", r.Resolution.UnresolvedPct)
 	}
 }
 
@@ -315,12 +319,9 @@ func TestRender_FullReport(t *testing.T) {
 		SourceWindow:       SourceWindowStats{TotalWithWindow: 90, TotalEntities: 100, PctComplete: 90.0},
 		OrphanByKind:       map[string]KindStats{"function": {Total: 80, OrphanCount: 16, OrphanPct: 20.0}},
 		Resolution: ResolutionVector{
-			ResolvedPct:        70.0,
-			ExternalKnownPct:   10.0,
-			ExternalUnknownPct: 10.0,
-			BugExtractorPct:    5.0,
-			BugResolverPct:     4.0,
-			DynamicPct:         1.0,
+			ResolvedPct:   70.0,
+			ExternalPct:   20.0,
+			UnresolvedPct: 10.0,
 		},
 		ResolutionTotal: 200,
 		FrameworkHits:   map[string]int{"gin": 15},

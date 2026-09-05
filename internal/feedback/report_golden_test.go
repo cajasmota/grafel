@@ -116,8 +116,8 @@ func TestGenerate_GoldenFB(t *testing.T) {
 	if r.ResolutionTotal == 0 {
 		t.Errorf("D3: ResolutionTotal is zero; disposition must be derived from ToID shape")
 	}
-	if r.Resolution.BugExtractorPct == 0 && r.Resolution.ResolvedPct == 0 && r.Resolution.ExternalKnownPct == 0 {
-		t.Errorf("D3: resolution vector is all-zero; expected a resolved/external/bug split")
+	if r.Resolution.UnresolvedPct == 0 && r.Resolution.ResolvedPct == 0 && r.Resolution.ExternalPct == 0 {
+		t.Errorf("D3: resolution vector is all-zero; expected a resolved/external/unresolved split")
 	}
 	// The resolved fraction (hex + ext) must equal the ToID-derived import
 	// fidelity computed the SAME way grafel_stats/orient does, over the same
@@ -140,7 +140,7 @@ func TestGenerate_GoldenFB(t *testing.T) {
 		t.Errorf("D3: ResolutionTotal=%d, want %d (non-empty-ToID edges)", r.ResolutionTotal, total)
 	}
 	wantResolvedPct := 100.0 * float64(resolved) / float64(total)
-	gotResolvedPct := r.Resolution.ResolvedPct + r.Resolution.ExternalKnownPct
+	gotResolvedPct := r.Resolution.ResolvedPct + r.Resolution.ExternalPct
 	if diff := gotResolvedPct - wantResolvedPct; diff > 0.01 || diff < -0.01 {
 		t.Errorf("D3: resolved+external = %.3f%%, want %.3f%% (ToID-derived fidelity)",
 			gotResolvedPct, wantResolvedPct)
@@ -150,5 +150,5 @@ func TestGenerate_GoldenFB(t *testing.T) {
 		len(doc.Entities), len(doc.Relationships),
 		r.SourceWindow.PctComplete, r.SourceWindow.TotalWithWindow,
 		r.FieldExtractionRate.ClassTotal,
-		r.ResolutionTotal, gotResolvedPct, r.Resolution.BugExtractorPct)
+		r.ResolutionTotal, gotResolvedPct, r.Resolution.UnresolvedPct)
 }

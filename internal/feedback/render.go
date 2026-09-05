@@ -195,12 +195,19 @@ func Render(w io.Writer, r *Report) error {
 		rv := r.Resolution
 		fmt.Fprintf(w, "| Disposition | Percentage |\n|---|---|\n")
 		fmt.Fprintf(w, "| resolved | %.2f%% |\n", rv.ResolvedPct)
-		fmt.Fprintf(w, "| external-known | %.2f%% |\n", rv.ExternalKnownPct)
-		fmt.Fprintf(w, "| external-unknown | %.2f%% |\n", rv.ExternalUnknownPct)
-		fmt.Fprintf(w, "| bug-extractor | %.2f%% |\n", rv.BugExtractorPct)
-		fmt.Fprintf(w, "| bug-resolver | %.2f%% |\n", rv.BugResolverPct)
-		fmt.Fprintf(w, "| dynamic | %.2f%% |\n\n", rv.DynamicPct)
-		fmt.Fprintf(w, "_Total edges examined: %s_\n\n", countRangeLabel(r.ResolutionTotal))
+		fmt.Fprintf(w, "| external | %.2f%% |\n", rv.ExternalPct)
+		fmt.Fprintf(w, "| unresolved | %.2f%% |\n\n", rv.UnresolvedPct)
+		// Say what these three buckets do NOT separate. The report used to
+		// render external-unknown / bug-resolver / dynamic rows at a permanent
+		// 0.00%, which read as "measured, and zero" when the truth is that the
+		// persisted graph cannot tell those cases apart (#6836).
+		fmt.Fprintf(w, "Classified by ToID shape alone, which is all a persisted graph retains. "+
+			"`external` does not separate allowlisted packages from unknown ones, and `unresolved` "+
+			"does not separate extractor bugs from resolver misses or from dynamic dispatch: those "+
+			"splits need the resolver's allowlist, name index and pre-resolution stubs, none of "+
+			"which survive into the graph this report reads.\n\n")
+		fmt.Fprintf(w, "_Edges with a target to resolve: %s (edges with an empty target are excluded)_\n\n",
+			countRangeLabel(r.ResolutionTotal))
 	}
 
 	// Section 4 — Framework Recognition
