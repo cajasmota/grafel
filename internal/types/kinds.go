@@ -210,12 +210,12 @@ const (
 	// state graph, connected by RelationshipKindTransitionsTo. Synthetic ID
 	// shape: `state:<lib>:<machine>:<stateName>`.
 	//
-	// This paragraph used to name a constant `EntityKindStateMachine` that has
-	// never existed (#6776 arm B3). "SCOPE.StateMachine" is written as a bare
-	// Go constant by internal/engine/workflow_edges.go and is NOT in this enum;
-	// it is ledgered in internal/types/producer_entity_kinds_6776_test.go and
-	// is arm B4's work. A doc comment naming a constant that does not exist is
-	// the same defect one layer down from the guard that missed the producer.
+	// This paragraph used to name a constant `EntityKindStateMachine` that had
+	// never existed (#6776 arm B3): "SCOPE.StateMachine" was written only as a
+	// bare Go constant in internal/engine/workflow_edges.go. #6776 arm B4
+	// declared it below as EntityKindStateMachine, so the name is real now —
+	// but it remains a DIFFERENT kind from this one, and the distinction the
+	// paragraph above draws is unchanged.
 	EntityKindState EntityKind = "SCOPE.State"
 
 	// #1217 (Sub-A of #1115): Split http_endpoint into two distinct kinds.
@@ -430,6 +430,48 @@ const (
 	// from the deterministic SCOPE.Section node (which carries verbatim prose);
 	// a DesignDecision is the agent's distilled claim ABOUT that prose.
 	EntityKindDesignDecision EntityKind = "SCOPE.DesignDecision"
+
+	// #6776 arm B4 — six kinds that Go passes have been WRITING all along
+	// while this enum did not carry them.
+	//
+	// They are not new extraction: every one is produced today, with the exact
+	// spelling declared here, by a pass that keeps its own package-level
+	// constant — internal/engine/workflow_edges.go, workflow_dag_edges.go,
+	// scheduled_jobs_edges.go, serverless_framework_edges.go,
+	// iac_cloudformation_edges.go, event_flow.go and process_flow.go.
+	// (internal/graph/flows/flows.go declares SCOPE.Process and SCOPE.EventFlow
+	// too, but only READS them, in IsFlowEntityKind; it is not a producer.)
+	// They drifted out of the enum because the guard that was supposed to catch
+	// exactly this read `Kind:` only when it was a string LITERAL, and every one
+	// of these producers writes `Kind: <identifier>`. Arm B3 replaced that guard
+	// with internal/entkinds.ScanGo, which resolves source constants, and the
+	// six fell out of it immediately.
+	//
+	// Adding them changes NO spelling and therefore does not move
+	// KindVocabularyVersion: nothing already on disk is restated, and a query
+	// for one of these kinds against an older graph correctly finds whatever
+	// was extracted, because the string was always this. What does change is
+	// that types.IsValidEntityKind stops rejecting a kind the writer emits —
+	// which is what internal/graph/fbwriter's arm-A tally counts.
+	//
+	// The producers are deliberately NOT rewired to reference these constants
+	// here; that is a separate change, and the duplication is the pre-existing
+	// state rather than something this arm introduces.
+	//
+	// SCOPE.Workflow / SCOPE.Activity — a durable workflow definition and one
+	// step within it (Temporal, AWS Step Functions, Airflow-style DAGs).
+	// SCOPE.StateMachine — an AWS Step Functions WHOLE machine. Distinct from
+	// EntityKindState above, which is one node of an application-level FSM.
+	// SCOPE.ScheduledJob — a cron/Quartz/Hangfire/serverless-schedule entry
+	// point; the handler it fires is joined by a TRIGGERS edge.
+	// SCOPE.Process — a linearised call/data-flow chain (internal/graph/flows).
+	// SCOPE.EventFlow — its pub/sub sibling: a linearised multi-hop chain.
+	EntityKindWorkflow     EntityKind = "SCOPE.Workflow"
+	EntityKindActivity     EntityKind = "SCOPE.Activity"
+	EntityKindStateMachine EntityKind = "SCOPE.StateMachine"
+	EntityKindScheduledJob EntityKind = "SCOPE.ScheduledJob"
+	EntityKindProcess      EntityKind = "SCOPE.Process"
+	EntityKindEventFlow    EntityKind = "SCOPE.EventFlow"
 )
 
 // AllEntityKinds returns every EntityKind that grafel extractors are
@@ -491,10 +533,11 @@ func AllEntityKinds() []EntityKind {
 		// #6776 arm B2: declared since the messaging split and never listed
 		// here — the SOLE omission from this list, in either direction.
 		//
-		// The population is 63 constants of type EntityKind, of which 62 are
-		// NAMED EntityKind*; the 63rd is HTTPEndpointKindLegacy, which is
-		// EntityKind-typed under a different name and was already listed. Both
-		// counts and the set equality are pinned by
+		// The population is 69 constants of type EntityKind, of which 68 are
+		// NAMED EntityKind*; the odd one out is HTTPEndpointKindLegacy, which
+		// is EntityKind-typed under a different name and was already listed.
+		// (It was 63/62 until arm B4 added six below.) Both counts and the set
+		// equality are pinned by
 		// TestEntityKindDeclarations6776_MatchAllEntityKindsExactly rather than
 		// asserted here, so this comment cannot go stale unobserved.
 		//
@@ -535,6 +578,15 @@ func AllEntityKinds() []EntityKind {
 		EntityKindSection,
 		// #4308/#4309 agent-driven semantic doc ingestion (opt-in, emit/apply):
 		EntityKindDesignDecision,
+		// #6776 arm B4: Go producers whose kinds this list never carried,
+		// invisible to the old literal-only guard because each is written as
+		// `Kind: <identifier>`. Current spellings kept, so no version bump.
+		EntityKindWorkflow,
+		EntityKindActivity,
+		EntityKindStateMachine,
+		EntityKindScheduledJob,
+		EntityKindProcess,
+		EntityKindEventFlow,
 	}
 }
 

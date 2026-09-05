@@ -39,6 +39,11 @@ import (
 // EntityKindEventFlow identifies an EventFlow entity — a linearised
 // multi-hop pub/sub chain emitted by RunEventFlow. Name format:
 // "<seed-channel> → <terminal>". Mirrors EntityKindProcess.
+//
+// #6776 arm B4 added types.EntityKindEventFlow with this exact value. This
+// untyped constant is deliberately NOT replaced by it: the arm's scope was enum
+// membership, and rewiring producers is a separate change. Same string, two
+// declarations, on purpose.
 const EntityKindEventFlow = "SCOPE.EventFlow"
 
 // RelationshipKindStepInEventFlow links an EventFlow entity to each of
