@@ -517,7 +517,7 @@ records:
             - file: internal/substrate/jsts.go
               functions: [sniffJSTS, appendJSTSLiterals, appendJSTSEnvFallbacks, appendJSTSImports]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -868,7 +868,7 @@ records:
             - file: internal/substrate/python.go
               functions: [sniffPython]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -3362,7 +3362,7 @@ records:
             - file: internal/substrate/java.go
               functions: [sniffJava]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -3726,7 +3726,7 @@ records:
             - file: internal/substrate/golang.go
               functions: [sniffGo]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -4069,7 +4069,7 @@ records:
             - file: internal/substrate/golang.go
               functions: [sniffGo]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -4295,7 +4295,7 @@ records:
             - file: internal/substrate/golang.go
               functions: [sniffGo]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2761"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -7686,7 +7686,7 @@ records:
             - file: internal/substrate/ruby.go
               functions: [sniffRuby]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -7893,7 +7893,7 @@ records:
             - file: internal/substrate/php.go
               functions: [sniffPHP]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -8179,7 +8179,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -8847,7 +8847,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -9128,7 +9128,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -9375,7 +9375,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -9621,7 +9621,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -9855,7 +9855,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -10128,7 +10128,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -10374,7 +10374,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -10621,7 +10621,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -10867,7 +10867,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -11091,7 +11091,7 @@ records:
             - file: internal/substrate/rust.go
               functions: [sniffRust]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["3268"]
           verified_at: "2026-05-30"
         env_fallback_recognition:
@@ -11605,7 +11605,7 @@ records:
             - file: internal/substrate/csharp.go
               functions: [sniffCSharp]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -13587,7 +13587,7 @@ records:
             - file: internal/substrate/kotlin.go
               functions: [sniffKotlin]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -13827,7 +13827,7 @@ records:
             - file: internal/substrate/elixir.go
               functions: [sniffElixir]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         error_flow:
@@ -14071,7 +14071,7 @@ records:
             - file: internal/substrate/scala.go
               functions: [sniffScala]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
@@ -14302,7 +14302,7 @@ records:
             - file: internal/substrate/c_cpp.go
               functions: [sniffCCPP]
             - file: internal/links/constant_propagation.go
-              functions: [runConstantPropagationPass, buildResolver, applyResolverToConsumerHTTP]
+              functions: [runConstantPropagationPass, buildResolver]
           issues_implemented: ["2762"]
           verified_at: "2026-05-28"
         env_fallback_recognition:
