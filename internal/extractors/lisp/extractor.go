@@ -417,6 +417,15 @@ func extractLisp(src, filePath, dialect string) []types.EntityRecord {
 	}
 
 	// 4. Components (structs, classes).
+	//
+	// compSeen is ONE map shared by every component loop below, so a name is
+	// emitted at most once per file no matter which def-form declares it. The
+	// consequence is worth stating rather than leaving implicit (#6370): a
+	// class redeclared in the same file — or a defclass whose name a defstruct
+	// already used — is skipped WHOLE, so its superclass list is never read and
+	// its EXTENDS edges are lost, not merged. This is PRE-EXISTING and
+	// deliberately unchanged here; CL does allow a class to be redefined, so
+	// whoever wants those edges must decide what "the" declaration is first.
 	compSeen := make(map[string]bool)
 
 	// defstruct (Common Lisp)

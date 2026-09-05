@@ -427,3 +427,77 @@ func TestLispHierarchy_EmptyListFollowedByFlatSlotsEmitsNothing(t *testing.T) {
 		t.Fatalf("EXTENDS = %v, want none — `()` is a root class, and the flat group after it is slots", got)
 	}
 }
+
+// TestLispHierarchy_QuoteReaderMacroIsNotHalfMatched grades the LEADING `^` of
+// lispSuperclassNameRE on the one input that separates it from the trailing
+// `$`. It varies ONLY the leading character of the single token in the group.
+//
+// It exists because scoring showed the two anchors are a MASKING PAIR of their
+// own, exactly like the nesting guard and the regex one level further in:
+// dropping `^` alone left the whole unit suite and the golden gate green,
+// because every other token in every other input either matches whole or is
+// rejected by the trailing anchor as well. Here only the leading anchor
+// decides — with `^` gone the regex simply starts matching at `q` and emits
+// `x EXTENDS quoted`, inventing a superclass out of a reader macro's operand.
+func TestLispHierarchy_QuoteReaderMacroIsNotHalfMatched(t *testing.T) {
+	if got := extendsEdges(t, "(defclass x ('quoted) ())\n"); got != nil {
+		t.Fatalf("EXTENDS = %v, want none — `'quoted` is not a plain symbol", got)
+	}
+}
+
+// TestLispHierarchy_TokenWithAnInteriorSeparatorIsRejectedWhole grades BOTH
+// anchors of lispSuperclassNameRE, and — the point of the row — grades each
+// one SEPARATELY: `foo,bar` half-matches in a DIFFERENT direction for each
+// deletion, so neither anchor can hide behind the other here. With `^` dropped
+// the regex matches the tail and emits `x EXTENDS bar`; with `$` dropped it
+// matches the head and emits `x EXTENDS foo`; at HEAD it matches neither and
+// emits nothing.
+//
+// The `,` is doing nothing special: it stands for any byte that is in no part
+// of the symbol character class, which is the whole family of tokens the
+// package header claims are rejected whole rather than half-matched.
+func TestLispHierarchy_TokenWithAnInteriorSeparatorIsRejectedWhole(t *testing.T) {
+	if got := extendsEdges(t, "(defclass x (foo,bar) ())\n"); got != nil {
+		t.Fatalf("EXTENDS = %v, want none — `foo,bar` is one token and not a symbol", got)
+	}
+}
+
+// TestLispHierarchy_WhitespaceWithinTheGroupIsAnySequence varies ONE axis no
+// other row here varies: the whitespace INSIDE the superclass list. Every
+// other test (TestLispHierarchy_MultiLineFormWithSlotsFollowing included)
+// keeps the list itself on one line separated by single spaces, and varies
+// layout only BETWEEN the name and the list — so the token splitter was
+// entirely ungraded on tabs and on a line-broken list.
+//
+// It is the row that fails for a producer splitting on the single byte " ":
+// with a tab it emits nothing for `alpha\tbeta`, and with the line break it
+// keeps `gamma` only.
+func TestLispHierarchy_WhitespaceWithinTheGroupIsAnySequence(t *testing.T) {
+	src := "(defclass tabbed (alpha\tbeta\n    gamma) ())\n"
+	wantEdges(t, extendsEdges(t, src), "tabbed->alpha", "tabbed->beta", "tabbed->gamma")
+}
+
+// TestLispHierarchy_OmittedSuperclassListWithFlatSlotsEmitsWrongEdges_KnownDivergence
+// pins the ONE shape where the anchor's positional rule gives the wrong
+// answer, so the header does not have to overclaim.
+//
+// `(defclass flat (name legs))` omits the mandatory superclass list and writes
+// FLAT slots. The first group after the name is therefore a slot list, but it
+// is textually indistinguishable from a two-parent superclass list: both are a
+// flat group of plain symbols in the position CLOS reserves for parents.
+// Neither guard can decide it and neither should guess, so today this emits
+// `flat EXTENDS name` and `flat EXTENDS legs`.
+//
+// The behaviour is LEFT AS IS deliberately — the alternative is a heuristic on
+// malformed input that would cost real edges on well-formed input. This pin
+// makes the cost visible and turns red if anyone changes it. The second
+// assertion is the positive control: a well-formed neighbour must still emit,
+// so the pin cannot decay into a test of nothing.
+//
+// Note that TestLispHierarchy_SlotListIsNeverReadAsSuperclasses does NOT
+// contradict this: its slot list is nested, which the nesting guard catches.
+func TestLispHierarchy_OmittedSuperclassListWithFlatSlotsEmitsWrongEdges_KnownDivergence(t *testing.T) {
+	src := "(defclass flat (name legs))\n(defclass dog (animal) ())\n"
+	wantEdges(t, extendsEdges(t, src),
+		"flat->name", "flat->legs", "dog->animal")
+}

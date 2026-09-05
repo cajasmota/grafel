@@ -55,10 +55,24 @@
 // defclassRE's NAME capture ended and requires, at exactly that position after
 // whitespace only, an opening `(`. CLOS fixes the superclass list as the form
 // immediately after the name — it is mandatory and positional, `()` when there
-// are none — so the FIRST group at that anchor is the superclass list by the
-// grammar, and the slot list is structurally out of reach because it is the
-// SECOND group. Every other parenthesised group in the file is excluded by
-// position rather than by a blocklist.
+// are none — so in a WELL-FORMED defclass the FIRST group at that anchor is the
+// superclass list by the grammar, the slot list is out of reach because it is
+// the SECOND group, and every other parenthesised group in the file is excluded
+// by position rather than by a blocklist.
+//
+// "Well-formed" is load-bearing and is not an aside. Position decides only
+// while the mandatory list is actually written. `(defclass flat (name legs))`
+// omits it and writes FLAT slots, and that group is textually identical to a
+// two-parent superclass list — a flat group of plain symbols in the position
+// CLOS reserves for parents. Nothing in the text distinguishes them, so this
+// producer emits `flat EXTENDS name` and `flat EXTENDS legs`. That is left as
+// is on purpose: the alternative is a heuristic on malformed input that would
+// cost real edges on well-formed input.
+// TestLispHierarchy_OmittedSuperclassListWithFlatSlotsEmitsWrongEdges_KnownDivergence
+// pins it with a positive control, so the limit is measured rather than
+// claimed away. Note that the golden fixture is NOT evidence the stronger
+// claim holds: its `lonely` case dodges this shape by using a NESTED slot
+// list, which the nesting guard catches for an unrelated reason.
 //
 // TWO further guards back that up, and which of them covers a given input
 // matters, because mutant scoring showed they MASK each other:
@@ -68,6 +82,12 @@
 //     anchored group is not a superclass list and nothing is emitted.
 //   - lispSuperclassNameRE is anchored at both ends, so a token that is not a
 //     plain symbol — `(name`, `:initarg`, `:name)` — is dropped on its own.
+//     Its TWO anchors are a masking pair of the same kind one level further
+//     in, and were found the same way: dropping `^` alone, or `$` alone, left
+//     the whole unit suite and the golden gate green, because every token in
+//     every other input is either a whole symbol or is rejected by the other
+//     anchor too. Each is now graded on an input where only it decides —
+//     see the regex's own comment below.
 //
 // On the ordinary malformed case `(defclass lonely ((name :initarg :name)))`
 // EITHER guard alone already yields zero edges, so removing one changes
@@ -151,6 +171,25 @@ import (
 // symbol. Being anchored at both ends is what rejects anything that is not a
 // plain symbol — a stray reader macro, a keyword-only token — instead of
 // half-matching it into a wrong edge.
+//
+// The two anchors are graded SEPARATELY, because they mask each other on every
+// ordinary token and a one-character deletion of either one was ALIVE against
+// the whole unit suite and the golden gate:
+//
+//   - `^` alone decides `('quoted)`: without it the match simply starts at `q`
+//     and emits `x EXTENDS quoted`
+//     (TestLispHierarchy_QuoteReaderMacroIsNotHalfMatched).
+//   - `$` alone decides a token with an interior non-symbol byte: `foo,bar`
+//     half-matches to `foo` without `$` and to `bar` without `^`, so that one
+//     input kills each deletion in a different direction and neither anchor
+//     can hide behind the other
+//     (TestLispHierarchy_TokenWithAnInteriorSeparatorIsRejectedWhole).
+//
+// The token splitter above it is graded on its own axis too: `strings.Fields`
+// accepts ANY whitespace run inside the group, and `(alpha\tbeta\n gamma)` is
+// the only input that says so
+// (TestLispHierarchy_WhitespaceWithinTheGroupIsAnySequence). Every other test
+// and every fixture row keeps the list on one line, single-space separated.
 var lispSuperclassNameRE = regexp.MustCompile(
 	`^(?:([\w\-\?!\*+<>=./]+)::?)?([\w\-\?!\*+<>=.][\w\-\?!\*'+<>=./]*)$`)
 
@@ -161,7 +200,7 @@ var lispSuperclassNameRE = regexp.MustCompile(
 // offset-for-offset), `afterName` the byte offset just past defclassRE's name
 // capture, `owner` that name and `line` the 1-based line of the defclass form
 // itself — not of the superclass list, which may sit lines below
-// (TestLispHierarchy_LineNumberIsTheDeclarationLine).
+// (TestLispHierarchy_LineNumberFollowsTheEntitysOwnStartLine).
 //
 // The records are meant to be EMBEDDED on the owning class's EntityRecord, not
 // appended to a standalone slice: only resolve.ReferencesEmbedded supplies the
@@ -257,8 +296,12 @@ func skipLispWhitespace(src string, pos int) int {
 //     (TestLispHierarchy_UnterminatedSuperclassListEmitsNothing).
 //   - the group NESTS. A CLOS superclass list is a flat list of symbols; a slot
 //     list is a list of lists. Any inner `(` therefore means the anchored group
-//     is not a superclass list, and emitting nothing beats guessing
-//     (TestLispHierarchy_SlotListIsNeverReadAsSuperclasses).
+//     is not a superclass list, and emitting nothing beats guessing.
+//     The test that GRADES this guard is
+//     TestLispHierarchy_NestedFormInsideTheGroupEmitsNothing, not
+//     TestLispHierarchy_SlotListIsNeverReadAsSuperclasses: on an ordinary
+//     nested slot list lispSuperclassNameRE rejects every token anyway, so
+//     that input grades neither guard. See the package header.
 //
 // The caller passes the scrubbed source, so a paren inside a string or comment
 // cannot unbalance the count.
