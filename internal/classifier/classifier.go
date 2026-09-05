@@ -597,6 +597,16 @@ var extensionLanguageMap = map[string]string{
 	// COBOL programs a job invokes. Routed to the jcl extractor, which emits
 	// the JCL→COBOL cross-language bridge (#2843).
 	".jcl": "jcl",
+	// Container build files (#6854). `<name>.Dockerfile` / `<name>.Containerfile`
+	// is the spelling editors and language servers key on, and it is the one
+	// this repo's own fixtures use. It is routed HERE rather than by a basename
+	// rule so that LanguageForExtension(".dockerfile") answers too: otherwise
+	// the unsupported-extension report keeps listing an extension the router
+	// does claim. Being an extension route also makes this form
+	// case-insensitive, unlike the case-sensitive `Dockerfile.<variant>` rule
+	// in containerVariantLanguage.
+	".dockerfile":    "dockerfile",
+	".containerfile": "dockerfile",
 	// Markdown / Documentation
 	".md":       "markdown",
 	".mdx":      "markdown",
@@ -762,7 +772,77 @@ func detectLanguage(norm string) string {
 	}
 	// Fall back to basename matching for files like Dockerfile / Containerfile
 	// that carry no extension.
-	return basenameLanguageMap[base]
+	if lang, ok := basenameLanguageMap[base]; ok {
+		return lang
+	}
+	return containerVariantLanguage(base)
+}
+
+// containerVariantLanguage recognises the `Dockerfile.<variant>` /
+// `Containerfile.<variant>` prefix convention (#6854) — Dockerfile.dev,
+// Dockerfile.prod, Dockerfile.multi_stage — which the exact-basename table
+// above cannot express.
+//
+// IT RUNS LAST, AND THAT ORDERING IS HALF THE OVER-FIRING DEFENCE. Anything
+// whose trailing segment names a language the router already knows returned
+// from the extension lookup before reaching here, so `Dockerfile.md` stays
+// markdown and `Dockerfile.py` stays python without this function having to
+// name them.
+//
+// THE OTHER HALF IS nonContainerVariantSuffixes, AND ORDERING ALONE IS NOT
+// ENOUGH — that is not a hypothetical. `Dockerfile.bak` is a backup file, not a
+// build target, and `.bak` is routed by nothing, so the ordering argument does
+// not reach it; TestMX1100_DockerfileWithExtension_NotDockerfile has forbidden
+// exactly that name since long before #6854 and caught the first cut of this
+// function. Every entry in that set is one the extension router does NOT claim,
+// which is what keeps the set load-bearing rather than shadowed (asserted in
+// dockerfile_variants_6854_test.go).
+//
+// The variant must be exactly one non-empty segment: `Dockerfile.` and
+// `Dockerfile.a.b` are rejected, and a bare `Dockerfilex` has no separator at
+// all. The match is case-SENSITIVE, matching basenameLanguageMap — bare
+// lowercase `dockerfile` does not classify today and `dockerfile.dev` does not
+// either. The `<name>.Dockerfile` SUFFIX form is not handled here: it is a real
+// extension and is routed by extensionLanguageMap.
+func containerVariantLanguage(base string) string {
+	for _, stem := range [...]string{"Dockerfile", "Containerfile"} {
+		variant, ok := strings.CutPrefix(base, stem+".")
+		if !ok || variant == "" || strings.Contains(variant, ".") {
+			continue
+		}
+		if _, blocked := nonContainerVariantSuffixes[strings.ToLower(variant)]; blocked {
+			continue
+		}
+		return "dockerfile"
+	}
+	return ""
+}
+
+// nonContainerVariantSuffixes are trailing segments that mark a file's STATE or
+// its format rather than a build target, so `Dockerfile.<one of these>` is not
+// a Dockerfile. None of them is claimed by extensionLanguageMap — if one ever
+// is, its entry here becomes dead weight, which is why the test asserts the
+// absence rather than trusting this comment.
+//
+// Deliberately NOT listed: `example`, `sample`, `template`, `in`, `dist`. Those
+// name a Dockerfile that has not been rendered yet, not a non-Dockerfile.
+var nonContainerVariantSuffixes = map[string]struct{}{
+	"bak":    {},
+	"backup": {},
+	"old":    {},
+	"orig":   {},
+	"rej":    {},
+	"save":   {},
+	"swp":    {},
+	"swo":    {},
+	"tmp":    {},
+	"temp":   {},
+	"log":    {},
+	"txt":    {},
+	"json":   {},
+	"patch":  {},
+	"diff":   {},
+	"lock":   {},
 }
 
 // ---------------------------------------------------------------------------
