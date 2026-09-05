@@ -328,6 +328,10 @@ func TestEntityKindsAreCountedNotDropped(t *testing.T) {
 	if !types.IsValidEntityKind(enumKind) {
 		t.Fatalf("fixture is inert: %q must be IN the enum", enumKind)
 	}
+	if nonEnumKinds[0] == nonEnumKinds[1] {
+		t.Fatalf("fixture is inert: both non-enum slots hold %q, so this document carries ONE "+
+			"non-enum kind and the doc comment above claims two", nonEnumKinds[0])
+	}
 	for _, k := range nonEnumKinds {
 		if types.IsValidEntityKind(k) {
 			t.Fatalf("fixture is inert: %q has been migrated into the enum, so this document no "+
@@ -497,11 +501,13 @@ func TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath(t *testing.T) {
 
 // TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted — review D2.
 //
-// Varies: the PREFIX. Three kinds that are all absent from
-// types.AllEntityKinds(), one un-prefixed and two spelled `SCOPE.*`.
-// Holds constant: enum membership (all three are outside it), one entity each,
-// the writer, and an empty relationship vector — so the prefix is the only
-// thing that could make the counter treat them differently.
+// Varies: the PREFIX. One un-prefixed kind plus EVERY `SCOPE.*` candidate
+// still absent from types.AllEntityKinds() — two of them today, one if a later
+// arm declares SCOPE.Process.
+// Holds constant: enum membership (every kind in the document's counted half
+// is outside it), one entity each, the writer, and an empty relationship
+// vector — so the prefix is the only thing that could make the counter treat
+// them differently.
 //
 // This is the observation for arm A's second measured finding: seven
 // SCOPE.-prefixed kinds reach the graph outside the enum (SCOPE.Process is the
@@ -515,30 +521,49 @@ func TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath(t *testing.T) {
 func TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted(t *testing.T) {
 	// SCOPE.Process is real (internal/graph/flows/flows.go kindProcess) and is
 	// what the measurement actually saw; SCOPE.ZZNotAKind is invented so this
-	// test keeps failing a prefix exemption even if SCOPE.Process is later
-	// added to the enum. Both must be outside it TODAY or the fixture is inert.
+	// test keeps observing the prefix rule even after SCOPE.Process is
+	// declared. A prefixed row that HAS been declared is DROPPED FROM THE
+	// POPULATION — it is not a reason to skip.
+	//
+	// It used to be exactly that: `t.Skipf` on the first loop iteration, which
+	// stops the whole test rather than the one row it excuses. #6776 arm B4
+	// declared SCOPE.Process, so from that commit until this one the test ran
+	// zero assertions while reporting SKIP, and its un-prefixed control was
+	// never reached — measured, by putting the VALID kind "Model" in that
+	// control slot and watching the package stay green (#6831).
 	const realPrefixed, inventedPrefixed, unprefixed = "SCOPE.Process", "SCOPE.ZZNotAKind", "Endpoint"
-	for _, k := range []string{realPrefixed, inventedPrefixed, unprefixed} {
-		if types.IsValidEntityKind(k) {
-			if k == realPrefixed {
-				t.Skipf("%q has been added to the entity enum; SCOPE.ZZNotAKind still covers the prefix rule", k)
-			}
-			t.Fatalf("fixture is inert: %q is expected to be ABSENT FROM THE ENUM but IsValidEntityKind accepts it", k)
+	var prefixed []string
+	for _, k := range []string{realPrefixed, inventedPrefixed} {
+		if !types.IsValidEntityKind(k) {
+			prefixed = append(prefixed, k)
 		}
 	}
-	if !strings.HasPrefix(realPrefixed, "SCOPE.") || !strings.HasPrefix(inventedPrefixed, "SCOPE.") {
-		t.Fatal("fixture is inert: the prefixed kinds must actually carry the SCOPE. prefix")
+	if len(prefixed) == 0 {
+		t.Fatal("fixture is inert: every SCOPE.-prefixed kind here is now IN the enum, so nothing " +
+			"in this document can observe a prefix exemption; pick a prefixed kind that is still outside it")
+	}
+	for _, k := range prefixed {
+		if !strings.HasPrefix(k, "SCOPE.") {
+			t.Fatalf("fixture is inert: %q must actually carry the SCOPE. prefix", k)
+		}
+	}
+	if types.IsValidEntityKind(unprefixed) {
+		t.Fatalf("fixture is inert: the un-prefixed control %q is expected to be ABSENT FROM THE "+
+			"ENUM but IsValidEntityKind accepts it; re-pick from internal/entkinds' ledger", unprefixed)
 	}
 	if strings.HasPrefix(unprefixed, "SCOPE.") {
 		t.Fatal("fixture is inert: the control kind must NOT carry the SCOPE. prefix")
 	}
 
-	doc := &graph.Document{Entities: []graph.Entity{
-		entFixture("a", realPrefixed),
-		entFixture("b", inventedPrefixed),
+	ents := make([]graph.Entity, 0, len(prefixed)+2)
+	for i, k := range prefixed {
+		ents = append(ents, entFixture(fmt.Sprintf("p%d", i), k))
+	}
+	ents = append(ents,
 		entFixture("c", unprefixed),
 		entFixture("d", string(types.EntityKindFunction)), // in the enum: never counted
-	}}
+	)
+	doc := &graph.Document{Entities: ents}
 	_, rep, err := marshalWithReport(doc)
 	if err != nil {
 		t.Fatalf("marshalWithReport: %v", err)
@@ -547,7 +572,7 @@ func TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted(t *testing.T) {
 	for _, k := range rep.EntityKinds {
 		got[k.Kind] = k.Entities
 	}
-	for _, want := range []string{realPrefixed, inventedPrefixed} {
+	for _, want := range prefixed {
 		if got[want] != 1 {
 			t.Errorf("%q count = %d, want 1 — the counter is exempting SCOPE.-prefixed kinds, which is "+
 				"exactly the belief arm A measured to be false: the prefix does not make a kind valid (report: %+v)",
@@ -559,9 +584,10 @@ func TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted(t *testing.T) {
 	}
 	// And the restraint direction, so this test cannot be satisfied by a
 	// counter that simply tallies everything.
-	if rep.Entities != 3 || rep.EntityDistinctKinds != 3 {
-		t.Errorf("Entities=%d DistinctKinds=%d, want 3/3 — 4 entities written, one of them in the enum",
-			rep.Entities, rep.EntityDistinctKinds)
+	wantCounted := len(prefixed) + 1 // the surviving prefixed rows plus the un-prefixed control
+	if rep.Entities != wantCounted || rep.EntityDistinctKinds != wantCounted {
+		t.Errorf("Entities=%d DistinctKinds=%d, want %d/%d — %d entities written, one of them in the enum",
+			rep.Entities, rep.EntityDistinctKinds, wantCounted, wantCounted, len(doc.Entities))
 	}
 	if _, bad := got[string(types.EntityKindFunction)]; bad {
 		t.Errorf("enum kind %s was counted", types.EntityKindFunction)
@@ -569,7 +595,7 @@ func TestSCOPEPrefixedKindsOutsideTheEnumAreStillCounted(t *testing.T) {
 	// The names reach the summary line too — a prefixed kind that is counted
 	// but never named would still be invisible to the reader.
 	sum := rep.EntitySummary()
-	for _, want := range []string{realPrefixed, inventedPrefixed} {
+	for _, want := range prefixed {
 		if !strings.Contains(sum, want) {
 			t.Errorf("EntitySummary() = %q, missing SCOPE.-prefixed kind %q", sum, want)
 		}

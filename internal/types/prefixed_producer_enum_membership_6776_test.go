@@ -129,11 +129,18 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 // near-miss spelling (SCOPE.Workflows), and re-admitting a retired kind
 // (SCOPE.ExternalAPI).
 //
-// These two rows held Route and Config until #6776 arm B7 declared both. They
+// These two rows held Route and Config until #6776 arm B7 declared both, and
 // were re-picked from the four kinds still on internal/entkinds' ledger
-// (Constraint, Endpoint, Plugin, Template) and moved in the SAME commit as the
-// fbwriter fixture they mirror, because that fixture is what makes the pair a
-// documented dependency rather than two arbitrary strings.
+// (Constraint, Endpoint, Plugin, Template).
+//
+// THE MIRRORING IS A CONVENTION, NOT A CONSTRAINT, and this comment says so
+// rather than claiming a coupling nothing checks: swapping either row for
+// another still-non-enum ledger kind leaves this package and
+// internal/graph/fbwriter green — measured. Enforcing it means one package
+// reading another's unexported fixture literals, which is the shape already
+// filed as #6829 for fbwriter's own transcribed ledger; it is not attempted
+// here. What IS enforced, by the rows below, is that each named kind stays
+// outside the enum.
 //
 // Varies: the shape of the non-member. Holds constant: the validator.
 //
