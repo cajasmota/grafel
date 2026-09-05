@@ -89,6 +89,12 @@
       "relationship_found": 14,
       "relationship_expected": 19
     },
+    "lisp-clos-mini": {
+      "entity_found": 11,
+      "entity_expected": 11,
+      "relationship_found": 7,
+      "relationship_expected": 7
+    },
     "nim-objects-mini": {
       "entity_found": 21,
       "entity_expected": 21,
