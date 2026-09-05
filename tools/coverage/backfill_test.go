@@ -164,13 +164,22 @@ func TestCompletenessErrorsZeroAfterBackfill(t *testing.T) {
 	}
 }
 
-// countCompletenessErrors counts errors emitted by
+// countCompletenessErrors counts messages emitted by
 // validateGroupedCompleteness (identified by their stable message stem).
-// Before #2971 these were warnings; the gate is now true so they are errors.
+//
+// It counts BOTH channels. What this test grades is whether backfill
+// closed the gap, which is independent of how severely validate files
+// the leftovers — and completenessGateIsError moves every one of these
+// messages between the two channels wholesale. Reading Errors alone made
+// the "expected completeness errors before backfill" PRECONDITION fail
+// the moment the knob was set to false, i.e. it made a constant
+// documented as a flippable severity knob impossible to flip without a
+// red suite (#6868). Severity is asserted where it is the subject, in
+// completeness_test.go.
 func countCompletenessErrors(res *ValidationResult) int {
 	n := 0
-	for _, e := range res.Errors {
-		if strings.Contains(e, "declared by subcategory") {
+	for _, m := range append(append([]string{}, res.Errors...), res.Warnings...) {
+		if strings.Contains(m, "declared by subcategory") {
 			n++
 		}
 	}

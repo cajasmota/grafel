@@ -31,18 +31,29 @@ import (
 
 // completenessNeedle is the distinctive tail of a grouped-completeness
 // message. Matching on it rather than on the whole error text is what
-// lets these tests count completeness errors alone on registries that
+// lets these tests isolate the completeness messages on registries that
 // also trip other validation rules.
 const completenessNeedle = "taxonomy but absent from record"
 
-// completenessErrors returns the completeness messages validateRegistry
-// produced, and nothing else.
-func completenessErrors(reg *Registry) []string {
+// completenessMessages returns the completeness messages
+// validateRegistry produced, and nothing else.
+//
+// It reads BOTH channels on purpose. Which cells the two guards disagree
+// about is independent of how severely validate files them, and
+// completenessGateIsError moves every one of these messages from Errors
+// to Warnings wholesale. An Errors-only helper would therefore report
+// "no completeness messages" the moment the knob is flipped, and every
+// test built on it would go red — including the one whose whole job is
+// to make that flip safe. A severity knob documented as flippable has to
+// survive being flipped, so severity is asserted where it is the
+// subject (TestCompletenessGateSeverityIsHonoured,
+// TestCompletenessSeverityKnobDecidesWhoCatchesIt) and nowhere else.
+func completenessMessages(reg *Registry) []string {
 	res := validateRegistry(reg, ".")
 	var out []string
-	for _, e := range res.Errors {
-		if strings.Contains(e, completenessNeedle) {
-			out = append(out, e)
+	for _, m := range append(append([]string{}, res.Errors...), res.Warnings...) {
+		if strings.Contains(m, completenessNeedle) {
+			out = append(out, m)
 		}
 	}
 	return out
@@ -118,6 +129,133 @@ func ungroupedRecord() Record {
 	}
 }
 
+// twoLanguageRegistry returns two incomplete records under the same
+// grouped subcategory, in two different languages, deliberately stored
+// in an order that is the REVERSE of their sorted order.
+//
+// The reversal is what makes the ordering assertion non-vacuous:
+// planBackfill walks reg.Records in slice order, so an unsorted result
+// would lead with "lang.zig..." and a sorted one must lead with
+// "lang.go...".
+func twoLanguageRegistry() *Registry {
+	go1 := ungroupedRecord()
+	go1.ID = "lang.go.framework.echo"
+	go1.Language = "go"
+	zig := ungroupedRecord()
+	zig.ID = "lang.zig.framework.zap"
+	zig.Language = "zig"
+	zig.Label = "Zap"
+	return &Registry{SchemaVersion: SchemaVersion, Records: []Record{zig, go1}}
+}
+
+// TestPlanBackfillFiltersScopeThePlan grades the claim planBackfill's doc
+// comment makes about langFilter / subFilter — that they narrow the PLAN
+// while the predicate underneath stays unscoped, which is exactly why a
+// filtered `backfill --check` is deliberately narrower than `validate`
+// and why the agreement invariant above is stated over the UNFILTERED
+// plan.
+//
+// Before this, the filters were asserted only in prose. Inverting the
+// language comparison (`!=` to `==`) left the whole package green.
+func TestPlanBackfillFiltersScopeThePlan(t *testing.T) {
+	reg := twoLanguageRegistry()
+
+	unfiltered := planBackfill(reg, "", "")
+	langs := map[string]int{}
+	for _, p := range unfiltered {
+		langs[p.Language]++
+	}
+	if len(langs) != 2 || langs["go"] == 0 || langs["zig"] == 0 {
+		t.Fatalf("the unfiltered plan must span both languages, got %v; the filter cases below would be vacuous", langs)
+	}
+
+	for _, lang := range []string{"go", "zig"} {
+		got := planBackfill(reg, lang, "")
+		if len(got) == 0 {
+			t.Fatalf("--language %s planned nothing", lang)
+		}
+		for _, p := range got {
+			if p.Language != lang {
+				t.Fatalf("--language %s planned a cell for %q (%s); the filter selects the wrong side", lang, p.Language, p.RecordID)
+			}
+		}
+		if len(got) != langs[lang] {
+			t.Fatalf("--language %s planned %d cell(s), but that language contributes %d to the unfiltered plan", lang, len(got), langs[lang])
+		}
+	}
+
+	// The filter narrows the plan and nothing else: validate is
+	// unscoped, so it still reports BOTH records' cells.
+	if n := len(completenessMessages(reg)); n != len(unfiltered) {
+		t.Fatalf("validate reported %d completeness message(s) for %d unfiltered cell(s); validate must stay unscoped", n, len(unfiltered))
+	}
+
+	// A subcategory filter naming a subcategory no record carries
+	// selects nothing — the complement of the positive cases above,
+	// without which a filter that ignored its argument would pass.
+	if got := planBackfill(reg, "", "static_site"); len(got) != 0 {
+		t.Fatalf("--subcategory static_site planned %d cell(s) for a registry with no such record", len(got))
+	}
+	if got := planBackfill(reg, "", "http_backend"); len(got) != len(unfiltered) {
+		t.Fatalf("--subcategory http_backend planned %d cell(s), want all %d", len(got), len(unfiltered))
+	}
+}
+
+// TestPlanBackfillOrderingIsTotalAndStable grades sortSeedPlans' claim
+// that dry-run output and the resulting registry write are "byte-stable
+// across runs" — which was prose only: making sortSeedPlans a no-op left
+// the whole package green.
+//
+// Both halves are asserted, because they fail independently: a total
+// order over (RecordID, Group, Key), and the same order on a repeated
+// run over map-backed inputs.
+func TestPlanBackfillOrderingIsTotalAndStable(t *testing.T) {
+	reg := twoLanguageRegistry()
+	got := planBackfill(reg, "", "")
+	if len(got) < 2 {
+		t.Fatalf("need at least two cells to have an order at all, got %d", len(got))
+	}
+
+	// Non-vacuity: the records are stored in reverse sorted order, so an
+	// unsorted walk leads with the zig record.
+	if reg.Records[0].ID <= reg.Records[1].ID {
+		t.Fatal("fixture is no longer stored in reverse order; the ordering assertion below would hold with no sort at all")
+	}
+	if got[0].RecordID != reg.Records[1].ID {
+		t.Fatalf("plan leads with %q, want the alphabetically-first record %q — the walk order was not sorted", got[0].RecordID, reg.Records[1].ID)
+	}
+
+	less := func(a, b seedPlan) bool {
+		if a.RecordID != b.RecordID {
+			return a.RecordID < b.RecordID
+		}
+		if a.Group != b.Group {
+			return a.Group < b.Group
+		}
+		return a.Key < b.Key
+	}
+	for i := 1; i < len(got); i++ {
+		if !less(got[i-1], got[i]) {
+			t.Fatalf("plan is not totally ordered by (RecordID, Group, Key) at %d: %+v then %+v", i, got[i-1], got[i])
+		}
+	}
+
+	// Stability across runs. The presence set and the record's groups
+	// are maps, so an unsorted plan is free to differ run to run; this
+	// is the half that grades "across runs" rather than "sorted once".
+	for run := 0; run < 8; run++ {
+		again := planBackfill(twoLanguageRegistry(), "", "")
+		if len(again) != len(got) {
+			t.Fatalf("run %d planned %d cell(s), first run planned %d", run, len(again), len(got))
+		}
+		for i := range got {
+			if again[i] != got[i] {
+				t.Fatalf("run %d diverged at %d: %+v, first run had %+v", run, i, again[i], got[i])
+			}
+		}
+	}
+}
+
 // TestBackfillAndValidateAgreeOnCompleteness is the pinned invariant: on
 // every input, the cells `backfill` would seed and the completeness
 // errors `validate` reports are the SAME SET — same records, same keys,
@@ -190,7 +328,7 @@ func TestBackfillAndValidateAgreeOnCompleteness(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := tc.reg(t)
 			plans := planBackfill(reg, "", "")
-			got := completenessErrors(reg)
+			got := completenessMessages(reg)
 			want := wantCompletenessMessages(reg, plans)
 
 			if (len(plans) > 0) != tc.wantMissing {
@@ -228,7 +366,7 @@ func TestValidateFlagsTaxonomyRecordThatCarriesNoGroups(t *testing.T) {
 	if reg.Records[0].IsGrouped() {
 		t.Fatal("the record under test must NOT be grouped; that is the whole point of it")
 	}
-	got := completenessErrors(reg)
+	got := completenessMessages(reg)
 	if len(got) == 0 {
 		t.Fatal("validate reported no completeness error for a record whose subcategory taxonomy it satisfies none of")
 	}
@@ -297,7 +435,7 @@ func TestCompletenessGateSeverityIsHonoured(t *testing.T) {
 // the value they are changing.
 func TestCompletenessSeverityKnobDecidesWhoCatchesIt(t *testing.T) {
 	reg := &Registry{SchemaVersion: SchemaVersion, Records: []Record{ungroupedRecord()}}
-	msgs := completenessErrors(reg)
+	msgs := completenessMessages(reg)
 	if len(msgs) == 0 {
 		t.Fatal("no completeness messages to file; the rest of this test would be vacuous")
 	}
