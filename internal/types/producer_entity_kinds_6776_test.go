@@ -148,14 +148,13 @@ const goPrefixedKindsDeferredMax = 0
 var goUnprefixedKindsDeferred = map[string]bool{
 	"ChannelEvent": true, // engine/websocket_edges.go
 	"File":         true, // engine/commit_coupling_edges.go — engine.KindFile, a derived artefact
-	"Route":        true, // engine/django_routes.go, engine/spring_routes.go
 	"Stream":       true, // engine/sse_edges.go
 	"Subscription": true, // engine/graphql_subscriptions.go
 	"relationship": true, // extractors/cross/hierarchy/extractor.go — a fallback its own comment calls unreachable
 }
 
 // goUnprefixedKindsDeferredMax pins the ledger's exact size.
-const goUnprefixedKindsDeferredMax = 6
+const goUnprefixedKindsDeferredMax = 5
 
 // scanGoEntityKinds runs the shared resolver over internal/ — the same subtree
 // the literal guard walked — and fails loudly if the walk read nothing, since a
@@ -645,12 +644,12 @@ func TestEntityKindDeclarations6776_MatchAllEntityKindsExactly(t *testing.T) {
 		})
 	}
 
-	if len(declared) != 86 {
-		t.Errorf("EntityKind-typed constants = %d, want 86; re-pin this number and the "+
+	if len(declared) != 90 {
+		t.Errorf("EntityKind-typed constants = %d, want 90; re-pin this number and the "+
 			"comment in AllEntityKinds beside EntityKindEventType", len(declared))
 	}
-	if namedEntityKind != 85 {
-		t.Errorf("constants NAMED EntityKind* = %d, want 85 (the one EntityKind-typed "+
+	if namedEntityKind != 89 {
+		t.Errorf("constants NAMED EntityKind* = %d, want 89 (the one EntityKind-typed "+
 			"constant not so named is HTTPEndpointKindLegacy)", namedEntityKind)
 	}
 	for name := range declared {
