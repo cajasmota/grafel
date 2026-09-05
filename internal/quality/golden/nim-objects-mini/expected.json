@@ -25,7 +25,10 @@
     { "name": "Span",             "kind": "SCOPE.Component", "source_file": "model.nim", "must_exist": true, "note": "`object of RootObj` — the non-ref form." },
     { "name": "Cursor",           "kind": "SCOPE.Component", "source_file": "model.nim", "must_exist": true, "note": "Base-less object sitting immediately above a runtime type test." },
     { "name": "atNode",           "kind": "SCOPE.Operation", "source_file": "model.nim", "must_exist": true },
-    { "name": "scheme",           "kind": "SCOPE.Operation", "source_file": "store.nim", "must_exist": true }
+    { "name": "scheme",           "kind": "SCOPE.Operation", "source_file": "store.nim", "must_exist": true },
+
+    { "name": "store.nim", "kind": "SCOPE.Component", "subtype": "file", "source_file": "store.nim", "must_exist": true,
+      "note": "#6815: the #577 file carrier. store.nim is the ONE file in this fixture with an `import` line (`import tables, strutils`), and buildImportEntities anchors both IMPORTS edges on the path, so this is the entity that gives them a real FROM end. Paired with the forbidden_entities rows below for the over-firing direction." }
   ],
   "expected_relationships": [
     { "from_name": "AppError", "from_kind": "SCOPE.Component", "from_file": "errors.nim",
@@ -105,6 +108,10 @@
     { "name": "Ghost", "kind": "SCOPE.Component", "source_file": "errors.nim",
       "note": "#6370: `# type Ghost = ref object of Widget` is COMMENTED OUT in errors.nim. NOT REACHABLE by any mutant of this extractor, stated plainly rather than implied: typeRE is anchored `(?m)^[ \\t]*(?:type\\s+)?[A-Z]`, so a `#` before `type` makes the line structurally unmatchable and no loosening of the `of` clause can reach it. Kept as an absence fence for a rule-pack producer — internal/engine/rules/graphql/frameworks/graphql_schema.yaml does exactly this for a commented-out SDL type — and nim has no rule pack today. The reachable version of this hazard IS a real defect and is pinned instead as TestNimHierarchy_InsideTripleQuotedStringOverFires_KnownDivergence: the same declaration inside a \"\"\"…\"\"\" block IS extracted, entity and EXTENDS edge alike. It is deliberately not in this fixture, because a golden fixture must stay green." },
     { "name": "Widget", "kind": "SCOPE.Component", "source_file": "errors.nim",
-      "note": "#6370: the base named in that same commented-out line. Same grading status as the row above — an unreachable fence, not a mutant-killed row." }
+      "note": "#6370: the base named in that same commented-out line. Same grading status as the row above — an unreachable fence, not a mutant-killed row." },
+    { "name": "errors.nim", "kind": "SCOPE.Component", "subtype": "file", "source_file": "errors.nim",
+      "note": "#6815 OVER-FIRING control. errors.nim has no import, include or from-import, so it anchors no edge on its path and must mint no file carrier. This row is REACHABLE by a mutant, unlike the two above: making extractor.PrependFileCarrier unconditional turns it red immediately. Recall cannot see that mutant — the store.nim carrier row stays green whether the carrier is minted for one file or for every file." },
+    { "name": "model.nim", "kind": "SCOPE.Component", "subtype": "file", "source_file": "model.nim",
+      "note": "#6815 OVER-FIRING control, second file. Held so the check is graded on more than one negative: a predicate hard-coded to exempt errors.nim would satisfy the row above and fail this one." }
   ]
 }

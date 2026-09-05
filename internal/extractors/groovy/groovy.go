@@ -63,6 +63,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// matching the scala/elixir extractor pattern.
 	entities = append(entities, buildImportRecords(root, file)...)
 	walkGroovy(root, file, imports, &entities)
+	// #6815: buildImportRecords anchors every IMPORTS edge on file.Path with
+	// nothing carrying that string as its Name. Emit the #577 file carrier when
+	// — and only when — such an edge exists. See extractor.FileCarrierFor.
+	entities = extractor.PrependFileCarrier(file.Path, "groovy", entities)
 	// Issue #90 — tag every relationship with language="groovy".
 	extractor.TagRelationshipsLanguage(entities, "groovy")
 	extractor.TagEntitiesLanguage(entities, "groovy")

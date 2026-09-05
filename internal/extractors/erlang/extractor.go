@@ -729,6 +729,14 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 	// converges on a node. Scans the macro-expanded source (`src`).
 	entities = append(entities, buildTableEntities(recoverTableDecls(src), filePath)...)
 
+	// #6815: the include (-include/-include_lib) and function-import
+	// (-import(Mod, [f/1])) records above anchor their IMPORTS edge on
+	// filePath, and until now nothing in this extraction carried that string as
+	// its Name, so the edge reached the graph with a raw path at its FROM end.
+	// Emit the #577 file carrier — conditionally, so a module that imports
+	// nothing does not mint a bare orphan node. See extractor.FileCarrierFor.
+	entities = extractor.PrependFileCarrier(filePath, "erlang", entities)
+
 	return entities
 }
 

@@ -292,8 +292,18 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 		t.Fatalf("parsed %d fixtures, want 31 — every golden expected.json must "+
 			"keep parsing across this additive schema change", fixtures)
 	}
+	// #6815 added the three file-carrier rows below. They are subtype-asserting
+	// on purpose and the subtype is load-bearing, not decorative: the carrier's
+	// distinguishing property IS `subtype: "file"` — its Kind (SCOPE.Component)
+	// is shared with every import stub and every erlang module entity, so a row
+	// without the subtype would be satisfied by an unrelated same-named record.
+	// Re-measured here rather than inherited: this ledger is the control that
+	// forces exactly that statement.
 	want := map[string][]string{
-		"proto-mini": {"Role.ROLE_ADMIN:enum_value"},
+		"proto-mini":         {"Role.ROLE_ADMIN:enum_value"},
+		"erlang-otp-mini":    {"cache_server.erl:file"},
+		"nim-objects-mini":   {"store.nim:file"},
+		"groovy-grails-mini": {"PostController.groovy:file"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("fixtures asserting subtype: got %v want %v", got, want)
