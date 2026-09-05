@@ -586,9 +586,10 @@ const (
 	// justification is the refs.go pair above, not classfold.
 	//
 	// Every classfold reading in this block — the three TwinInMap rows with
-	// their priorities and ranks, and Component's absence — is asserted against
-	// the live tables by TestKindsCitation6858_* in internal/engine. If a row's
-	// pairing state changes, that fails rather than this prose drifting.
+	// their priorities, Model's canon rank, Component's absence, and the
+	// eleven/two count above — is asserted against the live tables by
+	// TestKindsCitation6858_* in internal/engine. If a row's pairing state
+	// changes, that fails rather than this prose drifting.
 	//
 	// Spellings unchanged, so KindVocabularyVersion does not move.
 	EntityKindComponentBare EntityKind = "Component"

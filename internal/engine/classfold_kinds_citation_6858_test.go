@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -52,8 +53,7 @@ func TestKindsCitation6858_ClassfoldJustifiedPairsAreTwinInMap(t *testing.T) {
 		t.Fatalf("expected the 4 classfold-justified pairs kinds.go cites, got %d", len(pairs))
 	}
 	for _, p := range pairs {
-		prefixed := "SCOPE." + p.bare
-		for _, spelling := range []string{p.bare, prefixed} {
+		for _, spelling := range []string{p.bare, cfOpposite(p.bare)} {
 			twin, declared := FrameworkClassKindTwins[spelling]
 			if !declared {
 				t.Errorf("%s: kinds.go (%s) cites %q as a shipped classfold pair, but "+
@@ -93,13 +93,45 @@ func TestKindsCitation6858_KindsGoDisclaimsAreNotClassfoldRows(t *testing.T) {
 		{string(types.EntityKindRouteBare), "arm B7"},
 		{string(types.EntityKindConfigBare), "arm B7"},
 	}
+	// Grade the enumeration itself: emptying the list would leave every
+	// assertion below unexecuted and the test green, which is this PR's own
+	// subject — a claim that looks checked and observes nothing (#6858).
+	if len(notRows) != 4 {
+		t.Fatalf("expected the 4 kinds kinds.go disclaims, got %d", len(notRows))
+	}
 	for _, k := range notRows {
-		for _, spelling := range []string{k.bare, "SCOPE." + k.bare} {
+		for _, spelling := range []string{k.bare, cfOpposite(k.bare)} {
 			if _, ok := FrameworkClassKindPriority[spelling]; ok {
 				t.Errorf("%s: kinds.go (%s) states %q is not a FrameworkClassKindPriority row in either "+
 					"spelling, and rests its justification elsewhere; it is a row now (#6858)",
 					k.bare, k.kindsGoRef, spelling)
 			}
 		}
+	}
+}
+
+// kinds.go's rewritten arm B6 block restates classfold's own count — "eleven
+// bare rows and two prefixed rows have no twin" — as the measure of how far the
+// retracted blanket rule was from true. That number was ungraded in
+// classfold.go's prose (:41, :162) and this PR would otherwise have made a
+// second ungraded copy of it in a second package, inside the very prose it is
+// correcting. So it is derived from the map here instead: change the pairing of
+// any row and the sentence in kinds.go fails rather than drifts.
+func TestKindsCitation6858_UnpairedRowCountsAreWhatKindsGoStates(t *testing.T) {
+	bareUnpaired, prefixedUnpaired := 0, 0
+	for kind := range FrameworkClassKindPriority {
+		if _, paired := FrameworkClassKindPriority[cfOpposite(kind)]; paired {
+			continue
+		}
+		if strings.HasPrefix(kind, "SCOPE.") {
+			prefixedUnpaired++
+		} else {
+			bareUnpaired++
+		}
+	}
+	if bareUnpaired != 11 || prefixedUnpaired != 2 {
+		t.Errorf("internal/types/kinds.go (arm B6) states eleven bare rows and two prefixed rows have "+
+			"no twin; FrameworkClassKindPriority now has %d bare and %d prefixed. Update that sentence "+
+			"and classfold.go's own copies of the count (#6858)", bareUnpaired, prefixedUnpaired)
 	}
 }
