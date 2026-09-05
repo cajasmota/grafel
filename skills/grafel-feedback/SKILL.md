@@ -212,7 +212,7 @@ The report is produced in **two layers**:
 |---|---|
 | 1. Extractor Coverage | Entity counts by language, kind distribution, source-window completeness, annotation coverage, field extraction rate |
 | 2. Orphan Rate | Per-kind orphan rate (entities with no semantic outgoing edges) |
-| 3. Resolution Disposition | Breakdown of edge resolution outcomes (resolved, external-known, bug-extractor, …) |
+| 3. Resolution Disposition | Breakdown of edge resolution outcomes — one row per `resolve.Disposition` (resolved, external-known, external-unknown, external-sql, dynamic, bug-extractor, bug-resolver, unclassified), over the edges that carry a target |
 | 4. Framework Recognition | Framework detector hit counts per recognized framework |
 | 5. Cross-Stack Flows | _(Phase 2)_ |
 | 6. Docgen Quality | _(Phase 2)_ |

@@ -204,16 +204,25 @@ func TestGenerate_ContainsDeclaresDontReduceOrphan(t *testing.T) {
 }
 
 func TestGenerate_ResolutionDisposition(t *testing.T) {
-	// Disposition is derived STRUCTURALLY from the ToID shape — the same
-	// classification orient/grafel_stats uses — NOT from a Properties["resolution"]
-	// tag the pipeline never writes. A 16-hex ToID is resolved, an ext:-prefixed
-	// ToID is external-known, any other non-empty ToID is an unresolved stub.
+	// Disposition comes from the INDEXER'S OWN classifier —
+	// resolve.Index.ClassifyEndpoints, the same one behind
+	// orient/grafel_stats — not from a private re-derivation here and not
+	// from a Properties["resolution"] tag.
+	//
+	// The vector carries one entry per resolve.AllDispositions member (eight
+	// today), not one per shape the ToID can take. The four edges below
+	// exercise three of them; external-unknown, bug-resolver, dynamic,
+	// external-sql and unclassified are covered in
+	// report_resolution_6836_test.go. "ext:react" is on the compiled-in
+	// allowlist, which is what makes it external-KNOWN rather than unknown —
+	// a distinction the report can draw because it consults the allowlist
+	// predicate (#6836).
 	entities := repeat(makeEntity("e1", "X", "SCOPE.Function", "go", "x.go", 1), 50)
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "aabb112233445566", Kind: "CALLS"}, // hex → resolved
-		{ID: "r2", FromID: "e1c", ToID: "ext:react", Kind: "IMPORTS"},      // ext → external-known
-		{ID: "r3", FromID: "e1e", ToID: "SomeBareStub", Kind: "CALLS"},     // stub → bug-extractor
-		{ID: "r4", FromID: "e1g", ToID: "pkg.Unresolved", Kind: "CALLS"},   // stub → bug-extractor
+		{ID: "r2", FromID: "e1c", ToID: "ext:react", Kind: "IMPORTS"},      // ext → external
+		{ID: "r3", FromID: "e1e", ToID: "SomeBareStub", Kind: "CALLS"},     // stub → unresolved
+		{ID: "r4", FromID: "e1g", ToID: "pkg.Unresolved", Kind: "CALLS"},   // stub → unresolved
 	}
 	doc := makeDoc(entities, rels)
 
@@ -224,14 +233,14 @@ func TestGenerate_ResolutionDisposition(t *testing.T) {
 	if r.ResolutionTotal != 4 {
 		t.Errorf("expected ResolutionTotal=4, got %d", r.ResolutionTotal)
 	}
-	if r.Resolution.ResolvedPct != 25.0 {
-		t.Errorf("expected resolved 25%%, got %.1f%%", r.Resolution.ResolvedPct)
+	if r.Resolution.Pct("resolved") != 25.0 {
+		t.Errorf("expected resolved 25%%, got %.1f%%", r.Resolution.Pct("resolved"))
 	}
-	if r.Resolution.ExternalKnownPct != 25.0 {
-		t.Errorf("expected external-known 25%%, got %.1f%%", r.Resolution.ExternalKnownPct)
+	if r.Resolution.Pct("external-known") != 25.0 {
+		t.Errorf("expected external-known 25%%, got %.1f%%", r.Resolution.Pct("external-known"))
 	}
-	if r.Resolution.BugExtractorPct != 50.0 {
-		t.Errorf("expected bug-extractor 50%%, got %.1f%%", r.Resolution.BugExtractorPct)
+	if r.Resolution.Pct("bug-extractor") != 50.0 {
+		t.Errorf("expected bug-extractor 50%%, got %.1f%%", r.Resolution.Pct("bug-extractor"))
 	}
 }
 
@@ -315,12 +324,9 @@ func TestRender_FullReport(t *testing.T) {
 		SourceWindow:       SourceWindowStats{TotalWithWindow: 90, TotalEntities: 100, PctComplete: 90.0},
 		OrphanByKind:       map[string]KindStats{"function": {Total: 80, OrphanCount: 16, OrphanPct: 20.0}},
 		Resolution: ResolutionVector{
-			ResolvedPct:        70.0,
-			ExternalKnownPct:   10.0,
-			ExternalUnknownPct: 10.0,
-			BugExtractorPct:    5.0,
-			BugResolverPct:     4.0,
-			DynamicPct:         1.0,
+			ByDisposition: map[string]float64{
+				"resolved": 70.0, "external-known": 20.0, "bug-extractor": 10.0,
+			},
 		},
 		ResolutionTotal: 200,
 		FrameworkHits:   map[string]int{"gin": 15},

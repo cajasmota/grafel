@@ -14,12 +14,16 @@ func TestRunSanityChecks_AllPass(t *testing.T) {
 			"function": {Total: 50, OrphanCount: 10, OrphanPct: 20.0},
 		},
 		Resolution: ResolutionVector{
-			ResolvedPct:        70.0,
-			ExternalKnownPct:   10.0,
-			ExternalUnknownPct: 10.0,
-			BugExtractorPct:    5.0,
-			BugResolverPct:     4.0,
-			DynamicPct:         1.0,
+			// dynamic + external-sql are populated deliberately: they sit
+			// OUTSIDE the resolved/external-known/bug-extractor trio, so
+			// replacing the taxonomy loop with a hand-list makes this sum
+			// 90, not 100, and the check fails. With only the trio populated
+			// the sum's scope is unobservable and that mutant survives
+			// (#6836 — it survived on this branch until this fixture grew).
+			ByDisposition: map[string]float64{
+				"resolved": 60.0, "external-known": 20.0, "bug-extractor": 10.0,
+				"dynamic": 5.0, "external-sql": 5.0,
+			},
 		},
 		ResolutionTotal:        100,
 		FrameworkFilesDetected: 5,
@@ -96,12 +100,10 @@ func TestRunSanityChecks_ResolutionVectorOff(t *testing.T) {
 		EntitiesByLanguage: map[string]int{"python": 200},
 		OrphanByKind:       map[string]KindStats{},
 		Resolution: ResolutionVector{
-			ResolvedPct:        50.0,
-			ExternalKnownPct:   10.0,
-			ExternalUnknownPct: 10.0,
-			BugExtractorPct:    10.0,
-			BugResolverPct:     5.0,
-			DynamicPct:         0.0, // sum = 85, not 100
+			ByDisposition: map[string]float64{
+				"resolved": 45.0, "external-known": 20.0, "bug-extractor": 15.0,
+				"dynamic": 5.0, // sum = 85, not 100
+			},
 		},
 		ResolutionTotal: 100,
 		FrameworkHits:   map[string]int{},

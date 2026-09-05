@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/resolve"
 )
 
 // Render writes the markdown feedback report to w. Section order is stable.
@@ -194,13 +196,19 @@ func Render(w io.Writer, r *Report) error {
 	} else {
 		rv := r.Resolution
 		fmt.Fprintf(w, "| Disposition | Percentage |\n|---|---|\n")
-		fmt.Fprintf(w, "| resolved | %.2f%% |\n", rv.ResolvedPct)
-		fmt.Fprintf(w, "| external-known | %.2f%% |\n", rv.ExternalKnownPct)
-		fmt.Fprintf(w, "| external-unknown | %.2f%% |\n", rv.ExternalUnknownPct)
-		fmt.Fprintf(w, "| bug-extractor | %.2f%% |\n", rv.BugExtractorPct)
-		fmt.Fprintf(w, "| bug-resolver | %.2f%% |\n", rv.BugResolverPct)
-		fmt.Fprintf(w, "| dynamic | %.2f%% |\n\n", rv.DynamicPct)
-		fmt.Fprintf(w, "_Total edges examined: %s_\n\n", countRangeLabel(r.ResolutionTotal))
+		// Rows are driven by resolve.AllDispositions, not by a list maintained
+		// here: before #6836 three of six rows were wired to counters nothing
+		// incremented and rendered a permanent 0.00%. Iterating the taxonomy
+		// removes that failure mode for every disposition the slice names —
+		// each gets a row, and each row is fed by the classifier. It does NOT
+		// cover a Disposition that reaches the enum without reaching
+		// AllDispositions, which nothing currently checks.
+		for _, d := range resolve.AllDispositions {
+			fmt.Fprintf(w, "| %s | %.2f%% |\n", d.String(), rv.Pct(d.String()))
+		}
+		fmt.Fprintf(w, "\n")
+		fmt.Fprintf(w, "_Edges with a target to resolve: %s (edges with an empty target are excluded)_\n\n",
+			countRangeLabel(r.ResolutionTotal))
 	}
 
 	// Section 4 — Framework Recognition
