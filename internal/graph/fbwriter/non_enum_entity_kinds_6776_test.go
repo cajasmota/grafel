@@ -11,7 +11,7 @@ import (
 
 // Issue #6776 arm A. #6744 froze a STATIC ledger of the entity kinds rule YAML
 // declares outside types.AllEntityKinds() — 532 declaration sites, 25 invalid
-// values. #6776 proposes migrating them, and warns in its own closing line
+// values when arm A measured (12 after arm B5 declared thirteen of them). #6776 proposes migrating them, and warns in its own closing line
 // that "532 sites is an inventory, not a measurement": #6757 learned that a
 // static ledger ranked 22 relationship kinds as equals while ONE of them was
 // 99.1% of the runtime population.
@@ -220,13 +220,23 @@ func TestEntityKindReportCapsTheListButNotTheCounts(t *testing.T) {
 // Varies: nothing — this is a wiring pin on the flag-OFF producer.
 // Holds constant: GRAFEL_STREAM_SEGMENTS=0, so writeGraphGenFlat is the path
 // under test and the segmented loop cannot be the thing that reported.
+//
+// The non-enum kind was "Middleware" until #6776 arm B5 declared it. It now
+// carries an explicit inert-fixture guard, which it never had: a fixture kind
+// that quietly becomes VALID turns the assertion below into "the writer
+// reported nothing, and nothing is what we expected".
 func TestWriteGraphGenReportWiresTheFlatEntityProducerPath(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "0")
+	const nonEnum = "Route"
+	if types.IsValidEntityKind(nonEnum) {
+		t.Fatalf("fixture is inert: %q is a valid entity kind, so the flat path has nothing "+
+			"non-enum to report; pick one still on internal/entkinds' ledger", nonEnum)
+	}
 	doc := &graph.Document{
 		Entities: []graph.Entity{
 			entFixture("a", string(types.EntityKindFunction)),
-			entFixture("b", "Middleware"),
+			entFixture("b", nonEnum),
 		},
 	}
 	genPath, rep, err := WriteGraphGenReport(dir, doc)
@@ -237,7 +247,7 @@ func TestWriteGraphGenReportWiresTheFlatEntityProducerPath(t *testing.T) {
 		t.Fatal("fixture is inert: no gen path written, so no entity was serialized")
 	}
 	if rep.Entities != 1 || rep.EntityDistinctKinds != 1 ||
-		len(rep.EntityKinds) != 1 || rep.EntityKinds[0].Kind != "Middleware" {
+		len(rep.EntityKinds) != 1 || rep.EntityKinds[0].Kind != nonEnum {
 		t.Fatalf("flat producer path did not report the non-enum entity kind: %+v", rep)
 	}
 }
@@ -257,12 +267,14 @@ func TestWriteGraphGenReportWiresTheSegmentedEntityProducerPath(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "1")
 	t.Setenv("GRAFEL_SEGMENT_BYTES", "512")
-	if types.IsValidEntityKind("Controller") {
-		t.Fatal("fixture is inert: Controller is a valid entity kind")
+	// "Controller" until #6776 arm B5 declared it.
+	const nonEnum = "Config"
+	if types.IsValidEntityKind(nonEnum) {
+		t.Fatalf("fixture is inert: %q is a valid entity kind", nonEnum)
 	}
 	doc := &graph.Document{}
 	for i := 0; i < 20; i++ {
-		e := entFixture(fmt.Sprintf("e%02d", i), "Controller")
+		e := entFixture(fmt.Sprintf("e%02d", i), nonEnum)
 		// Padding so the 20 entities alone exceed the 512-byte threshold and
 		// the write really segments (and the probe really bails mid-loop).
 		e.QualifiedName = strings.Repeat("q", 120) + e.ID
@@ -275,7 +287,7 @@ func TestWriteGraphGenReportWiresTheSegmentedEntityProducerPath(t *testing.T) {
 	if genPath == "" {
 		t.Fatal("fixture is inert: nothing was written")
 	}
-	if rep.EntityDistinctKinds != 1 || len(rep.EntityKinds) != 1 || rep.EntityKinds[0].Kind != "Controller" {
+	if rep.EntityDistinctKinds != 1 || len(rep.EntityKinds) != 1 || rep.EntityKinds[0].Kind != nonEnum {
 		t.Fatalf("segmented producer path did not report the non-enum entity kind: %+v", rep)
 	}
 	// Exactly 20 — not more. A larger number means the discarded probe
@@ -417,16 +429,14 @@ func TestEntitySummaryIsSeparableFromTheRelationshipSummary(t *testing.T) {
 // every one of these must be COUNTABLE at the write path before anyone ranks
 // the migration by declaration-site count.
 var ruleDeclaredKinds6776 = []string{
-	"Component", "Config", "Constraint", "Controller", "Decorator",
-	"Dependency", "Endpoint", "Fixture", "Implementation", "Interface",
-	"Middleware", "Migration", "Model", "Operation", "Plugin",
-	"Relationship", "Route", "Schema", "Service", "Task",
-	"Template", "Test", "TestClass", "TestConfig", "View",
+	"Component", "Config", "Constraint", "Endpoint", "Model",
+	"Operation", "Plugin", "Route", "Schema", "Service",
+	"Template", "View",
 }
 
 // TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath
 //
-// Varies: the entity kind, across ALL 25 ledger entries — the name of this
+// Varies: the entity kind, across ALL 12 ledger entries — the name of this
 // test says "every", so the body drives every one of them, individually, and
 // asserts a per-kind count rather than a total that one lucky kind could
 // satisfy.
@@ -438,8 +448,8 @@ var ruleDeclaredKinds6776 = []string{
 // zero for it that means "not measurable" rather than "not produced", and
 // those are the two answers a migration ranking must never confuse.
 func TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath(t *testing.T) {
-	if len(ruleDeclaredKinds6776) != 25 {
-		t.Fatalf("ledger transcription has %d entries, want 25 (see internal/entkinds)", len(ruleDeclaredKinds6776))
+	if len(ruleDeclaredKinds6776) != 12 {
+		t.Fatalf("ledger transcription has %d entries, want 12 (see internal/entkinds)", len(ruleDeclaredKinds6776))
 	}
 	for _, kind := range ruleDeclaredKinds6776 {
 		t.Run(kind, func(t *testing.T) {

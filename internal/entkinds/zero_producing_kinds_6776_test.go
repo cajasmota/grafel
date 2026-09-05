@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"sort"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // ---------------------------------------------------------------------------
 // Issue #6776, arm B1 — the eight kinds arm A (c428cde7a) measured at ZERO.
 //
-// Arm A's runtime entity-kind counter found eight of the 25 ledgered kinds
+// Arm A's runtime entity-kind counter found eight of the then-25 ledgered kinds
 // producing no entities on either corpus. The cheap reading is "dead rules,
 // delete them, and ratchet ruleDeclaredKindsDeferredMax down by eight".
 //
@@ -84,21 +86,59 @@ func TestZeroProducingKinds6776_SiteCountsHold(t *testing.T) {
 	}
 }
 
-// TestZeroProducingKinds6776_StayOnTheLedger records the arm-B1 decision as an
-// assertion: none of the eight was deleted, so all eight remain deferred and
-// ruleDeclaredKindsDeferredMax is unchanged at 25.
+// TestZeroProducingKinds6776_StayOnTheLedgerOrInTheEnum records the arm-B1
+// decision as an assertion: none of the eight was deleted, so each is STILL
+// ACCOUNTED FOR — either deferred on ruleDeclaredKindsDeferred, or declared in
+// types.AllEntityKinds() by a later arm. What it forbids is the third state:
+// gone from both, which is the ledger shrinking because capability was deleted.
 //
-// It is deliberately obstructive. Dropping one of these from the ledger means
-// its rule was deleted, and this test forces that change to come here and state
-// which rule went and why — rather than the eight quietly evaporating into a
-// lower ratchet, which is the outcome arm B1 exists to prevent.
-func TestZeroProducingKinds6776_StayOnTheLedger(t *testing.T) {
+// It is deliberately obstructive, and the obstruction survived arm B5. B5
+// migrated seven of the eight (Decorator, Fixture, Implementation, Interface,
+// Relationship, TestClass, TestConfig) into the enum, which is the LEGITIMATE
+// way off the ledger; the earlier form of this test would have forced B5 to
+// delete those rows from zeroProducingKinds6776, taking their 17-site pin and
+// the engine-side firing table's non-vacuity with them. The pin is the arm-B1
+// evidence, so the test moved and the table did not.
+//
+// Varies: which of the two accounted-for states each kind is in — after B5 the
+// eight are split seven-in-the-enum / one-on-the-ledger (Template, a deferred
+// twin), so a mutant that checks only one of the two disjuncts fails.
+// Holds constant: the eight kinds and their site counts, pinned above.
+func TestZeroProducingKinds6776_StayOnTheLedgerOrInTheEnum(t *testing.T) {
+	// Both disjuncts must be exercised, or this degenerates into the one-sided
+	// check it replaced and stops grading the branch it was widened for.
+	var ledgered, declared int
 	for k := range zeroProducingKinds6776 {
-		if _, ok := ruleDeclaredKindsDeferred[k]; !ok {
-			t.Errorf("%s left ruleDeclaredKindsDeferred. Arm B1 measured its rule(s) as LIVE "+
-				"(internal/engine/zero_producing_rule_kinds_6776_test.go), so a removal here is "+
-				"either a real enum declaration — in which case delete the entry from "+
-				"zeroProducingKinds6776 too — or capability quietly deleted to lower a count.", k)
+		onLedger := false
+		if _, ok := ruleDeclaredKindsDeferred[k]; ok {
+			onLedger = true
+			ledgered++
 		}
+		inEnum := types.IsValidEntityKind(k)
+		if inEnum {
+			declared++
+		}
+		// NOT asserted here: the BOTH state (ledgered AND declared). It is
+		// already impossible to reach past TestNoUndeclaredRuleEntityKinds'
+		// stale half, which fires for any ledger entry the live scan stops
+		// producing — and every one of these eight has live YAML sites, pinned
+		// above. A check here would be a second guard that can only ever fire
+		// when that one does, which grades nothing and hides which of the two
+		// is load-bearing.
+		if !onLedger && !inEnum {
+			t.Errorf("%s is neither on ruleDeclaredKindsDeferred nor in types.AllEntityKinds(). Arm "+
+				"B1 measured its rule(s) as LIVE "+
+				"(internal/engine/zero_producing_rule_kinds_6776_test.go), so this is capability "+
+				"quietly deleted to lower a count. If the rule really went, say which and why here "+
+				"and drop the entry from zeroProducingKinds6776 — deliberately, not silently.", k)
+		}
+	}
+	if ledgered == 0 {
+		t.Errorf("no zero-producing kind is on the ledger any more; delete this test's ledger " +
+			"disjunct rather than leaving an arm of it ungraded")
+	}
+	if declared == 0 {
+		t.Errorf("no zero-producing kind is in the enum; the enum disjunct is ungraded, so this " +
+			"test is still the one-sided check it was widened away from")
 	}
 }

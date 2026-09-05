@@ -472,6 +472,53 @@ const (
 	EntityKindScheduledJob EntityKind = "SCOPE.ScheduledJob"
 	EntityKindProcess      EntityKind = "SCOPE.Process"
 	EntityKindEventFlow    EntityKind = "SCOPE.EventFlow"
+
+	// #6776 arm B5 — thirteen kinds that internal/engine/rules/**/*.yaml has
+	// been declaring all along while AllEntityKinds() omitted them.
+	//
+	// internal/engine/detector.go writes SourcePattern.EntityType straight into
+	// types.EntityRecord.Kind with no validation, so each of these strings
+	// already reaches the graph exactly as spelled here; what it did NOT reach
+	// was the enum, so IsValidEntityKind rejected every entity carrying one and
+	// internal/graph/fbwriter's arm-A tally counted them as unrecognised.
+	//
+	// The SPELLINGS ARE UNCHANGED — deliberately. Arm A measured that adding a
+	// `SCOPE.` prefix buys spelling and nothing else (seven already-prefixed
+	// kinds were outside the enum too), at the cost of ~532 rule edits plus a
+	// stored-graph migration. This arm is enum membership only, so nothing
+	// already on disk is restated and KindVocabularyVersion does not move (see
+	// the doc on that constant).
+	//
+	// These thirteen are exactly the rule-declared kinds whose Go identifier
+	// was FREE. The remaining twelve on internal/entkinds' ledger — Component,
+	// Config, Constraint, Endpoint, Model, Operation, Plugin, Route, Schema,
+	// Service, Template, View — each already have an `EntityKind<Name>`
+	// constant bound to a `SCOPE.`-prefixed value, so declaring the un-prefixed
+	// spelling would add a second enum member meaning the same thing. That is a
+	// synonym decision, not a mechanical add, and it is deferred to arms B6-B8.
+	//
+	// Eight rule-declared kinds produce zero entities on both corpora, and
+	// SEVEN OF THOSE EIGHT ARE IN THIS BLOCK (Decorator, Fixture,
+	// Implementation, Interface, Relationship, TestClass, TestConfig; the
+	// eighth, Template, is a deferred twin). Zero is not dead: arm B1 drove the
+	// shipped rule tree over the construct each of their declaration sites
+	// names and every site fired — see
+	// internal/engine/zero_producing_rule_kinds_6776_test.go. The corpora lack
+	// `directive @`, `@pytest.fixture`, `= relationship(`, `actual fun` and
+	// friends; the rules are live.
+	EntityKindController     EntityKind = "Controller"
+	EntityKindDecorator      EntityKind = "Decorator"
+	EntityKindDependency     EntityKind = "Dependency"
+	EntityKindFixture        EntityKind = "Fixture"
+	EntityKindImplementation EntityKind = "Implementation"
+	EntityKindInterface      EntityKind = "Interface"
+	EntityKindMiddleware     EntityKind = "Middleware"
+	EntityKindMigration      EntityKind = "Migration"
+	EntityKindRelationship   EntityKind = "Relationship"
+	EntityKindTask           EntityKind = "Task"
+	EntityKindTest           EntityKind = "Test"
+	EntityKindTestClass      EntityKind = "TestClass"
+	EntityKindTestConfig     EntityKind = "TestConfig"
 )
 
 // AllEntityKinds returns every EntityKind that grafel extractors are
@@ -533,10 +580,11 @@ func AllEntityKinds() []EntityKind {
 		// #6776 arm B2: declared since the messaging split and never listed
 		// here — the SOLE omission from this list, in either direction.
 		//
-		// The population is 69 constants of type EntityKind, of which 68 are
+		// The population is 82 constants of type EntityKind, of which 81 are
 		// NAMED EntityKind*; the odd one out is HTTPEndpointKindLegacy, which
 		// is EntityKind-typed under a different name and was already listed.
-		// (It was 63/62 until arm B4 added six below.) Both counts and the set
+		// (It was 63/62 until arm B4 added six below, and 69/68 until arm B5
+		// added thirteen more.) Both counts and the set
 		// equality are pinned by
 		// TestEntityKindDeclarations6776_MatchAllEntityKindsExactly rather than
 		// asserted here, so this comment cannot go stale unobserved.
@@ -587,6 +635,23 @@ func AllEntityKinds() []EntityKind {
 		EntityKindScheduledJob,
 		EntityKindProcess,
 		EntityKindEventFlow,
+		// #6776 arm B5: rule-YAML-declared kinds, un-prefixed spellings kept.
+		// Migration is additionally a Go producer's kind
+		// (extractors/python/django_migration.go), so it left BOTH #6776
+		// ledgers in the same change.
+		EntityKindController,
+		EntityKindDecorator,
+		EntityKindDependency,
+		EntityKindFixture,
+		EntityKindImplementation,
+		EntityKindInterface,
+		EntityKindMiddleware,
+		EntityKindMigration,
+		EntityKindRelationship,
+		EntityKindTask,
+		EntityKindTest,
+		EntityKindTestClass,
+		EntityKindTestConfig,
 	}
 }
 

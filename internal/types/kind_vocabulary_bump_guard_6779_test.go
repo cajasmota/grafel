@@ -90,11 +90,22 @@ func declaredEntityKindValues(t *testing.T) []string {
 }
 
 // pinnedEntityKindVocabulary is every entity-kind STRING kinds.go declares, as
-// of pinnedKindVocabularyVersion. Sorted; the guard sorts before comparing, so
-// the order here is only for readability.
+// of pinnedKindVocabularyVersion. Sorted, and each value appears exactly once —
+// both observed by TestEntityKindVocabularyIsStrictlyIncreasing, because the
+// comparison below is set-based and sorts its own copy, so neither property
+// held itself up.
 var pinnedEntityKindVocabulary = []string{
 	"AgentPattern",
+	"Controller",
+	"Decorator",
+	"Dependency",
+	"Fixture",
+	"Implementation",
+	"Interface",
+	"Middleware",
+	"Migration",
 	"Module",
+	"Relationship",
 	"SCOPE.Activity",
 	"SCOPE.Channel",
 	"SCOPE.ChannelBinding",
@@ -159,9 +170,48 @@ var pinnedEntityKindVocabulary = []string{
 	"SCOPE.Variable",
 	"SCOPE.View",
 	"SCOPE.Workflow",
+	"Task",
+	"Test",
+	"TestClass",
+	"TestConfig",
 	"http_endpoint",
 	"http_endpoint_call",
 	"http_endpoint_definition",
+}
+
+// TestEntityKindVocabularyIsStrictlyIncreasing observes the two properties the
+// roster's own comment claims — sorted, and no value twice.
+//
+// Neither is implied by TestEntityKindVocabularyIsPinnedToItsVersion: that test
+// sorts its own copy and compares SETS, so a duplicated line is invisible to it
+// (scored: duplicating "Migration" left the whole package green). A duplicate
+// is not cosmetic — the failure message renders a paste-back roster from the
+// PARSED kinds, so a hand-edited pin that has drifted to 83 lines for 82 kinds
+// silently disagrees with the artefact the guard tells you to paste, and the
+// next author reconciles it by deleting the wrong one.
+//
+// Varies: nothing — a live observation of the pinned literal.
+// Holds constant: the roster. Strict `<` is what makes ONE loop grade BOTH
+// claims: `>` catches unsorted, `==` catches a duplicate.
+func TestEntityKindVocabularyIsStrictlyIncreasing(t *testing.T) {
+	if len(pinnedEntityKindVocabulary) < 10 {
+		t.Fatalf("premise: the roster holds %d values, so this loop grades nothing",
+			len(pinnedEntityKindVocabulary))
+	}
+	for i := 1; i < len(pinnedEntityKindVocabulary); i++ {
+		prev, cur := pinnedEntityKindVocabulary[i-1], pinnedEntityKindVocabulary[i]
+		if prev == cur {
+			t.Errorf("pinnedEntityKindVocabulary[%d] and [%d] are both %q — the roster pins a SET, "+
+				"so a duplicate changes nothing it asserts while making its own length wrong",
+				i-1, i, cur)
+			continue
+		}
+		if prev > cur {
+			t.Errorf("pinnedEntityKindVocabulary is not sorted: [%d]=%q comes after [%d]=%q. "+
+				"Its doc comment says sorted, and the paste-back roster the bump guard prints is",
+				i, cur, i-1, prev)
+		}
+	}
 }
 
 // TestEntityKindVocabularyIsPinnedToItsVersion is the bump rule, enforced.
