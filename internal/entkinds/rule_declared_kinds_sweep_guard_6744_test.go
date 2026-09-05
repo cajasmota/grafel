@@ -15,10 +15,15 @@ package entkinds_test
 // The live scan of the rule tree finds 532 declaration sites and 27 distinct
 // values. Exactly TWO of them are valid entity kinds — `Module` (valid only
 // because types.EntityKindModule is itself un-prefixed) and `SCOPE.IngressHost`
-// (added by this change). The other 25 were ledgered below; #6776 arm B5
-// declared thirteen of them in types.AllEntityKinds() with their un-prefixed
-// spellings unchanged, so the ledger now holds the remaining 12 and the live
-// scan finds 15 of the 27 values valid.
+// (added by this change). The other 25 were ledgered below; #6776 arms B5-B8
+// declared twenty-four of them in types.AllEntityKinds() with their un-prefixed
+// spellings unchanged (thirteen at B5, four at B6, four at B7, three at B8).
+//
+// DO NOT RESTATE THE REMAINDER AS A NUMBER HERE — it went stale three arms
+// running before this sentence replaced it. ruleDeclaredKindsDeferred below is
+// the population, and it is pinned by exact set equality in both directions
+// plus ruleDeclaredKindsDeferredMax, so reading it is always current and
+// reading a comment is not.
 //
 // # Bound and unbound, and why the two halves of #6744 are not equal
 //
@@ -44,7 +49,7 @@ package entkinds_test
 // The issue asked whether the rule layer's un-prefixed names are a deliberate
 // separate namespace or an accident. The scan settles it: it is an ACCIDENT,
 // and a systemic one. 25 of 27 declared values were outside the enum when this
-// guard landed (12 still are, after arm B5), and there
+// guard landed — see the ledger below for what survives arms B5-B8 — and there
 // is no code anywhere that treats `Route` differently from `SCOPE.Route` — they
 // are simply written into EntityRecord.Kind and land in the graph as-is, which
 // is why `Module` validates by coincidence rather than by design. Nothing
@@ -113,10 +118,7 @@ import (
 // the issue named three sites and the scan found 532, of which 25 distinct
 // values are invalid. This list must only ever SHRINK, and that is ENFORCED.
 var ruleDeclaredKindsDeferred = map[string]string{
-	"Constraint": "rule_namespace", // python/frameworks/sqlalchemy.yaml:79
-	"Endpoint":   "rule_namespace", // 3 sites; javascript_typescript/frameworks/electron.yaml:41
-	"Plugin":     "rule_namespace", // 5 sites in 2 files; e.g. javascript_typescript/frameworks/fastify.yaml:35
-	"Template":   "rule_namespace", // 2 sites in 2 files; e.g. ansible/frameworks/ansible_core.yaml:37
+	"Endpoint": "rule_namespace", // 3 sites; javascript_typescript/frameworks/electron.yaml:41
 }
 
 // ruleDeclaredKindsDeferredMax is the RATCHET on ruleDeclaredKindsDeferred: the
@@ -133,7 +135,7 @@ var ruleDeclaredKindsDeferred = map[string]string{
 //   - SHRINKS (a kind was declared or removed, which is the point) → this fires
 //     and requires the constant to come down with it, so the bar is never left
 //     slack for a later append to slip under.
-const ruleDeclaredKindsDeferredMax = 4
+const ruleDeclaredKindsDeferredMax = 1
 
 // ruleDeclaredFamily explains each family tag. A ledger entry without a stated
 // reason is not a decision, it is a silence.

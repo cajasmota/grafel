@@ -494,8 +494,9 @@ const (
 	// than it sounds. The other twelve on internal/entkinds' ledger each
 	// already have an `EntityKind<Name>` constant bound to a `SCOPE.`-prefixed
 	// value, so declaring the un-prefixed spelling needs a second Go name.
-	// Arms B6 and B7 migrate eight of them (see the blocks below);
-	// Constraint, Endpoint, Plugin and Template remain deferred to arm B8.
+	// Arms B6, B7 and B8 migrate eleven of them (see the blocks below);
+	// Endpoint alone remains deferred, and NOT because nobody got to it — see
+	// arm B8's block for why it is the one pair that is not a synonym (#6820).
 	//
 	// WHAT THAT RULE DOES NOT SAY IS THAT NO SYNONYM EXISTS. Four of the
 	// thirteen have a live `SCOPE.`-prefixed twin that a Go producer emits
@@ -519,7 +520,8 @@ const (
 	// Eight rule-declared kinds produce zero entities on both corpora, and
 	// SEVEN OF THOSE EIGHT ARE IN THIS BLOCK (Decorator, Fixture,
 	// Implementation, Interface, Relationship, TestClass, TestConfig; the
-	// eighth, Template, is a deferred twin). Zero is not dead: arm B1 drove the
+	// eighth, Template, is a twin arm B8 declares in its own block below).
+	// Zero is not dead: arm B1 drove the
 	// shipped rule tree over the construct each of their declaration sites
 	// names and every site fired — see
 	// internal/engine/zero_producing_rule_kinds_6776_test.go. The corpora lack
@@ -616,6 +618,71 @@ const (
 	EntityKindOperationBare EntityKind = "Operation"
 	EntityKindRouteBare     EntityKind = "Route"
 	EntityKindServiceBare   EntityKind = "Service"
+
+	// #6776 arm B8 — THREE of the four kinds left on internal/entkinds'
+	// ledger, not four. `Endpoint` is deliberately excluded; the paragraph
+	// after the concept notes says why, and the ledger goes 4 -> 1 rather than
+	// 4 -> 0 as a result.
+	//
+	// Same `Bare` suffix and the same reason as arms B6/B7: it names the
+	// SPELLING, not a second concept. Spellings unchanged, so
+	// KindVocabularyVersion does not move.
+	//
+	// CONCEPT NOTES. Each pair below was read at both ends — the rule-YAML
+	// site and the `SCOPE.`-prefixed constant's doc — before being relied on:
+	//
+	//   Constraint — bare: one site, sqlalchemy.yaml:79, whose pattern is
+	//                `ForeignKey("table.id")`, i.e. a constraint declared on a
+	//                SQLAlchemy table/model. SCOPE.Constraint (kinds.go, #749)
+	//                is a Django `Model.Meta.constraints` entry
+	//                (UniqueConstraint/CheckConstraint) bound to its parent
+	//                Model by CONTAINS. ONE concept — a declarative constraint
+	//                on a persisted model — reached through two Python ORMs.
+	//                Neither spelling appears in
+	//                internal/engine/classfold.go's FrameworkClassKindPriority,
+	//                and that is deliberate rather than an omission: its doc at
+	//                classfold.go:26-27 names "a Django Meta `Constraint`" as
+	//                the example of a nested artifact that merely shares a
+	//                class's name and must never win a fold.
+	//   Plugin     — bare: five sites in two files, and both are the ACT OF
+	//                REGISTRATION, not a coincidence of naming —
+	//                ktor.yaml:62 matches `install(<Name>)` and
+	//                fastify.yaml:48 matches `<app>.register(<Name>)`, with
+	//                */plugins/* file conventions beside them (ktor.yaml:40,
+	//                fastify.yaml:35,38). SCOPE.Plugin (#3628 area #25) is "a
+	//                single plugin / extension that a build tool, application,
+	//                or framework registers", linked from the registering file
+	//                by REGISTERS_PLUGIN. Same concept, same relationship,
+	//                different extractor.
+	//   Template   — bare: two sites, flask.yaml:52 (`templates/**/*.html`) and
+	//                ansible_core.yaml:37 (`roles/*/templates/*.j2`) — a
+	//                server-side template FILE. SCOPE.Template (#3628) is the
+	//                server-side view template named by its normalized logical
+	//                path, and its doc names Flask `render_template` as one of
+	//                the producers. Same concept, from the two ends of one
+	//                render: the file that IS the template and the name a
+	//                handler renders.
+	//
+	// ONE DIFFERENCE INSIDE THE TEMPLATE PAIR, RECORDED RATHER THAN GLOSSED:
+	// SCOPE.Template carries a constant synthetic SourceFile
+	// (TemplateSourceFile) so ComputeID collapses one logical template name
+	// across files and frameworks, while the bare kind is per-FILE by
+	// construction (a file_conventions glob). That is an IDENTITY-SHAPE
+	// difference, not a concept difference, and it cannot bear on membership
+	// either way: IsValidEntityKind is membership in a string set that never
+	// reads SourceFile. The same point was settled for `Config` in arm B7.
+	//
+	// WHY `Endpoint` IS NOT HERE. It is the one pair on this ledger that is
+	// NOT a synonym. The bare spelling is declared only by
+	// javascript_typescript/frameworks/electron.yaml — Electron IPC channels —
+	// while SCOPE.Endpoint names the HTTP concept. Migrating it as a synonym
+	// would put two different concepts under one enum member, which is the one
+	// thing the B5-B8 selection rule has never done. That is #6820 and it
+	// needs an owner ruling, so `Endpoint` stays on internal/entkinds' ledger
+	// and ruleDeclaredKindsDeferredMax lands at 1, not 0.
+	EntityKindConstraintBare EntityKind = "Constraint"
+	EntityKindPluginBare     EntityKind = "Plugin"
+	EntityKindTemplateBare   EntityKind = "Template"
 )
 
 // AllEntityKinds returns every EntityKind that grafel extractors are
@@ -677,12 +744,12 @@ func AllEntityKinds() []EntityKind {
 		// #6776 arm B2: declared since the messaging split and never listed
 		// here — the SOLE omission from this list, in either direction.
 		//
-		// The population is 90 constants of type EntityKind, of which 89 are
+		// The population is 93 constants of type EntityKind, of which 92 are
 		// NAMED EntityKind*; the odd one out is HTTPEndpointKindLegacy, which
 		// is EntityKind-typed under a different name and was already listed.
 		// (It was 63/62 until arm B4 added six below, 69/68 until arm B5 added
-		// thirteen more, 82/81 until arm B6 added four, and 86/85 until arm B7
-		// added four.) Both counts and the set
+		// thirteen more, 82/81 until arm B6 added four, 86/85 until arm B7
+		// added four, and 90/89 until arm B8 added three.) Both counts and the set
 		// equality are pinned by
 		// TestEntityKindDeclarations6776_MatchAllEntityKindsExactly rather than
 		// asserted here, so this comment cannot go stale unobserved.
@@ -763,6 +830,12 @@ func AllEntityKinds() []EntityKind {
 		EntityKindOperationBare,
 		EntityKindRouteBare,
 		EntityKindServiceBare,
+		// #6776 arm B8: three of the four kinds left on the ledger — see the
+		// const block for the concept note behind each pair, and for why
+		// Endpoint is deliberately not among them (#6820).
+		EntityKindConstraintBare,
+		EntityKindPluginBare,
+		EntityKindTemplateBare,
 	}
 }
 

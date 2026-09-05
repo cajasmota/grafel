@@ -10,8 +10,10 @@ import (
 )
 
 // Issue #6776 arm A. #6744 froze a STATIC ledger of the entity kinds rule YAML
-// declares outside types.AllEntityKinds() — 532 declaration sites, 25 invalid
-// values when arm A measured (12 after arm B5 declared thirteen of them). #6776 proposes migrating them, and warns in its own closing line
+// declares outside types.AllEntityKinds() — 532 declaration sites and 25
+// invalid values when arm A measured; arms B5-B8 declared twenty-four of those,
+// and ruleDeclaredKinds6776 below is the transcription of what is left.
+// #6776 proposes migrating them, and warns in its own closing line
 // that "532 sites is an inventory, not a measurement": #6757 learned that a
 // static ledger ranked 22 relationship kinds as equals while ONE of them was
 // 99.1% of the runtime population.
@@ -35,6 +37,36 @@ import (
 //   - EntitySummary is textually separable from Summary;
 //   - nothing is dropped;
 //   - every kind on #6744's ledger is countable by this path.
+//
+// # THE NON-ENUM CONTROLS, and why these two
+//
+// Every fixture below needs at least one kind that IsValidEntityKind rejects,
+// and each such fixture hard-fails "fixture is inert" the moment its control
+// becomes valid. That has fired once per migration arm: the controls were
+// Controller/Schema/Route/Config in turn, then Endpoint/Plugin/Template after
+// arm B7, and are now:
+//
+//	Endpoint  the ONE entry left on #6744's ledger after arm B8. It is not
+//	          leftover work — bare `Endpoint` is declared only by
+//	          javascript_typescript/frameworks/electron.yaml (Electron IPC)
+//	          while SCOPE.Endpoint is the HTTP concept, so it is the one pair
+//	          on that ledger that is NOT a synonym, and #6820 owns the ruling.
+//	          Its durability is therefore a real question, not an assumption.
+//	File      internal/engine/commit_coupling_edges.go:117, `const KindFile =
+//	          "File"`. NOT rule-declared, so it is not on #6776's migration
+//	          path at all; it is on internal/types' goUnprefixedKindsDeferred,
+//	          whose own comment says it is "an internal commit-coupling
+//	          artefact rather than a first-class kind; it is ledgered here, not
+//	          promoted". internal/types' arm-B4 negative test has carried it as
+//	          a permanent non-enum row for the same reason.
+//
+// THE ADVICE THE INERT GUARDS BELOW GIVE IS PARTLY STALE, ON PURPOSE. They say
+// to re-pick from internal/entkinds' ledger. After arm B8 that ledger holds one
+// entry, and it is `Endpoint` — already in use here, and itself a migration
+// candidate the moment #6820 is ruled on. A replacement must come from the
+// kinds that are outside the enum because NOTHING PROPOSES TO MOVE THEM, which
+// is what `File` is; the guards' message is kept because naming the stale kind
+// is the useful half, and this paragraph is the correction to the other half.
 
 // entFixture builds an entity with the given id and kind.
 func entFixture(id, kind string) graph.Entity {
@@ -63,8 +95,10 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 		}
 	}
 	// And these must NOT be, or "absent from the enum" is meaningless here.
-	// Both are real #6744 ledger entries, not invented strings.
-	for _, invalid := range []string{"Endpoint", "Plugin"} {
+	// Both are kinds a real producer writes, not invented strings — see THE
+	// NON-ENUM CONTROLS in the file header for what each one is and why it is
+	// expected to stay outside.
+	for _, invalid := range []string{"Endpoint", "File"} {
 		if types.IsValidEntityKind(invalid) {
 			t.Fatalf("fixture is inert: %q is expected to be ABSENT FROM THE ENUM but IsValidEntityKind accepts it", invalid)
 		}
@@ -77,7 +111,7 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 			entFixture("c", string(types.EntityKindModule)),
 			entFixture("d", "Endpoint"),
 			entFixture("e", "Endpoint"),
-			entFixture("f", "Plugin"),
+			entFixture("f", "File"),
 		},
 	}
 
@@ -92,7 +126,7 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 		t.Errorf("Entities = %d, want 3 (6 entities written, 3 with a kind absent from the enum)", rep.Entities)
 	}
 	if rep.EntityDistinctKinds != 2 {
-		t.Errorf("EntityDistinctKinds = %d, want 2 (Endpoint, Plugin)", rep.EntityDistinctKinds)
+		t.Errorf("EntityDistinctKinds = %d, want 2 (Endpoint, File)", rep.EntityDistinctKinds)
 	}
 	if rep.EntityKindsClean() {
 		t.Error("EntityKindsClean() = true, but 3 entities with non-enum kinds were written")
@@ -105,8 +139,8 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 	if got["Endpoint"] != 2 {
 		t.Errorf("Endpoint entities = %d, want 2 (report: %+v)", got["Endpoint"], rep.EntityKinds)
 	}
-	if got["Plugin"] != 1 {
-		t.Errorf("Plugin entities = %d, want 1 (report: %+v)", got["Plugin"], rep.EntityKinds)
+	if got["File"] != 1 {
+		t.Errorf("File entities = %d, want 1 (report: %+v)", got["File"], rep.EntityKinds)
 	}
 	for _, valid := range []string{string(types.EntityKindFunction), string(types.EntityKindModule)} {
 		if _, bad := got[valid]; bad {
@@ -117,7 +151,7 @@ func TestStreamingWriterTalliesOnlyEntityKindsAbsentFromTheEnum(t *testing.T) {
 	// The names, not just the total: a bare count says something is wrong,
 	// the names say what, and what is the input to the migration ranking.
 	sum := rep.EntitySummary()
-	for _, want := range []string{"Endpoint", "Plugin"} {
+	for _, want := range []string{"Endpoint", "File"} {
 		if !strings.Contains(sum, want) {
 			t.Errorf("EntitySummary() = %q, missing non-enum kind name %q", sum, want)
 		}
@@ -267,8 +301,9 @@ func TestWriteGraphGenReportWiresTheSegmentedEntityProducerPath(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "1")
 	t.Setenv("GRAFEL_SEGMENT_BYTES", "512")
-	// "Controller" until arm B5 declared it, "Config" until arm B7.
-	const nonEnum = "Plugin"
+	// "Controller" until arm B5 declared it, "Config" until arm B7, "Plugin"
+	// until arm B8. See THE NON-ENUM CONTROLS in the file header.
+	const nonEnum = "File"
 	if types.IsValidEntityKind(nonEnum) {
 		t.Fatalf("fixture is inert: %q is a valid entity kind", nonEnum)
 	}
@@ -308,23 +343,25 @@ func TestWriteGraphGenReportWiresTheSegmentedEntityProducerPath(t *testing.T) {
 //
 // Varies: nothing.
 // Holds constant: the document — one enum kind plus two kinds the enum does
-// NOT hold (both live #6744 ledger entries). This pins the "counts, never
-// drops" contract — dropping would be the very "looked at nothing, reported
-// clean" failure the arm exists to avoid. These two slots have been re-picked
-// once per migration arm as their occupants became valid: "Schema"/"Route"
-// were swapped for "Operation"/"Endpoint" (arm B6, then arm B7), and
-// "Operation" for "Template" (arm B7). Each swap keeps the document covering
-// the non-enum side, which is the side that can be dropped.
+// NOT hold. This pins the "counts, never drops" contract — dropping would be
+// the very "looked at nothing, reported clean" failure the arm exists to
+// avoid. These two slots have been re-picked once per migration arm as their
+// occupants became valid: "Schema"/"Route" were swapped for
+// "Operation"/"Endpoint" (arm B6, then arm B7), "Operation" for "Template"
+// (arm B7), and "Template" for "File" (arm B8). Each swap keeps the document
+// covering the non-enum side, which is the side that can be dropped. Only one
+// of the two is still a #6744 ledger entry; see THE NON-ENUM CONTROLS in the
+// file header for why the other deliberately is not.
 func TestEntityKindsAreCountedNotDropped(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "0")
 	// The document's mix is the whole point, so it is ASSERTED rather than
 	// described — and asserted about THE SAME STRINGS the document is built
 	// from, since a guard that reads its own literals leaves the fixture free
-	// to ignore it. Measured: before this, swapping "Template" for the valid
-	// "Model" in the document left the test green.
+	// to ignore it. Measured at arm B7, when this slot held "Template": before
+	// the guard existed, swapping it for the valid "Model" left the test green.
 	enumKind := string(types.EntityKindFunction)
-	nonEnumKinds := []string{"Endpoint", "Template"}
+	nonEnumKinds := []string{"Endpoint", "File"}
 	if !types.IsValidEntityKind(enumKind) {
 		t.Fatalf("fixture is inert: %q must be IN the enum", enumKind)
 	}
@@ -377,7 +414,7 @@ func TestApplyToSidecarCarriesTheEntityHalf(t *testing.T) {
 		EntityDistinctKinds: NonEnumKindListCap + 4,
 		EntityKinds: []NonEnumEntityKind{
 			{Kind: "Endpoint", Entities: 11},
-			{Kind: "Plugin", Entities: 6},
+			{Kind: "File", Entities: 6},
 		},
 	}
 	var side graph.GraphStatsSidecar
@@ -395,8 +432,8 @@ func TestApplyToSidecarCarriesTheEntityHalf(t *testing.T) {
 		t.Errorf("EntityDistinctKindsNotInEnum = %d, want %d — it must be the uncapped count, not len(EntityKinds)=%d",
 			side.EntityDistinctKindsNotInEnum, NonEnumKindListCap+4, len(rep.EntityKinds))
 	}
-	if side.EntityKindsNotInEnum["Endpoint"] != 11 || side.EntityKindsNotInEnum["Plugin"] != 6 {
-		t.Errorf("EntityKindsNotInEnum = %v, want Endpoint:11 Plugin:6", side.EntityKindsNotInEnum)
+	if side.EntityKindsNotInEnum["Endpoint"] != 11 || side.EntityKindsNotInEnum["File"] != 6 {
+		t.Errorf("EntityKindsNotInEnum = %v, want Endpoint:11 File:6", side.EntityKindsNotInEnum)
 	}
 
 	// An unscanned report must leave the flag false, so a consumer can tell
@@ -454,15 +491,23 @@ func TestEntitySummaryIsSeparableFromTheRelationshipSummary(t *testing.T) {
 // every one of these must be COUNTABLE at the write path before anyone ranks
 // the migration by declaration-site count.
 var ruleDeclaredKinds6776 = []string{
-	"Constraint", "Endpoint", "Plugin", "Template",
+	"Endpoint",
 }
 
 // TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath
 //
-// Varies: the entity kind, across ALL 4 ledger entries — the name of this
-// test says "every", so the body drives every one of them, individually, and
+// Varies: the entity kind, across ALL ledger entries — the name of this test
+// says "every", so the body drives every one of them, individually, and
 // asserts a per-kind count rather than a total that one lucky kind could
 // satisfy.
+//
+// The ledger is down to ONE entry after arm B8 (`Endpoint`, held back by
+// #6820), so "every" and "the only one" currently coincide. TWO separate
+// checks keep that honest, and they are not redundant: an EXACT pin, so a
+// ledger that grows or shrinks fails here and this comment cannot go stale
+// unobserved; and an absolute NON-EMPTY floor, because the pin alone is
+// satisfiable by emptying the list and re-pinning to zero, which leaves the
+// loop unreachable and this test reporting success over nothing.
 // Holds constant: one entity per kind, the flat writer, and an empty
 // relationship vector.
 //
@@ -471,8 +516,19 @@ var ruleDeclaredKinds6776 = []string{
 // zero for it that means "not measurable" rather than "not produced", and
 // those are the two answers a migration ranking must never confuse.
 func TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath(t *testing.T) {
-	if len(ruleDeclaredKinds6776) != 4 {
-		t.Fatalf("ledger transcription has %d entries, want 4 (see internal/entkinds)", len(ruleDeclaredKinds6776))
+	// The FLOOR first, and it is a separate assertion from the pin below on
+	// purpose. The pin is a literal that an author re-pins when the ledger
+	// moves, so emptying the list and re-pinning to 0 keeps it satisfied while
+	// the loop below becomes unreachable and this test becomes a vacuous green
+	// — measured, ALIVE, before this floor existed. An absolute zero-check
+	// cannot be satisfied that way.
+	if len(ruleDeclaredKinds6776) == 0 {
+		t.Fatal("ledger transcription is EMPTY, so the loop below drives nothing and this test " +
+			"reports success having observed no kind at all. If #6744's ledger really has reached " +
+			"zero, delete this test and say so — do not leave it standing as a no-op.")
+	}
+	if len(ruleDeclaredKinds6776) != 1 {
+		t.Fatalf("ledger transcription has %d entries, want 1 (see internal/entkinds)", len(ruleDeclaredKinds6776))
 	}
 	for _, kind := range ruleDeclaredKinds6776 {
 		t.Run(kind, func(t *testing.T) {

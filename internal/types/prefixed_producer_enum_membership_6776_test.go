@@ -32,8 +32,11 @@ package types_test
 // TestEntityKindEnum6776_B4_KindsOutsideTheEnumStayOutside is the other
 // direction, and it is not decorative: internal/graph/fbwriter's arm-A fixture
 // (non_enum_entity_kinds_6776_test.go) hard-fails with "fixture is inert" the
-// moment `Route` or `Config` become valid, so the two rows naming them pin a
-// live cross-package dependency rather than a hypothetical.
+// moment its own controls become valid, so the rows naming them pin a live
+// cross-package dependency rather than a hypothetical. Those controls were
+// `Route`/`Config` when this was written, `Endpoint`/`Plugin` after arm B7 and
+// `Endpoint`/`File` after arm B8 — the sentence is about the mechanism, and the
+// row list below is the authority on which two kinds it currently names.
 
 import (
 	"testing"
@@ -117,21 +120,25 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 // positive half above. Every row uses t.Errorf, so no row's failure masks
 // another's and each is reported independently.
 //
-// The rows are NOT all distinct axes, and saying so would be this issue's own
-// defect: Endpoint and Plugin are the SAME axis — un-prefixed rule-declared
-// kinds — and no validator permissiveness admits one without the other. They
-// are both present because both are named by internal/graph/fbwriter's arm-A
-// fixture, which hard-fails "fixture is inert" if either becomes valid, so
-// pinning them from this side documents that live cross-package dependency
-// rather than widening coverage. The genuinely separate mechanisms are:
-// un-prefixed rule-declared (Endpoint/Plugin), the not-promoted synthetic
-// (File), the other B3 ledger (ChannelEvent), prefix-stripping (Workflow),
-// near-miss spelling (SCOPE.Workflows), and re-admitting a retired kind
-// (SCOPE.ExternalAPI).
+// The genuinely separate mechanisms are: un-prefixed rule-declared (Endpoint),
+// the not-promoted synthetic (File), the other B3 ledger (ChannelEvent),
+// prefix-stripping (Workflow), near-miss spelling (SCOPE.Workflows), and
+// re-admitting a retired kind (SCOPE.ExternalAPI).
 //
-// These two rows held Route and Config until #6776 arm B7 declared both, and
-// were re-picked from the four kinds still on internal/entkinds' ledger
-// (Constraint, Endpoint, Plugin, Template).
+// THE ROW COUNT MOVED WITH ARM B8 AND THE REASON IS WORTH KEEPING. Until arm
+// B8 there were TWO rows on the un-prefixed rule-declared axis — one axis, two
+// rows — because internal/graph/fbwriter's arm-A fixture named two such kinds
+// and hard-fails "fixture is inert" if either becomes valid, so pinning both
+// from this side documented that live cross-package dependency rather than
+// widening coverage. They held Route and Config until arm B7 declared both,
+// then Endpoint and Plugin until arm B8 declared Plugin.
+//
+// Arm B8 took internal/entkinds' ledger to ONE entry (`Endpoint`, held back by
+// #6820), so there is no second rule-declared kind left to pin. fbwriter's
+// second control was re-picked as `File` instead — deliberately, because
+// `File` is NOT rule-declared and so is not on #6776's migration path at all;
+// see the File row below, which was already here for its own reason and now
+// carries fbwriter's mirror as well.
 //
 // THE MIRROR IS NOT COUPLED, BUT IT IS NOT UNGUARDED EITHER, and the
 // difference is worth stating precisely.
@@ -155,13 +162,17 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 //
 // Varies: the shape of the non-member. Holds constant: the validator.
 //
-//	Endpoint, Plugin       un-prefixed rule-declared kinds — what remains of
-//	                       #6776 arm B8's worklist, and the values
-//	                       internal/graph/fbwriter's arm-A fixture asserts are
-//	                       still invalid. ONE axis, two rows, for the reason
-//	                       above.
+//	Endpoint               the ONE un-prefixed rule-declared kind left on
+//	                       internal/entkinds' ledger after arm B8. It is not
+//	                       leftover work: bare `Endpoint` is Electron IPC
+//	                       (electron.yaml) while SCOPE.Endpoint is the HTTP
+//	                       concept, so it is the one pair on that ledger that
+//	                       is not a synonym, and #6820 owns the ruling.
 //	File                   the commit-coupling synthetic, deliberately NOT
-//	                       promoted (894 entities of an internal artefact)
+//	                       promoted (894 entities of an internal artefact) —
+//	                       and, since arm B8, also the second kind
+//	                       internal/graph/fbwriter's arm-A fixture asserts is
+//	                       still invalid
 //	ChannelEvent           a Go producer's UN-prefixed kind: B4 promoted the
 //	                       prefixed ledger only, not goUnprefixedKindsDeferred
 //	Workflow               the prefix-stripped spelling of a promoted kind — a
@@ -171,12 +182,11 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 //	SCOPE.ExternalAPI      retired by #6451; re-admitting it would undo that
 func TestEntityKindEnum6776_B4_KindsOutsideTheEnumStayOutside(t *testing.T) {
 	for axis, kind := range map[string]string{
-		"rule-declared, arm B8's worklist (fbwriter's arm-A fixture depends on it)": "Endpoint",
-		"rule-declared, the second row of that same axis":                           "Plugin",
-		"the commit-coupling synthetic, deliberately not promoted":                  "File",
-		"a Go producer's un-prefixed kind, on the other B3 ledger":                  "ChannelEvent",
-		"the prefix-stripped spelling of a kind B4 DID promote":                     "Workflow",
-		"a near-miss spelling that no producer writes":                              "SCOPE.Workflows",
+		"rule-declared, the one pair #6820 holds back (fbwriter's arm-A fixture depends on it)": "Endpoint",
+		"the commit-coupling synthetic, deliberately not promoted (fbwriter's second control)":  "File",
+		"a Go producer's un-prefixed kind, on the other B3 ledger":                              "ChannelEvent",
+		"the prefix-stripped spelling of a kind B4 DID promote":                                 "Workflow",
+		"a near-miss spelling that no producer writes":                                          "SCOPE.Workflows",
 		"retired by #6451": "SCOPE.ExternalAPI",
 	} {
 		if types.IsValidEntityKind(kind) {
