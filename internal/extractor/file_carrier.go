@@ -113,7 +113,22 @@ import "github.com/cajasmota/grafel/internal/types"
 // TagEntitiesLanguage only touches a record whose Language is empty, and stamps
 // Properties["language"] when it does, so a package whose every other record
 // sets Language explicitly can observe the fill as provenance rather than as a
-// token. A caller that does not tag keeps whatever token this parameter is
+// token.
+//
+// THERE IS A SECOND WAY A TAGGING CALLER ESCAPES THE EQUIVALENCE, and it is not
+// a test-side trick at all — it is CALL ORDER. TagEntitiesLanguage fills only
+// the records it is handed, so a caller that runs it and THEN prepends the
+// carrier never offers the carrier to it: an empty token stays empty and is
+// caught on the Language field directly. dockerfile (#6852) is such a caller —
+// dockerfile.go tags at :145 and prepends at :183 — and
+// TestDockerfile_CarrierShape_6852 asserts both halves: the token on Language,
+// and the absence of Properties["language"] that is the premise for reading
+// Language as evidence at all. Named because the sentence above would otherwise
+// imply something a measurement in this repo contradicts; the mechanism, not
+// the roster, is the durable part, and a caller can leave this category by
+// having its carrier line moved above its tagging call.
+//
+// A caller that does not tag keeps whatever token this parameter is
 // given, and that second shape is the one the parameter exists for. The
 // asymmetry to keep in view is the direction of the error: this paragraph is
 // safe when it UNDER-claims grading for a tagging caller (a mutant dies that it
