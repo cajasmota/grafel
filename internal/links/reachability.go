@@ -230,7 +230,7 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 				srcRoot = g.FileRoot
 			}
 			abs := filepath.Join(srcRoot, file)
-			content, err := os.ReadFile(abs)
+			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
 				continue
 			}

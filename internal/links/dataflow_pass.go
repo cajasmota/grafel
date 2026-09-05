@@ -114,7 +114,7 @@ func runDataFlowPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (
 				srcRoot = g.FileRoot
 			}
 			abs := filepath.Join(srcRoot, file)
-			content, err := os.ReadFile(abs)
+			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
 				continue
 			}
@@ -325,7 +325,7 @@ func resolveCrossFileFlows(g *repoGraph, handlerFile, srcRoot, lang string, xfil
 		if c, ok := cache[rel]; ok {
 			return c, c != ""
 		}
-		buf, err := os.ReadFile(filepath.Join(srcRoot, rel))
+		buf, err := readSourceFile(filepath.Join(srcRoot, rel), maxSourceFileBytes)
 		if err != nil {
 			cache[rel] = ""
 			return "", false

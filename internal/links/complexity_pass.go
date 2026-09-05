@@ -24,7 +24,6 @@ package links
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -65,7 +64,7 @@ func runComplexityPass(graphs []repoGraph, _ Paths) (PassResult, error) {
 				cache[rel] = ""
 				return ""
 			}
-			buf, err := os.ReadFile(filepath.Join(srcRoot, rel))
+			buf, err := readSourceFile(filepath.Join(srcRoot, rel), maxSourceFileBytes)
 			if err != nil {
 				cache[rel] = ""
 				return ""
