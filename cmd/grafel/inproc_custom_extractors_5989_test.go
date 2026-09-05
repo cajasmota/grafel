@@ -266,6 +266,14 @@ func TestInProcCustomExtractorsProduceFrameworkEntities(t *testing.T) {
 // comparison is structurally blind to substitution — the same defect class as
 // #6037. Compare tuples, and compare them as a MULTISET (counts per tuple),
 // so a duplicate appearing or disappearing is also visible.
+//
+// THE TUPLE IS entityTupleKey, NOT A SECOND COPY OF IT (#6862). This function
+// used to inline its own 7-field format string while entityTupleKey (the
+// semantic-digest tuple) inlined the same seven fields separately, and
+// TestCustomExtractorAddedEntitiesCarryACompleteSpan resolves a tuple produced
+// HERE through a map keyed by entityTupleKey. Two copies of one format is a
+// silent desync waiting to happen, and it happened the moment #6862 added
+// Language to one of them. There is now one definition and both callers use it.
 func entityTuples(doc *graph.Document, lang string) map[string]int {
 	out := map[string]int{}
 	for i := range doc.Entities {
@@ -273,8 +281,7 @@ func entityTuples(doc *graph.Document, lang string) map[string]int {
 		if lang != "" && e.Language != lang {
 			continue
 		}
-		out[fmt.Sprintf("%s|%s|%s|%s|%s|%d|%d",
-			e.Kind, e.Name, e.QualifiedName, e.Subtype, e.SourceFile, e.StartLine, e.EndLine)]++
+		out[entityTupleKey(e)]++
 	}
 	return out
 }
@@ -437,15 +444,20 @@ func TestInProcCustomExtractorsJavaEnrichment(t *testing.T) {
 	// its same Kind|Name|SourceFile successor in `added`. This is the
 	// assertion that used to require a truncation to exist.
 	spanOf := func(tuple string) (kindNameFile string, start, end int, ok bool) {
+		// Length and the line indices are read relative to the END of the
+		// tuple (#6862): entityTupleKey gained Language, so a fixed
+		// `len(parts) != 7` skipped every tuple and silently turned this
+		// assertion into a no-op. Kind/Name/SourceFile keep fixed leading
+		// indices because nothing is inserted before them.
 		parts := strings.Split(tuple, "|")
-		if len(parts) != 7 {
+		if len(parts) < 8 {
 			return "", 0, 0, false
 		}
-		st, err := strconv.Atoi(parts[5])
+		st, err := strconv.Atoi(parts[len(parts)-2])
 		if err != nil {
 			return "", 0, 0, false
 		}
-		en, err := strconv.Atoi(parts[6])
+		en, err := strconv.Atoi(parts[len(parts)-1])
 		if err != nil {
 			return "", 0, 0, false
 		}
@@ -457,6 +469,15 @@ func TestInProcCustomExtractorsJavaEnrichment(t *testing.T) {
 		if k, st, en, ok := spanOf(d); ok {
 			offSpan[k] = span{st, en}
 		}
+	}
+	// VACUITY GUARD (#6862). Everything below is skipped when spanOf cannot
+	// parse a tuple, so a parser that matches nothing reports "no span
+	// narrowed" while checking nothing. That is not hypothetical: spanOf read
+	// StartLine/EndLine off fixed indices and stopped parsing entirely the
+	// moment entityTupleKey gained a field.
+	if len(destroyed) > 0 && len(offSpan) == 0 {
+		t.Fatalf("spanOf parsed 0 of %d destroyed tuples — the narrowing check below "+
+			"is vacuous. First tuple: %q", len(destroyed), destroyed[0])
 	}
 	var narrowed []string
 	for _, a := range added {
@@ -759,15 +780,20 @@ func TestInProcCustomExtractorsSupersedeIsNonDestructive(t *testing.T) {
 	// because a same-identity pair IS one graph node and combining them is
 	// correct — silently shrinking them was not.
 	parse := func(tuple string) (key string, start, end int, ok bool) {
+		// Length and the line indices are read relative to the END of the
+		// tuple (#6862): entityTupleKey gained Language, so a fixed
+		// `len(parts) != 7` skipped every tuple and silently turned this
+		// assertion into a no-op. Kind/Name/SourceFile keep fixed leading
+		// indices because nothing is inserted before them.
 		parts := strings.Split(tuple, "|")
-		if len(parts) != 7 {
+		if len(parts) < 8 {
 			return "", 0, 0, false
 		}
-		st, err := strconv.Atoi(parts[5])
+		st, err := strconv.Atoi(parts[len(parts)-2])
 		if err != nil {
 			return "", 0, 0, false
 		}
-		en, err := strconv.Atoi(parts[6])
+		en, err := strconv.Atoi(parts[len(parts)-1])
 		if err != nil {
 			return "", 0, 0, false
 		}
@@ -779,6 +805,13 @@ func TestInProcCustomExtractorsSupersedeIsNonDestructive(t *testing.T) {
 		if k, st, en, ok := parse(d); ok {
 			was[k] = span{st, en}
 		}
+	}
+	// VACUITY GUARD (#6862) — see the identical guard in
+	// TestInProcCustomExtractorsJavaEnrichment. A `parse` that matches nothing
+	// makes every check below a no-op that reports clean.
+	if len(destroyed) > 0 && len(was) == 0 {
+		t.Fatalf("parse handled 0 of %d destroyed tuples — the enrichment/narrowing "+
+			"checks below are vacuous. First tuple: %q", len(destroyed), destroyed[0])
 	}
 	var narrowed, substitutions []string
 	for _, a := range added {
@@ -892,7 +925,7 @@ func TestInProcCustomExtractorsThreeCollisionShapesAreClosed(t *testing.T) {
 	// successor (a Tier A combine, which is one node either way).
 	key := func(tuple string) string {
 		p := strings.Split(tuple, "|")
-		if len(p) != 7 {
+		if len(p) < 8 {
 			return tuple
 		}
 		return p[0] + "|" + p[1] + "|" + p[4]
@@ -989,17 +1022,27 @@ func TestInProcCustomExtractorsThreeCollisionShapesAreClosed(t *testing.T) {
 	//
 	// Closed means: the node is still ONE node, the subtype refinement is
 	// KEPT, and the span is NOT narrower than the gate-off span.
+	//
+	// spanOf reads StartLine/EndLine off the TRAILING PAIR of the tuple rather
+	// than off fixed indices 5 and 6 (#6862). It used to require exactly seven
+	// fields and index 5/6; when entityTupleKey gained Language the tuple became
+	// eight fields and every candidate was skipped, so `found` went false and
+	// the whole shape-3 assertion went vacuous — caught here only because the
+	// !okOff/!okOn branch reports vacuity as a failure. StartLine and EndLine
+	// are the last two fields of entityTupleKey by construction, so indexing
+	// from the end survives any future field added ahead of them while still
+	// failing loudly if the pair itself goes away.
 	spanOf := func(m map[string]int, prefix string) (tuple string, start, end int, found bool) {
 		for tp := range m {
 			if !strings.HasPrefix(tp, prefix) {
 				continue
 			}
 			p := strings.Split(tp, "|")
-			if len(p) != 7 {
+			if len(p) < 8 {
 				continue
 			}
-			st, err1 := strconv.Atoi(p[5])
-			en, err2 := strconv.Atoi(p[6])
+			st, err1 := strconv.Atoi(p[len(p)-2])
+			en, err2 := strconv.Atoi(p[len(p)-1])
 			if err1 != nil || err2 != nil {
 				continue
 			}
