@@ -54,7 +54,10 @@ type EntityKindLang struct {
 	Count    int
 }
 
-// SourceWindowStats captures completeness of start/end line coverage.
+// SourceWindowStats captures START-LINE coverage only. It carries no end-line
+// signal: TotalWithWindow counts entities with StartLine > 0 and never consults
+// EndLine (#6827 — the name "window" and the old rendered label both promised a
+// two-sided check that has never been performed).
 type SourceWindowStats struct {
 	TotalWithWindow int
 	TotalEntities   int
@@ -297,11 +300,27 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			}
 
 			// Source-window completeness: start_line > 0 is the navigable-window
-			// anchor. The graph.fb schema has NO end-line slot — fbEntityToGraphEntity
-			// (internal/graph/load.go) populates StartLine from SourceLine() and
-			// leaves EndLine == 0 for every FB-loaded entity — so requiring
-			// EndLine > StartLine scored 0.0% against real production data. Start
-			// line alone is what get_source anchors on, so it is the correct signal.
+			// anchor, and it is the ONLY thing counted here. Requiring
+			// EndLine > StartLine scored 0.0% against real production data,
+			// because the graph.fb Entity table had no end-line slot at the
+			// time: fbEntityToGraphEntity (internal/graph/load.go) left
+			// EndLine == 0 for every FB-loaded entity.
+			//
+			// CORRECTION (#6827): that is no longer true of the schema. #6236
+			// added the slot — fbwriter.buildEntity now writes EndLine and
+			// fbEntityToGraphEntity reads it back — so end lines DO survive a
+			// round trip through a graph.fb written since then. The check stays
+			// one-sided anyway, for two reasons that are about data and not
+			// about the schema: every graph.fb written BEFORE #6236 still loads
+			// with EndLine == 0 (testdata/golden is one), and no measurement
+			// exists of how many entities the extractors actually give an end
+			// line. Widening this to a span check is a separate change that
+			// needs a corpus number first; it must not be done on the strength
+			// of the slot existing.
+			//
+			// Until then the metric is start-line-only and the rendered label
+			// says so — see the caption in render.go. Do not restore a label
+			// that promises a span this does not check.
 			if e.StartLine > 0 {
 				r.SourceWindow.TotalWithWindow++
 			}

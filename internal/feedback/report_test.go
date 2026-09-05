@@ -13,10 +13,19 @@ import (
 // makeEntity is a test helper that builds a minimal graph.Entity that speaks
 // the SAME dialect as a real graph.fb-loaded entity: a canonical Kind
 // (SCOPE.Function / SCOPE.Class / Model …) and StartLine ONLY. It deliberately
-// does NOT set EndLine — the graph.fb schema has no end-line slot, so every
-// FB-loaded entity has EndLine == 0 (see internal/graph/load.go
-// fbEntityToGraphEntity). Pre-setting EndLine here was the fixture lie that let
-// the D1 source-window bug pass unit tests while scoring 0.0% in production.
+// does NOT set EndLine. Pre-setting EndLine here was the fixture lie that let
+// the D1 source-window bug pass unit tests while scoring 0.0% in production:
+// the graph.fb Entity table had no end-line slot, so every FB-loaded entity
+// came back with EndLine == 0 no matter what the extractor emitted.
+//
+// #6236 has since added the slot, so an end line now survives a round trip
+// through a graph.fb written after it (internal/graph/load.go
+// fbEntityToGraphEntity reads e.EndLine()). This helper still withholds
+// EndLine on purpose: every graph.fb written before #6236 loads with
+// EndLine == 0, and no measurement exists of how often the extractors set one,
+// so the span-less shape remains the conservative case the source-window
+// metric must hold up under. See #6827 for the label that used to claim
+// otherwise.
 func makeEntity(id, name, kind, lang, srcFile string, startLine int) graph.Entity {
 	return graph.Entity{
 		ID:         id,

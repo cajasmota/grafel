@@ -80,7 +80,17 @@ func Render(w io.Writer, r *Report) error {
 	renderRelKindByLanguage(w, r)
 
 	fmt.Fprintf(w, "### Source-window completeness\n\n")
-	fmt.Fprintf(w, "Entities with valid start/end line: **%.1f%%** (%d of %d)\n\n",
+	// #6827: this metric was labelled "entities with valid start/END line" and
+	// has only ever checked `StartLine > 0` — see the derivation comment beside
+	// the counter in report.go. The one-sided check is deliberate and stays;
+	// the LABEL was the defect, and it produced a real misreading (on #6726 a
+	// reader took 89.2% to mean end lines had been checked and found present).
+	//
+	// The limitation is stated OUT LOUD rather than left implicit: a narrowed
+	// metric that does not say it narrowed is how this issue happened. It is
+	// emitted here and nowhere else — it is false over every other metric.
+	fmt.Fprintf(w, "Counts entities carrying a START LINE (`start_line > 0`) — the anchor `get_source` navigates on. **End lines are NOT examined**: this percentage says nothing about whether any entity carries an end line, and must not be read as span completeness. Counts entity OCCURRENCES (one entity emitted into two documents counts twice), the same unit as the kind x language table above and NOT the unique-entity-ID unit of Section 2 — not comparable with `Total` there.\n\n")
+	fmt.Fprintf(w, "Entities with a start line: **%.1f%%** (%d of %d)\n\n",
 		r.SourceWindow.PctComplete,
 		r.SourceWindow.TotalWithWindow,
 		r.SourceWindow.TotalEntities)
