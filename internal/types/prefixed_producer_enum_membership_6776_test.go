@@ -133,14 +133,25 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 // were re-picked from the four kinds still on internal/entkinds' ledger
 // (Constraint, Endpoint, Plugin, Template).
 //
-// THE MIRRORING IS A CONVENTION, NOT A CONSTRAINT, and this comment says so
-// rather than claiming a coupling nothing checks: swapping either row for
-// another still-non-enum ledger kind leaves this package and
-// internal/graph/fbwriter green — measured. Enforcing it means one package
-// reading another's unexported fixture literals, which is the shape already
-// filed as #6829 for fbwriter's own transcribed ledger; it is not attempted
-// here. What IS enforced, by the rows below, is that each named kind stays
-// outside the enum.
+// THE MIRROR IS NOT COUPLED, BUT IT IS NOT UNGUARDED EITHER, and the
+// difference is worth stating precisely.
+//
+// The drift that matters — a kind on either side quietly becoming VALID — is
+// caught on the far side, loudly, by internal/graph/fbwriter's inert-fixture
+// guards: :69, :233, :337 and :551 each t.Fatalf naming the kind that went
+// stale AND pointing at internal/entkinds' ledger to re-pick from. Graded, not
+// assumed: declaring `Endpoint` — a B8 kind, not one of arm B7's four — is
+// DEAD across three packages and eleven tests, with five of those guards
+// firing. A textual cross-package guard would add detection the suite already
+// has, and would cost #6829's shape (one package reading another's unexported
+// fixture literals) to do it, with a worse message than the guards produce.
+//
+// What the inert guards do NOT cover is a swap between two kinds that are BOTH
+// still outside the enum: replacing either row below with another live ledger
+// kind leaves this package and internal/graph/fbwriter green — measured. That
+// is the honest limit of the arrangement, and it is the cheap direction to get
+// wrong, not the dangerous one. What the rows below enforce directly is that
+// each kind they name stays outside the enum.
 //
 // Varies: the shape of the non-member. Holds constant: the validator.
 //
