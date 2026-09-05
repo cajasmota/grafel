@@ -190,6 +190,15 @@ type PassResult struct {
 	// the per-repo dynamic_baseurl_endpoint enrichment candidate; this counter
 	// reports how much candidate signal the suffix matcher found for them. (#2813)
 	ResidualCandidates int
+
+	// UnreadableSourceFiles is the number of scanned-source-tree files this
+	// pass tried to read and could not (#6839). safeio refuses non-regular
+	// files, times out on a would-block open and bounds every read, so a
+	// failure here is a file the pass never saw the contents of. Counting it
+	// is what keeps the skip "bounded and REPORTED" rather than silent — see
+	// internal/safeio's package doc. Surfaced in the link-pass-stats sidecar
+	// so an MCP/CLI caller can see that a pass ran on partial input.
+	UnreadableSourceFiles int
 }
 
 // RunResult is the aggregate of all three passes from RunAllPasses.
@@ -577,6 +586,11 @@ type LinkPassStatsEntry struct {
 	Skipped           int    `json:"skipped"`
 	OrphanCalls       int    `json:"orphan_calls,omitempty"`
 	CrossRepoResolved int    `json:"cross_repo_resolved,omitempty"`
+
+	// UnreadableSourceFiles mirrors PassResult.UnreadableSourceFiles: source
+	// files this pass could not read, so a caller can see that the pass ran
+	// on partial input instead of inferring completeness from silence (#6839).
+	UnreadableSourceFiles int `json:"unreadable_source_files,omitempty"`
 }
 
 // HTTPResolveStats is the structured resolve-strategy telemetry surfaced
@@ -612,6 +626,8 @@ func writeLinkPassStats(path string, res *RunResult) error {
 			Skipped:           r.Skipped,
 			OrphanCalls:       r.OrphanCalls,
 			CrossRepoResolved: r.CrossRepoResolved,
+
+			UnreadableSourceFiles: r.UnreadableSourceFiles,
 		})
 		if r.Pass == "http" {
 			doc.HTTPSummary = &HTTPResolveStats{
