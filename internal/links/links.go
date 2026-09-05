@@ -337,21 +337,17 @@ func RunAllPasses(group, graphsDir, grafelHome string) (*RunResult, error) {
 	// canonicalise consumer-side dynamic_baseurl HTTP endpoint paths
 	// before the HTTP pass below sees them, lifting those orphans into
 	// the resolvable bucket.
+	// #6450 — the consumer-side dynamic_baseurl fold that used to run
+	// here was removed. The engine performs the same fold at index time
+	// (internal/engine.FoldConsumerHTTPBaseURLs) and persists url_kind
+	// ="literal", so by the time group-link loads a graph from disk there
+	// is nothing left for a second, identical resolver to fold. The pass
+	// below still emits the cross-file RESOLVES_TO links.
 	SetPhase(PhaseForPass("constant_propagation"))
-	pCP, resolver, err := runConstantPropagationPass(graphs, paths, rejects)
+	pCP, err := runConstantPropagationPass(graphs, paths, rejects)
 	if err != nil {
 		return nil, fmt.Errorf("constant propagation pass: %w", err)
 	}
-	// applyResolverToConsumerHTTP mutates the in-memory entityNode
-	// Properties (path / url_kind / substrate_*) for consumer-side
-	// http_endpoint_call entities whose url_kind was "dynamic_baseurl"
-	// before substitution. Mutated entities feed directly into the
-	// downstream HTTP pass below because Go slice-of-struct headers
-	// share the underlying array. Folded the mutated count into the
-	// pass's Candidates counter so it surfaces in PassResult telemetry
-	// without conflating with the cross-file RESOLVES_TO LinksAdded
-	// count emitted by runConstantPropagationPass.
-	pCP.Candidates = applyResolverToConsumerHTTP(graphs, resolver)
 	res.Results = append(res.Results, pCP)
 
 	// #2764 — Phase 1A effect classification. Runs after constant
