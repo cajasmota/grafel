@@ -94,9 +94,12 @@
 // orphan node per source file) and each moves the golden fixtures and
 // cmd/grafel's whole-graph digest.
 //
-// THE LEDGER IS AN EXACT SET, NOT A FLOOR, IN BOTH DIRECTIONS. A thirteenth
-// language fails this test; so does fixing one of the twelve without removing
-// its entry. A guard that only checked "no NEW offender" would be blind to the
+// THE LEDGER IS AN EXACT SET, NOT A FLOOR, IN BOTH DIRECTIONS. A language not
+// in knownMissingCarrier6847 fails this test; so does fixing one that IS in it
+// without removing its entry. NOTE THAT THE SET SHRINKS AS LANGUAGES ARE
+// FIXED — it opened at twelve and #6852 removes one per landed arm (bicep is
+// the first), so any count written here goes stale by design. Read
+// len(knownMissingCarrier6847), not a number in prose. A guard that only checked "no NEW offender" would be blind to the
 // permissive direction — a walk that silently stopped detecting anything would
 // stay green under a floor and goes red here.
 package extractors_test
@@ -120,8 +123,11 @@ import (
 // knownMissingCarrier6847 is the exact set of registered languages measured to
 // emit a path-anchored FromID with no record carrying that path. Every entry
 // was produced by the walk below, not by reading source, and each was confirmed
-// against the extractor package: none of the twelve calls extractor.FileEntity
-// or extractor.PrependFileCarrier anywhere in its non-test sources.
+// against the extractor package: none of the REMAINING entries calls
+// extractor.FileEntity or extractor.PrependFileCarrier anywhere in its
+// non-test sources. The set opened at twelve (2026-09-05) and shrinks by one
+// per landed #6852 arm — bicep was removed first — so the authoritative count
+// is len(knownMissingCarrier6847), never a figure written in a comment.
 //
 // To REMOVE an entry: fix the extractor (see internal/extractor/file_carrier.go
 // for the conditional-carrier shape #6815 and #6518 settled on) and delete the
@@ -129,7 +135,6 @@ import (
 // catch; adding a line to keep it green is the failure mode #6834 names.
 var knownMissingCarrier6847 = map[string]string{
 	"astro":     "extractor.go:328 `FromID: filePath` on IMPORTS; no carrier emitted",
-	"bicep":     "extractor.go:296 `FromID: path` on IMPORTS; `.bicep` is also absent from refs.go sourceFileExtensions, so it counts as bug-extractor rather than Dynamic",
 	"clojure":   "path-anchored IMPORTS; no carrier emitted",
 	"cobol":     "path-anchored IMPORTS (COPY members); no carrier emitted",
 	"crystal":   "extractor.go:161 `FromID: filePath` on IMPORTS; no carrier emitted",
@@ -400,7 +405,8 @@ func TestFileAnchoredCarrier_NoNewOffender_6847(t *testing.T) {
 // TestFileAnchoredCarrier_CorpusCoverage_6847 pins what the walk read. Without
 // it, deleting every corpus file for a language would leave
 // TestFileAnchoredCarrier_NoNewOffender_6847 green for the wrong reason —
-// except for the twelve pinned offenders, whose disappearance already fails it.
+// except for the pinned offenders still in knownMissingCarrier6847, whose
+// disappearance already fails it.
 // The nine remaining #6834 shapes are not so protected, which is why the two
 // exact sets below are asserted rather than a file count alone.
 func TestFileAnchoredCarrier_CorpusCoverage_6847(t *testing.T) {

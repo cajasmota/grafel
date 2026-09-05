@@ -2083,14 +2083,14 @@
         "iac_output_export_extraction": {
           "status": "full",
           "cites": ["internal/extractors/bicep/extractor.go"],
-          "notes": "Bicep `output \u003cname\u003e \u003ctype\u003e = ...` declarations are extracted as SCOPE.Schema/output entities by `reOutput` (internal/extractors/bicep/extractor.go:80) + `extractOutputs` (internal/extractors/bicep/extractor.go:357), named by the output identifier — the values a Bicep module/template publishes to its caller.",
+          "notes": "Bicep `output \u003cname\u003e \u003ctype\u003e = ...` declarations are extracted as SCOPE.Schema/output entities by `reOutput` (internal/extractors/bicep/extractor.go:80) + `extractOutputs` (internal/extractors/bicep/extractor.go:373), named by the output identifier — the values a Bicep module/template publishes to its caller.",
           "verified_at": "2026-06-04"
         },
         "iac_resource_property_extraction": {
           "status": "partial",
           "cites": ["internal/extractors/bicep/extractor.go"],
           "issue": "https://github.com/cajasmota/grafel/issues/4199",
-          "notes": "Typed resource property-bag fields are stamped onto the resource entity Metadata: the deployed name: attribute (reNameAttr -\u003e deployed_name) and the @\u003capiVersion\u003e of the Azure type (api_version), plus resource_category, in `extractResources` (internal/extractors/bicep/extractor.go:161). Two genuine typed property-bag values are stamped per resource; the broader bag (sku/location/kind/properties{}) is not, so partial.",
+          "notes": "Typed resource property-bag fields are stamped onto the resource entity Metadata: the deployed name: attribute (reNameAttr -\u003e deployed_name) and the @\u003capiVersion\u003e of the Azure type (api_version), plus resource_category, in `extractResources` (internal/extractors/bicep/extractor.go:177). Two genuine typed property-bag values are stamped per resource; the broader bag (sku/location/kind/properties{}) is not, so partial.",
           "verified_at": "2026-06-03"
         },
         "iac_stack_app_topology": {

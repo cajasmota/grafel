@@ -3,7 +3,8 @@
 // FileEntity (extractor.go) is the per-file SCOPE.Component(subtype="file")
 // that #577 introduced so a path-anchored FromID has something to resolve to.
 // Most extractors call it unconditionally at the top of Extract. Three did not
-// call it at all — erlang, nim and groovy each emit IMPORTS edges whose FromID
+// call it at all AS MEASURED BY #6815 — erlang, nim and groovy each emit
+// IMPORTS edges whose FromID
 // is the source path, with no record carrying that path, so
 // ReferencesEmbeddedWithAllowlist had nothing to rewrite the FromID onto and
 // the edge reached the graph with a raw path at its FROM end.
@@ -14,6 +15,13 @@
 // to every recall-shaped assertion, which only ever asks whether the carrier
 // EXISTS. proto took the same decision in #6518: the carrier is emitted when
 // the file has something for it to carry, and not otherwise.
+//
+// THREE WAS NEVER THE POPULATION. #6847 measured the class at runtime and found
+// twelve more offenders over one corpus, with three further ones behind
+// languages that corpus never reaches — so #6815 fixed three of at least
+// fifteen, and the total is unbounded above until every registered language is
+// driven. #6852 tracks the rest, one language at a time; bicep is the first of
+// those to land here.
 
 package extractor
 
@@ -62,16 +70,27 @@ import "github.com/cajasmota/grafel/internal/types"
 //
 // MEASURED grading status of that parameter, stated rather than implied: a
 // WRONG token is caught (mutating erlang's "erlang" to "beam" fails
-// TestErlang_CarrierIsLanguageTagged_6815), but an EMPTY one is not — all three
-// current callers run extractor.TagEntitiesLanguage afterwards, and that helper
-// fills an empty Language with the extractor's own token, so passing "" is
-// equivalent under the suite. It is not equivalent for a caller that does not
-// tag, which is why the parameter exists and is passed.
+// TestErlang_CarrierIsLanguageTagged_6815), and so, now, is an EMPTY one.
+// THREE of the FOUR current callers — erlang/extractor.go:738, nim/nim.go:115,
+// groovy/groovy.go:69 — run extractor.TagEntitiesLanguage afterwards, and that
+// helper fills an empty Language with the extractor's own token, so for those
+// three passing "" is equivalent under the suite. The fourth,
+// bicep/extractor.go:152 (#6852), does NOT tag, so its carrier keeps whatever
+// token this parameter is given: mutating it to "" fails
+// TestBicep_CarrierShape_6852. That is the caller shape the parameter exists
+// for, and it is now graded rather than hypothetical.
+//
+// This paragraph has gone stale once per language added to the caller set, and
+// nothing relates it to the callers themselves — #6861 tracks grading the
+// caller set from source so the claim stops drifting. Until then: re-derive it
+// (grep for PrependFileCarrier and for TagEntitiesLanguage in the same package)
+// rather than trusting the count above.
 //
 // The returned record owns no relationships. Callers that DO have file-scoped
 // edges to re-home (proto's file-level CONTAINS) assign them afterwards; for
-// erlang, nim and groovy the per-import stub records still carry the IMPORTS
-// edges themselves, so hanging them off the carrier as well would double them.
+// erlang, nim, groovy and bicep the per-import (bicep: per-module) stub records
+// still carry the IMPORTS edges themselves, so hanging them off the carrier as
+// well would double them.
 func FileCarrierFor(path, lang string, records []types.EntityRecord) (types.EntityRecord, bool) {
 	if path == "" {
 		return types.EntityRecord{}, false
