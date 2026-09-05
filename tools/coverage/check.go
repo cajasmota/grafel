@@ -89,6 +89,16 @@ func gateSteps() []gateStep {
 			},
 		},
 		{
+			// Redundant with step 1 while completenessGateIsError is
+			// true — both run missingTaxonomyCells, and validate fires
+			// first — and kept deliberately for the case where it is
+			// not. That constant is documented as a flippable severity
+			// knob; flipped, validate downgrades an incomplete record to
+			// an advisory warning and THIS is the only step that fails
+			// on it. Deleting it would make the knob silently unsafe to
+			// flip. See TestCompletenessSeverityKnobDecidesWhoCatchesIt,
+			// which runs both sides of the knob rather than asserting
+			// this in prose (#6868).
 			Name: "Guard against incomplete grouped records (#2971)",
 			Hint: "docs/coverage/registry.json has grouped records missing cells the taxonomy declares. Run 'go run ./tools/coverage backfill' locally and commit.",
 			Run: func(env *checkEnv) error {
