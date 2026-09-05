@@ -919,11 +919,33 @@ func TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds(t *testing.T) {
 // DECLARATIONS: kinds.go also contained a doc comment naming a constant
 // (EntityKindStateMachine) that has never existed, and no AST walk sees it.
 //
+// WHAT THIS TEST DOES AND DOES NOT OBSERVE — stated because its name promised
+// more than its body delivered until #6830/#6832 (a defect class this batch has
+// hit repeatedly: prose asserting what nothing observes).
+//
+// It observes NAME SETS parsed from kinds.go ALONE. Consequently:
+//
+//   - A constant listed TWICE in AllEntityKinds() collapses into one set member.
+//     Multiplicity is graded by TestAllEntityKinds6830_ListsEveryDeclaredKindExactlyOnce,
+//     not here.
+//   - len(declared) counts CONSTANTS PARSED FROM SOURCE and len(listed) is the
+//     size of a SET, so the count comparison below is not a length check on the
+//     returned slice. It never was.
+//   - An EntityKind constant declared in another file of package types is
+//     outside this file-scoped parse entirely. The #6830 guard scans the package
+//     DIRECTORY for exactly that reason.
+//   - Elements that are not named constants are now REPORTED rather than
+//     skipped (#6832), but their VALUES are graded by the #6830 guard.
+//
 // Varies: nothing (a live-source observation). Holds constant: the source file.
 func TestEntityKindDeclarations6776_MatchAllEntityKindsExactly(t *testing.T) {
 	path := filepath.Join(repoRoot(t), "internal", "types", "kinds.go")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	f, err := parser.ParseFile(fset, path, src, parser.SkipObjectResolution)
 	if err != nil {
 		t.Fatalf("parse %s: %v", path, err)
 	}
@@ -952,24 +974,27 @@ func TestEntityKindDeclarations6776_MatchAllEntityKindsExactly(t *testing.T) {
 		}
 	}
 
+	// #6832: this collector used to take *ast.Ident elements and SKIP everything
+	// else in silence, so an element written as a conversion literal —
+	// EntityKind("SCOPE.Template") — was invisible to a test whose name promises
+	// exact correspondence. It now goes through the shared classifier in
+	// all_entity_kinds_roster_6830_test.go, which reports the SHAPE of every
+	// element, and anything that is not a named constant is reported here rather
+	// than dropped.
 	listed := map[string]bool{}
-	for _, d := range f.Decls {
-		fd, ok := d.(*ast.FuncDecl)
-		if !ok || fd.Name.Name != "AllEntityKinds" {
+	var notNamedConstants []string
+	for _, el := range allEntityKindsRosterElements(t, src) {
+		if el.Name != "" {
+			listed[el.Name] = true
 			continue
 		}
-		ast.Inspect(fd.Body, func(n ast.Node) bool {
-			cl, ok := n.(*ast.CompositeLit)
-			if !ok {
-				return true
-			}
-			for _, e := range cl.Elts {
-				if id, ok := e.(*ast.Ident); ok {
-					listed[id.Name] = true
-				}
-			}
-			return true
-		})
+		notNamedConstants = append(notNamedConstants, fmt.Sprintf("element %d: %s", el.Index, el.Raw))
+	}
+	if len(notNamedConstants) > 0 {
+		t.Errorf("AllEntityKinds() holds %d element(s) that are not named EntityKind constants:\n    %s\n"+
+			"This test compares NAMES, so such an element is outside everything it can say. Write "+
+			"the roster as constants from the block (#6832).",
+			len(notNamedConstants), strings.Join(notNamedConstants, "\n    "))
 	}
 
 	if len(declared) != 93 {
