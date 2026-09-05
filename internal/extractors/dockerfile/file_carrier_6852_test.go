@@ -1,14 +1,27 @@
 package dockerfile_test
 
 // file_carrier_6852_test.go — #6852, dockerfile arm. Lands with #6854, which is
-// what makes this arm reachable at all: until the classifier learned the
-// `*.Dockerfile` / `Dockerfile.<variant>` spellings, no docker file in this
-// repo crossed the classifier, so the runtime guard in
-// internal/extractors/file_anchored_carrier_runtime_6847_test.go could not see
-// this defect and listed dockerfile among the languages its corpus never
-// reaches. Fixing the classifier first would redden that guard; fixing this
-// first would leave the fix ungraded by any corpus-driven check. They are one
-// change.
+// what makes the CORPUS-DRIVEN guard in
+// internal/extractors/file_anchored_carrier_runtime_6847_test.go able to see
+// this defect at all: until the classifier learned the `*.Dockerfile` /
+// `Dockerfile.<variant>` spellings, no docker file in this repo crossed the
+// classifier, so that guard listed dockerfile among the languages its corpus
+// never reaches.
+//
+// THE ORDERING CONSTRAINT IS ONE-DIRECTIONAL, AND THE OTHER DIRECTION WAS
+// MEASURED RATHER THAN ASSUMED. An earlier draft of this header claimed the two
+// halves were mutually inseparable. They are not, and one command disproves it:
+// with the carrier line, this file and the carrier_caller_set_6861 row applied
+// but classifier.go and the 6847 guard left at the parent commit,
+// ./internal/extractors/, ./internal/extractors/dockerfile/ and
+// ./internal/extractor/ are all GREEN and every mutant on the carrier still
+// dies — because every test in THIS file drives Extract with a synthetic path
+// and never needs a real docker file to be routed. What is true is the other
+// direction: the CLASSIFIER half cannot land first, because it turns all three
+// fixtures into new offenders and reddens that guard. They ship together
+// because splitting them buys nothing, not because splitting them is
+// impossible. (A false claim of impossibility is the same defect class this
+// repo keeps finding: prose asserting something no test observes.)
 //
 // THE DEFECT. collectFrom (dockerfile.go) stamps `FromID: file.Path` on the
 // IMPORTS edge of every FROM instruction. internal/resolve/refs.go has no

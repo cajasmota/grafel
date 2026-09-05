@@ -75,10 +75,15 @@
 //     classifier's basename table mapped the exact name "Dockerfile" and not
 //     the `*.Dockerfile` / `Dockerfile.<variant>` spellings the fixtures use.
 //     The extractor was registered and the fixtures existed; the classifier
-//     was what the corpus could not cross. Fixed in #6854, landed with the
-//     #6852 dockerfile arm because neither half can land alone: the classifier
-//     change alone reddens this guard, and the carrier alone is graded by
-//     nothing here.
+//     was what the corpus could not cross. Fixed in #6854, landed together with
+//     the #6852 dockerfile arm. The ordering constraint runs ONE WAY, stated
+//     precisely because an earlier draft here claimed a circularity that does
+//     not exist: the CLASSIFIER half cannot land first, since it turns all
+//     three fixtures into new offenders and reddens this guard. The carrier
+//     half CAN precede it — measured, not reasoned: with the carrier applied
+//     and the classifier at its parent, this package is green and the carrier's
+//     own unit tests still grade it fully, because they drive Extract with
+//     synthetic paths rather than through the router.
 //
 //   - IT IS PER-FILE. A carrier emitted by some OTHER file's extraction would
 //     satisfy the resolver's repo-wide byName index but not this check. No

@@ -55,7 +55,6 @@ package classifier_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"go.opentelemetry.io/otel/trace/noop"
@@ -122,8 +121,13 @@ var acceptedDockerShapes6854 = []dockerVariantCase{
 //	Dockerfile.a.b                 a multi-segment variant: the rule takes one
 //	                               segment, not "everything after the dot".
 //	dockerfile.dev                 the case-sensitive half of the rule.
-//	Dockerfile/README              a DIRECTORY named Dockerfile — the rule
-//	                               reads the basename, never the path.
+//
+// DELIBERATELY ABSENT: rows for a DIRECTORY named Dockerfile
+// (`Dockerfile/README`, `src/Dockerfile/notes`). They passed, but they could not
+// FAIL under any mutation of this rule — containerVariantLanguage is only ever
+// handed path.Base(norm), so those rows graded path.Base and not the docker
+// rule. A row that cannot fail is not a forbidden row; it is a claim wearing
+// one's clothes, which is the defect class this file is written against.
 var forbiddenDockerShapes6854 = []dockerVariantCase{
 	{"Dockerfile.md", "markdown", "known extension wins; must not be dockerfile"},
 	{"Dockerfile.py", "python", "known extension wins; must not be dockerfile"},
@@ -137,34 +141,77 @@ var forbiddenDockerShapes6854 = []dockerVariantCase{
 	{"Dockerfile.a.b", "", "multi-segment variant"},
 	{"dockerfile.dev", "", "prefix form is case-sensitive, as the bare-name table is"},
 	{"DOCKERFILE.dev", "", "prefix form is case-sensitive, as the bare-name table is"},
-	{"Dockerfile/README", "", "a directory named Dockerfile must not classify its children"},
-	{"src/Dockerfile/notes", "", "a directory named Dockerfile must not classify its children"},
 	{"Containerfilex", "", "no separator, Containerfile stem"},
 
-	// State/format suffixes. These are NOT covered by the extension-lookup
-	// ordering — the router claims none of them — so each is rejected by
-	// nonContainerVariantSuffixes and each row here is the only thing grading
-	// that entry. Dockerfile.bak in particular was already forbidden by
-	// TestMX1100_DockerfileWithExtension_NotDockerfile, which caught the first
-	// cut of this fix.
+	// State/format/encoding suffixes. These are NOT covered by the
+	// extension-lookup ordering — the router claims none of them — so each is
+	// rejected by nonContainerVariantSuffixes. The rows below are the
+	// EMITTED-DECISION half of that grade; the exhaustive per-entry half is
+	// derived from the map itself in
+	// TestDockerfileDenylistIsExhaustivelyGraded6854, so a key added to the map
+	// cannot go ungraded even if nobody adds a row here.
+	//
+	// The harm they prevent is not cosmetic. A backup of a real Dockerfile
+	// still contains its FROM lines, so it clears the extractor's
+	// `stageCount == 0` early return and mints a duplicate SCOPE.Component plus
+	// a file carrier for a file nobody builds.
 	{"Dockerfile.bak", "", "backup, not a build target"},
 	{"Dockerfile.backup", "", "backup, not a build target"},
+	{"Dockerfile.bkp", "", "backup, not a build target"},
 	{"Dockerfile.old", "", "backup, not a build target"},
-	{"Dockerfile.orig", "", "merge artefact, not a build target"},
-	{"Dockerfile.rej", "", "merge artefact, not a build target"},
+	{"Dockerfile.new", "", "state marker, not a build target"},
+	{"Dockerfile.copy", "", "state marker, not a build target"},
+	{"Dockerfile.sav", "", "backup, not a build target"},
 	{"Dockerfile.save", "", "editor artefact, not a build target"},
 	{"Dockerfile.swp", "", "editor artefact, not a build target"},
 	{"Dockerfile.swo", "", "editor artefact, not a build target"},
 	{"Dockerfile.tmp", "", "scratch, not a build target"},
 	{"Dockerfile.temp", "", "scratch, not a build target"},
+	{"Dockerfile.disabled", "", "state marker, not a build target"},
+	{"Dockerfile.orig", "", "merge artefact, not a build target"},
+	{"Dockerfile.rej", "", "merge artefact, not a build target"},
+	{"Dockerfile.patch", "", "diff artefact, not a build target"},
+	{"Dockerfile.diff", "", "diff artefact, not a build target"},
+	// dpkg and rpm rename the conffile they replace rather than deleting it, so
+	// these land beside a real Dockerfile in any image built on a distro base.
+	{"Dockerfile.rpmsave", "", "rpm conffile artefact"},
+	{"Dockerfile.rpmnew", "", "rpm conffile artefact"},
+	{"Dockerfile.rpmorig", "", "rpm conffile artefact"},
+	{"Dockerfile.dpkg-old", "", "dpkg conffile artefact"},
+	{"Dockerfile.dpkg-new", "", "dpkg conffile artefact"},
+	{"Dockerfile.dpkg-dist", "", "dpkg conffile artefact"},
+	{"Dockerfile.dpkg-bak", "", "dpkg conffile artefact"},
+	// Encrypted or signed payloads: the bytes are not text, and handing them to
+	// a text extractor is worse than dropping them.
+	{"Dockerfile.gpg", "", "encrypted payload, not text"},
+	{"Dockerfile.enc", "", "encrypted payload, not text"},
+	{"Dockerfile.age", "", "encrypted payload, not text"},
+	{"Dockerfile.asc", "", "armoured signature/payload, not a build target"},
+	{"Dockerfile.sig", "sml", "`.sig` is Standard ML's signature extension — already routed, so the ordering rejects it and a denylist entry would be shadowed dead weight"},
+	{"Dockerfile.pem", "", "key/certificate material, not a build target"},
+	{"Dockerfile.crt", "", "key/certificate material, not a build target"},
+	{"Dockerfile.key", "", "key material, not a build target"},
 	{"Dockerfile.log", "", "output, not a build target"},
 	{"Dockerfile.txt", "", "document, not a build target"},
 	{"Dockerfile.json", "", "data, not a build target"},
-	{"Dockerfile.patch", "", "diff artefact, not a build target"},
-	{"Dockerfile.diff", "", "diff artefact, not a build target"},
 	{"Dockerfile.lock", "", "lockfile, not a build target"},
 	{"Containerfile.bak", "", "the suffix set applies to the Containerfile stem too"},
 	{"Dockerfile.BAK", "", "the suffix set is matched case-insensitively"},
+
+	// SHAPE rules, which exist because a blocklist over an unbounded segment
+	// space accepts everything it does not name. A trailing `~` is the editor
+	// backup marker whatever precedes it, and a purely numeric segment is a
+	// revision or a date stamp. Both were measured escapes before this pass:
+	// `Dockerfile.bak~` defeated the exact-lowercase lookup on a segment
+	// deliberately chosen, and `Dockerfile.dev~` defeats a trim-then-lookup fix
+	// too.
+	{"Dockerfile.bak~", "", "trailing tilde on a blocked segment"},
+	{"Dockerfile.dev~", "", "trailing tilde on an otherwise-accepted segment"},
+	{"Containerfile.prod~", "", "trailing tilde, Containerfile stem"},
+	{"Dockerfile.~", "", "a tilde alone is not a build target"},
+	{"Dockerfile.1", "", "revision number, not a build target"},
+	{"Dockerfile.2", "", "revision number, not a build target"},
+	{"Dockerfile.20260101", "", "date stamp, not a build target"},
 }
 
 // TestDockerfileVariantsClassify6854 asserts the ACCEPT direction against the
@@ -215,44 +262,45 @@ func TestDockerfileNearMissesStayUnclassified6854(t *testing.T) {
 	}
 }
 
-// TestDockerfileSuffixDenylistIsLoadBearing6854 is the anti-vacuity check for
-// the forbidden rows above. `Dockerfile.md` is rejected by ORDERING — the
-// extension router claims `.md` and returns before the docker rule — so that
-// row would still pass if nonContainerVariantSuffixes were deleted entirely. A
-// row is only grading the denylist when the router claims NOTHING for its
-// trailing segment. This asserts that for every single-segment
-// `Dockerfile.<x>` / `Containerfile.<x>` row whose expected language is "",
-// leaving no row in that set silently shadowed.
+// TestDockerfileBareDotfileIsDeliberate6854 pins review item 3: a bare dotfile
+// named `.dockerfile` DOES classify, because Go's filepath.Ext(".dockerfile")
+// returns the whole name.
 //
-// It also fails if the set is emptied to fewer than the twelve distinct
-// segments measured at #6854, so deleting rows to make a widening pass shows up
-// here rather than as a quietly smaller grade.
-func TestDockerfileSuffixDenylistIsLoadBearing6854(t *testing.T) {
-	seen := map[string]bool{}
-	for _, tc := range forbiddenDockerShapes6854 {
-		if tc.want != "" {
-			continue
-		}
-		var variant string
-		for _, stem := range []string{"Dockerfile.", "Containerfile."} {
-			if strings.HasPrefix(tc.path, stem) {
-				variant = strings.TrimPrefix(tc.path, stem)
-			}
-		}
-		if variant == "" || strings.Contains(variant, ".") || strings.Contains(variant, "/") {
-			continue
-		}
-		seen[strings.ToLower(variant)] = true
-		if got := classifier.LanguageForExtension("." + variant); got != "" {
-			t.Errorf("%q is rejected by the extension router (LanguageForExtension(%q) = %q), "+
-				"not by the docker suffix denylist — this row grades nothing",
-				tc.path, "."+variant, got)
+// It is pinned as an ACCEPT rather than forbidden because it is not a docker
+// carve-out at all — it is how every entry in extensionLanguageMap behaves, so
+// `.md` is markdown and `.go` is go by the same route. Excluding `.dockerfile`
+// would make container files the one extension in the table that answers
+// differently for a dotfile. The sibling assertions are what make that an
+// argument rather than an assertion: if the uniform behaviour ever changes, they
+// go red here and this row should be revisited with them.
+//
+// (The anti-vacuity check that used to live at this spot — a floor over the
+// forbidden table's denylisted segments — is superseded by
+// TestDockerfileDenylistIsExhaustivelyGraded6854, which reads
+// nonContainerVariantSuffixes directly and therefore cannot carry a stale count
+// or miss a key added without a row.)
+func TestDockerfileBareDotfileIsDeliberate6854(t *testing.T) {
+	c := newClassifier6854()
+	ctx := context.Background()
+
+	for _, path := range []string{".dockerfile", "foo/.dockerfile", ".containerfile"} {
+		if got := c.Classify(ctx, path).Language; got != "dockerfile" {
+			t.Errorf("Classify(%q).Language = %q, want %q — this accept is deliberate; see the "+
+				"note on the .dockerfile entry in extensionLanguageMap", path, got, "dockerfile")
 		}
 	}
-	if len(seen) < 16 {
-		t.Errorf("only %d distinct denylisted variant segments are graded (%v); "+
-			"#6854 measured sixteen and the forbidden set must not shrink silently",
-			len(seen), seen)
+	// The premise that makes it uniform rather than a carve-out.
+	for _, tc := range []struct{ path, want string }{
+		{".md", "markdown"},
+		{".go", "go"},
+		{".py", "python"},
+	} {
+		if got := c.Classify(ctx, tc.path).Language; got != tc.want {
+			t.Errorf("Classify(%q).Language = %q, want %q — the bare-dotfile accept above is "+
+				"justified by this being the router's UNIFORM behaviour, so if this row "+
+				"changes the .dockerfile row is no longer a uniform case",
+				tc.path, got, tc.want)
+		}
 	}
 }
 
