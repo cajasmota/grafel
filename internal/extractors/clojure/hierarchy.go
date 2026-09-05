@@ -411,6 +411,43 @@ func newHierarchyEdge(to, kind string, line int, provenance string) types.Relati
 // giving up, so a prefix keyword before the real one does not hide it.
 // TestClojureHierarchy_GenClassPrefixKeywordInsideTheNsFormIsSkipped pins
 // both halves.
+//
+// # The span is TWO-sided, and its ends are graded by different inputs
+//
+// The start bound is exercised by every test that puts a decoy before the ns
+// form. The END bound is not reachable by any of them: once a real
+// `(:gen-class` sits inside the ns form the scan stops at it immediately and
+// never looks further. It took an ns form with NO directive in it plus a
+// trailing decoy to observe, and until that row was written `nsEnd` could be
+// replaced by `len(clean)` with the whole suite green.
+// TestClojureHierarchy_GenClassSearchStopsAtTheNsFormsEnd is that row, and it
+// grades `nsEnd` and the `clean[at:nsEnd]` slice together — they are one
+// bound written at two sites, and no input separates them.
+//
+// The DIRECTIVE's own extent (`matchParen(clean, i)`) is a third bound, and a
+// third input again: a decoy inside the ns form but outside the directive.
+// TestClojureHierarchy_GenClassBodyStopsAtItsOwnClosingParen.
+//
+// Two expressions here are NOT guards and are recorded as such rather than
+// left to read like fences. `j >= nsEnd` and the loop's `at < nsEnd` cannot be
+// false and true respectively: findNsForm returns -1 for an UNTERMINATED ns
+// form, so a non-negative nsOpen always denotes a balanced one, and nsEnd is
+// then one past its `)`. strings.Index finds the 11-byte literal wholly within
+// [at, nsEnd), so at+11 <= nsEnd; equality would require clean[nsEnd-1] to be
+// the `s` of "class" when it is in fact `)`. So j < nsEnd strictly, clean[j]
+// can never be out of range, and at < nsEnd holds at every iteration. Both are
+// retained as bounds safety for the slice expressions, not as behaviour;
+// swapping either for len(clean) leaves the suite green and is equivalent IN
+// FACT, by the argument above rather than by the suite staying green.
+//
+// That argument was also checked empirically, because the last reachability
+// argument in this file ("Clojure has no directive beginning with :gen-class")
+// was wrong: a temporary `panic` in place of the `j >= nsEnd` branch survived
+// 40,000 randomised sources over an alphabet of parens, brackets, braces,
+// quotes, semicolons, backslashes and the literal itself, plus nine
+// hand-built cases putting the literal at or past the ns form's closing paren.
+// Zero firings, against a positive control that panicked on the first input
+// when the condition was forced true.
 func genClassEdges(clean string, nsOpen int) []types.RelationshipRecord {
 	if nsOpen < 0 {
 		return nil

@@ -332,6 +332,49 @@ func TestClojureHierarchy_GenClassPrefixKeywordInsideTheNsFormIsSkipped(t *testi
 	wantPairs(t, ents, "app.core-[EXTENDS]->real.Base")
 }
 
+// TestClojureHierarchy_GenClassSearchStopsAtTheNsFormsEnd grades the END of
+// the namespace span, which the two tests above do not reach: both of them put
+// a real `(:gen-class ...)` INSIDE the ns form, so the scan finds it at the
+// very first position and the end bound is never consulted.
+//
+// The separating input is therefore an ns form with NO `(:gen-class` in it at
+// all, followed by a decoy. `(:gen-class {:extends after.Fake})` in a function
+// body is ordinary code — a keyword in head position looking itself up in a
+// map — and it passes the whole-word check, so the span's end is the only
+// thing standing between it and a fabricated `EXTENDS after.Fake`.
+//
+// The defrecord is a positive control: without it this test would pass on an
+// extractor that emitted nothing at all.
+func TestClojureHierarchy_GenClassSearchStopsAtTheNsFormsEnd(t *testing.T) {
+	src := `(ns app.core
+  (:require [clojure.string :as s]))
+(defrecord Rec [] Shape (area [_] 1))
+(defn cfg [m] (:gen-class {:extends after.Fake}))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "Rec-[IMPLEMENTS]->Shape")
+}
+
+// TestClojureHierarchy_GenClassBodyStopsAtItsOwnClosingParen grades the third
+// bound — the extent of the DIRECTIVE, as opposed to the extent of the ns form
+// it sits in. The two are different, and only an input with a decoy INSIDE the
+// ns form but OUTSIDE the directive separates them; the existing
+// `ExtendsKeywordOutsideGenClassIsNotRead` decoy sits outside the ns form
+// entirely, so the namespace span already rejects it and the directive bound
+// goes unobserved there.
+//
+// The real directive deliberately carries only `:implements`. With an
+// `:extends` of its own it would match first and the decoy's would never be
+// reached, which is how this row would have graded nothing.
+func TestClojureHierarchy_GenClassBodyStopsAtItsOwnClosingParen(t *testing.T) {
+	src := `(ns app.core
+  (:gen-class :implements [java.lang.Runnable])
+  (:gen-class-name {:extends bogus.Fake}))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "app.core-[IMPLEMENTS]->java.lang.Runnable")
+}
+
 // TestClojureHierarchy_DefprotocolAndDefinterfaceAreNotScanned pins the
 // call-site exclusion. `:extend-via-metadata true` puts a bare symbol —
 // `true` — at depth 1 of a defprotocol tail; definterface's tail is lists
