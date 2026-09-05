@@ -191,6 +191,35 @@ func httpPairEntities() (producer, consumer []map[string]any) {
 	return producer, consumer
 }
 
+// selfCallEntities returns a consumer+producer pair that live in the SAME
+// repo, on a path distinct from httpPairEntities'. Placed inside one repo of a
+// >= 2-repo group it makes the matcher emit a MethodHTTPSelf row, which is what
+// grades the MethodHTTPSelf half of the bail's cleanup set.
+func selfCallEntities() []map[string]any {
+	return []map[string]any{
+		{"id": "sh1", "name": "HealthView", "kind": "Controller", "source_file": "core/health.py"},
+		{
+			"id": "sep1", "name": "http:GET:/api/v1/health", "kind": "http_endpoint",
+			"source_file": "core/health.py",
+			"properties": map[string]any{
+				"verb": "GET", "path": "/api/v1/health",
+				"framework": "django", "pattern_type": "http_endpoint_synthesis",
+			},
+		},
+		{"id": "sfn1", "name": "pollHealth", "kind": "Function", "source_file": "core/probe.py"},
+		{
+			"id": "sep2", "name": "http:GET:/api/v1/health", "kind": "http_endpoint",
+			"source_file": "core/probe.py",
+			"properties": map[string]any{
+				"verb": "GET", "path": "/api/v1/health",
+				"framework": "requests", "pattern_type": "http_endpoint_client_synthesis",
+				"url_kind": "literal", "caller_file": "core/probe.py",
+				"source_caller": "Function:pollHealth",
+			},
+		},
+	}
+}
+
 // TestHTTPPassBailHoldsForSingleRepoGroup pins the option #6450 did NOT take.
 // The consumer base-URL fold was deleted from the link pass instead of
 // relaxing runHTTPPass's `len(graphs) < 2` bail; relaxing it would switch the
@@ -269,8 +298,17 @@ func TestHTTPPassBailHoldsForSingleRepoGroup(t *testing.T) {
 func TestHTTPPassBailCleansUpAfterGroupShrinks(t *testing.T) {
 	producer, consumer := httpPairEntities()
 	root := fixtureRoot(t)
-	writeFixture(t, root, fixtureGraph{Repo: "backend", Entities: producer,
-		Edges: []map[string]string{{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"}}})
+	// backend also carries an intra-repo self-call pair, so the first run
+	// emits BOTH a MethodHTTP and a MethodHTTPSelf row and the assertion
+	// below grades both halves of the cleanup's method set.
+	writeFixture(t, root, fixtureGraph{
+		Repo:     "backend",
+		Entities: append(append([]map[string]any{}, producer...), selfCallEntities()...),
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+			{"from_id": "sh1", "to_id": "sep1", "kind": "IMPLEMENTS"},
+		},
+	})
 	writeFixture(t, root, fixtureGraph{Repo: "frontend", Entities: consumer,
 		Edges: []map[string]string{}})
 	home := filepath.Join(root, "ag-home")
@@ -283,9 +321,11 @@ func TestHTTPPassBailCleansUpAfterGroupShrinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if findLink(doc.Links, func(l Link) bool { return l.Method == MethodHTTP }) == nil {
-		t.Fatalf("precondition: the two-repo run must emit an HTTP link for the "+
-			"shrink below to have anything to clean up; got %+v", doc.Links)
+	for _, m := range []string{MethodHTTP, MethodHTTPSelf} {
+		if findLink(doc.Links, func(l Link) bool { return l.Method == m }) == nil {
+			t.Fatalf("precondition: the two-repo run must emit a %s link for the "+
+				"shrink below to have anything to clean up; got %+v", m, doc.Links)
+		}
 	}
 
 	// The group shrinks to a single repo.

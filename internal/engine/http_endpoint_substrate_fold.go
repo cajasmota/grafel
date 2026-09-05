@@ -12,6 +12,14 @@
 // UNRESOLVED_FETCH even when the handler sat in the same tree. No gate was
 // involved: the two passes simply never met.
 //
+// #6450 Task 2 then DELETED that link-pass copy: this fold already runs
+// first and persists url_kind="literal", so by the time group-link loaded a
+// graph from disk the copy had nothing left to fold. This file is now the
+// only implementation. What survives on the links side is the Resolver
+// itself (internal/links/constant_propagation.go, buildResolver), still
+// built for the cross-file RESOLVES_TO sidecar — that, not the fold, is the
+// twin carrying the #6823 uncapped-os.ReadFile hole.
+//
 // Folding is purely intra-repo — the links Resolver's symbol table,
 // imports index and file lookup are all repo-keyed and its resolution walk
 // never crosses a repo boundary — so nothing is lost by doing it per repo
@@ -407,8 +415,9 @@ func indexFileForSubstrateLookup(idx map[string]string, file string) {
 // with `/{ident}/` or `/{ident}`; returns "" otherwise. Identifier
 // characters only, so a generic route parameter like `/{id}/x` at the head
 // of a path is never mistaken for a base-URL binding (it would simply fail
-// to resolve, but rejecting early keeps the intent explicit). Mirrors
-// internal/links/constant_propagation.go's leadingTemplateIdent.
+// to resolve, but rejecting early keeps the intent explicit). Was mirrored
+// by internal/links/constant_propagation.go's leadingTemplateIdent until
+// #6450 Task 2 deleted the link-pass copy; this is now the only one.
 func leadingTemplateIdentEngine(path string) string {
 	if !strings.HasPrefix(path, "/{") {
 		return ""
@@ -431,8 +440,9 @@ func leadingTemplateIdentEngine(path string) string {
 }
 
 // stripURLPrefixEngine removes a scheme + host prefix, leaving the path.
-// A value with no scheme is returned unchanged. Mirrors
-// internal/links/constant_propagation.go's stripURLPrefix.
+// A value with no scheme is returned unchanged. Was mirrored by
+// internal/links/constant_propagation.go's stripURLPrefix until #6450
+// Task 2 deleted the link-pass copy; this is now the only one.
 func stripURLPrefixEngine(s string) string {
 	for _, scheme := range []string{"https://", "http://"} {
 		if strings.HasPrefix(s, scheme) {
