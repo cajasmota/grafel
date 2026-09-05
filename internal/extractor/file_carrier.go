@@ -108,9 +108,17 @@ import "github.com/cajasmota/grafel/internal/types"
 // TestErlang_CarrierIsLanguageTagged_6815). An EMPTY one is caught only for a
 // caller that does NOT run extractor.TagEntitiesLanguage: that helper fills an
 // empty Language with the extractor's own token, so for a caller that tags,
-// passing "" is equivalent under the suite, while a caller that does not tag
-// keeps whatever token this parameter is given. The second shape is the one the
-// parameter exists for.
+// passing "" is equivalent ON THE Language FIELD ALONE — unless some test in
+// that package distinguishes the two some other way, as shell's does (#6852):
+// TagEntitiesLanguage only touches a record whose Language is empty, and stamps
+// Properties["language"] when it does, so a package whose every other record
+// sets Language explicitly can observe the fill as provenance rather than as a
+// token. A caller that does not tag keeps whatever token this parameter is
+// given, and that second shape is the one the parameter exists for. The
+// asymmetry to keep in view is the direction of the error: this paragraph is
+// safe when it UNDER-claims grading for a tagging caller (a mutant dies that it
+// did not promise would), and unsafe the other way, so the clause above is a
+// softening and not a second measured fact about which callers do it.
 //
 // WHICH callers are which is deliberately NOT written down here. This paragraph
 // stated it as a MEASURED fact three times — "all three current callers", then
