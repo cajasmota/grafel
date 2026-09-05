@@ -13,10 +13,24 @@ import (
 // makeEntity is a test helper that builds a minimal graph.Entity that speaks
 // the SAME dialect as a real graph.fb-loaded entity: a canonical Kind
 // (SCOPE.Function / SCOPE.Class / Model …) and StartLine ONLY. It deliberately
-// does NOT set EndLine — the graph.fb schema has no end-line slot, so every
-// FB-loaded entity has EndLine == 0 (see internal/graph/load.go
-// fbEntityToGraphEntity). Pre-setting EndLine here was the fixture lie that let
-// the D1 source-window bug pass unit tests while scoring 0.0% in production.
+// does NOT set EndLine. Pre-setting EndLine here was the fixture lie that let
+// the D1 source-window bug pass unit tests while scoring 0.0% in production:
+// the graph.fb Entity table had no end-line slot, so every FB-loaded entity
+// came back with EndLine == 0 no matter what the extractor emitted.
+//
+// #6236 has since added the slot, so an end line CAN survive a round trip now
+// (internal/graph/load.go fbEntityToGraphEntity reads e.EndLine()). This helper
+// still withholds EndLine on purpose, but not for that reason and not because
+// of legacy files — a graph.fb older than v6 is rejected outright by
+// load.go's version gate, so no span-less legacy graph ever reaches this
+// package. The reason is a live measurement: testdata/golden is a POST-#6236
+// v6 graph.fb and TestGenerate_GoldenFB still finds 0 of its 672 entities
+// carrying an EndLine. Span-less is what the current writer actually produces,
+// so it stays the case this package's fixtures reproduce.
+//
+// #6827: this contract is now ENFORCED by TestMakeEntity_IsSpanLess rather
+// than merely described. It was prose only until then, and adding an EndLine
+// to the literal below left the whole package green.
 func makeEntity(id, name, kind, lang, srcFile string, startLine int) graph.Entity {
 	return graph.Entity{
 		ID:         id,

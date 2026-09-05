@@ -54,7 +54,10 @@ type EntityKindLang struct {
 	Count    int
 }
 
-// SourceWindowStats captures completeness of start/end line coverage.
+// SourceWindowStats captures START-LINE coverage only. It carries no end-line
+// signal: TotalWithWindow counts entities with StartLine > 0 and never consults
+// EndLine (#6827 — the name "window" and the old rendered label both promised a
+// two-sided check that has never been performed).
 type SourceWindowStats struct {
 	TotalWithWindow int
 	TotalEntities   int
@@ -297,11 +300,36 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 			}
 
 			// Source-window completeness: start_line > 0 is the navigable-window
-			// anchor. The graph.fb schema has NO end-line slot — fbEntityToGraphEntity
-			// (internal/graph/load.go) populates StartLine from SourceLine() and
-			// leaves EndLine == 0 for every FB-loaded entity — so requiring
-			// EndLine > StartLine scored 0.0% against real production data. Start
-			// line alone is what get_source anchors on, so it is the correct signal.
+			// anchor, and it is the ONLY thing counted here. Requiring
+			// EndLine > StartLine scored 0.0% against real production data,
+			// because the graph.fb Entity table had no end-line slot at the
+			// time: fbEntityToGraphEntity (internal/graph/load.go) left
+			// EndLine == 0 for every FB-loaded entity.
+			//
+			// CORRECTION (#6827): that is no longer true of the schema. #6236
+			// added the slot — internal/graph/fbwriter/writer.go writes EndLine
+			// and fbEntityToGraphEntity reads it back — so end lines CAN
+			// survive a round trip now. Nor is the pre-#6236 population a
+			// reason: those files are not loaded span-less, they are REJECTED
+			// (load.go's minSupportedFBFormatVersion is fbversion.Version = 6,
+			// and #6236 raised it precisely to force the reindex that
+			// repopulates spans), so that population is empty by construction.
+			//
+			// The check stays one-sided on a live measurement instead. The
+			// golden fixture is a POST-#6236 v6 graph.fb — a12a59321
+			// regenerated it — and TestGenerate_GoldenFB still observes 0 of
+			// its 672 entities carrying an EndLine. So the current writer, on
+			// the current schema, round-trips a real multi-language graph with
+			// no spans at all. Extractors do set EndLine in many places
+			// (~110 files under internal/extractor*), but no CORPUS-WIDE
+			// measurement of how often it reaches a loaded graph exists, and
+			// 0/672 is the only number there is. Widening this to a span check
+			// needs that corpus number first; it must not be done on the
+			// strength of the slot existing.
+			//
+			// Until then the metric is start-line-only and the rendered label
+			// says so — see the caption in render.go. Do not restore a label
+			// that promises a span this does not check.
 			if e.StartLine > 0 {
 				r.SourceWindow.TotalWithWindow++
 			}
