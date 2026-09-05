@@ -491,13 +491,12 @@ const (
 	//
 	// These thirteen are exactly the rule-declared kinds whose GO IDENTIFIER
 	// was free — that is the whole of the selection rule, and it is narrower
-	// than it sounds. The remaining twelve on internal/entkinds' ledger —
-	// Component, Config, Constraint, Endpoint, Model, Operation, Plugin, Route,
-	// Schema, Service, Template, View — each already have an `EntityKind<Name>`
-	// constant bound to a `SCOPE.`-prefixed value, so declaring the un-prefixed
-	// spelling could not even be written without inventing a second Go name.
-	// That is a synonym decision, not a mechanical add, and it is deferred to
-	// arms B6-B8.
+	// than it sounds. The other twelve on internal/entkinds' ledger each
+	// already have an `EntityKind<Name>` constant bound to a `SCOPE.`-prefixed
+	// value, so declaring the un-prefixed spelling needs a second Go name.
+	// Arm B6 migrates four of them (see the block below); Config, Constraint,
+	// Endpoint, Operation, Plugin, Route, Service and Template remain deferred
+	// to arms B7-B8.
 	//
 	// WHAT THAT RULE DOES NOT SAY IS THAT NO SYNONYM EXISTS. Four of the
 	// thirteen have a live `SCOPE.`-prefixed twin that a Go producer emits
@@ -540,6 +539,45 @@ const (
 	EntityKindTest           EntityKind = "Test"
 	EntityKindTestClass      EntityKind = "TestClass"
 	EntityKindTestConfig     EntityKind = "TestConfig"
+
+	// #6776 arm B6 — four more rule-YAML-declared kinds, this time ones whose
+	// obvious Go identifier was ALREADY TAKEN by a `SCOPE.`-prefixed constant
+	// for the same concept. Hence the `Bare` suffix: it names the SPELLING,
+	// not a second concept.
+	//
+	// Arm B5's block called that collision "a synonym decision, not a
+	// mechanical add". That framing was wrong, and the codebase is what
+	// disproves it: internal/engine/classfold.go:34-38 states that both the
+	// bare kind names and their "SCOPE."-prefixed forms MUST APPEAR so that
+	// FrameworkClassKindPriority[r.Kind] matches regardless of which extractor
+	// emitted the survivor (#1700). A same-concept pair is the shipped graph,
+	// not a pending choice. A decision would only be needed to MERGE the pair,
+	// which #6776's standing "enum membership, no rename" ruling puts out of
+	// scope.
+	//
+	// Each pair is load-bearing in code today:
+	//
+	//   Component — internal/resolve/refs.go:1962 (isComponentKind) and :2139
+	//               (componentKindFamily) list "Component" beside
+	//               "SCOPE.Component"; :1235 names the dual-indexing.
+	//   Model     — classfold.go pairs "Model":100 / "SCOPE.Model":100 and
+	//               canon-rank 5/5.
+	//   View      — classfold 100/100; refs.go:1189 indexes an entity under
+	//               both its kind and the SCOPE-trimmed spelling.
+	//   Schema    — classfold 80/80; internal/dashboard/shape_tree.go:257,262
+	//               handles "SCOPE.Schema" and bare "Schema" in adjacent arms.
+	//
+	// NOTE the one place the pairing does NOT hold, so this comment does not
+	// claim more than it can: FrameworkClassKindPriority deliberately omits
+	// BOTH "Component" and "SCOPE.Component" (classfold.go:30-33 — the generic
+	// AST node is folded away, never a candidate). Component's justification is
+	// the refs.go pair above, not classfold.
+	//
+	// Spellings unchanged, so KindVocabularyVersion does not move.
+	EntityKindComponentBare EntityKind = "Component"
+	EntityKindModelBare     EntityKind = "Model"
+	EntityKindSchemaBare    EntityKind = "Schema"
+	EntityKindViewBare      EntityKind = "View"
 )
 
 // AllEntityKinds returns every EntityKind that grafel extractors are
@@ -601,11 +639,11 @@ func AllEntityKinds() []EntityKind {
 		// #6776 arm B2: declared since the messaging split and never listed
 		// here — the SOLE omission from this list, in either direction.
 		//
-		// The population is 82 constants of type EntityKind, of which 81 are
+		// The population is 86 constants of type EntityKind, of which 85 are
 		// NAMED EntityKind*; the odd one out is HTTPEndpointKindLegacy, which
 		// is EntityKind-typed under a different name and was already listed.
-		// (It was 63/62 until arm B4 added six below, and 69/68 until arm B5
-		// added thirteen more.) Both counts and the set
+		// (It was 63/62 until arm B4 added six below, 69/68 until arm B5 added
+		// thirteen more, and 82/81 until arm B6 added four.) Both counts and the set
 		// equality are pinned by
 		// TestEntityKindDeclarations6776_MatchAllEntityKindsExactly rather than
 		// asserted here, so this comment cannot go stale unobserved.
@@ -673,6 +711,13 @@ func AllEntityKinds() []EntityKind {
 		EntityKindTest,
 		EntityKindTestClass,
 		EntityKindTestConfig,
+		// #6776 arm B6: the bare spellings of four kinds that also have a
+		// SCOPE.-prefixed constant. Both members of each pair are live — see
+		// the const block's comment for the call sites that read them.
+		EntityKindComponentBare,
+		EntityKindModelBare,
+		EntityKindSchemaBare,
+		EntityKindViewBare,
 	}
 }
 

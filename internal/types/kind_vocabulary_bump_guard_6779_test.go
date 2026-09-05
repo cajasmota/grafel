@@ -96,6 +96,7 @@ func declaredEntityKindValues(t *testing.T) []string {
 // held itself up.
 var pinnedEntityKindVocabulary = []string{
 	"AgentPattern",
+	"Component",
 	"Controller",
 	"Decorator",
 	"Dependency",
@@ -104,6 +105,7 @@ var pinnedEntityKindVocabulary = []string{
 	"Interface",
 	"Middleware",
 	"Migration",
+	"Model",
 	"Module",
 	"Relationship",
 	"SCOPE.Activity",
@@ -170,10 +172,12 @@ var pinnedEntityKindVocabulary = []string{
 	"SCOPE.Variable",
 	"SCOPE.View",
 	"SCOPE.Workflow",
+	"Schema",
 	"Task",
 	"Test",
 	"TestClass",
 	"TestConfig",
+	"View",
 	"http_endpoint",
 	"http_endpoint_call",
 	"http_endpoint_definition",

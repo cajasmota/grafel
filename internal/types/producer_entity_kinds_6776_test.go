@@ -645,12 +645,12 @@ func TestEntityKindDeclarations6776_MatchAllEntityKindsExactly(t *testing.T) {
 		})
 	}
 
-	if len(declared) != 82 {
-		t.Errorf("EntityKind-typed constants = %d, want 82; re-pin this number and the "+
+	if len(declared) != 86 {
+		t.Errorf("EntityKind-typed constants = %d, want 86; re-pin this number and the "+
 			"comment in AllEntityKinds beside EntityKindEventType", len(declared))
 	}
-	if namedEntityKind != 81 {
-		t.Errorf("constants NAMED EntityKind* = %d, want 81 (the one EntityKind-typed "+
+	if namedEntityKind != 85 {
+		t.Errorf("constants NAMED EntityKind* = %d, want 85 (the one EntityKind-typed "+
 			"constant not so named is HTTPEndpointKindLegacy)", namedEntityKind)
 	}
 	for name := range declared {
