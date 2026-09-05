@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -24,11 +25,6 @@ import (
 // still be introduced with the whole package green. Scanning the directory is
 // what makes the guard enum-scoped rather than file-scoped.
 const dispositionSourceDir = "."
-
-// dispositionAnchorFile is where the const block lives today. It is asserted to
-// be among the files actually read (a layer-2 pin), but it is NOT the limit of
-// the scan — see dispositionSourceDir.
-const dispositionAnchorFile = "refs.go"
 
 // dispositionConst is one constant of type Disposition as it is actually
 // written in this package's source.
@@ -77,7 +73,95 @@ func readPackageGoSources(t *testing.T, dir string) map[string][]byte {
 	if len(out) == 0 {
 		t.Fatalf("no non-test .go files found in %s; the scan has nothing to read", dir)
 	}
+	assertScannedThePackage(t, dir, out)
 	return out
+}
+
+// minScannedGoFiles is a floor under the package scan. It is set from a
+// MEASUREMENT, not by eye: pointed at an absurd value once, the scan reported
+// 47 non-test .go files in internal/resolve. The floor is
+// deliberately slack — it exists to catch a filter that collapses the scan, not
+// to track the file count, which churns.
+const minScannedGoFiles = 30
+
+// dispositionMustScan names production files of this package that the scan MUST
+// have read, each with tokens that must appear in the bytes actually collected.
+//
+// A count floor alone is NOT enough, and that is the entire reason this list
+// exists. internal/resolve has 61 _test.go files against 47 non-test ones, so a
+// filter inverted to test files clears any floor the real scan can satisfy
+// while reading none of the sources this guard grades. Only named anchors catch
+// that.
+//
+// These anchors are also what makes the WIDENING itself graded. Without them,
+// narrowing the filter back to refs.go alone — the file-scoped shape #6849 is
+// about — leaves the whole package green while silently re-opening the exact
+// hole the directory scan was added to close. The scan proved it read SOMETHING
+// (the len == 0 floor) and that it read refs.go, but nothing observed that it
+// read the REST of the package, which is the whole content of the widening.
+//
+// Tokens are a cheap second opinion on top of the per-file byte-length check:
+// "package resolve" is the package clause, present in every file here and moved
+// by no refactoring short of renaming the package; the others are long-lived
+// entry points of this package whose rename would already require rewriting
+// this list.
+//
+// Known limitation, stated rather than papered over: these anchors pin FOUR
+// files. A filter that excluded some other single non-anchor file would still
+// clear both the floor and this list. That is inherent to the pattern (the same
+// is true of internal/links/source_read_guard_6823_test.go, which it follows);
+// it catches a scan that COLLAPSES, not one that loses one file. Widen the list
+// if a future defect shows that is not enough.
+var dispositionMustScan = []struct {
+	file   string
+	tokens []string
+}{
+	{"refs.go", []string{"package resolve", "AllDispositions = []Disposition{"}},
+	{"imports.go", []string{"package resolve", "func BuildImportTable("}},
+	{"symbol_index.go", []string{"package resolve", "func BuildModuleSymbols("}},
+	{"stdlib_builtins.go", []string{"package resolve", "goStdlibBuiltinNames"}},
+}
+
+// assertScannedThePackage is #6834 layer 2 for a DIRECTORY scan: proof that the
+// walk read the right files, not merely some files.
+//
+// Its failures deliberately say "the scan is broken, not the enum". That is the
+// opposite diagnosis from the completeness guard's "a constant is missing", and
+// a reader handed the wrong one would go hunting for a taxonomy bug that does
+// not exist while the real defect is that the guard stopped looking.
+func assertScannedThePackage(t *testing.T, dir string, scanned map[string][]byte) {
+	t.Helper()
+
+	if len(scanned) < minScannedGoFiles {
+		t.Fatalf("the scan is broken, not the enum: it read only %d non-test .go file(s) from %s, "+
+			"want at least %d; the completeness guard would be grading a fraction of the package",
+			len(scanned), dir, minScannedGoFiles)
+	}
+
+	for _, m := range dispositionMustScan {
+		body, ok := scanned[m.file]
+		if !ok {
+			t.Fatalf("the scan is broken, not the enum: %s was never read from %s. The walk read %d "+
+				"file(s), but not the production sources this guard grades — a Disposition constant "+
+				"declared outside the files it did read is invisible to it (#6849).",
+				m.file, dir, len(scanned))
+		}
+		info, err := os.Stat(filepath.Join(dir, m.file))
+		if err != nil {
+			t.Fatalf("stat %s: %v", filepath.Join(dir, m.file), err)
+		}
+		if int64(len(body)) != info.Size() {
+			t.Fatalf("the scan is broken, not the enum: it collected %d bytes for %s but the file is "+
+				"%d — it read a PREFIX, so every declaration past the cut is invisible to the matcher",
+				len(body), m.file, info.Size())
+		}
+		for _, tok := range m.tokens {
+			if !bytes.Contains(body, []byte(tok)) {
+				t.Fatalf("the scan is broken, not the enum: the bytes collected for %s do not contain "+
+					"%q; the walk is reading something else under that name", m.file, tok)
+			}
+		}
+	}
 }
 
 // constExprValue evaluates the value expression of a const spec sitting at
@@ -288,13 +372,9 @@ func dispositionCoverageProblems(declared []dispositionConst, all []Disposition)
 // walk misread the block" instead of "the slice is wrong" — not because they
 // close a gap nothing else covers.
 func TestDeclaredDispositionsExtraction_NonVacuous(t *testing.T) {
-	sources := readPackageGoSources(t, dispositionSourceDir)
-	if _, ok := sources[dispositionAnchorFile]; !ok {
-		t.Fatalf("the scan of %s did not read %s, which is where the Disposition const block "+
-			"lives; it is looking at the wrong place and the completeness guard would be vacuous",
-			dispositionSourceDir, dispositionAnchorFile)
-	}
-
+	// readPackageGoSources runs assertScannedThePackage for every caller, so
+	// by the time declaredDispositionsFromSource returns, the scan has already
+	// been proved to have read the whole package and not a fraction of it.
 	declared := declaredDispositionsFromSource(t)
 	if len(declared) == 0 {
 		t.Fatalf("extracted no Disposition constants from %s; the extraction is not reading the "+
