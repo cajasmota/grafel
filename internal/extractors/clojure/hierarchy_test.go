@@ -520,6 +520,111 @@ func TestClojureHierarchy_NestedHostClassTargetIsKept(t *testing.T) {
 		"Rec-[IMPLEMENTS]->Shape")
 }
 
+// TestClojureHierarchy_LeadingDollarIsRejectedPerToken grades the LEADING
+// character class, which the two `Map$Entry` rows do not touch: they exercise
+// `$` in the trailing classes, where it is legal. `$Bogus` is not a type name,
+// and the leading class is the only thing rejecting it.
+//
+// The bad token sits BESIDE a good one in the same tail, so the assertion is
+// that the rejection is per TOKEN — a producer that discarded the whole form
+// on meeting one bad token would also drop Shape and is not what this pins.
+func TestClojureHierarchy_LeadingDollarIsRejectedPerToken(t *testing.T) {
+	src := `(defrecord Circle [radius]
+  $Bogus
+  (weird [_] nil)
+  Shape
+  (area [_] 1))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "Circle-[IMPLEMENTS]->Shape")
+}
+
+// TestClojureHierarchy_UnqualifiedNestedHostClassTargetIsKept covers `$` in
+// the FIRST segment's class, which TestClojureHierarchy_NestedHostClassTargetIsKept
+// does not reach: in `java.util.Map$Entry` the `$` follows a `.`, so it is
+// matched by the segment-continuation class. An unqualified `Map$Entry` — what
+// the source writes after `(:import (java.util Map$Entry))` — is the only
+// shape that reaches the first segment's class.
+func TestClojureHierarchy_UnqualifiedNestedHostClassTargetIsKept(t *testing.T) {
+	src := `(defrecord Rec [a]
+  Map$Entry
+  (getKey [_] nil)
+  Shape
+  (area [_] 1))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents,
+		"Rec-[IMPLEMENTS]->Map$Entry",
+		"Rec-[IMPLEMENTS]->Shape")
+}
+
+// TestClojureHierarchy_TargetCharsetMatchesDeclaredNames grades the punctuation
+// the target charset shares with deftypeRE's NAME charset — `-`, `?`, `!`,
+// `*`, `+`, `'` — as one claim rather than six: any type this extractor can
+// name as an ENTITY must be nameable as a TARGET, or a protocol declared right
+// here is silently unlinkable.
+//
+// The symbol is deliberately ugly and no real codebase writes it; that is the
+// point of using one symbol rather than six plausible ones. What the body
+// observes is only that the edge exists for a declared protocol whose name
+// uses every such character, and again for a namespace-qualified target so the
+// segment-continuation class is covered too. Drop any one character from
+// either class and the token is rejected whole and its row disappears.
+func TestClojureHierarchy_TargetCharsetMatchesDeclaredNames(t *testing.T) {
+	src := `(defprotocol p-1?!*+')
+(defrecord Rec [a]
+  p-1?!*+'
+  (m [_] 1)
+  n*/q-2?!*+'
+  (o [_] 2))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents,
+		"Rec-[IMPLEMENTS]->p-1?!*+'",
+		"Rec-[IMPLEMENTS]->n*/q-2?!*+'")
+}
+
+// TestClojureHierarchy_HeadCharsetMatchesDeclaredNames grades the punctuation
+// in the HEAD regex's captured-symbol class — a separate guard from the target
+// charset's identically-spelled class, which no target-side row touches.
+//
+// Getting an observable consequence out of it takes care, and the first
+// version of this test did not have one. On a `defrecord` the head capture is
+// NOT what anchors the edge — that is the form's byte offset — so truncating
+// the captured name leaves the edges exactly where they were. The head capture
+// is used for precisely two things, and this source exercises both:
+//
+//   - as the OWNER of the self-edge check. The record names ITSELF in its
+//     tail, so a truncated head no longer equals the tail token and the
+//     self-edge `my-rec?!*+' -> my-rec?!*+'` appears — an extra pair, which
+//     the whole-file helper reports.
+//   - as the TARGET of an `extend-protocol` edge. Truncating a qualified head
+//     points the edge at a shorter name rather than dropping it: a wrong
+//     answer, not a missing one. Punctuation sits on BOTH sides of the `/` so
+//     the first and continuation classes are graded separately.
+//
+// As with the target-charset test the symbols are deliberately ugly and no
+// real codebase writes them; one symbol per position grades the whole class in
+// one row instead of five plausible-looking ones. The realistic member of the
+// class is `-`, and it is in every name here. `$` is NOT in these symbols and
+// is not graded by this test: it is not part of deftypeRE's name charset, and
+// the hierarchy.go header records why no input can separate it.
+func TestClojureHierarchy_HeadCharsetMatchesDeclaredNames(t *testing.T) {
+	src := `(defrecord my-rec?!*+' [a]
+  my-rec?!*+'
+  (self [_] nil)
+  Shape
+  (area [_] 1))
+(extend-protocol n-1?!*+'/p-2?!*+'
+  my-rec?!*+'
+  (m [_] 2))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents,
+		"my-rec?!*+'-[IMPLEMENTS]->Shape",
+		"my-rec?!*+'-[IMPLEMENTS]->n-1?!*+'/p-2?!*+'")
+}
+
 // TestClojureHierarchy_TokenValidOnlyAtItsStartIsRejected grades the CLOSING
 // anchor of clojureTargetRE, which the opening one otherwise masks: every
 // token in TestClojureHierarchy_NonSymbolDepth1TokensAreRejectedWhole is

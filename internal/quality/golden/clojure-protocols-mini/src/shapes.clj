@@ -13,6 +13,7 @@
   (getKey [_] :radius))
 
 (deftype Square [side]
+  $Bogus
   Shape
   (area [_]
     (let [helper compute-area

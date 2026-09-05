@@ -144,11 +144,27 @@ import (
 // TestClojureHierarchy_QuotedAndDiscardedFormsAreNotMatched grades it; without
 // the anchor both produce edges.
 //
-// The captured symbol's charset admits `.` and `/` — unlike `deftypeRE`'s name
-// charset — because `extend-type`'s subject is routinely a host or
-// namespace-qualified name (`java.util.Date`, `other.ns/Rec`). A charset
-// without them would truncate the symbol mid-token and produce a wrong owner
-// rather than no owner.
+// The captured symbol's charset is `deftypeRE`'s name charset plus `.`, `/`
+// and `$`, i.e. the same set clojureTargetRE admits, and the parity is
+// deliberate in both directions: this class captures a DECLARED name, so
+// anything deftypeRE can name as an entity must be capturable here or the
+// component exists with its edges anchored under a truncated name; and it also
+// captures an `extend-*` head, which for `extend-protocol` is the edge's
+// TARGET, so truncation there is a wrong answer rather than a missing one.
+// `extend-type`'s subject is routinely a host or namespace-qualified name
+// (`java.util.Date`, `other.ns/Rec`), which is why `.` and `/` are needed at
+// all. TestClojureHierarchy_HeadCharsetMatchesDeclaredNames and
+// TestClojureHierarchy_ExtendProtocolHeadKeepsItsQualifier grade it.
+//
+// `$` in BOTH positions of this class is equivalent under the current suite,
+// and is kept for the parity above rather than for an effect. The reason no test can separate it,
+// stated rather than left to be rediscovered: the only heads a `$` could
+// appear in are an `extend-type` subject — where a nested host class such as
+// `java.util.Map$Entry` can never match a component this file declares, so the
+// edge is dropped for want of an anchor whether the name was truncated or not
+// — and an `extend-protocol` head, which names a CLOJURE protocol, and a
+// Clojure protocol is never a nested host class. Removing `$` here was tried
+// and left the whole suite green; it is retained as parity, not as a guard.
 var clojureHierarchyHeadRE = regexp.MustCompile(
 	`(?m)^\s*\((defrecord|deftype|extend-type|extend-protocol|extend)\s+([\w\-\?!\*'+$]+(?:[\./][\w\-\?!\*'+$]+)*)`)
 
@@ -167,12 +183,41 @@ var clojureHierarchyHeadRE = regexp.MustCompile(
 //     name half missing — would become an edge target that can never resolve.
 //     TestClojureHierarchy_TokenValidOnlyAtItsStartIsRejected.
 //
-// The charset admits `.` and `/` (`java.lang.Runnable`, `other.ns/Proto`) and
-// `$`. `$` is JVM nested-class notation — `java.util.Map$Entry`,
-// `clojure.lang.IFn$LL` — which is ordinary host interop in `deftype` bodies
-// and `(:gen-class :implements)`, so excluding it was a silent recall miss
-// rather than a fence. TestClojureHierarchy_NestedHostClassTargetIsKept and
-// the fixture's Circle -> java.util.Map$Entry row grade it.
+// The regex has FOUR character positions, and they are separate guards that a
+// single input rarely separates. Each is graded by its own row, because a row
+// covering one says nothing about the others:
+//
+//		^[A-Za-z_]   [\w\-?!*'+$]*   (?:[./]   [\w\-?!*'+$]+ )*$
+//		     P1            P2            P3           P4
+//
+//	  - P1, the LEADING class, deliberately excludes `$` while P2 and P4 admit
+//	    it: `Map$Entry` is a type name, `$Bogus` is not. Widening P1 to admit
+//	    `$` was ALIVE against the whole suite until
+//	    TestClojureHierarchy_LeadingDollarIsRejectedPerToken was written — and
+//	    that test puts the bad token BESIDE a good one, so it asserts the
+//	    rejection is per TOKEN and not per form.
+//	  - P2 and P4 admit `$` for JVM nested-class notation — `Map$Entry`,
+//	    `IFn$LL` — which is ordinary host interop in a `deftype` body and in
+//	    `(:gen-class :implements)`. Excluding it rejected the token WHOLE, so
+//	    the symptom was a silent recall miss with no truncated name to notice,
+//	    not a fence. The two positions need two rows: `java.util.Map$Entry`
+//	    reaches `$` through P4 (it follows a `.`), and only an UNQUALIFIED
+//	    `Map$Entry` reaches P2. Both exist.
+//	  - P2 and P4 otherwise carry exactly `deftypeRE`'s name charset
+//	    (`[\w\-?!*'+]`), and that parity is the point rather than a
+//	    coincidence: any type this extractor can NAME as an entity must be
+//	    nameable as a target, or a locally-declared protocol is silently
+//	    unlinkable. TestClojureHierarchy_TargetCharsetMatchesDeclaredNames
+//	    grades the parity with one deliberately ugly symbol.
+//	  - P3 admits `.` and `/` (`java.lang.Runnable`, `other.ns/Proto`).
+//
+// One more thing the suite CANNOT separate, recorded rather than implied: the
+// `+` on P4 (a separator must be followed by at least one name character) and
+// the closing `$` anchor both reject `other.ns/`, and no input distinguishes
+// them — a token that P4's `+` rejects is a token whose match cannot reach the
+// end, which is the anchor's job too. Each mutant dies on its own, but they
+// are ONE guard in effect: "a separator must be followed by a name, and the
+// token must end there".
 var clojureTargetRE = regexp.MustCompile(`^[A-Za-z_][\w\-\?!\*'+$]*(?:[\./][\w\-\?!\*'+$]+)*$`)
 
 // clojureGenClassExtendsRE and clojureGenClassImplementsRE read the two
@@ -470,9 +515,17 @@ func isClojureSpace(c byte) bool {
 // is rejected by clojureTargetRE's anchored start instead, which keeps
 // `'Quoted` and `^:private` out as whole tokens rather than splitting them
 // into a break plus a valid-looking name.
+//
+// `"` and `;` were in this set and are not any more. Both callers — the
+// depth-1 tokeniser and blankCommentForms — read only the SANITISED source,
+// and stripStringsAndComments blanks every string literal and every `;`
+// comment to spaces before either runs, so neither character can reach here.
+// Listing them was a claim no input could exercise, not a guard; removing them
+// left the whole suite green, which is the evidence for that and not a
+// substitute for it.
 func isClojureBreak(c byte) bool {
 	switch c {
-	case '(', ')', '[', ']', '{', '}', '"', ';':
+	case '(', ')', '[', ']', '{', '}':
 		return true
 	}
 	return isClojureSpace(c)
