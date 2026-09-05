@@ -53,6 +53,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/cajasmota/grafel/internal/repowalk"
 )
 
 // Origin names the declaration mechanism a Site came from.
@@ -157,19 +159,6 @@ func Scan(root string) (Result, error) {
 	}, nil
 }
 
-// skippedDir reports directories the walks refuse to descend into.
-//
-// .claude is not an optimisation: it holds full worktree checkouts of this same
-// repository, so walking it would scan (and report) other branches' source.
-// testdata holds deliberate fixtures, including invalid ones.
-func skippedDir(name string) bool {
-	switch name {
-	case ".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build":
-		return true
-	}
-	return false
-}
-
 // relationshipTypeNames are the composite-literal type names whose keyed fields
 // carry a relationship kind. Matching is on the type's final identifier, so
 // `types.RelationshipRecord`, `graph.Relationship` and a package-local
@@ -210,7 +199,7 @@ func ScanGo(root string) (Result, error) {
 			return err
 		}
 		if d.IsDir() {
-			if skippedDir(d.Name()) {
+			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -461,7 +450,7 @@ func ScanRuleYAML(root string) (Result, error) {
 			return err
 		}
 		if d.IsDir() {
-			if skippedDir(d.Name()) {
+			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

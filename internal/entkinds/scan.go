@@ -97,6 +97,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/cajasmota/grafel/internal/repowalk"
 )
 
 // Origin names the declaration mechanism a Site came from.
@@ -210,19 +212,6 @@ func Scan(root string) (Result, error) {
 	}, nil
 }
 
-// skippedDir reports directories the walks refuse to descend into.
-//
-// .claude is not an optimisation: it holds full worktree checkouts of this same
-// repository, so walking it would scan (and report) other branches' rule files.
-// testdata holds deliberate fixtures, including invalid ones.
-func skippedDir(name string) bool {
-	switch name {
-	case ".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build":
-		return true
-	}
-	return false
-}
-
 // ---------------------------------------------------------------------------
 // Rule YAML
 // ---------------------------------------------------------------------------
@@ -263,7 +252,7 @@ func ScanRuleYAML(root string) (Result, error) {
 			return err
 		}
 		if d.IsDir() {
-			if skippedDir(d.Name()) {
+			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -419,7 +408,7 @@ func parseGoTree(root string) (goTree, error) {
 			return err
 		}
 		if d.IsDir() {
-			if skippedDir(d.Name()) {
+			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

@@ -59,6 +59,27 @@ func looksLikeRelationshipKind(s string) bool {
 
 // walkGoFiles collects all .go files under root, skipping testdata/ and
 // vendor/ subtrees.
+//
+// This is NOT internal/repowalk.SkippedDir (#6846) and is not a drifted copy of
+// it. Its only caller roots it at <repo>/internal, not at the repository root,
+// and it carries `fixtures`, a name the shared list does not have. Different
+// root, different set, on purpose.
+//
+// What was checked, rather than assumed, about the names it omits (as of
+// #6846):
+//
+//   - `.git`, `.claude` and `build` have no directory under internal/ at all.
+//   - `node_modules` has exactly one — internal/ingest/testdata/repo/ — which
+//     this walk already prunes at `testdata`.
+//   - `dist` DOES exist and IS reachable: internal/dashboard/dist is tracked
+//     (it holds PLACEHOLDER.md) and sits behind none of the three names above,
+//     so this walk descends into it. It holds no .go file today, so behaviour
+//     is unaffected — but the omission is a live gap, not an unreachable one,
+//     and a generated .go landing there would be scanned.
+//
+// So the divergence is deliberate in root and in `fixtures`, and one omission
+// (`dist`) is simply latent. None of that makes the shared list the right thing
+// to import here.
 func walkGoFiles(root string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

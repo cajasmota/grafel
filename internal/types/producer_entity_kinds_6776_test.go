@@ -574,6 +574,11 @@ func TestProducerEntityKinds6776_UnprefixedLedgerIsExact(t *testing.T) {
 // only when the value is an *ast.BasicLit on an Entity / EntityRecord composite
 // literal — over the same subtree. It exists solely so the gap this change
 // closes is a measurement rather than a claim in a comment.
+//
+// Its exclusion list is deliberately NOT internal/repowalk.SkippedDir (#6846),
+// though entkinds.Scan — the scanner this cross-checks — now uses that shared
+// copy. An independent measurement that shares its walk with the thing it
+// measures is not independent: one widening would move both sides at once.
 func literalOnlyEntityKinds(t *testing.T) map[string]bool {
 	t.Helper()
 	root := filepath.Join(repoRoot(t), "internal")

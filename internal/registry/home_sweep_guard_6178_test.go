@@ -139,6 +139,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/repowalk"
 )
 
 // deliberatelyAbsolute lists functions that legitimately combine an
@@ -483,12 +485,13 @@ func scanHandRolledHomePaths(t *testing.T, root string) []homePathOffence {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			// .claude holds full worktree checkouts of this same repo; walking it
-			// would parse (and report) other branches' source under paths the
-			// allow-lists can never name, and t.Fatalf on any mid-edit parse
-			// error in an unrelated in-flight branch (#6842).
-			case ".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build":
+			// The exclusion list is shared (#6846): ELEVEN hand-maintained
+			// copies had already drifted into three different sets, TWO of
+			// them missing `.claude` outright, and #6842 fixed exactly one by
+			// hand. Seven share this list now; internal/repowalk states why
+			// each name is on it, and which four walks deliberately keep
+			// their own copy.
+			if repowalk.SkippedDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

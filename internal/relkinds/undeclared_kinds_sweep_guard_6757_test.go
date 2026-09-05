@@ -491,6 +491,13 @@ func TestBothMechanismsObserveDeclaredKinds(t *testing.T) {
 // countSourceFiles is this test's OWN walk of the tree, deliberately written
 // out rather than delegating to the package under test: a floor that asks the
 // scanner how many files the scanner read is not a floor.
+//
+// For the same reason this list is NOT internal/repowalk.SkippedDir (#6846),
+// even though it is character-for-character the same set and relkinds.Scan now
+// uses that shared copy. Sharing it here would put one predicate on both sides
+// of the equality below: widen it and both walks shrink together, the counts
+// still match, and the floor reports a healthy scan of a tree neither side
+// read. Keep the two copies in step by hand, and let them disagree loudly.
 func countSourceFiles(t *testing.T, root string) (goFiles, yamlFiles int) {
 	t.Helper()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
