@@ -49,6 +49,19 @@ func countFixtureGraph(repo, root string) repoGraph {
 				ID: "fn1", Name: "HandleX", Kind: "SCOPE.Function",
 				SourceFile: "src/handler.go", StartLine: 5, EndLine: 9,
 			},
+			// TWO function entities in ONE file, deliberately. The complexity
+			// pass reads per ENTITY through a per-file cache, and its site
+			// comment claims the cache holds the count to one per file rather
+			// than one per entity in it. With a single entity that claim is
+			// prose no test observes: deleting `cache[rel] = ""` on the
+			// failure arm survives. With two, the mutant reports 2 and this
+			// fixture reports 1. Every other group-C pass iterates a fileSet,
+			// so the second entity is inert for them and the expected count
+			// stays 1 across the whole table.
+			{
+				ID: "fn2", Name: "HandleY", Kind: "SCOPE.Function",
+				SourceFile: "src/handler.go", StartLine: 11, EndLine: 15,
+			},
 		},
 	}
 }
@@ -285,5 +298,91 @@ func TestCrossFileFlowUnreadableCalleeIsCounted(t *testing.T) {
 	if _, unreadable2 := resolveCrossFileFlows(&g2, "src/handler.go", root2, "go",
 		newCrossFileResolver(&g2), boundaries); unreadable2 != 0 {
 		t.Errorf("resolveCrossFileFlows on a readable tree: want 0, got %d", unreadable2)
+	}
+}
+
+// TestDataFlowPassReportsTheCrossFileCalleeRead grades the CALL SITE that
+// TestCrossFileFlowUnreadableCalleeIsCounted cannot: `unreadable +=
+// xunreadable` in runDataFlowPass. That test drives resolveCrossFileFlows
+// directly, so discarding the helper's return value at the call site leaves it
+// green — site 9 of 9 would then never provably reach PassResult or the
+// sidecar, which is the exact "written but never observed" shape this arm
+// exists to end. Testing the helper does not pin the caller.
+//
+// The fixture is TestDataFlowPass_JSTS_CrossFile_DBWrite's: a handler in
+// handlers.ts that calls save() defined in svc.ts. Only svc.ts is planted as a
+// directory, so the handler file still reads and the cross-file hop is the
+// thing that fails.
+//
+// EXPECTED 2, and the reason matters. src/svc.ts is unreadable from two
+// distinct reads in one run: the pass's own top-level fileSet loop (svc.ts
+// owns entities, so it is iterated in its own right) and the cross-file callee
+// read inside resolveCrossFileFlows, whose cache is per-call. The counter
+// counts READS, not distinct paths — see PassResult.UnreadableSourceFiles.
+func TestDataFlowPassReportsTheCrossFileCalleeRead(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "src/handlers.ts", "\nimport { save } from './svc';\nfunction h(req, res) {\n  save(req.body.x);\n}\n")
+	plantDirectoryAt(t, root, "src/svc.ts")
+
+	graphs := []repoGraph{{
+		Repo:     "repo-a",
+		FileRoot: root,
+		Entities: []entityNode{
+			{ID: "h", Name: "h", Kind: "function", SourceFile: "src/handlers.ts"},
+			{ID: "save", Name: "save", Kind: "function", SourceFile: "src/svc.ts"},
+			{ID: "create", Name: "create", Kind: "function", SourceFile: "src/svc.ts"},
+		},
+		Edges: []edgeRef{{FromID: "h", ToID: "save", Kind: "calls"}},
+	}}
+
+	linksPath := filepath.Join(t.TempDir(), "g-links.json")
+	res, err := runDataFlowPass(graphs, Paths{Links: linksPath}, nil)
+	if err != nil {
+		t.Fatalf("runDataFlowPass: %v", err)
+	}
+	if res.UnreadableSourceFiles != 2 {
+		t.Errorf("PassResult.UnreadableSourceFiles: want 2 (the fileSet read of svc.ts plus "+
+			"the cross-file callee read of it), got %d — the cross-file count does not reach "+
+			"PassResult", res.UnreadableSourceFiles)
+	}
+
+	// And it must survive into the serialised artefact from THIS pass run,
+	// not only from the direct helper call.
+	statsPath := filepath.Join(t.TempDir(), "g-link-pass-stats.json")
+	if err := writeLinkPassStats(statsPath, &RunResult{Group: "g", Results: []PassResult{res}}); err != nil {
+		t.Fatalf("writeLinkPassStats: %v", err)
+	}
+	buf, err := os.ReadFile(statsPath)
+	if err != nil {
+		t.Fatalf("stats sidecar: %v", err)
+	}
+	var stats struct {
+		Passes []struct {
+			Pass                  string `json:"pass"`
+			UnreadableSourceFiles int    `json:"unreadable_source_files"`
+		} `json:"passes"`
+	}
+	if err := json.Unmarshal(buf, &stats); err != nil {
+		t.Fatalf("unmarshal stats sidecar: %v", err)
+	}
+	if len(stats.Passes) != 1 || stats.Passes[0].UnreadableSourceFiles != 2 {
+		t.Errorf("link-pass-stats unreadable_source_files: want 2 for the data_flow pass, got %+v",
+			stats.Passes)
+	}
+
+	// Other direction, on the same fixture: with svc.ts readable the pass
+	// reports nothing. Without this a fix that counted unconditionally at the
+	// call site would pass the assertions above.
+	root2 := t.TempDir()
+	writeFile(t, root2, "src/handlers.ts", "\nimport { save } from './svc';\nfunction h(req, res) {\n  save(req.body.x);\n}\n")
+	writeFile(t, root2, "src/svc.ts", "\nexport function save(v) {\n  Model.create({ v });\n}\n")
+	graphs2 := graphs
+	graphs2[0].FileRoot = root2
+	res2, err := runDataFlowPass(graphs2, Paths{Links: filepath.Join(t.TempDir(), "g-links.json")}, nil)
+	if err != nil {
+		t.Fatalf("runDataFlowPass (readable): %v", err)
+	}
+	if res2.UnreadableSourceFiles != 0 {
+		t.Errorf("readable cross-file tree: want 0, got %d", res2.UnreadableSourceFiles)
 	}
 }

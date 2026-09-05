@@ -128,6 +128,12 @@ func probeSourceFile(abs string) error {
 // because the consequence there is a whole repo stamped dead, and here it is
 // only annotations that were already best-effort.
 //
+// The consequence, stated rather than left to be discovered: a source root that
+// has MOVED makes every file report ErrNotExist, so group C reports ZERO for
+// that repo while producing nothing. That is the one scenario in which this
+// field is silent by design — the loud signal for it is reachability's
+// degraded_repos, which stats the root.
+//
 // The count reaches an operator through PassResult.UnreadableSourceFiles and
 // the `unreadable_source_files` field of <group>-link-pass-stats.json. No MCP
 // tool projects that field today — it is an operator-facing record, stated
