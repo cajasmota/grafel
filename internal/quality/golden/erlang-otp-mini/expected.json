@@ -109,10 +109,10 @@
       "kind": "CALLS", "to_name": "start_link", "to_kind": "SCOPE.Operation", "to_file": "cache_sup.erl",
       "must_exist": false, "nice_to_have": true,
       "note": "#6490 arm B FINDING: `start(_StartType, _StartArgs) -> cache_sup:start_link().` calls a function that IS in this fixture, and the edge is emitted as the dangling bare name `cache_sup:start_link` instead of binding to cache_sup.erl's start_link/0. Erlang cross-module calls are never resolved to in-repo functions, so the whole application → supervisor call path is invisible. Held nice_to_have and reported rather than pinned to the bare name, which would ratify the resolution failure (#6441)." },
-    { "from_name": "cache_server", "from_kind": "SCOPE.Component", "from_file": "cache_server.erl",
+    { "from_bare_name": "cache_server.erl",
       "kind": "IMPORTS", "to_name": "cache.hrl", "to_kind": "SCOPE.Component", "to_file": "cache_server.erl",
-      "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING: `-include(\"cache.hrl\").` does emit an IMPORTS edge, but its FROM side is the raw string \"cache_server.erl\", which is not any entity's ID — so no expectation can address it and the edge dangles from nothing. Erlang has no file-component entity to anchor includes on, unlike every other language in the corpus." },
+      "must_exist": true,
+      "note": "#6488 arm C: `-include(\"cache.hrl\").` emits an IMPORTS edge whose FROM side is the raw string \"cache_server.erl\" — no entity's ID — so until from_bare_name existed no expectation could address it, and MEASURED: deleting the producer in internal/extractors/erlang/extractor.go left this fixture's report byte-identical. Held as must_exist now that the carrier itself is addressable; from_resolved stays FALSE on this row, which is the finding, not a defect in the row. Erlang is NOT alone in lacking a file carrier — nim (internal/extractors/nim/nim.go) and groovy (internal/extractors/groovy/groovy.go) anchor imports on the path with no extractor.FileEntity either; emitting one for all three is #6815, and when it lands this row must move back to from_name + from_kind because the edge will then hang off an entity ID." },
     { "from_name": "cache_server", "from_kind": "SCOPE.Component", "from_file": "cache_server.erl",
       "kind": "IMPLEMENTS", "to_bare_name": "gen_server",
       "must_exist": true,
@@ -125,5 +125,10 @@
       "kind": "IMPLEMENTS", "to_bare_name": "application",
       "must_exist": true,
       "note": "#6370: the third -behaviour declaration. All three modules in this fixture declare a behaviour, so all three are graded." }
+  ],
+  "forbidden_relationships": [
+    { "from_bare_name": "cache_sup.erl",
+      "kind": "IMPORTS", "to_name": "cache.hrl", "to_kind": "SCOPE.Component", "to_file": "cache_server.erl",
+      "note": "#6488 arm C over-firing control. Only cache_server.erl carries `-include(\"cache.hrl\")`; cache_sup.erl includes nothing. An include edge is anchored on the file that wrote it, so this row must report ZERO hits — and it goes red both if the extractor mis-anchors an include and if the carrier match ever stops discriminating between carrier strings. Recall cannot see either direction: the must_exist row above matches whether or not the matcher is too permissive." }
   ]
 }
