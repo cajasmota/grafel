@@ -24,7 +24,10 @@
 
     { "name": "Post.title", "kind": "SCOPE.Schema", "source_file": "PostController.groovy", "must_exist": true, "note": "`String title` on the domain. Emitted, but named bare (`title`) rather than `Post.title` — the Groovy path is the only one in this corpus that does not qualify field names." },
     { "name": "Post.body", "kind": "SCOPE.Schema", "source_file": "PostController.groovy", "must_exist": true },
-    { "name": "PostController.postService", "kind": "SCOPE.Schema", "source_file": "PostController.groovy", "must_exist": true, "note": "`PostService postService` — Grails by-name service injection. Emitted under no name and no kind: total absence, not a naming disagreement." }
+    { "name": "PostController.postService", "kind": "SCOPE.Schema", "source_file": "PostController.groovy", "must_exist": true, "note": "`PostService postService` — Grails by-name service injection. Emitted under no name and no kind: total absence, not a naming disagreement." },
+
+    { "name": "PostController.groovy", "kind": "SCOPE.Component", "subtype": "file", "source_file": "PostController.groovy", "must_exist": true,
+      "note": "#6815: the #577 file carrier. PostController.groovy's three `import` declarations each anchor their IMPORTS edge on the path, so this is the entity that gives them a real FROM end. This fixture is a SINGLE file, so it can only grade the positive direction; the over-firing direction — no carrier for a file with no import — is graded in internal/extractors/groovy/file_carrier_6815_test.go and, at fixture level, by nim-objects-mini and erlang-otp-mini, which are multi-file." }
   ],
   "expected_relationships": [
     { "from_name": "PostController", "from_kind": "SCOPE.Component", "from_file": "PostController.groovy",

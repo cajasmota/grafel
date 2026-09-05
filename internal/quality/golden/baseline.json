@@ -54,12 +54,12 @@
       "relationship_extracted_total": 181
     },
     "erlang-otp-mini": {
-      "entity_found": 20,
-      "entity_expected": 20,
+      "entity_found": 21,
+      "entity_expected": 21,
       "relationship_found": 26,
       "relationship_expected": 26,
-      "entity_extracted_total": 22,
-      "relationship_extracted_total": 53
+      "entity_extracted_total": 23,
+      "relationship_extracted_total": 54
     },
     "express-baseurl-mini": {
       "entity_found": 8,
@@ -86,12 +86,12 @@
       "relationship_extracted_total": 82
     },
     "groovy-grails-mini": {
-      "entity_found": 13,
-      "entity_expected": 16,
+      "entity_found": 14,
+      "entity_expected": 17,
       "relationship_found": 15,
       "relationship_expected": 18,
-      "entity_extracted_total": 23,
-      "relationship_extracted_total": 53
+      "entity_extracted_total": 24,
+      "relationship_extracted_total": 54
     },
     "haskell-warp-mini": {
       "entity_found": 24,
@@ -134,12 +134,12 @@
       "relationship_extracted_total": 28
     },
     "nim-objects-mini": {
-      "entity_found": 21,
-      "entity_expected": 21,
+      "entity_found": 22,
+      "entity_expected": 22,
       "relationship_found": 11,
       "relationship_expected": 11,
-      "entity_extracted_total": 22,
-      "relationship_extracted_total": 40
+      "entity_extracted_total": 23,
+      "relationship_extracted_total": 41
     },
     "php-slim-mini": {
       "entity_found": 5,

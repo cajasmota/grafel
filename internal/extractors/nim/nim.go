@@ -109,6 +109,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		return nil, nil
 	}
 	out := extractNim(string(file.Content), file.Path)
+	// #6815: buildImportEntities anchors every IMPORTS edge on file.Path with
+	// nothing carrying that string as its Name. Emit the #577 file carrier when
+	// — and only when — such an edge exists. See extractor.FileCarrierFor.
+	out = extractor.PrependFileCarrier(file.Path, "nim", out)
 	extractor.TagRelationshipsLanguage(out, "nim")
 	extractor.TagEntitiesLanguage(out, "nim")
 	return out, nil
