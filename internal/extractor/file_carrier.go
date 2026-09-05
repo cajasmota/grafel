@@ -56,8 +56,13 @@ import "github.com/cajasmota/grafel/internal/types"
 //     is the first caller for which this clause fires in production rather than
 //     only under a unit fixture: its file-level SCOPE.Component is named
 //     BASENAME(path), which at a ROOT path ("main.tf") already IS the path, so
-//     every root .tf takes this rejection while every nested one does not.
-//     Pinned end-to-end by TestTerraform_RootPathGetsNoSecondCarrier_6852.
+//     a root .tf that reaches clause 3 takes this rejection while a nested one
+//     never does. Note "reaches": a root .tf with no top-level blocks emits no
+//     file component at all, so clause 2 rejects it first and clause 3 is not
+//     consulted — this is the depth split among files that DO anchor, not a
+//     property of every root .tf. Pinned end-to-end by
+//     TestTerraform_RootPathGetsNoSecondCarrier_6852, with the block-less case
+//     pinned separately by TestTerraform_EmptyFileGetsNoCarrier_6852.
 //
 // Clause 3 is checked for EVERY record, before the loop may short-circuit on
 // clause 2 being satisfied — deliberately, and the order is load-bearing.
