@@ -132,6 +132,21 @@ var dispositionMustScan = []struct {
 func assertScannedThePackage(t *testing.T, dir string, scanned map[string][]byte) {
 	t.Helper()
 
+	// Layer 2 of THIS guard: the anchor set must itself be graded. Emptying
+	// dispositionMustScan makes every check below inert while the package stays
+	// green — proved by a mutant that scans refs.go plus the dynamic_patterns_*
+	// files: 37 files clears minScannedGoFiles, all 8 constants are found, so
+	// neither the count floor nor the zero-constants floor fires, and only the
+	// anchors catch it. With the list emptied that mutant is ALIVE. The same
+	// hole was found in internal/links' guard by emptying goScanAnchors.
+	if len(dispositionMustScan) < 3 {
+		t.Fatalf("the scan is broken, not the enum: the must-scan anchor list holds %d entr(ies), "+
+			"want at least 3. Emptying or gutting it does not fail anything on its own, so a filter "+
+			"that reads enough files to clear the floor while missing this package's real sources "+
+			"would go unnoticed and this whole layer would be inert (#6849).",
+			len(dispositionMustScan))
+	}
+
 	if len(scanned) < minScannedGoFiles {
 		t.Fatalf("the scan is broken, not the enum: it read only %d non-test .go file(s) from %s, "+
 			"want at least %d; the completeness guard would be grading a fraction of the package",
