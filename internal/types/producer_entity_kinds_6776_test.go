@@ -351,13 +351,57 @@ func TestCheckWalk_ActsOnWhatTheScanReturns(t *testing.T) {
 //     describing the tree it never read.
 func scanGoEntityKinds(t *testing.T) entkinds.Result {
 	t.Helper()
-	root := filepath.Join(repoRoot(t), "internal")
+	return scanGoEntityKindsIn(t, filepath.Join(repoRoot(t), "internal"))
+}
+
+// scanGoEntityKindsIn is the WIRING — the scan and the walk check joined
+// together — parameterised on its root and its TB so that join can be
+// observed. Splitting the decision out into checkWalk graded the decision and
+// left the call site free to skip it: replacing `checkWalk(t, root, res,
+// goScanAnchors)` with `_ = root` was ALIVE, because
+// TestCheckWalk_ActsOnWhatTheScanReturns drives checkWalk directly and keeps
+// passing while production has no walk guard at all.
+//
+// That is the same trap as B1 and B2, one level further out, and worse than
+// either: it does not weaken one layer, it unhooks every layer at once —
+// floors, anchors and the empty-anchor case together — while the file still
+// reads as though all of it were guarded. Parameterising a decision so a
+// control can drive it is exactly what frees the caller to ignore it, so each
+// parameterisation has to be followed by a control one level up.
+//
+// Nothing follows either Fatalf, so this behaves the same whether or not
+// Fatalf is terminal for the TB it was handed.
+func scanGoEntityKindsIn(tb testing.TB, root string) entkinds.Result {
+	tb.Helper()
 	res, err := entkinds.ScanGo(root)
 	if err != nil {
-		t.Fatalf("ScanGo(%s): %v", root, err)
+		tb.Fatalf("ScanGo(%s): %v", root, err)
+		return entkinds.Result{}
 	}
-	checkWalk(t, root, res, goScanAnchors)
+	checkWalk(tb, root, res, goScanAnchors)
 	return res
+}
+
+// TestScanGoEntityKindsIn_RunsTheWalkCheck grades the WIRING: that the scan
+// actually submits its result to checkWalk, with the real anchor set.
+//
+// It points the scan at an empty directory — the layer-1 mutant, run as a
+// control instead of applied as a mutation — and requires the walk check to
+// have fired. The expected message is asserted precisely enough to pin WHICH
+// check ran: an empty tree yields "parsed only 0 files", which a call site
+// that passed nil anchors could not produce (that reports the empty anchor set
+// first), so dropping the anchors at the call rather than in the var is caught
+// here too.
+func TestScanGoEntityKindsIn_RunsTheWalkCheck(t *testing.T) {
+	var onEmpty recordingTB
+	scanGoEntityKindsIn(&onEmpty, t.TempDir())
+	if !onEmpty.failed {
+		t.Fatal("scanning an EMPTY directory reported no failure: the scan is not submitting its result to checkWalk at all, so every floor and anchor above is unobserved in production and a walk that reads nothing is handed to the ledgers as evidence")
+	}
+	msg := strings.Join(onEmpty.msgs, "\n")
+	if !strings.Contains(msg, "THE SCAN'S WALK IS BROKEN") || !strings.Contains(msg, "parsed only 0 files") {
+		t.Fatalf("the walk check fired, but not the file floor with the real anchor set; got %q", msg)
+	}
 }
 
 // invalidGoKindSites buckets every resolved site whose kind fails
