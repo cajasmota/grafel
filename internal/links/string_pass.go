@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/safeio"
 )
 
 // extractionCategory identifies a string-pattern bucket.
@@ -292,8 +293,38 @@ func scanFile(absPath, relPath, cacheDir string) ([]Extraction, error) {
 		}
 	}
 
-	body, err := os.ReadFile(absPath)
+	body, err := readSourceFile(absPath, stringScanMaxFileBytes)
 	if err != nil {
+		// A non-regular file is a SKIP, not an error, and the distinction
+		// is load-bearing far beyond this pass. An error out of scanFile
+		// propagates through scanRepo to runStringPass, and links.go:388
+		// returns it straight out of RunAllPasses — so it aborts the ENTIRE
+		// group link run, not just this repo's extractions: HTTP, drift,
+		// taint and reachability never run at all. Hardening the read
+		// without this arm would have converted the #6416 hang into exactly
+		// that, on exactly the same input.
+		//
+		// Everything else still propagates, deliberately. safeio.ErrWouldBlock
+		// is the one that matters: it is reachable only from safeio's
+		// terminal state (64 opens abandoned), it was NOT reachable here
+		// before this change, and mapping it to "no findings" is the #6338
+		// shape safeio's own package doc forbids — a scanner reporting a tree
+		// clean after reading a fraction of it. A whole-run abort is a heavy
+		// price for it and is chosen with that price known: silence at that
+		// point is worse, because the graph would be wrong rather than absent.
+		//
+		// KNOWN INCONSISTENCY, recorded rather than papered over: the other
+		// ten source reads in this package (constant_propagation, taint_flow,
+		// def_use, effect_propagation, payload_drift, reachability,
+		// template_pattern, dataflow ×2, complexity) `continue` or cache ""
+		// on ANY error, so they do map ErrWouldBlock to "nothing found".
+		// Those arms pre-date this change; what is new is that the error
+		// class is now reachable there. Aligning them means giving ten
+		// best-effort passes an abort path they have never had, which is a
+		// larger behavioural decision than #6823 should make on its own.
+		if errors.Is(err, safeio.ErrNotRegular) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	if len(body) > 4*1024*1024 {

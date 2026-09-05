@@ -112,7 +112,7 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 				srcRoot = g.FileRoot
 			}
 			abs := filepath.Join(srcRoot, file)
-			content, err := os.ReadFile(abs)
+			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
 				continue
 			}
