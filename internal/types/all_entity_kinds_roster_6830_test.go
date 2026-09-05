@@ -72,10 +72,14 @@ const entityKindSourceDir = "."
 // not the file count, which churns.
 //
 // A count floor alone is provably not enough here, and internal/types is a
-// sharp instance: it has MORE _test.go files (12+) than non-test ones (11), so
-// a filter inverted to test files reads more files than the real scan and
-// clears any floor the real scan could satisfy, while reading none of the
-// sources this guard grades. Only the named anchors below catch that.
+// sharp instance: it holds 13 _test.go files against 11 non-test ones, so a
+// filter inverted to test files reads MORE files than the real scan and clears
+// any floor the real scan could satisfy, while reading none of the sources this
+// guard grades. Only the named anchors below catch that — confirmed by mutant
+// rather than argued: the inverted filter reported "the walk read 13 file(s)"
+// and died on a missing ANCHOR, with the floor of 6 comfortably cleared.
+//
+// Both counts re-derived from disk after this branch was rebased onto main.
 const minScannedEntityKindGoFiles = 6
 
 // entityKindMustScan names production files of this package the scan MUST have
@@ -159,10 +163,21 @@ func assertScannedTheTypesPackage(t *testing.T, dir string, scanned map[string][
 	t.Helper()
 
 	// The anchor list must itself be graded. Emptying entityKindMustScan makes
-	// every check below inert while the package stays green — that hole has been
-	// found by emptying the equivalent list on three separate guards this
-	// batch (internal/links' goScanAnchors, internal/resolve's
-	// dispositionMustScan, and this one), so it is asserted rather than trusted.
+	// every check below inert while the package stays green, so it is asserted
+	// rather than trusted (scored here as its own mutant, not inferred).
+	//
+	// Three anchor lists in this batch share the pattern. Cited by their real
+	// locations because an earlier draft of this comment attributed the first
+	// of them to the wrong package:
+	//
+	//   - goScanAnchors — internal/types/producer_entity_kinds_6776_test.go,
+	//     THIS package, not internal/links. Its own doc records the emptied
+	//     list as having left the package green.
+	//   - dispositionMustScan — internal/resolve/disposition_enum_completeness_6849_test.go.
+	//     Same result recorded on #6853.
+	//   - a function-local mustScan — internal/links/source_read_guard_6823_test.go,
+	//     the guard this whole form derives from. Named for provenance only: no
+	//     emptied-and-ALIVE result is recorded for it, and none is claimed here.
 	if len(entityKindMustScan) < 3 {
 		t.Fatalf("the scan is broken, not the roster: the must-scan anchor list holds %d entr(ies), "+
 			"want at least 3. Emptying or gutting it fails nothing on its own, so a filter that "+
@@ -242,6 +257,39 @@ func constStringValue(values []ast.Expr) (string, bool) {
 // expression, so both are carried forward for exactly that case. No EntityKind
 // constant is written that way today; the handling exists so that one added
 // later is READ rather than skipped.
+//
+// THE REFUSAL CHANNEL (`unevaluable`) IS LOAD-BEARING, and is graded by
+// TestDeclaredEntityKindsIn6830_RefusesWhatItCannotEvaluate rather than by the
+// real tree — there are zero non-literal EntityKind constants in the tree, which
+// is exactly why it went ungraded on the first pass. Neutering the append here
+// (`_ = unevaluable`) leaves ./internal/types GREEN, and with
+// `const X EntityKind = EntityKind("SCOPE.ZZUneval")` planted in entity.go the
+// whole package still passes: the constant is skipped, is absent from
+// AllEntityKinds(), and is reported by nothing. Restoring the refusal fails both
+// entry points with "could not evaluate the value of 1 EntityKind constant(s)".
+// Both measured. This is the mechanism that makes the walk LOUD instead of
+// BLIND, and deleting it costs nothing today.
+//
+// STATED LIMITATION — two shapes this walk skips IN SILENCE (verified ALIVE
+// across internal/types, internal/entkinds and internal/graph/fbwriter, on this
+// branch; the reviewer reports the same on base). Both are genuine EntityKind
+// constants by every rule Go has, and both are deliberately NOT fixed here:
+// widening the collector is a scope increase on a ratchet PR and wants its own
+// issue, in the same way #6832 was split from #6830.
+//
+//	type EntityKindAliasZZ = EntityKind          // a TYPE ALIAS: same type,
+//	const A EntityKindAliasZZ = "SCOPE.ZZAlias"  // but the AST says "EntityKindAliasZZ"
+//
+//	const B = EntityKind("SCOPE.ZZNoType")       // NO type expression at all
+//
+// Note the boundary this draws against the refusal above, because it is sharp
+// and it is backwards: an EXPLICITLY TYPED const with a conversion value is
+// refused LOUDLY, while dropping the type makes the very same value SILENT.
+// Same value, same conversion, opposite handling. The gate is
+// `typ.(*ast.Ident).Name == "EntityKind"` and it `continue`s without a word on
+// anything else — which is #6832's defect shape (a collector that ignores what
+// it does not recognise) reappearing on the DECLARATION side, one level from
+// where this PR closes it on the ELEMENT side.
 func declaredEntityKindsIn(t *testing.T, filename string, src []byte) (consts []entityKindConst, unevaluable []string) {
 	t.Helper()
 
@@ -689,6 +737,98 @@ func assertProblems(t *testing.T, got, want []string) {
 			t.Fatalf("problems = %v, want %v", got, want)
 		}
 	}
+}
+
+// TestDeclaredEntityKindsIn6830_RefusesWhatItCannotEvaluate grades the
+// DECLARATION walk and, specifically, its refusal channel.
+//
+// It runs on synthetic source rather than the real tree ON PURPOSE: the tree
+// holds zero EntityKind constants with a non-literal value, so the real-tree
+// guard exercises this path not at all — which is precisely how neutering the
+// refusal (`_ = unevaluable`) stayed ALIVE with ./internal/types green, planted
+// counter-example and all. See the note on declaredEntityKindsIn.
+//
+// PERMISSIVE FIRST: the ordinary shapes must produce NO refusals, or the walk
+// refuses everything and grades nothing.
+func TestDeclaredEntityKindsIn6830_RefusesWhatItCannotEvaluate(t *testing.T) {
+	t.Run("literals_and_elision_are_read_not_refused", func(t *testing.T) {
+		got, bad := declaredEntityKindsIn(t, "synthetic.go", []byte(`package types
+
+type EntityKind string
+type Other string
+
+const (
+	EntityKindAlphaZZ EntityKind = "SCOPE.AlphaZZ"
+	EntityKindBetaZZ  EntityKind = "SCOPE.BetaZZ"
+	_                 EntityKind = "SCOPE.BlankZZ"
+)
+
+const EntityKindGammaZZ EntityKind = "SCOPE.GammaZZ"
+
+const (
+	IgnoredO Other = "not.an.entity.kind"
+)
+`))
+		if len(bad) != 0 {
+			t.Fatalf("refused %v; plain string literals must be READ, not refused — a walk that "+
+				"refuses everything grades nothing", bad)
+		}
+		want := []entityKindConst{
+			{Name: "EntityKindAlphaZZ", Value: "SCOPE.AlphaZZ", File: "synthetic.go"},
+			{Name: "EntityKindBetaZZ", Value: "SCOPE.BetaZZ", File: "synthetic.go"},
+			{Name: "EntityKindGammaZZ", Value: "SCOPE.GammaZZ", File: "synthetic.go"},
+		}
+		if len(got) != len(want) {
+			t.Fatalf("consts = %+v, want %+v (the `_` spec must be dropped and the Other block "+
+				"ignored entirely)", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("consts = %+v, want %+v", got, want)
+			}
+		}
+	})
+
+	// The mutant that was ALIVE: a typed const whose value is a CONVERSION
+	// rather than a literal. It must reach `unevaluable` and must NOT be
+	// silently dropped into the void, and it must NOT be guessed at either —
+	// a guessed value collides with a real member and makes the completeness
+	// guard report success.
+	t.Run("typed_conversion_value_is_refused_not_guessed", func(t *testing.T) {
+		got, bad := declaredEntityKindsIn(t, "entity.go", []byte(`package types
+
+type EntityKind string
+
+const EntityKindZZUneval6830 EntityKind = EntityKind("SCOPE.ZZUneval")
+`))
+		if len(got) != 0 {
+			t.Errorf("guessed a value for a conversion expression: %+v", got)
+		}
+		if len(bad) != 1 || bad[0] != "EntityKindZZUneval6830 in entity.go" {
+			t.Fatalf("unevaluable = %v, want [\"EntityKindZZUneval6830 in entity.go\"]; the refusal "+
+				"channel is what makes this walk loud instead of blind, and neutering it leaves the "+
+				"whole package green", bad)
+		}
+	})
+
+	// A second, differently-shaped unevaluable value, so the case above cannot
+	// be satisfied by special-casing *ast.CallExpr alone.
+	t.Run("concatenated_value_is_refused_not_guessed", func(t *testing.T) {
+		got, bad := declaredEntityKindsIn(t, "concat.go", []byte(`package types
+
+type EntityKind string
+
+const scopePrefixZZ = "SCOPE."
+
+const EntityKindZZConcat EntityKind = scopePrefixZZ + "ZZConcat"
+`))
+		if len(got) != 0 {
+			t.Errorf("guessed a value for a concatenation: %+v", got)
+		}
+		if len(bad) != 1 || bad[0] != "EntityKindZZConcat in concat.go" {
+			t.Fatalf("unevaluable = %v, want [\"EntityKindZZConcat in concat.go\"]", bad)
+		}
+	})
 }
 
 // TestAllEntityKindsRosterElements6830_ReadsArbitraryElementShapes is layer 4
