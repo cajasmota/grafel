@@ -43,6 +43,8 @@ const MethodComplexity = "complexity"
 func runComplexityPass(graphs []repoGraph, _ Paths) (PassResult, error) {
 	res := PassResult{Pass: MethodComplexity}
 	stamped := 0
+	// #6839: scanned-source reads this pass skipped because they failed.
+	unreadable := 0
 
 	for ri := range graphs {
 		g := &graphs[ri]
@@ -66,6 +68,13 @@ func runComplexityPass(graphs []repoGraph, _ Paths) (PassResult, error) {
 			}
 			buf, err := readSourceFile(filepath.Join(srcRoot, rel), maxSourceFileBytes)
 			if err != nil {
+				// #6839 group C: skipping is the deliberate choice for a
+				// supplementary pass — the file's functions go unstamped,
+				// which is an absence rather than a wrong number. Record
+				// the skip so it is bounded and reported; see
+				// noteUnreadableSource. The cache entry keeps the count at
+				// one per file, not one per entity in it.
+				unreadable += noteUnreadableSource(res.Pass, g.Repo, rel, err)
 				cache[rel] = ""
 				return ""
 			}
@@ -114,5 +123,8 @@ func runComplexityPass(graphs []repoGraph, _ Paths) (PassResult, error) {
 	}
 
 	res.LinksAdded = stamped
+	// #6839: report the skipped reads, so a pass that stamped nothing
+	// still says WHY it stamped nothing.
+	res.UnreadableSourceFiles = unreadable
 	return res, nil
 }

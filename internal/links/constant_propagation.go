@@ -233,7 +233,11 @@ func (r *Resolver) resolveDepth(repo, file, ident string, depth int, seen map[st
 // count.
 func runConstantPropagationPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (PassResult, error) {
 	res := PassResult{Pass: "constant_propagation"}
-	resolver := buildResolver(graphs)
+	resolver, unreadable := buildResolver(graphs)
+	// #6839: report the skipped reads BEFORE the nil-resolver early return —
+	// a tree whose every file is unreadable takes that return, and is exactly
+	// the case where "resolved nothing" needs to say why.
+	res.UnreadableSourceFiles = unreadable
 	if resolver == nil {
 		return res, nil
 	}
@@ -317,13 +321,19 @@ func runConstantPropagationPass(graphs []repoGraph, paths Paths, rejects map[str
 // buildResolver constructs the in-memory symbol table + import index from
 // the per-repo graphs. Returns nil when no T1-language entities are
 // present (the pass is a no-op for unsupported groups).
-func buildResolver(graphs []repoGraph) *Resolver {
+// The second return is the number of scanned-source reads it skipped because
+// they FAILED (#6839). It is a return value rather than a field on the
+// Resolver because buildResolver yields NIL when it read no file at all —
+// which is precisely what a wholly unreadable tree produces, and precisely the
+// case that still has to be reported.
+func buildResolver(graphs []repoGraph) (*Resolver, int) {
 	r := &Resolver{
 		bindings:      map[string]map[string]map[string]substrate.Binding{},
 		importsByFile: map[string]map[string][]importTarget{},
 		fileLookup:    map[string]map[string]string{},
 	}
 	totalFiles := 0
+	unreadable := 0
 	for _, g := range graphs {
 		// Collect unique source files referenced by any entity. Use a
 		// set so we sniff each file once even when many entities share it.
@@ -357,6 +367,12 @@ func buildResolver(graphs []repoGraph) *Resolver {
 				// File missing on disk (graph indexed from a prior
 				// snapshot, etc.) — skip; the pass is best-effort and
 				// must never fail the whole link pipeline.
+				//
+				// #6839 group C: skipping stays the deliberate choice —
+				// the file's bindings go unresolved, which loses edges
+				// rather than inventing them. Record the skip so it is
+				// bounded and reported; see noteUnreadableSource.
+				unreadable += noteUnreadableSource("constant_propagation", g.Repo, file, err)
 				continue
 			}
 			bindings := sniff(string(content))
@@ -396,9 +412,9 @@ func buildResolver(graphs []repoGraph) *Resolver {
 		}
 	}
 	if totalFiles == 0 {
-		return nil
+		return nil, unreadable
 	}
-	return r
+	return r, unreadable
 }
 
 // indexFileForLookup registers file under several canonical key forms so

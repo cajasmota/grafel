@@ -1,6 +1,11 @@
 package links
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+
 	"github.com/cajasmota/grafel/internal/safeio"
 )
 
@@ -92,4 +97,54 @@ func probeSourceFile(abs string) error {
 		return err
 	}
 	return f.Close()
+}
+
+// noteUnreadableSource records one scanned-source read that a SUPPLEMENTARY
+// link pass could not complete, and returns how much it adds to that pass's
+// PassResult.UnreadableSourceFiles (1 when it counts, 0 when it does not).
+// Written as a return value so a call site reads
+// `unreadable += noteUnreadableSource(...)` on the line above the `continue`
+// it already had.
+//
+// WHY THE SKIP STAYS (#6839 group C). Nine of this package's eleven hardened
+// reads sit in passes whose failure mode is ABSENCE — a property not stamped,
+// a sidecar row not written, an edge not emitted. Losing one file thins the
+// annotation; it never makes the artefact assert something false. That is a
+// materially weaker degradation than reachability.go's (the one site that
+// wrote `reachable="false"` off a file it could not read, fixed in #6863),
+// and it does not justify giving a best-effort pass an abort path it has
+// never had. safeio's package doc (see internal/safeio/safeio.go) forbids the
+// SILENCE, not the non-abort: the skip has to be "bounded and REPORTED".
+// Skipping is therefore the deliberate choice at every one of these sites,
+// and this function is the report that makes it legitimate.
+//
+// WHAT IT DOES NOT COUNT. fs.ErrNotExist: under a source root that exists, a
+// file the graph names but disk does not hold is a KNOWN fact rather than a
+// hidden one — nothing about its contents was concealed from the pass, and
+// group-link routinely runs over graphs indexed from a tree that has since
+// changed. reachability.go additionally stats the source ROOT before granting
+// that exemption, because a root that MOVED makes every file report
+// ErrNotExist while the code exists; these passes do not carry that guard
+// because the consequence there is a whole repo stamped dead, and here it is
+// only annotations that were already best-effort.
+//
+// The consequence, stated rather than left to be discovered: a source root that
+// has MOVED makes every file report ErrNotExist, so group C reports ZERO for
+// that repo while producing nothing. That is the one scenario in which this
+// field is silent by design — the loud signal for it is reachability's
+// degraded_repos, which stats the root.
+//
+// The count reaches an operator through PassResult.UnreadableSourceFiles and
+// the `unreadable_source_files` field of <group>-link-pass-stats.json. No MCP
+// tool projects that field today — it is an operator-facing record, stated
+// here rather than implied to have a consumer.
+func noteUnreadableSource(pass, repo, file string, err error) int {
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0
+	}
+	fmt.Fprintf(os.Stderr,
+		"grafel: warning: %s: %s: source file %s unreadable (%v); file skipped, "+
+			"this pass's output for it is missing rather than empty\n",
+		pass, repo, file, err)
+	return 1
 }

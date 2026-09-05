@@ -98,6 +98,8 @@ func runTaintFlowPass(graphs []repoGraph, paths Paths, _ map[string]bool) (PassR
 	type fnKey struct{ repo, file, fn string }
 	matches := map[fnKey][]substrate.TaintMatch{}
 	scannedFiles := 0
+	// #6839: scanned-source reads this pass skipped because they failed.
+	unreadable := 0
 	for _, g := range graphs {
 		fileSet := map[string]bool{}
 		for _, e := range g.Entities {
@@ -121,6 +123,11 @@ func runTaintFlowPass(graphs []repoGraph, paths Paths, _ map[string]bool) (PassR
 			abs := filepath.Join(srcRoot, file)
 			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
+				// #6839 group C: skipping is the deliberate choice for a
+				// supplementary pass — this file's output is now MISSING
+				// rather than wrong. Record the skip so it is bounded and
+				// reported instead of silent; see noteUnreadableSource.
+				unreadable += noteUnreadableSource(res.Pass, g.Repo, file, err)
 				continue
 			}
 			scannedFiles++
@@ -133,6 +140,9 @@ func runTaintFlowPass(graphs []repoGraph, paths Paths, _ map[string]bool) (PassR
 			}
 		}
 	}
+	// #6839: report the skipped reads before any early return, so a pass
+	// that read nothing usable still says WHY it read nothing.
+	res.UnreadableSourceFiles = unreadable
 	if scannedFiles == 0 {
 		return res, nil
 	}

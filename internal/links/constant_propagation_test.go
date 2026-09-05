@@ -33,7 +33,7 @@ func TestResolverInFile(t *testing.T) {
 			SourceFile: "src/config.ts",
 		}},
 	}}
-	r := buildResolver(graphs)
+	r, _ := buildResolver(graphs)
 	if r == nil {
 		t.Fatal("expected non-nil resolver")
 	}
@@ -63,7 +63,7 @@ fetch(`+"`"+`${API_URL}/things`+"`"+`);
 			{ID: "e2", Name: "fetch", Kind: "SCOPE.Function", SourceFile: "src/app.ts"},
 		},
 	}}
-	r := buildResolver(graphs)
+	r, _ := buildResolver(graphs)
 	if r == nil {
 		t.Fatal("expected non-nil resolver")
 	}
@@ -116,7 +116,7 @@ func TestBackendSubstrateImportResolutionFixture(t *testing.T) {
 		},
 	}}
 
-	r := buildResolver(graphs)
+	r, _ := buildResolver(graphs)
 	if r == nil {
 		t.Fatal("expected non-nil resolver; substrate found no JS/TS bindings")
 	}
@@ -171,7 +171,7 @@ def go(): return API_URL
 			{ID: "e2", Name: "go", Kind: "SCOPE.Function", SourceFile: "pkg/client.py"},
 		},
 	}}
-	r := buildResolver(graphs)
+	r, _ := buildResolver(graphs)
 	if r == nil {
 		t.Fatal("expected non-nil resolver")
 	}

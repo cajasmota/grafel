@@ -201,7 +201,10 @@ func runPayloadDriftPass(group string, graphs []repoGraph, paths Paths) (PassRes
 	res := PassResult{Pass: "payload_drift"}
 
 	// 1. Sniff every source file once.
-	buckets, scanned := sniffPayloadShapes(graphs)
+	buckets, scanned, unreadable := sniffPayloadShapes(graphs)
+	// #6839: report the skipped reads before the early return, so a pass that
+	// read nothing usable still says WHY it read nothing.
+	res.UnreadableSourceFiles = unreadable
 	if scanned == 0 {
 		// No T1 source on disk — pass is a no-op; clear any prior
 		// sidecar so stale findings don't linger.
@@ -321,9 +324,13 @@ func runPayloadDriftPass(group string, graphs []repoGraph, paths Paths) (PassRes
 // returns the shape buckets keyed by (repo, file, function-name)
 // plus the count of files actually scanned (used to decide whether
 // the pass should emit anything at all).
-func sniffPayloadShapes(graphs []repoGraph) (map[shapeKey]*shapeBucket, int) {
+// The third return is the number of scanned-source reads it skipped because
+// they FAILED (#6839) — distinct from the second, which counts the reads that
+// succeeded. The caller mirrors it into PassResult.UnreadableSourceFiles.
+func sniffPayloadShapes(graphs []repoGraph) (map[shapeKey]*shapeBucket, int, int) {
 	buckets := map[shapeKey]*shapeBucket{}
 	scanned := 0
+	unreadable := 0
 	for _, g := range graphs {
 		fileSet := map[string]bool{}
 		for _, e := range g.Entities {
@@ -347,6 +354,11 @@ func sniffPayloadShapes(graphs []repoGraph) (map[shapeKey]*shapeBucket, int) {
 			abs := filepath.Join(srcRoot, file)
 			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
+				// #6839 group C: skipping is the deliberate choice for a
+				// supplementary pass — this file's output is now MISSING
+				// rather than wrong. Record the skip so it is bounded and
+				// reported instead of silent; see noteUnreadableSource.
+				unreadable += noteUnreadableSource("payload_drift", g.Repo, file, err)
 				continue
 			}
 			scanned++
@@ -374,7 +386,7 @@ func sniffPayloadShapes(graphs []repoGraph) (map[shapeKey]*shapeBucket, int) {
 			}
 		}
 	}
-	return buckets, scanned
+	return buckets, scanned, unreadable
 }
 
 // mergeShape combines two shapes attributed to the same function,

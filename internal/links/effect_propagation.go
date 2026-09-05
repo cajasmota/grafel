@@ -91,6 +91,8 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 	type fnKey struct{ repo, file, fn string }
 	direct := map[fnKey]*substrate.EffectSet{}
 	scannedFiles := 0
+	// #6839: scanned-source reads this pass skipped because they failed.
+	unreadable := 0
 	for _, g := range graphs {
 		fileSet := map[string]bool{}
 		for _, e := range g.Entities {
@@ -114,6 +116,11 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 			abs := filepath.Join(srcRoot, file)
 			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
+				// #6839 group C: skipping is the deliberate choice for a
+				// supplementary pass — this file's output is now MISSING
+				// rather than wrong. Record the skip so it is bounded and
+				// reported instead of silent; see noteUnreadableSource.
+				unreadable += noteUnreadableSource(res.Pass, g.Repo, file, err)
 				continue
 			}
 			scannedFiles++
@@ -131,6 +138,9 @@ func runEffectPropagationPass(graphs []repoGraph, paths Paths, _ map[string]bool
 			}
 		}
 	}
+	// #6839: report the skipped reads before any early return, so a pass
+	// that read nothing usable still says WHY it read nothing.
+	res.UnreadableSourceFiles = unreadable
 	if scannedFiles == 0 {
 		// No T1 source on disk — pass is a no-op; emit a result so the
 		// caller's telemetry pipeline still sees the row.
