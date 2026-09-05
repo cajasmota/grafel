@@ -53,6 +53,8 @@ func runTemplatePatternPass(graphs []repoGraph, paths Paths) (PassResult, error)
 	var entries []templatePatternEntry
 	byKind := map[string]int{}
 	scanned := 0
+	// #6839: scanned-source reads this pass skipped because they failed.
+	unreadable := 0
 
 	for _, g := range graphs {
 		fileSet := map[string]bool{}
@@ -77,6 +79,11 @@ func runTemplatePatternPass(graphs []repoGraph, paths Paths) (PassResult, error)
 			abs := filepath.Join(srcRoot, file)
 			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
+				// #6839 group C: skipping is the deliberate choice for a
+				// supplementary pass — this file's output is now MISSING
+				// rather than wrong. Record the skip so it is bounded and
+				// reported instead of silent; see noteUnreadableSource.
+				unreadable += noteUnreadableSource(res.Pass, g.Repo, file, err)
 				continue
 			}
 			scanned++
@@ -97,6 +104,9 @@ func runTemplatePatternPass(graphs []repoGraph, paths Paths) (PassResult, error)
 
 	res.LinksAdded = len(entries)
 	res.Candidates = scanned
+	// #6839: report the skipped reads before any early return, so a pass
+	// that read nothing usable still says WHY it read nothing.
+	res.UnreadableSourceFiles = unreadable
 
 	if paths.Links == "" {
 		return res, nil

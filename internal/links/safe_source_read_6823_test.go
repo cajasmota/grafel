@@ -176,7 +176,7 @@ func TestBuildResolver_FIFOInSourceTreeDoesNotBlock(t *testing.T) {
 
 	var r *Resolver
 	runWithin(t, fifoDeadline, "buildResolver over a tree containing a FIFO", func() {
-		r = buildResolver(graphs)
+		r, _ = buildResolver(graphs)
 	})
 	if r == nil {
 		t.Fatal("buildResolver returned nil; want a resolver built from the sibling regular file")
@@ -242,7 +242,7 @@ func TestBuildResolver_OneMiBBoundIsObservable(t *testing.T) {
 	}
 	resolve := func(t *testing.T, dir string) bool {
 		t.Helper()
-		r := buildResolver([]repoGraph{{
+		r, _ := buildResolver([]repoGraph{{
 			Repo:     "frontend",
 			FileRoot: dir,
 			Entities: []entityNode{{ID: "e1", Name: "BASE", Kind: "Variable", SourceFile: "config.js"}},

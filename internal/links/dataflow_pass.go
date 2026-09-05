@@ -76,6 +76,8 @@ func runDataFlowPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (
 
 	var links []Link
 	scanned := 0
+	// #6839: scanned-source reads this pass skipped because they failed.
+	unreadable := 0
 
 	for ri := range graphs {
 		g := &graphs[ri]
@@ -116,6 +118,11 @@ func runDataFlowPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (
 			abs := filepath.Join(srcRoot, file)
 			content, err := readSourceFile(abs, maxSourceFileBytes)
 			if err != nil {
+				// #6839 group C: skipping is the deliberate choice for a
+				// supplementary pass — this file's output is now MISSING
+				// rather than wrong. Record the skip so it is bounded and
+				// reported instead of silent; see noteUnreadableSource.
+				unreadable += noteUnreadableSource(res.Pass, g.Repo, file, err)
 				continue
 			}
 			scanned++
@@ -128,7 +135,9 @@ func runDataFlowPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (
 			// Resolve cross-file boundaries into concrete flows (multi-hop,
 			// bounded). Each resolved flow's HopPath includes the cross-file
 			// callee chain and its sink lives in the resolved file.
-			rflows = append(rflows, resolveCrossFileFlows(g, file, srcRoot, lang, xfile, sniffed.Boundaries)...)
+			xflows, xunreadable := resolveCrossFileFlows(g, file, srcRoot, lang, xfile, sniffed.Boundaries)
+			unreadable += xunreadable
+			rflows = append(rflows, xflows...)
 			if len(rflows) == 0 {
 				continue
 			}
@@ -169,6 +178,9 @@ func runDataFlowPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (
 	}
 
 	res.Candidates = scanned
+	// #6839: report the skipped reads before any early return, so a pass
+	// that read nothing usable still says WHY it read nothing.
+	res.UnreadableSourceFiles = unreadable
 
 	if paths.Links == "" {
 		// No on-disk links document configured (in-memory test harness path):
@@ -313,12 +325,15 @@ func (r *crossFileResolver) resolve(callerID, name string) *entityNode {
 // reached (sink in the resolved file). Honest-partial throughout: a boundary
 // that cannot be uniquely resolved to a same-repo function entity is dropped,
 // the hop bound (DataFlowMaxHops) is enforced, and entity cycles are stopped.
-func resolveCrossFileFlows(g *repoGraph, handlerFile, srcRoot, lang string, xfile *crossFileResolver, boundaries []substrate.DataFlowBoundary) []resolvedFlow {
+// The second return is the number of callee-file reads it skipped because
+// they FAILED (#6839); the caller adds it to PassResult.UnreadableSourceFiles.
+func resolveCrossFileFlows(g *repoGraph, handlerFile, srcRoot, lang string, xfile *crossFileResolver, boundaries []substrate.DataFlowBoundary) ([]resolvedFlow, int) {
 	cont := substrate.DataFlowContinueFor(lang)
 	if cont == nil || len(boundaries) == 0 {
-		return nil
+		return nil, 0
 	}
 	binder := newDataFlowHandlerBinder(g)
+	unreadable := 0
 	// File-content cache (avoid re-reading the same callee file).
 	cache := map[string]string{}
 	readFile := func(rel string) (string, bool) {
@@ -327,6 +342,11 @@ func resolveCrossFileFlows(g *repoGraph, handlerFile, srcRoot, lang string, xfil
 		}
 		buf, err := readSourceFile(filepath.Join(srcRoot, rel), maxSourceFileBytes)
 		if err != nil {
+			// #6839 group C: skipping is the deliberate choice for a
+			// supplementary pass — the cross-file hop is dropped, which
+			// truncates a flow rather than inventing one. Record the skip
+			// so it is bounded and reported; see noteUnreadableSource.
+			unreadable += noteUnreadableSource("data_flow", g.Repo, rel, err)
 			cache[rel] = ""
 			return "", false
 		}
@@ -412,7 +432,7 @@ func resolveCrossFileFlows(g *repoGraph, handlerFile, srcRoot, lang string, xfil
 			}
 		}
 	}
-	return out
+	return out, unreadable
 }
 
 // dataFlowHandlerBinder resolves (file, function name) → entity ID, scoped to
