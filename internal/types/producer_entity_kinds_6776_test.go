@@ -157,61 +157,79 @@ var goUnprefixedKindsDeferred = map[string]bool{
 // goUnprefixedKindsDeferredMax pins the ledger's exact size.
 const goUnprefixedKindsDeferredMax = 5
 
-// goScanAnchors are production sites the scan MUST reach, named as
-// (file, kind) pairs. They are the must-scan half of the walk-integrity check
-// and exist because a COUNT is only a witness of "read the right files", not
-// the property.
+// walkAnchor is one production site the scan MUST reach, named as a
+// (file, kind) pair.
+type walkAnchor struct{ file, kind string }
+
+// goScanAnchors is the must-scan anchor set: a COUNT is only a witness of
+// "read the right files", it is not the property.
 //
 // Concretely: internal/ holds 2663 _test.go files against 2101 non-test ones,
 // so inverting parseGoTree's `.go` / `_test.go` filter parses MORE files than
-// the correct walk and clears any sane floor while opening not one production
-// source. Measured, not assumed — that mutant leaves both floors below intact
-// (#6834 arm 1).
+// the correct walk — 2662 files and 2888 sites, clearing BOTH floors below —
+// while opening not one production source. Measured, not assumed (#6834 arm 1).
 //
 // Each pair is a kind the ledgers below already name with its file, so a
-// producer that genuinely moves updates both in one change. They sit deep in
-// long files on purpose: a walk that reads a PREFIX of the tree's content
-// tends to keep the first declarations and lose the last.
-var goScanAnchors = []struct{ file, kind string }{
+// producer that genuinely moves updates both in one change.
+//
+// WHAT THE ANCHORS DO NOT COVER: content, and this is MEASURED rather than
+// conceded. Truncating every file at the last top-level "\n}\n" inside 85% of
+// its length leaves every file parsing (so the parse error that catches
+// arbitrary truncation never fires), FilesParsed at 2015, and all three
+// anchors hit — while the scan drops from 566 sites to 453. A fifth of the
+// producers this file exists to grade become invisible and the package is
+// green. That mutant is ALIVE, here and on main. An earlier
+// version of this comment claimed the anchors caught it because they "sit deep
+// in long files"; that claim was refuted by measurement and is retracted.
+// Closing it needs the #6823 form — collected length compared to
+// DirEntry.Info().Size() — which parseGoTree does not expose. Layer 3 is
+// therefore OPEN, and open by measurement rather than by omission.
+var goScanAnchors = []walkAnchor{
 	{"engine/workflow_edges.go", "SCOPE.StateMachine"},
 	{"engine/commit_coupling_edges.go", "File"},
 	{"engine/sse_edges.go", "Stream"},
 }
 
-// scanGoEntityKinds runs the shared resolver over internal/ — the same subtree
-// the literal guard walked — and fails loudly if the walk did not do this
-// work, since a walk that reaches no files reports no offenders and looks like
-// a clean tree.
+const (
+	// minFilesParsed and minSites are floors, not counts: 2015 files and 566
+	// sites today. Each is used in its own failure message, so re-pinning one
+	// cannot leave the message contradicting the comparison.
+	minFilesParsed = 500
+	minSites       = 200
+)
+
+// checkWalk is the walk-integrity guard's ENTIRE decision, split out from the
+// scan for the same reason assertLedgerExact was: so something can observe it.
+// Inlined in scanGoEntityKinds, both of its own halves were ungraded — an
+// EMPTY goScanAnchors left the package green, and so did wrapping the reaction
+// in `if false && broken != ""`. That is this issue's own defect class
+// reappearing one function above the place it was just closed, which is what
+// #6823 predicted: every fix in this class opens the next layer.
+//
+// The anchor set is a PARAMETER so TestCheckWalk_ActsOnWhatTheScanReturns can
+// drive this exact function — not a copy of it — over a synthetic Result.
 //
 // Three questions, one failure site, because they are one question — "is the
 // input the ledgers are about to be compared against real?":
 //
-//  1. did it read ANYTHING? The FilesParsed floor. 2015 files parse today, so
-//     500 is a floor and not a count.
-//  2. did it read the RIGHT files? goScanAnchors. The floor alone cannot say
-//     so; see that variable's doc for the measurement.
-//  3. did it get anything OUT of them? The site floor. 566 sites today.
+//  1. did it read ANYTHING?          the FilesParsed floor
+//  2. did it read the RIGHT files?   the anchors (and that there ARE anchors)
+//  3. did it get anything OUT?       the site floor
 //
-// The message must diagnose the WALK, not the tree. Without these checks the
-// mutants above still fail the package — but through the ledger tests, saying
-// `ledgered kind "Stream" is no longer declared by any Go producer. Delete its
-// row and lower the pin by one.` That is the opposite diagnosis, and following
-// it deletes the ledger rows and leaves the broken walk permanently green.
-func scanGoEntityKinds(t *testing.T) entkinds.Result {
-	t.Helper()
-	root := filepath.Join(repoRoot(t), "internal")
-	res, err := entkinds.ScanGo(root)
-	if err != nil {
-		t.Fatalf("ScanGo(%s): %v", root, err)
-	}
+// It takes testing.TB, and nothing follows the Fatalf, so it behaves the same
+// whether or not Fatalf is terminal for the TB it was handed.
+func checkWalk(tb testing.TB, root string, res entkinds.Result, anchors []walkAnchor) {
+	tb.Helper()
 	broken := ""
 	switch {
-	case res.FilesParsed < 500:
-		broken = fmt.Sprintf("it parsed only %d files, want at least 500", res.FilesParsed)
-	case len(res.Sites) < 200:
-		broken = fmt.Sprintf("it resolved only %d entity-kind sites, expected hundreds", len(res.Sites))
+	case len(anchors) == 0:
+		broken = "it has no must-scan anchors at all, so nothing here can tell a walk that read the production sources from one that read something else"
+	case res.FilesParsed < minFilesParsed:
+		broken = fmt.Sprintf("it parsed only %d files, want at least %d", res.FilesParsed, minFilesParsed)
+	case len(res.Sites) < minSites:
+		broken = fmt.Sprintf("it resolved only %d entity-kind sites, want at least %d", len(res.Sites), minSites)
 	default:
-		for _, a := range goScanAnchors {
+		for _, a := range anchors {
 			seen := false
 			for _, s := range res.Sites {
 				if s.File == a.file && s.Kind == a.kind {
@@ -226,10 +244,119 @@ func scanGoEntityKinds(t *testing.T) entkinds.Result {
 		}
 	}
 	if broken != "" {
-		t.Fatalf("THE SCAN'S WALK IS BROKEN, not the tree: %s (walked %s, %d files, %d sites). "+
+		tb.Fatalf("THE SCAN'S WALK IS BROKEN, not the tree: %s (walked %s, %d files, %d sites). "+
 			"An empty or shrunken result from a walk that did not read internal/'s production sources "+
 			"is not evidence about the ledgers (#6834; cf. 52aaa84f1).", broken, root, res.FilesParsed, len(res.Sites))
+		return
 	}
+}
+
+// TestCheckWalk_ActsOnWhatTheScanReturns is the positive control for the
+// walk-integrity guard — the layer-5 grade on the layer-1/2 machinery.
+//
+// Two mutants were ALIVE without it, both measured: goScanAnchors emptied to
+// []walkAnchor{} (the anchor check becomes a no-op over an empty list) and
+// `if broken != ""` weakened to `if false && broken != ""` (the reaction is
+// discarded). Neither is visible to any live-tree test, because on a healthy
+// tree checkWalk is silent either way.
+//
+// Every direction is asserted against an otherwise HEALTHY synthetic Result,
+// so no direction can pass because some other thing was also wrong — the
+// masking that made one of assertLedgerExact's directions ungraded.
+func TestCheckWalk_ActsOnWhatTheScanReturns(t *testing.T) {
+	healthy := func() entkinds.Result {
+		res := entkinds.Result{FilesParsed: 2015}
+		for _, a := range goScanAnchors {
+			res.Sites = append(res.Sites, entkinds.Site{File: a.file, Line: 1, Kind: a.kind})
+		}
+		for len(res.Sites) < minSites+10 {
+			res.Sites = append(res.Sites, entkinds.Site{File: "engine/pad.go", Line: 1, Kind: "SCOPE.Pad"})
+		}
+		return res
+	}
+
+	// 0. the control's own premise: a healthy result must NOT fail, or every
+	//    direction below passes for the wrong reason.
+	var onHealthy recordingTB
+	checkWalk(&onHealthy, "/root", healthy(), goScanAnchors)
+	if onHealthy.failed {
+		t.Fatalf("a healthy scan result was reported as a broken walk: %q", onHealthy.msgs)
+	}
+
+	// 1. an anchor missing from an otherwise healthy result. This is the
+	//    inverted-filter mutant's signature, and the direction that grades the
+	//    REACTION: `if false && broken != ""` dies here.
+	missing := healthy()
+	kept := missing.Sites[:0]
+	for _, s := range missing.Sites {
+		if s.File == goScanAnchors[0].file && s.Kind == goScanAnchors[0].kind {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	missing.Sites = kept
+	var onMissing recordingTB
+	checkWalk(&onMissing, "/root", missing, goScanAnchors)
+	if !onMissing.failed {
+		t.Fatal("no failure when a must-scan anchor is absent from an otherwise healthy result: the anchor check or the reaction to it is inert, so a walk that read the wrong files reports success")
+	}
+	if !strings.Contains(strings.Join(onMissing.msgs, "\n"), goScanAnchors[0].file) {
+		t.Fatalf("the failure does not name the anchor that was missed; got %q", onMissing.msgs)
+	}
+
+	// 2. an EMPTY anchor set. Without this, deleting every row of
+	//    goScanAnchors leaves the loop iterating over nothing and the whole
+	//    package green — the anchor check's own vacuous-walk hole.
+	var onNoAnchors recordingTB
+	checkWalk(&onNoAnchors, "/root", healthy(), nil)
+	if !onNoAnchors.failed {
+		t.Fatal("no failure when the anchor set is EMPTY: an emptied goScanAnchors would silently reduce this guard to its two count floors, which the inverted-filter mutant clears")
+	}
+
+	// 3. the file floor, on a result that is otherwise healthy.
+	fewFiles := healthy()
+	fewFiles.FilesParsed = minFilesParsed - 1
+	var onFewFiles recordingTB
+	checkWalk(&onFewFiles, "/root", fewFiles, goScanAnchors)
+	if !onFewFiles.failed {
+		t.Fatal("no failure when FilesParsed is below the floor: the walk could reach almost no files and still be believed")
+	}
+
+	// 4. the site floor, on a result that is otherwise healthy.
+	fewSites := healthy()
+	fewSites.Sites = fewSites.Sites[:minSites-1]
+	var onFewSites recordingTB
+	checkWalk(&onFewSites, "/root", fewSites, goScanAnchors)
+	if !onFewSites.failed {
+		t.Fatal("no failure when the site count is below the floor: a scan that resolved almost nothing would be compared against the ledgers as if it had")
+	}
+}
+
+// scanGoEntityKinds runs the shared resolver over internal/ — the same subtree
+// the literal guard walked — and hands the result to checkWalk before any
+// ledger sees it, since a walk that reaches no files reports no offenders and
+// looks like a clean tree.
+//
+// WHY THE WALK CHECK IS WORTH ITS LINES. Not because the mutants it catches
+// would otherwise pass — they do fail the package, through the ledger tests —
+// but because:
+//
+//   - the two COUNT floors provably cannot see the inverted-filter mutant: it
+//     parses 2662 files and resolves 2888 sites, clearing both. Only the
+//     anchors distinguish "did work" from "did THIS work".
+//   - the diagnosis consolidates. That mutant otherwise fails six tests with
+//     ~1085 lines of output, led by 57 "NEW Go-declared entity kind" reports
+//     and 3 "delete its row and lower the pin" reports, and names the walk
+//     nowhere. One line saying the walk is broken is worth more than 1085
+//     describing the tree it never read.
+func scanGoEntityKinds(t *testing.T) entkinds.Result {
+	t.Helper()
+	root := filepath.Join(repoRoot(t), "internal")
+	res, err := entkinds.ScanGo(root)
+	if err != nil {
+		t.Fatalf("ScanGo(%s): %v", root, err)
+	}
+	checkWalk(t, root, res, goScanAnchors)
 	return res
 }
 
@@ -328,9 +455,14 @@ func (r *recordingTB) Fatalf(format string, args ...any) {
 // ledgers today, so the reaction is never exercised by the tree itself and
 // nothing but this test can see it.
 //
-// It grades all three directions AND the clean one, because a reaction that
-// fails unconditionally satisfies "a dirty set fails" just as well as a
-// correct one does.
+// It grades each of the three failing directions on a fixture where nothing
+// ELSE is wrong — a direction whose fixture also violates a neighbouring
+// check is graded by the neighbour, not by itself — and the clean direction
+// too, because a reaction that fails unconditionally satisfies "a dirty set
+// fails" just as well as a correct one does. The clean direction is not
+// unique coverage: the live-tree ledger tests would also fail on an
+// always-failing reaction. It is kept because it is the cheap half of the
+// pair and it fails HERE, next to the reason.
 func TestAssertLedgerExact_ActsOnWhatTheScanReturns(t *testing.T) {
 	site := []entkinds.Site{{File: "engine/x.go", Line: 7, Kind: "SCOPE.Unledgered"}}
 
@@ -354,9 +486,15 @@ func TestAssertLedgerExact_ActsOnWhatTheScanReturns(t *testing.T) {
 		t.Fatalf("the failure does not name the stale kind; got %q", onStale.msgs)
 	}
 
-	// 3. ledger size disagreeing with its pin.
+	// 3. ledger size disagreeing with its pin — and NOTHING else wrong.
+	//    The first cut of this direction used found={} against a one-row
+	//    ledger, which also violates direction 2: with the pin check deleted,
+	//    execution fell through to the stale-row check, that fired on the same
+	//    fixture, and the mutant read as DEAD on a failure it did not cause.
+	//    Two guards that only fire together grade neither, so the sets agree
+	//    here and only the pin is wrong.
 	var onPin recordingTB
-	assertLedgerExact(&onPin, "ctl", map[string][]entkinds.Site{}, map[string]bool{"SCOPE.Gone": true}, 0)
+	assertLedgerExact(&onPin, "ctl", map[string][]entkinds.Site{"SCOPE.Ledgered": site}, map[string]bool{"SCOPE.Ledgered": true}, 0)
 	if !onPin.failed {
 		t.Fatal("no failure when the ledger's size disagrees with its pin: a row could be appended without moving the pin")
 	}
