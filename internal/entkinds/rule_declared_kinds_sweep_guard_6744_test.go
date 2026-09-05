@@ -113,18 +113,14 @@ import (
 // the issue named three sites and the scan found 532, of which 25 distinct
 // values are invalid. This list must only ever SHRINK, and that is ENFORCED.
 var ruleDeclaredKindsDeferred = map[string]string{
-	"Component":  "rule_namespace", // 25 sites in 14 files; e.g. ansible/frameworks/ansible_core.yaml:63
 	"Config":     "rule_namespace", // 91 sites in 31 files; e.g. ansible/frameworks/ansible_core.yaml:31
 	"Constraint": "rule_namespace", // python/frameworks/sqlalchemy.yaml:79
 	"Endpoint":   "rule_namespace", // 3 sites; javascript_typescript/frameworks/electron.yaml:41
-	"Model":      "rule_namespace", // 42 sites in 17 files; e.g. csharp/frameworks/asp_net_core.yaml:59
 	"Operation":  "rule_namespace", // 68 sites in 28 files; e.g. ansible/frameworks/ansible_core.yaml:28
 	"Plugin":     "rule_namespace", // 5 sites in 2 files; e.g. javascript_typescript/frameworks/fastify.yaml:35
 	"Route":      "rule_namespace", // 73 sites in 31 files; e.g. csharp/frameworks/asp_net_core.yaml:78
-	"Schema":     "rule_namespace", // 27 sites in 5 files; e.g. database_index/language.yaml:12
 	"Service":    "rule_namespace", // 52 sites in 28 files; e.g. ansible/frameworks/ansible_core.yaml:103
 	"Template":   "rule_namespace", // 2 sites in 2 files; e.g. ansible/frameworks/ansible_core.yaml:37
-	"View":       "rule_namespace", // 9 sites in 5 files; e.g. csharp/frameworks/net_maui.yaml:62
 }
 
 // ruleDeclaredKindsDeferredMax is the RATCHET on ruleDeclaredKindsDeferred: the
@@ -141,7 +137,7 @@ var ruleDeclaredKindsDeferred = map[string]string{
 //   - SHRINKS (a kind was declared or removed, which is the point) → this fires
 //     and requires the constant to come down with it, so the bar is never left
 //     slack for a later append to slip under.
-const ruleDeclaredKindsDeferredMax = 12
+const ruleDeclaredKindsDeferredMax = 8
 
 // ruleDeclaredFamily explains each family tag. A ledger entry without a stated
 // reason is not a decision, it is a silence.

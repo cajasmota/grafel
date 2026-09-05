@@ -307,9 +307,13 @@ func TestWriteGraphGenReportWiresTheSegmentedEntityProducerPath(t *testing.T) {
 // TestEntityKindsAreCountedNotDropped
 //
 // Varies: nothing.
-// Holds constant: the document. This pins the "counts, never drops" contract —
-// dropping would be the very "looked at nothing, reported clean" failure the
-// arm exists to avoid.
+// Holds constant: the document — one enum kind plus two kinds the enum does
+// NOT hold (both live #6744 ledger entries). This pins the "counts, never
+// drops" contract — dropping would be the very "looked at nothing, reported
+// clean" failure the arm exists to avoid. "Schema" stood where "Operation"
+// now does until #6776 arm B6 migrated it into the enum; it was swapped so the
+// document keeps covering the non-enum side, which is the side that can be
+// dropped.
 func TestEntityKindsAreCountedNotDropped(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAFEL_STREAM_SEGMENTS", "0")
@@ -317,7 +321,7 @@ func TestEntityKindsAreCountedNotDropped(t *testing.T) {
 		Entities: []graph.Entity{
 			entFixture("a", string(types.EntityKindFunction)),
 			entFixture("b", "Route"),
-			entFixture("c", "Schema"),
+			entFixture("c", "Operation"),
 		},
 	}
 	if _, _, err := WriteGraphGenReport(dir, doc); err != nil {
@@ -331,7 +335,7 @@ func TestEntityKindsAreCountedNotDropped(t *testing.T) {
 	for _, e := range loaded.Entities {
 		kinds[e.Kind] = true
 	}
-	for _, want := range []string{string(types.EntityKindFunction), "Route", "Schema"} {
+	for _, want := range []string{string(types.EntityKindFunction), "Route", "Operation"} {
 		if !kinds[want] {
 			t.Errorf("entity kind %q was DROPPED from the written graph — arm A counts, it never drops", want)
 		}
@@ -429,14 +433,13 @@ func TestEntitySummaryIsSeparableFromTheRelationshipSummary(t *testing.T) {
 // every one of these must be COUNTABLE at the write path before anyone ranks
 // the migration by declaration-site count.
 var ruleDeclaredKinds6776 = []string{
-	"Component", "Config", "Constraint", "Endpoint", "Model",
-	"Operation", "Plugin", "Route", "Schema", "Service",
-	"Template", "View",
+	"Config", "Constraint", "Endpoint", "Operation",
+	"Plugin", "Route", "Service", "Template",
 }
 
 // TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath
 //
-// Varies: the entity kind, across ALL 12 ledger entries — the name of this
+// Varies: the entity kind, across ALL 8 ledger entries — the name of this
 // test says "every", so the body drives every one of them, individually, and
 // asserts a per-kind count rather than a total that one lucky kind could
 // satisfy.
@@ -448,8 +451,8 @@ var ruleDeclaredKinds6776 = []string{
 // zero for it that means "not measurable" rather than "not produced", and
 // those are the two answers a migration ranking must never confuse.
 func TestEveryRuleDeclaredKindOnTheLedgerIsCountedByTheWritePath(t *testing.T) {
-	if len(ruleDeclaredKinds6776) != 12 {
-		t.Fatalf("ledger transcription has %d entries, want 12 (see internal/entkinds)", len(ruleDeclaredKinds6776))
+	if len(ruleDeclaredKinds6776) != 8 {
+		t.Fatalf("ledger transcription has %d entries, want 8 (see internal/entkinds)", len(ruleDeclaredKinds6776))
 	}
 	for _, kind := range ruleDeclaredKinds6776 {
 		t.Run(kind, func(t *testing.T) {
