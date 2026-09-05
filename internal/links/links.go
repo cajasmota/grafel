@@ -190,6 +190,20 @@ type PassResult struct {
 	// the per-repo dynamic_baseurl_endpoint enrichment candidate; this counter
 	// reports how much candidate signal the suffix matcher found for them. (#2813)
 	ResidualCandidates int
+
+	// UnreadableSourceFiles is the number of scanned-source-tree reads this
+	// pass attempted and could not complete (#6839) — a non-regular file, a
+	// permission failure, a would-block open, an unresolvable symlink, or a
+	// missing source root. Not counted: a file that is simply absent under a
+	// root that exists, which is an answer rather than a failure.
+	//
+	// Counting it is what keeps the skip "bounded and REPORTED" rather than
+	// silent — see internal/safeio's package doc. It is written to
+	// <group>-link-pass-stats.json as unreadable_source_files; no MCP tool
+	// projects that field today, so it is an operator-facing record, not a
+	// wired-up signal. The wired-up signal is the reachability sidecar's
+	// degraded_repos, which grafel_dead_code returns.
+	UnreadableSourceFiles int
 }
 
 // RunResult is the aggregate of all three passes from RunAllPasses.
@@ -577,6 +591,11 @@ type LinkPassStatsEntry struct {
 	Skipped           int    `json:"skipped"`
 	OrphanCalls       int    `json:"orphan_calls,omitempty"`
 	CrossRepoResolved int    `json:"cross_repo_resolved,omitempty"`
+
+	// UnreadableSourceFiles mirrors PassResult.UnreadableSourceFiles: source
+	// files this pass could not read, so a caller can see that the pass ran
+	// on partial input instead of inferring completeness from silence (#6839).
+	UnreadableSourceFiles int `json:"unreadable_source_files,omitempty"`
 }
 
 // HTTPResolveStats is the structured resolve-strategy telemetry surfaced
@@ -612,6 +631,8 @@ func writeLinkPassStats(path string, res *RunResult) error {
 			Skipped:           r.Skipped,
 			OrphanCalls:       r.OrphanCalls,
 			CrossRepoResolved: r.CrossRepoResolved,
+
+			UnreadableSourceFiles: r.UnreadableSourceFiles,
 		})
 		if r.Pass == "http" {
 			doc.HTTPSummary = &HTTPResolveStats{

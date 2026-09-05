@@ -10,6 +10,17 @@
 // up; everything left over is marked `reachable: false` and is a
 // dead-code candidate.
 //
+// #6839 — the one exception to "everything left over": if an
+// entry-point-bearing source file in a repo could not be READ (a
+// non-regular file, a would-block open, an I/O error — anything but
+// fs.ErrNotExist, which is an absent file rather than a failed read),
+// the seed set for that repo is incomplete, so nothing left over can be
+// called dead. That repo's unreached entities are left UNSTAMPED and
+// emit no sidecar row; the skipped files are counted in
+// PassResult.UnreadableSourceFiles and named in the sidecar's
+// degraded_repos. reachable="true" is still stamped, since a lost seed
+// can only add reachability.
+//
 // Entry-point classes (per #2766):
 //
 //  1. Graph-encoded entry-points — http_endpoint_definition entities,
@@ -33,7 +44,9 @@ package links
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -114,15 +127,44 @@ type reachabilityEntry struct {
 // reachabilityDocument is the on-disk shape of
 // <group>-reachability.json.
 type reachabilityDocument struct {
-	Version       int                 `json:"version"`
-	Group         string              `json:"group"`
-	WrittenAt     string              `json:"written_at"`
-	TotalEntities int                 `json:"total_entities"`
-	Reachable     int                 `json:"reachable"`
-	Unreachable   int                 `json:"unreachable"`
-	EntryPoints   int                 `json:"entry_points"`
-	Entries       []reachabilityEntry `json:"entries"`
+	Version       int    `json:"version"`
+	Group         string `json:"group"`
+	WrittenAt     string `json:"written_at"`
+	TotalEntities int    `json:"total_entities"`
+	Reachable     int    `json:"reachable"`
+	Unreachable   int    `json:"unreachable"`
+	EntryPoints   int    `json:"entry_points"`
+
+	// Unknown counts entities whose reachability the pass could NOT compute
+	// because an entry-point-bearing source file in their repo was
+	// unreadable (#6839). They are neither reachable nor unreachable: they
+	// carry no `reachable` stamp and appear in no entry below.
+	Unknown int `json:"unknown,omitempty"`
+
+	// DegradedRepos names the repos that produced an Unknown set, and
+	// UnreadableEntryPointFiles counts the files that could not be read.
+	// grafel_dead_code decodes both and returns them alongside its list, so a
+	// caller sees that a degraded repo's answer is partial rather than
+	// complete (#6839). No other consumer reads this document.
+	DegradedRepos             []string `json:"degraded_repos,omitempty"`
+	UnreadableEntryPointFiles int      `json:"unreadable_entry_point_files,omitempty"`
+
+	Entries []reachabilityEntry `json:"entries"`
 }
+
+// readSourceFileForReachability is this pass's source read, indirected
+// through a package-level var for one reason: #6839's predicate turns on
+// the ERROR CLASS a read fails with, and two of the classes it must treat
+// as failures cannot be produced on a real filesystem without planting a
+// FIFO or a socket. safeio.ErrWouldBlock in particular is reachable only
+// from safeio's process-global slot saturation (64 abandoned opens), and
+// fs.ErrPermission is not reachable at all when the tests run as root.
+// Without a seam those branches would be asserted only by prose.
+//
+// Production never reassigns it. The tests that do restore it via
+// t.Cleanup, and they still drive the whole pass and assert the stamped
+// property — the seam replaces the filesystem, not the code under test.
+var readSourceFileForReachability = readSourceFile
 
 // runReachabilityPass computes reachability + dead-code marking across
 // all repos in the group. Returns a PassResult so RunAllPasses can fold
@@ -132,11 +174,21 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 
 	totalEntities := 0
 	totalReachable := 0
+	totalUnknown := 0
 	totalEntries := 0
+	unreadableFiles := 0
+	degradedRepos := []string{}
 	allEntries := []reachabilityEntry{}
 
 	for ri := range graphs {
 		g := &graphs[ri]
+
+		// #6839: source files whose entry-points this repo never got to see.
+		// A read failure here is not "that file declares no entry-point" —
+		// it is "we do not know what that file declares", and the seeds it
+		// would have contributed can light up ANY entity in this repo
+		// transitively. See the degraded-stamp block below.
+		repoUnreadable := []string{}
 
 		// Build outbound adjacency on reachability-bearing edges.
 		adj := map[string][]string{}
@@ -216,6 +268,22 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 				fileSet[f] = true
 			}
 		}
+		// #6839: resolve the source root ONCE and check it is a directory we
+		// can see. Per-file fs.ErrNotExist below is read as "that file
+		// genuinely is not there"; at the ROOT level the same inference is
+		// wrong — a root that moved makes every file ErrNotExist while the
+		// code all still exists, which is exactly #6839's harm. So a missing
+		// root degrades the repo instead of being exempted file by file.
+		srcRoot := repoSourcePathFor(g.Repo)
+		if srcRoot == "" {
+			srcRoot = g.FileRoot
+		}
+		srcRootOK := false
+		if srcRoot != "" {
+			if fi, err := os.Stat(srcRoot); err == nil && fi.IsDir() {
+				srcRootOK = true
+			}
+		}
 		for file := range fileSet {
 			lang := substrate.LanguageForPath(file)
 			if lang == "" {
@@ -225,13 +293,39 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 			if sniff == nil {
 				continue
 			}
-			srcRoot := repoSourcePathFor(g.Repo)
-			if srcRoot == "" {
-				srcRoot = g.FileRoot
+			if !srcRootOK {
+				// The whole sniffed entry-point class is unavailable for this
+				// repo. Record it once and stop — reading further files can
+				// only produce the same answer.
+				repoUnreadable = append(repoUnreadable, "<source root: "+srcRoot+">")
+				fmt.Fprintf(os.Stderr,
+					"grafel: warning: reachability: %s: source root %q is missing or not a "+
+						"directory; entry-points cannot be sniffed and dead-code marking is "+
+						"suppressed for this repo\n", g.Repo, srcRoot)
+				break
 			}
 			abs := filepath.Join(srcRoot, file)
-			content, err := readSourceFile(abs, maxSourceFileBytes)
+			content, err := readSourceFileForReachability(abs, maxSourceFileBytes)
 			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					// The source root exists (checked above) but this file
+					// under it does not. That is a KNOWN fact rather than a
+					// failed read — nothing about the file was hidden from
+					// the pass — so the pre-#6839 skip is right and dead-code
+					// marking stays enabled. The dangerous shape of the same
+					// error, a root that moved so EVERY file reports
+					// ErrNotExist while the code exists, is caught by the
+					// srcRootOK guard above and degrades the repo.
+					continue
+				}
+				// #6839: skip the file (safeio's doc forbids the SILENCE, not
+				// the non-abort), but record it — the skip has to be bounded
+				// and REPORTED, and this repo's dead-code verdict is now
+				// unsubstantiated.
+				repoUnreadable = append(repoUnreadable, file)
+				fmt.Fprintf(os.Stderr,
+					"grafel: warning: reachability: %s: entry-point file %s unreadable (%v); "+
+						"dead-code marking suppressed for this repo\n", g.Repo, file, err)
 				continue
 			}
 			eps := sniff(string(content))
@@ -306,12 +400,36 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 		}
 
 		// Stamp + emit entries.
+		//
+		// #6839: when any entry-point file in this repo could not be read,
+		// the seed set is incomplete, so "not reached by the BFS" no longer
+		// means "not reachable". reachable="false" is the one stamp in this
+		// package whose silence becomes a POSITIVE FALSE CLAIM — the
+		// grafel_dead_code MCP tool reads it straight out of the sidecar and
+		// reports live code as dead. So for a degraded repo the pass declines
+		// to stamp and emits no unreachable row: an absent answer, not a
+		// wrong one. reachable="true" is still stamped, because a lost seed
+		// can only ADD reachability, never remove it.
+		//
+		// The scope is this repo and no wider: the BFS adjacency is built
+		// from g.Edges, so a lost seed cannot reach into a sibling repo, and
+		// suppressing group-wide would hide real dead code everywhere else.
+		degraded := len(repoUnreadable) > 0
 		repoReachable := 0
 		for ei := range g.Entities {
 			e := &g.Entities[ei]
 			isReach := reachable[e.ID] != nil
 			if e.Properties == nil {
 				e.Properties = types.Props{}
+			}
+			if !isReach && degraded {
+				// Undetermined: leave no stamp at all, and clear any stale
+				// one carried in from an earlier run so no consumer reads a
+				// claim this run cannot substantiate.
+				e.Properties.Delete("reachable")
+				e.Properties.Delete("reachable_via")
+				totalUnknown++
+				continue
 			}
 			if isReach {
 				e.Properties.Set("reachable", "true")
@@ -356,11 +474,16 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 		totalEntities += len(g.Entities)
 		totalReachable += repoReachable
 		totalEntries += len(seeds)
+		unreadableFiles += len(repoUnreadable)
+		if degraded {
+			degradedRepos = append(degradedRepos, g.Repo)
+		}
 	}
 
 	res.LinksAdded = totalReachable
-	res.Candidates = totalEntities - totalReachable
+	res.Candidates = totalEntities - totalReachable - totalUnknown
 	res.Skipped = totalEntries
+	res.UnreadableSourceFiles = unreadableFiles
 
 	if paths.Links != "" {
 		sidecar := strings.TrimSuffix(paths.Links, ".json") + "-reachability.json"
@@ -370,9 +493,14 @@ func runReachabilityPass(group string, graphs []repoGraph, paths Paths) (PassRes
 			WrittenAt:     discoveredAt(),
 			TotalEntities: totalEntities,
 			Reachable:     totalReachable,
-			Unreachable:   totalEntities - totalReachable,
+			Unreachable:   totalEntities - totalReachable - totalUnknown,
 			EntryPoints:   totalEntries,
-			Entries:       allEntries,
+
+			Unknown:                   totalUnknown,
+			DegradedRepos:             degradedRepos,
+			UnreadableEntryPointFiles: unreadableFiles,
+
+			Entries: allEntries,
 		}
 		sort.Slice(doc.Entries, func(i, j int) bool {
 			if doc.Entries[i].Repo != doc.Entries[j].Repo {

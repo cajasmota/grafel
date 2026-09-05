@@ -23,6 +23,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -48,14 +49,24 @@ type reachabilitySidecarEntry struct {
 }
 
 type reachabilitySidecarDoc struct {
-	Version       int                        `json:"version"`
-	Group         string                     `json:"group"`
-	WrittenAt     string                     `json:"written_at"`
-	TotalEntities int                        `json:"total_entities"`
-	Reachable     int                        `json:"reachable"`
-	Unreachable   int                        `json:"unreachable"`
-	EntryPoints   int                        `json:"entry_points"`
-	Entries       []reachabilitySidecarEntry `json:"entries"`
+	Version       int    `json:"version"`
+	Group         string `json:"group"`
+	WrittenAt     string `json:"written_at"`
+	TotalEntities int    `json:"total_entities"`
+	Reachable     int    `json:"reachable"`
+	Unreachable   int    `json:"unreachable"`
+	EntryPoints   int    `json:"entry_points"`
+
+	// #6839: the pass could not compute reachability for these repos — an
+	// entry-point source file (or the repo's source root) could not be READ,
+	// so its sniffed seeds never entered the BFS. Their unreached entities
+	// carry no verdict and appear in no entry below: they are Unknown, not
+	// dead. Surfaced on the response so a caller is told the answer for
+	// those repos is partial rather than complete.
+	Unknown       int      `json:"unknown"`
+	DegradedRepos []string `json:"degraded_repos"`
+
+	Entries []reachabilitySidecarEntry `json:"entries"`
 }
 
 // handleDeadCode is the MCP handler for grafel_dead_code.
@@ -74,6 +85,12 @@ func (s *Server) handleDeadCode(_ context.Context, req mcpapi.CallToolRequest) (
 
 	var dead []deadCodeItem
 	var totalEntities, reachable, entryPoints int
+	// #6839: repos whose reachability the link pass could not compute, and
+	// how many entities that leaves without a verdict. Empty on every path
+	// but the sidecar one — the two recompute paths below run the BFS here
+	// and against the in-memory graph, so they never read source at all.
+	var degradedRepos []string
+	unknown := 0
 	source := "sidecar"
 
 	if from != "" {
@@ -92,6 +109,13 @@ func (s *Server) handleDeadCode(_ context.Context, req mcpapi.CallToolRequest) (
 			totalEntities = doc.TotalEntities
 			reachable = doc.Reachable
 			entryPoints = doc.EntryPoints
+			unknown = doc.Unknown
+			for _, r := range doc.DegradedRepos {
+				if len(repoFilter) > 0 && !repoFilter[r] {
+					continue
+				}
+				degradedRepos = append(degradedRepos, r)
+			}
 			for _, e := range doc.Entries {
 				if e.Reachable {
 					continue
@@ -124,7 +148,8 @@ func (s *Server) handleDeadCode(_ context.Context, req mcpapi.CallToolRequest) (
 		dead = dead[:limit]
 	}
 
-	return jsonResult(map[string]any{
+	note := "Reachability-based dead code (#2766). Entities not transitively reached from any framework or sniffed entry-point. Dynamic dispatch / reflection / cross-repo callers from unindexed clients can produce false positives — verify before deletion."
+	out := map[string]any{
 		"dead_code":      dead,
 		"count":          len(dead),
 		"total":          total,
@@ -134,8 +159,23 @@ func (s *Server) handleDeadCode(_ context.Context, req mcpapi.CallToolRequest) (
 		"unreachable":    total,
 		"entry_points":   entryPoints,
 		"source":         source,
-		"note":           "Reachability-based dead code (#2766). Entities not transitively reached from any framework or sniffed entry-point. Dynamic dispatch / reflection / cross-repo callers from unindexed clients can produce false positives — verify before deletion.",
-	}), nil
+		"note":           note,
+	}
+	if len(degradedRepos) > 0 {
+		// #6839: PARTIAL answer. The link pass could not read an entry-point
+		// file (or the source root) in these repos, so it declined to call
+		// anything there dead rather than guessing. Reporting "no dead code"
+		// for them without saying so would be the same false claim in a
+		// different direction.
+		out["degraded_repos"] = degradedRepos
+		out["unknown"] = unknown
+		out["note"] = note + fmt.Sprintf(" PARTIAL: reachability could not be computed for %d repo(s) (%s)"+
+			" because an entry-point source file or source root was unreadable; %d entities there have"+
+			" no verdict and are omitted from this list (#6839). Re-run the index with the source trees"+
+			" present and readable for a complete answer.",
+			len(degradedRepos), strings.Join(degradedRepos, ", "), unknown)
+	}
+	return jsonResult(out), nil
 }
 
 // reachabilitySidecarPath is the conventional path for the
