@@ -135,6 +135,12 @@ def observed(rep):
     is how the gate would retire itself: an absent key read as 0 is a FALL, and
     a fall is allowed, so a binary that stopped emitting the field would pass
     forever. Callers see the key missing from the returned mapping and say so.
+
+    A key that is PRESENT but not a number (null, a string) raises here rather
+    than failing as a gate. That is untested and left as is: the only writer is
+    internal/quality/report.go, which emits an int, and inventing a tolerant
+    reading of a malformed report would be a second way to guess at a figure
+    nobody measured.
     """
     obs = {
         "entity_found": int(rep.get("entity_found", 0)),

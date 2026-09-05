@@ -1927,26 +1927,36 @@ class ExtractedTotalsAreGatedInTheGrowthDirection(unittest.TestCase):
         self.assertEqual(doc["fixtures"]["demo-mini"]["entity_extracted_total"], 12)
         self.assertEqual(doc["fixtures"]["demo-mini"]["relationship_extracted_total"], 7)
 
-    def test_update_refuses_a_report_that_carries_no_totals(self):
+    def test_update_refuses_a_report_missing_EITHER_total(self):
         """Recording a floor of 0 from an absent key would be worse than
-        refusing: every subsequent run would read its real total as growth."""
-        with tempfile.TemporaryDirectory() as root, chdir(root):
-            make_repo(root)
-            golden, reports, baseline = make_fixture(root)
-            path = os.path.join(reports, "demo-mini.json")
-            with open(path) as fh:
-                rep = json.load(fh)
-            del rep["entity_extracted_total"]
-            with open(path, "w") as fh:
-                json.dump(rep, fh)
-            os.environ["QUALITY_RUN_STAMP"] = STAMP
-            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
-            with self.assertRaises(SystemExit) as ctx:
-                ratchet.build(golden, reports, baseline)
-            # Not any SystemExit: build() has several, and a test that accepts
-            # them all goes green on an unrelated refusal.
-            self.assertIn("entity_extracted_total", str(ctx.exception))
-            self.assertIn("demo-mini", str(ctx.exception))
+        refusing: every subsequent run would read its real total as growth.
+
+        Each key is deleted on its own. Deleting only the entity total leaves
+        the relationship half of build()'s refusal graded by nothing —
+        `EXTRACTED_TOTAL_KEYS[:1]` in build() survived exactly that test, and
+        the two halves of the loop are a masking pair until both are named.
+        """
+        for missing in ("entity_extracted_total", "relationship_extracted_total"):
+            with self.subTest(missing=missing):
+                with tempfile.TemporaryDirectory() as root, chdir(root):
+                    make_repo(root)
+                    golden, reports, baseline = make_fixture(root)
+                    path = os.path.join(reports, "demo-mini.json")
+                    with open(path) as fh:
+                        rep = json.load(fh)
+                    del rep[missing]
+                    with open(path, "w") as fh:
+                        json.dump(rep, fh)
+                    os.environ["QUALITY_RUN_STAMP"] = STAMP
+                    self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+                    with self.assertRaises(SystemExit) as ctx:
+                        ratchet.build(golden, reports, baseline)
+                    # Not any SystemExit: build() has several, and a test that
+                    # accepts them all goes green on an unrelated refusal. The
+                    # message must name the key that is actually missing, so
+                    # the two subtests cannot be satisfied by one branch.
+                    self.assertIn(missing, str(ctx.exception))
+                    self.assertIn("demo-mini", str(ctx.exception))
 
 
 if __name__ == "__main__":

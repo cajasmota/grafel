@@ -435,6 +435,23 @@ merged["relationship_found"]             = med_int("relationship_found")
 merged["forbidden_hits"]                 = median_forbidden_hits
 merged["forbidden_entity_hits"]          = median_forbidden_ent_hits
 merged["runs_executed"]                  = runs_executed
+# #6488 arm D. The extracted totals are GATE metrics now (ratchet.py compares
+# them against a recorded ceiling), so they are medianed like every other gated
+# scalar rather than inherited from `base` — which is reports[-1], one
+# arbitrary run. Indexing is not deterministic run to run: a parallel
+# measurement saw total_entities at 5461/5462/5463 over three indexes of
+# identical trees. Inheriting the last run would make a high outlier a spurious
+# red, and — worse — would let a low outlier record a LOOSE ceiling at
+# --update-baseline time, after which the gate passes what it exists to catch.
+#
+# A total missing from ANY run is dropped from the merged report rather than
+# defaulted to 0: 0 is not a measurement, and ratchet.py refuses a report that
+# does not carry these figures instead of recording a floor nothing can hold.
+for _total in ("entity_extracted_total", "relationship_extracted_total"):
+    if all(_total in r for r in reports):
+        merged[_total] = med_int(_total)
+    else:
+        merged.pop(_total, None)
 # Freshness stamp — ratchet.py rejects reports not carrying the current run's
 # stamp, so a stale file left in $OUT can never be graded as a live result.
 merged["run_stamp"]                      = os.environ.get("QUALITY_RUN_STAMP", "")
