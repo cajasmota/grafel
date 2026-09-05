@@ -547,32 +547,49 @@ const (
 	// not a second concept.
 	//
 	// Arm B5's block called that collision "a synonym decision, not a
-	// mechanical add". That framing was wrong, and the codebase is what
-	// disproves it: internal/engine/classfold.go:34-38 states that both the
-	// bare kind names and their "SCOPE."-prefixed forms MUST APPEAR so that
-	// FrameworkClassKindPriority[r.Kind] matches regardless of which extractor
-	// emitted the survivor (#1700). A same-concept pair is the shipped graph,
-	// not a pending choice. A decision would only be needed to MERGE the pair,
-	// which #6776's standing "enum membership, no rename" ruling puts out of
-	// scope.
+	// mechanical add". That framing is still wrong — but NOT for the reason
+	// this block used to give, and the old reason is retracted rather than
+	// restated. It cited internal/engine/classfold.go's blanket claim that
+	// every kind "MUST APPEAR" in both spellings. #6841 withdrew that claim as
+	// never having been true (eleven bare rows and two prefixed rows have no
+	// twin) after finding it cited twice as proof that a particular pair
+	// exists, wrong both times. PAIRING IS PER ROW: the authority is the table
+	// engine.FrameworkClassKindTwins, graded by
+	// classfold_twin_declaration_6841_test.go, and a pair is a row to be read
+	// there, never an inference from a rule.
+	//
+	// Re-derived that way row by row (#6858), this arm's claim survives: for
+	// the three kinds it rests on classfold for, the table says TwinInMap, and
+	// the fourth never rested on classfold at all. A same-concept pair is the
+	// shipped graph for them, not a pending choice. A decision would only be
+	// needed to MERGE a pair, which #6776's standing "enum membership, no
+	// rename" ruling puts out of scope.
 	//
 	// Each pair is load-bearing in code today:
 	//
-	//   Component — internal/resolve/refs.go:1962 (isComponentKind) and :2139
+	//   Component — NOT a classfold row in either spelling; see the NOTE below.
+	//               internal/resolve/refs.go:1962 (isComponentKind) and :2139
 	//               (componentKindFamily) list "Component" beside
 	//               "SCOPE.Component"; :1235 names the dual-indexing.
-	//   Model     — classfold.go pairs "Model":100 / "SCOPE.Model":100 and
-	//               canon-rank 5/5.
-	//   View      — classfold 100/100; refs.go:1189 indexes an entity under
-	//               both its kind and the SCOPE-trimmed spelling.
-	//   Schema    — classfold 80/80; internal/dashboard/shape_tree.go:257,262
-	//               handles "SCOPE.Schema" and bare "Schema" in adjacent arms.
+	//   Model     — FrameworkClassKindTwins["Model"] and ["SCOPE.Model"] are
+	//               both TwinInMap; priority 100/100, canon-rank 5/5.
+	//   View      — both TwinInMap; priority 100/100. refs.go:1189 indexes an
+	//               entity under both its kind and the SCOPE-trimmed spelling.
+	//   Schema    — both TwinInMap; priority 80/80.
+	//               internal/dashboard/shape_tree.go:257,262 handles
+	//               "SCOPE.Schema" and bare "Schema" in adjacent arms.
 	//
 	// NOTE the one place the pairing does NOT hold, so this comment does not
 	// claim more than it can: FrameworkClassKindPriority deliberately omits
-	// BOTH "Component" and "SCOPE.Component" (classfold.go:30-33 — the generic
-	// AST node is folded away, never a candidate). Component's justification is
-	// the refs.go pair above, not classfold.
+	// BOTH "Component" and "SCOPE.Component" (classfold.go's doc on the generic
+	// AST node, which is folded away and never a candidate). Component's
+	// justification is the refs.go pair above, not classfold.
+	//
+	// Every classfold reading in this block — the three TwinInMap rows with
+	// their priorities, Model's canon rank, Component's absence, and the
+	// eleven/two count above — is asserted against the live tables by
+	// TestKindsCitation6858_* in internal/engine. If a row's pairing state
+	// changes, that fails rather than this prose drifting.
 	//
 	// Spellings unchanged, so KindVocabularyVersion does not move.
 	EntityKindComponentBare EntityKind = "Component"
@@ -584,7 +601,10 @@ const (
 	// identifier was already taken by a `SCOPE.`-prefixed constant. Same
 	// `Bare` suffix, same reason: it names the SPELLING, not a second concept,
 	// and arm B6's block records why a same-concept pair is the shipped graph
-	// rather than a pending decision (classfold.go:34-38, #1700).
+	// rather than a pending decision. That record is per row: pairing is read
+	// off engine.FrameworkClassKindTwins one kind at a time, never inferred
+	// from a blanket "both spellings must appear" rule — classfold.go carried
+	// such a rule and #6841 retracted it as false (#6858).
 	//
 	// Each pair was read at its cited site before being relied on:
 	//
@@ -593,8 +613,8 @@ const (
 	//   Route     — internal/enrichment/candidates.go:98 and
 	//               internal/enrichment/pricing.go:38 each list "Route" beside
 	//               "SCOPE.Route" in ONE case arm; both mean the HTTP route.
-	//   Service   — classfold.go:44/62 pairs "Service":100 with
-	//               "SCOPE.Service":100 and :91 gives both canon-rank 4. The
+	//   Service   — FrameworkClassKindTwins["Service"] and ["SCOPE.Service"]
+	//               are both TwinInMap: priority 100/100, canon-rank 4/4. The
 	//               same construct is also extracted twice over: a docker
 	//               compose service is bare `Service` from
 	//               internal/engine/rules/docker/frameworks/docker_compose.yaml:39
@@ -605,6 +625,12 @@ const (
 	//               docker_compose.yaml:30,33) and
 	//               internal/patterns/config_detector.go:49 emits
 	//               "SCOPE.Config" subtype "config_file" for one.
+	//
+	// Only Service's evidence is classfold's. Operation, Route and Config are
+	// rows of FrameworkClassKindPriority in NEITHER spelling, so that table
+	// says nothing about them in either direction, and each rests solely on the
+	// site cited beside it. Service's TwinInMap reading and the other three's
+	// absence are asserted by TestKindsCitation6858_* in internal/engine.
 	//
 	// The grounding for this batch carried a caveat that the Config twin uses
 	// a SYNTHETIC SourceFile for id collapse. Two things about it, neither of
