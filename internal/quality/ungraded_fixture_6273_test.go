@@ -455,8 +455,9 @@ func TestGoldenSetIsFullyGraded_6273(t *testing.T) {
 	// later process phase the index-time matcher never met.
 	//
 	// 27 since #6803 added graphql-schema-mini, 28 since #6370 added
-	// nim-objects-mini, 29 since #6370 added pony-traits-mini and 30 since
-	// #6370 added lisp-clos-mini — the hierarchy-gap fixtures, landed back to
+	// nim-objects-mini, 29 since #6370 added pony-traits-mini, 30 since
+	// #6370 added lisp-clos-mini and 31 since #6370 added
+	// clojure-protocols-mini — the hierarchy-gap fixtures, landed back to
 	// back. None bumped minFixtures, and
 	// none should have: the three exact-count tests named at the constant moved,
 	// the floor did not. Each count was re-derived from
