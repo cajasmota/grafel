@@ -13,8 +13,10 @@ package registry_test
 // sidecar reader re-derived its path by hand too. Grep-and-patch does not
 // end this — a twelfth sidecar next year re-opens it exactly the same way.
 //
-// This test scans every non-test .go file in the repository for a function
-// whose body contains BOTH (a) a call to os.UserHomeDir() or
+// This test scans every non-test .go file in the repository — excluding the
+// vendored, generated and worktree directories scanHandRolledHomePaths
+// refuses to descend into, notably .claude (#6842) — for a function whose
+// body contains BOTH (a) a call to os.UserHomeDir() or
 // os.Getenv("HOME"/"USERPROFILE"), AND (b) a string literal containing
 // ".grafel" — the two ingredients of a hand-rolled "resolve the grafel
 // home" join. Every hit must be declared in EXACTLY one of the two
@@ -130,6 +132,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -481,7 +484,11 @@ func scanHandRolledHomePaths(t *testing.T, root string) []homePathOffence {
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "node_modules", "vendor", "testdata", "dist", "build":
+			// .claude holds full worktree checkouts of this same repo; walking it
+			// would parse (and report) other branches' source under paths the
+			// allow-lists can never name, and t.Fatalf on any mid-edit parse
+			// error in an unrelated in-flight branch (#6842).
+			case ".git", ".claude", "node_modules", "vendor", "testdata", "dist", "build":
 				return filepath.SkipDir
 			}
 			return nil
@@ -520,4 +527,69 @@ func repoRoot(t *testing.T) string {
 	}
 	// here = <root>/internal/registry/home_sweep_guard_6178_test.go
 	return filepath.Clean(filepath.Join(filepath.Dir(here), "..", ".."))
+}
+
+// TestHandRolledHomeSweepSkipsWorktreeCheckouts pins that the sweep refuses to
+// descend into .claude, which in a development checkout holds full worktree
+// copies of this same repository (#6842).
+//
+// The obvious spelling of this check — "run the real sweep and assert nothing
+// under .claude was reported" — is vacuous in CI, where no .claude directory
+// exists at all, so it would pass whether or not the exclusion is present.
+// This test therefore BUILDS the condition under a t.TempDir() root:
+//
+//   - internal/cli/hand_rolled.go is a genuine offender, deliberately NESTED
+//     rather than sitting at the root. It is the positive control: the walk
+//     must still descend to it and report it, so neither a "skip everything"
+//     mutant nor a "never descend past the root" one can pass by reporting
+//     nothing. A root-level control would survive both.
+//   - .claude/worktrees/agent-x/broken.go is not parseable Go. The sweep
+//     t.Fatalf's on any parse error, so descending into .claude fails the
+//     test outright — the exact way an unrelated in-flight branch mid-edit
+//     breaks this guard locally.
+//   - .claude/worktrees/agent-x/internal/registry/shadow.go is a perfectly
+//     parseable offender. It catches the weaker failure the parse error
+//     would mask: a walk that descends but happens to find only valid Go
+//     still reports offences under paths the allow-lists can never name.
+//     This assertion is what keeps the test meaningful even if broken.go
+//     were ever repaired into valid Go.
+func TestHandRolledHomeSweepSkipsWorktreeCheckouts(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, src string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatalf("mkdir for %s: %v", rel, err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+
+	offender := `package p
+
+import "os"
+
+func handRolled() string {
+	h, _ := os.UserHomeDir()
+	return h + "/.grafel/groups/x-links.json"
+}
+`
+	write("internal/cli/hand_rolled.go", offender)
+	write(".claude/worktrees/agent-x/internal/registry/shadow.go", offender)
+	write(".claude/worktrees/agent-x/broken.go", "package p\n\nfunc broken( { this is not Go\n")
+
+	got := scanHandRolledHomePaths(t, root)
+
+	for _, o := range got {
+		if strings.HasPrefix(o.file, ".claude/") {
+			t.Errorf("sweep reported %s — it descended into .claude, which holds full worktree "+
+				"checkouts of this repo; offences there can never match the allow-lists (#6842)", o.String())
+		}
+	}
+	if len(got) != 1 || got[0].file != "internal/cli/hand_rolled.go" || got[0].fn != "handRolled" {
+		t.Fatalf("sweep over the synthetic tree reported %v, want exactly "+
+			"[internal/cli/hand_rolled.go:handRolled] — the nested offender is the positive control "+
+			"that the walk still descends into real source directories", got)
+	}
 }
