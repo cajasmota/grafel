@@ -2251,7 +2251,7 @@
         },
         "iac_environment_region_account": {
           "status": "not_applicable",
-          "notes": "OpenTofu (shared hcl extractor) sets region inside the `provider` block (e.g. region = \"us-east-1\") and account/state via `backend`; `extractProviderBlock` (internal/extractors/hcl/extractor.go:435) records only the provider *name* label — it never reads the region attribute — and terraform_deep.go captures only the backend *type* label (internal/extractors/hcl/terraform_deep.go), so no region/account/runtime value is stamped as an environment-targeting property. Honest-missing."
+          "notes": "OpenTofu (shared hcl extractor) sets region inside the `provider` block (e.g. region = \"us-east-1\") and account/state via `backend`; `extractProviderBlock` (internal/extractors/hcl/extractor.go:457) records only the provider *name* label — it never reads the region attribute — and terraform_deep.go captures only the backend *type* label (internal/extractors/hcl/terraform_deep.go), so no region/account/runtime value is stamped as an environment-targeting property. Honest-missing."
         },
         "iac_event_source_wiring": {
           "status": "not_applicable",
@@ -2264,7 +2264,7 @@
         "iac_output_export_extraction": {
           "status": "full",
           "cites": ["internal/extractors/hcl"],
-          "notes": "Full parity with Terraform: `output \"name\" {}` blocks in .tofu files flow through the same `extractOutputBlock` (internal/extractors/hcl/extractor.go:410) as .tf because the classifier routes .tofu to the shared \"terraform\" language token, emitting SCOPE.Schema/output entities identically.",
+          "notes": "Full parity with Terraform: `output \"name\" {}` blocks in .tofu files flow through the same `extractOutputBlock` (internal/extractors/hcl/extractor.go:432) as .tf because the classifier routes .tofu to the shared \"terraform\" language token, emitting SCOPE.Schema/output entities identically.",
           "verified_at": "2026-06-04"
         },
         "iac_resource_property_extraction": {
@@ -2278,7 +2278,7 @@
           "status": "full",
           "cites": ["internal/extractors/hcl/extractor.go","internal/extractors/hcl/relationships.go"],
           "issue": "https://github.com/cajasmota/grafel/issues/4200",
-          "notes": "Full parity with Terraform (shared hcl extractor): each `module \"\u003cname\u003e\"` block in .tofu files is emitted as a SCOPE.Component / subtype=module composition entity (`extractModuleBlock`, internal/extractors/hcl/extractor.go:329) plus a file→module IMPORTS containment edge (import_kind=module, internal/extractors/hcl/relationships.go). Full for the HCL `module` composition idiom.",
+          "notes": "Full parity with Terraform (shared hcl extractor): each `module \"\u003cname\u003e\"` block in .tofu files is emitted as a SCOPE.Component / subtype=module composition entity (`extractModuleBlock`, internal/extractors/hcl/extractor.go:351) plus a file→module IMPORTS containment edge (import_kind=module, internal/extractors/hcl/relationships.go). Full for the HCL `module` composition idiom.",
           "verified_at": "2026-06-04"
         },
         "resource_extraction": {
@@ -2427,7 +2427,7 @@
         },
         "iac_environment_region_account": {
           "status": "not_applicable",
-          "notes": "Terraform (shared hcl extractor) sets region inside the `provider` block (region = \"us-east-1\") and account/state via the `backend` block; `extractProviderBlock` (internal/extractors/hcl/extractor.go:435) records only the provider *name* label and never reads the region attribute, while terraform_deep.go captures only the backend *type* label and required-provider names (internal/extractors/hcl/terraform_deep.go) — no region/account/runtime value is stamped as an environment-targeting property. Honest-missing."
+          "notes": "Terraform (shared hcl extractor) sets region inside the `provider` block (region = \"us-east-1\") and account/state via the `backend` block; `extractProviderBlock` (internal/extractors/hcl/extractor.go:457) records only the provider *name* label and never reads the region attribute, while terraform_deep.go captures only the backend *type* label and required-provider names (internal/extractors/hcl/terraform_deep.go) — no region/account/runtime value is stamped as an environment-targeting property. Honest-missing."
         },
         "iac_event_source_wiring": {
           "status": "not_applicable",
@@ -2440,7 +2440,7 @@
         "iac_output_export_extraction": {
           "status": "full",
           "cites": ["internal/extractors/hcl"],
-          "notes": "`output \"name\" {}` blocks are extracted by `extractOutputBlock` (internal/extractors/hcl/extractor.go:410) as SCOPE.Schema entities with Subtype=output, named by the output identifier — the values a Terraform module/root publishes for consumption.",
+          "notes": "`output \"name\" {}` blocks are extracted by `extractOutputBlock` (internal/extractors/hcl/extractor.go:432) as SCOPE.Schema entities with Subtype=output, named by the output identifier — the values a Terraform module/root publishes for consumption.",
           "verified_at": "2026-06-04"
         },
         "iac_resource_property_extraction": {
@@ -2454,7 +2454,7 @@
           "status": "full",
           "cites": ["internal/extractors/hcl/extractor.go","internal/extractors/hcl/relationships.go"],
           "issue": "https://github.com/cajasmota/grafel/issues/4200",
-          "notes": "Module-composition topology is extracted: each `module \"\u003cname\u003e\"` block is emitted as a SCOPE.Component / subtype=module composition entity named `module.\u003cname\u003e` carrying the module `source` in QualifiedName/Metadata (`extractModuleBlock`, internal/extractors/hcl/extractor.go:329), and emitFileLevelRelationships emits a file→module IMPORTS containment edge carrying import_kind=module + source_module=\u003csource\u003e (internal/extractors/hcl/relationships.go). Full for the HCL `module` composition idiom.",
+          "notes": "Module-composition topology is extracted: each `module \"\u003cname\u003e\"` block is emitted as a SCOPE.Component / subtype=module composition entity named `module.\u003cname\u003e` carrying the module `source` in QualifiedName/Metadata (`extractModuleBlock`, internal/extractors/hcl/extractor.go:351), and emitFileLevelRelationships emits a file→module IMPORTS containment edge carrying import_kind=module + source_module=\u003csource\u003e (internal/extractors/hcl/relationships.go). Full for the HCL `module` composition idiom.",
           "verified_at": "2026-06-04"
         },
         "resource_extraction": {

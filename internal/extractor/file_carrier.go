@@ -20,8 +20,9 @@
 // twelve more offenders over one corpus, with three further ones behind
 // languages that corpus never reaches — so #6815 fixed three of at least
 // fifteen, and the total is unbounded above until every registered language is
-// driven. #6852 tracks the rest, one language at a time; bicep is the first of
-// those to land here.
+// driven. #6852 tracks the rest, one language at a time; bicep landed first and
+// terraform/hcl second. Read the caller list from source (grep
+// PrependFileCarrier), not from any count written here.
 
 package extractor
 
@@ -51,7 +52,17 @@ import "github.com/cajasmota/grafel/internal/types"
 //  3. No record in records is ALREADY named path. That clause alone rejects a
 //     file which does have a path-anchored edge but whose extractor already
 //     minted a path-named container for it — emitting a second one would put
-//     two nodes under one id and make the rewrite target ambiguous.
+//     two nodes under one id and make the rewrite target ambiguous. hcl (#6852)
+//     is the first caller for which this clause fires in production rather than
+//     only under a unit fixture: its file-level SCOPE.Component is named
+//     BASENAME(path), which at a ROOT path ("main.tf") already IS the path, so
+//     a root .tf that reaches clause 3 takes this rejection while a nested one
+//     never does. Note "reaches": a root .tf with no top-level blocks emits no
+//     file component at all, so clause 2 rejects it first and clause 3 is not
+//     consulted — this is the depth split among files that DO anchor, not a
+//     property of every root .tf. Pinned end-to-end by
+//     TestTerraform_RootPathGetsNoSecondCarrier_6852, with the block-less case
+//     pinned separately by TestTerraform_EmptyFileGetsNoCarrier_6852.
 //
 // Clause 3 is checked for EVERY record, before the loop may short-circuit on
 // clause 2 being satisfied — deliberately, and the order is load-bearing.
@@ -71,14 +82,21 @@ import "github.com/cajasmota/grafel/internal/types"
 // MEASURED grading status of that parameter, stated rather than implied: a
 // WRONG token is caught (mutating erlang's "erlang" to "beam" fails
 // TestErlang_CarrierIsLanguageTagged_6815), and so, now, is an EMPTY one.
-// THREE of the FOUR current callers — erlang/extractor.go:738, nim/nim.go:115,
+// THREE of the FIVE current callers — erlang/extractor.go:738, nim/nim.go:115,
 // groovy/groovy.go:69 — run extractor.TagEntitiesLanguage afterwards, and that
 // helper fills an empty Language with the extractor's own token, so for those
-// three passing "" is equivalent under the suite. The fourth,
-// bicep/extractor.go:152 (#6852), does NOT tag, so its carrier keeps whatever
-// token this parameter is given: mutating it to "" fails
-// TestBicep_CarrierShape_6852. That is the caller shape the parameter exists
-// for, and it is now graded rather than hypothetical.
+// three passing "" is equivalent under the suite. The other TWO,
+// bicep/extractor.go:152 (#6852) and hcl/extractor.go:150 (#6852), do NOT tag,
+// so their carriers keep whatever token this parameter is given: mutating it to
+// "" fails TestBicep_CarrierShape_6852, and independently
+// TestTerraform_CarrierShape_6852 and TestHCLToken_ImportsFromEndResolves_6852.
+// That is the caller shape the parameter exists for, and it is graded twice
+// over rather than hypothetical.
+//
+// hcl is also the first caller to pass a VARIABLE token rather than a literal:
+// one HCLExtractor.Extract serves both the "hcl" and "terraform" registrations,
+// so the two produce carriers that differ only in this field — which is what
+// TestHCLToken_ImportsFromEndResolves_6852 asserts.
 //
 // This paragraph has gone stale once per language added to the caller set, and
 // nothing relates it to the callers themselves — #6861 tracks grading the
@@ -88,9 +106,10 @@ import "github.com/cajasmota/grafel/internal/types"
 //
 // The returned record owns no relationships. Callers that DO have file-scoped
 // edges to re-home (proto's file-level CONTAINS) assign them afterwards; for
-// erlang, nim, groovy and bicep the per-import (bicep: per-module) stub records
-// still carry the IMPORTS edges themselves, so hanging them off the carrier as
-// well would double them.
+// erlang, nim, groovy, bicep and hcl the per-import (bicep: per-module; hcl:
+// the file-level SCOPE.Component emitFileLevelRelationships already emits)
+// records still carry the IMPORTS edges themselves, so hanging them off the
+// carrier as well would double them.
 func FileCarrierFor(path, lang string, records []types.EntityRecord) (types.EntityRecord, bool) {
 	if path == "" {
 		return types.EntityRecord{}, false
