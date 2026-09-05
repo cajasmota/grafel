@@ -294,6 +294,44 @@ func TestClojureHierarchy_FormMerelyStartingWithCommentIsNotBlanked(t *testing.T
 	wantPairs(t, ents, "Real-[IMPLEMENTS]->Shape")
 }
 
+// TestClojureHierarchy_GenClassKeywordOutsideTheNsFormIsNotADirective pins
+// that `(:gen-class ...)` is read only inside the namespace form.
+//
+// `(:gen-class-name {:extends bogus.Fake})` in a function body is not a
+// directive at all: a Clojure keyword in head position is a FUNCTION that
+// looks itself up in a map, and this is ordinary code. A file-wide search
+// reads it as a directive and does two wrong things at once — it FABRICATES
+// `EXTENDS bogus.Fake` out of the map literal, and, because it takes the first
+// hit and stops, it also LOSES the real directive's two edges. The assertion
+// below observes both halves: the fabricated target must be absent AND the
+// real ones present.
+func TestClojureHierarchy_GenClassKeywordOutsideTheNsFormIsNotADirective(t *testing.T) {
+	src := `(defn cfg [m] (:gen-class-name {:extends bogus.Fake}))
+(defn cfg2 [m] (:gen-class {:extends other.Fake}))
+(ns app.core
+  (:gen-class :extends real.Base :implements [java.lang.Runnable]))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents,
+		"app.core-[EXTENDS]->real.Base",
+		"app.core-[IMPLEMENTS]->java.lang.Runnable")
+}
+
+// TestClojureHierarchy_GenClassPrefixKeywordInsideTheNsFormIsSkipped pins the
+// second guard, which the scoping above cannot cover: a keyword that merely
+// BEGINS with `:gen-class` written inside the ns form itself. Two things are
+// observed by the one assertion — that `(:gen-class-name ...)` is not read as
+// a directive, and that the scan CONTINUES past it rather than giving up, so
+// the real directive that follows still produces its edge.
+func TestClojureHierarchy_GenClassPrefixKeywordInsideTheNsFormIsSkipped(t *testing.T) {
+	src := `(ns app.core
+  (:gen-class-name {:extends bogus.Fake})
+  (:gen-class :extends real.Base))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "app.core-[EXTENDS]->real.Base")
+}
+
 // TestClojureHierarchy_DefprotocolAndDefinterfaceAreNotScanned pins the
 // call-site exclusion. `:extend-via-metadata true` puts a bare symbol —
 // `true` — at depth 1 of a defprotocol tail; definterface's tail is lists
@@ -606,9 +644,10 @@ func TestClojureHierarchy_TargetCharsetMatchesDeclaredNames(t *testing.T) {
 // As with the target-charset test the symbols are deliberately ugly and no
 // real codebase writes them; one symbol per position grades the whole class in
 // one row instead of five plausible-looking ones. The realistic member of the
-// class is `-`, and it is in every name here. `$` is NOT in these symbols and
-// is not graded by this test: it is not part of deftypeRE's name charset, and
-// the hierarchy.go header records why no input can separate it.
+// class is `-`, and it is in every name here. `$` is graded separately by
+// TestClojureHierarchy_HeadCharsetAdmitsDollarInBothPositions, because it is
+// NOT part of deftypeRE's name charset and so behaves differently from the
+// rest of the class.
 func TestClojureHierarchy_HeadCharsetMatchesDeclaredNames(t *testing.T) {
 	src := `(defrecord my-rec?!*+' [a]
   my-rec?!*+'
@@ -623,6 +662,47 @@ func TestClojureHierarchy_HeadCharsetMatchesDeclaredNames(t *testing.T) {
 	wantPairs(t, ents,
 		"my-rec?!*+'-[IMPLEMENTS]->Shape",
 		"my-rec?!*+'-[IMPLEMENTS]->n-1?!*+'/p-2?!*+'")
+}
+
+// TestClojureHierarchy_HeadCharsetAdmitsDollarInBothPositions grades `$` in the
+// head regex's two character classes. It needs its own source because `$` is
+// not in deftypeRE's name charset, which changes what each half observes:
+//
+//   - FIRST class, via the declared name `Foo$Bar`. deftypeRE stops at the
+//     `$`, so the ENTITY is named `Foo` — pre-existing behaviour, asserted
+//     here rather than assumed, because it is what makes the row work. The
+//     head regex captures the whole `Foo$Bar`, which therefore equals the tail
+//     token and the self-edge is dropped. Narrow the head class and the owner
+//     becomes `Foo`, the tail token no longer matches it, and a spurious
+//     `Foo -> Foo$Bar` self-edge appears.
+//   - SECOND class, via an `extend-protocol` head `a.b/P$X`, where the head is
+//     the edge's TARGET. Narrowing gives `a.b/P` — a wrong target, not a
+//     missing edge.
+//
+// The second half's symbol is implausible: a Clojure protocol named `P$X` is
+// legal to the reader and written by nobody. It is here because the
+// alternative is an ungraded class member, and an earlier revision of this
+// file asserted in prose that both positions were EQUIVALENT — a claim that
+// was not merely unobserved but false, since the declared-name head above is a
+// third path the prose did not consider.
+func TestClojureHierarchy_HeadCharsetAdmitsDollarInBothPositions(t *testing.T) {
+	src := `(defrecord Foo$Bar [a]
+  Foo$Bar
+  (m [_] 1)
+  Shape
+  (area [_] 2))
+(defrecord Rec [])
+(extend-protocol a.b/P$X
+  Rec
+  (n [_] 3))
+`
+	ents := extract(t, "src/core.clj", src)
+	if findComp(ents, "Foo") == nil {
+		t.Error(`component "Foo" absent: deftypeRE no longer truncates the name at "$", so this test's first half no longer observes what its doc says`)
+	}
+	wantPairs(t, ents,
+		"Foo-[IMPLEMENTS]->Shape",
+		"Rec-[IMPLEMENTS]->a.b/P$X")
 }
 
 // TestClojureHierarchy_TokenValidOnlyAtItsStartIsRejected grades the CLOSING

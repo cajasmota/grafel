@@ -156,15 +156,22 @@ import (
 // all. TestClojureHierarchy_HeadCharsetMatchesDeclaredNames and
 // TestClojureHierarchy_ExtendProtocolHeadKeepsItsQualifier grade it.
 //
-// `$` in BOTH positions of this class is equivalent under the current suite,
-// and is kept for the parity above rather than for an effect. The reason no test can separate it,
-// stated rather than left to be rediscovered: the only heads a `$` could
-// appear in are an `extend-type` subject — where a nested host class such as
-// `java.util.Map$Entry` can never match a component this file declares, so the
-// edge is dropped for want of an anchor whether the name was truncated or not
-// — and an `extend-protocol` head, which names a CLOJURE protocol, and a
-// Clojure protocol is never a nested host class. Removing `$` here was tried
-// and left the whole suite green; it is retained as parity, not as a guard.
+// `$` is in this class in BOTH positions, and both are graded by
+// TestClojureHierarchy_HeadCharsetAdmitsDollarInBothPositions.
+//
+// An earlier revision of this comment called them equivalent, on the ground
+// that the only heads a `$` could appear in are an `extend-type` subject
+// (where a nested host class can never match a component this file declares,
+// so the edge is dropped for want of an anchor either way) and an
+// `extend-protocol` head. Both of those observations are true; the conclusion
+// was not, because the list omitted the third head this regex captures — a
+// `defrecord`/`deftype` DECLARED NAME, which becomes the `owner` of the
+// self-edge check. `deftypeRE` stops at `$`, so for `(defrecord Foo$Bar ...)`
+// the entity is `Foo` while this regex captures `Foo$Bar`; narrow this class
+// and the owner no longer equals a `Foo$Bar` written in the tail, and a
+// spurious self-edge appears. That is a behaviour difference, not an
+// equivalence, and it was ALIVE against the whole suite until the test above
+// was written.
 var clojureHierarchyHeadRE = regexp.MustCompile(
 	`(?m)^\s*\((defrecord|deftype|extend-type|extend-protocol|extend)\s+([\w\-\?!\*'+$]+(?:[\./][\w\-\?!\*'+$]+)*)`)
 
@@ -211,13 +218,19 @@ var clojureHierarchyHeadRE = regexp.MustCompile(
 //	    grades the parity with one deliberately ugly symbol.
 //	  - P3 admits `.` and `/` (`java.lang.Runnable`, `other.ns/Proto`).
 //
-// One more thing the suite CANNOT separate, recorded rather than implied: the
-// `+` on P4 (a separator must be followed by at least one name character) and
-// the closing `$` anchor both reject `other.ns/`, and no input distinguishes
-// them — a token that P4's `+` rejects is a token whose match cannot reach the
-// end, which is the anchor's job too. Each mutant dies on its own, but they
-// are ONE guard in effect: "a separator must be followed by a name, and the
-// token must end there".
+// P4's `+` (a separator must be followed by at least one name character) and
+// the closing `$` anchor OVERLAP on `other.ns/`, which is the only input in
+// the suite that either rejects, so each mutant dies on that one row.
+//
+// They are not, however, one guard, and an earlier revision of this comment
+// said they were. The anchor alone also rejects a token that is valid only at
+// its start with no separator involved at all — `Foo:bar` — which `+` has no
+// opinion on. No row exercises that, so the two are currently graded only
+// jointly, and `Foo:bar` is deliberately not added: `:` inside a symbol is
+// reserved by the Clojure reader, so pinning its REJECTION would assert a
+// decision this issue has not made, and pinning its acceptance would be a
+// behaviour change outside it. Recorded so the gap is visible rather than
+// dressed up as an equivalence.
 var clojureTargetRE = regexp.MustCompile(`^[A-Za-z_][\w\-\?!\*'+$]*(?:[\./][\w\-\?!\*'+$]+)*$`)
 
 // clojureGenClassExtendsRE and clojureGenClassImplementsRE read the two
@@ -311,7 +324,10 @@ func scanClojureHierarchy(src string) *clojureHierarchy {
 		}
 	}
 
-	h.nsEdges = genClassEdges(clean)
+	// The (:gen-class) directive is read only inside the namespace form; see
+	// genClassEdges for why a file-wide search fabricates edges.
+	_, _, nsOpen := findNsForm(clean)
+	h.nsEdges = genClassEdges(clean, nsOpen)
 	return h
 }
 
@@ -373,18 +389,50 @@ func newHierarchyEdge(to, kind string, line int, provenance string) types.Relati
 // rather than positional, so they are read by keyword; the containing
 // directive is located structurally (balanced parens from `(:gen-class`) so
 // that the keywords are only ever read inside it.
-func genClassEdges(clean string) []types.RelationshipRecord {
-	i := strings.Index(clean, "(:gen-class")
+//
+// # Two guards on WHICH `(:gen-class` is read, and why both are needed
+//
+// `nsOpen` is the byte offset of the namespace form's opening paren, or -1
+// when the file has none. The search is confined to that form, and this is not
+// tidiness: `(:gen-class` is a KEYWORD, and in Clojure a keyword in head
+// position is a function that looks itself up in a map. `(:gen-class m)` and
+// `(:gen-class {:extends bogus.Fake})` are ordinary code that any programmer
+// can write inside a defn, and a file-wide `strings.Index` reads the second
+// one as a directive and FABRICATES `EXTENDS bogus.Fake`. Worse, it takes the
+// FIRST hit and stops, so the real directive's edges are lost as well —
+// a fabricated edge and a recall miss from one input.
+// TestClojureHierarchy_GenClassKeywordOutsideTheNsFormIsNotADirective pins it.
+//
+// The whole-word check is a SECOND guard and is not redundant with the first:
+// it rejects `(:gen-class-name ...)` written INSIDE the ns form, where the
+// scoping cannot help. It was deleted once, on the reasoning that "Clojure has
+// no directive beginning with :gen-class" — true, and beside the point, since
+// the code never required a directive. The loop then continues rather than
+// giving up, so a prefix keyword before the real one does not hide it.
+// TestClojureHierarchy_GenClassPrefixKeywordInsideTheNsFormIsSkipped pins
+// both halves.
+func genClassEdges(clean string, nsOpen int) []types.RelationshipRecord {
+	if nsOpen < 0 {
+		return nil
+	}
+	nsEnd := matchParen(clean, nsOpen)
+	i := -1
+	for at := nsOpen; at < nsEnd; {
+		k := strings.Index(clean[at:nsEnd], "(:gen-class")
+		if k < 0 {
+			break
+		}
+		at += k
+		j := at + len("(:gen-class")
+		if j >= nsEnd || isClojureBreak(clean[j]) {
+			i = at
+			break
+		}
+		at = j
+	}
 	if i < 0 {
 		return nil
 	}
-	// No whole-word check on the keyword. One was written and removed: it
-	// guarded against a form whose head merely BEGINS with `:gen-class`, and
-	// Clojure has no such directive, so nothing could reach it and no test
-	// could observe it. `(comment ...)` DOES need its whole-word check —
-	// `(comments ...)` is a form a user can really write — and
-	// TestClojureHierarchy_FormMerelyStartingWithCommentIsNotBlanked grades
-	// that one.
 	end := matchParen(clean, i)
 	body := clean[i:end]
 	line := strings.Count(clean[:i], "\n") + 1
