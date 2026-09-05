@@ -1,5 +1,6 @@
 // hierarchy.go — Clojure protocol/interface conformance: `defrecord`,
-// `deftype`, `extend-type`, `extend-protocol` and `(:gen-class)` (#6370).
+// `deftype`, `extend-type`, `extend-protocol`, `extend` and `(:gen-class)`
+// (#6370).
 //
 // Before this, clojure emitted NO hierarchy edge by any of the three paths a
 // language can get one, all three verified for clojure specifically rather
@@ -55,7 +56,8 @@
 //
 // # Edge kinds: a ladder, decided by the KEYWORD, never by the target's name
 //
-//   - defrecord / deftype / extend-type / extend-protocol -> IMPLEMENTS.
+//   - defrecord / deftype / extend-type / extend-protocol / extend
+//     -> IMPLEMENTS.
 //     None of these forms has class inheritance: every depth-1 symbol in them
 //     is a protocol, a Java/host interface, or Object/clojure.lang.* — all
 //     conformance. The one residual ambiguity (is `Bar` a protocol or a Java
@@ -84,6 +86,9 @@
 //     forbids. Out of scope.
 //   - `defmulti` is not scanned either: `(defmulti area class)` has a bare
 //     depth-1 symbol that is a DISPATCH FUNCTION, not a supertype.
+//   - `java.util.Map$Entry` and other JVM nested classes ARE handled: `$` is
+//     in the target charset. It was not in the first draft of this file, which
+//     rejected such a target whole — a silent recall miss, not a fence.
 //
 // # Why the edges are emitted HERE and not by registering clojure in
 // # cross/hierarchy
@@ -132,21 +137,43 @@ import (
 // and `defmulti` are ABSENT for the reasons in the package header, and adding
 // one is a behaviour change that the corresponding test will catch.
 //
+// `^\s*\(` — a line-start anchor that allows only WHITESPACE before the paren
+// — is what excludes a form the reader never evaluates as a form: `'(defrecord
+// ...)` and `#_(defrecord ...)` both put a non-whitespace character before the
+// paren on that line, so neither is matched.
+// TestClojureHierarchy_QuotedAndDiscardedFormsAreNotMatched grades it; without
+// the anchor both produce edges.
+//
 // The captured symbol's charset admits `.` and `/` — unlike `deftypeRE`'s name
 // charset — because `extend-type`'s subject is routinely a host or
 // namespace-qualified name (`java.util.Date`, `other.ns/Rec`). A charset
 // without them would truncate the symbol mid-token and produce a wrong owner
 // rather than no owner.
 var clojureHierarchyHeadRE = regexp.MustCompile(
-	`(?m)^\s*\((defrecord|deftype|extend-type|extend-protocol)\s+([\w\-\?!\*'+]+(?:[\./][\w\-\?!\*'+]+)*)`)
+	`(?m)^\s*\((defrecord|deftype|extend-type|extend-protocol|extend)\s+([\w\-\?!\*'+$]+(?:[\./][\w\-\?!\*'+$]+)*)`)
 
-// clojureTargetRE validates one depth-1 token as a usable type name. It is
-// fully anchored at both ends so that a token which is merely PREFIXED by a
-// name — `^:private`, `:keyword`, `#_discard`, `'quoted`, a number — is
-// rejected WHOLE instead of half-matching into a wrong edge. `.` and `/` are
-// admitted for the same reason as above: `java.lang.Runnable` and
-// `other.ns/Proto` are the common targets, and without them both are missed.
-var clojureTargetRE = regexp.MustCompile(`^[A-Za-z_][\w\-\?!\*'+]*(?:[\./][\w\-\?!\*'+]+)*$`)
+// clojureTargetRE validates one depth-1 token as a usable type name.
+//
+// The two anchors do DIFFERENT work and are graded separately, because with
+// only one of them the other reads as untested:
+//
+//   - `^` rejects a token merely PREFIXED by punctuation — `:keyword`,
+//     `^:private`, `#_discard`, `'quoted`, a number — WHOLE, instead of
+//     letting the valid tail through.
+//     TestClojureHierarchy_NonSymbolDepth1TokensAreRejectedWhole.
+//   - `$` rejects a token that STARTS valid and ends invalid. Without it,
+//     MatchString succeeds on any valid PREFIX while the caller still uses the
+//     whole token as the ToID, so `other.ns/` — a namespace qualifier with its
+//     name half missing — would become an edge target that can never resolve.
+//     TestClojureHierarchy_TokenValidOnlyAtItsStartIsRejected.
+//
+// The charset admits `.` and `/` (`java.lang.Runnable`, `other.ns/Proto`) and
+// `$`. `$` is JVM nested-class notation — `java.util.Map$Entry`,
+// `clojure.lang.IFn$LL` — which is ordinary host interop in `deftype` bodies
+// and `(:gen-class :implements)`, so excluding it was a silent recall miss
+// rather than a fence. TestClojureHierarchy_NestedHostClassTargetIsKept and
+// the fixture's Circle -> java.util.Map$Entry row grade it.
+var clojureTargetRE = regexp.MustCompile(`^[A-Za-z_][\w\-\?!\*'+$]*(?:[\./][\w\-\?!\*'+$]+)*$`)
 
 // clojureGenClassExtendsRE and clojureGenClassImplementsRE read the two
 // keyword-delimited slots of a `(:gen-class ...)` directive. They are applied
@@ -224,9 +251,13 @@ func scanClojureHierarchy(src string) *clojureHierarchy {
 			// The supertypes are the depth-1 symbols; the field vector is
 			// skipped by shape, not by counting.
 			h.byForm[open] = appendImplements(nil, head, syms, line, "clojure_"+kw+"_body")
-		case "extend-type":
-			// Head is the SUBJECT, tail symbols are the protocols.
-			h.byName[head] = appendImplements(h.byName[head], head, syms, line, "clojure_extend_type")
+		case "extend-type", "extend":
+			// Head is the SUBJECT, tail symbols are the protocols. `extend`
+			// is the map form — `(extend AType AProto {:m (fn ...)})` — whose
+			// method MAP is a depth-1 token that is neither symbol nor list,
+			// so it is skipped by exactly the same shape rule that skips a
+			// field vector, and it needs no arm of its own.
+			h.byName[head] = appendImplements(h.byName[head], head, syms, line, "clojure_"+strings.ReplaceAll(kw, "-", "_"))
 		case "extend-protocol":
 			// INVERTED: head is the PROTOCOL, tail symbols are implementers.
 			for _, s := range syms {
@@ -239,17 +270,19 @@ func scanClojureHierarchy(src string) *clojureHierarchy {
 	return h
 }
 
-// appendImplements adds one IMPLEMENTS record per valid, non-self, not-yet-seen
-// target. Dedup is per call AND against what is already in `out`, so a type
-// that is both `(defrecord Foo [] P ...)` and `(extend-type Foo P)` states one
-// fact and gets one edge.
+// appendImplements adds one IMPLEMENTS record per valid, non-self target,
+// deduped WITHIN this call: `(defrecord Foo [] P (m [_] 1) P (n [_] 2))`
+// states one fact and gets one edge.
+//
+// It deliberately does NOT dedup against records already in `out`. Such a
+// pass was written and removed: `byForm` always calls with a nil `out`, and
+// every `byName` list is deduped again by the `have` map at the call site in
+// extractClojure before it reaches a record, so the extra pass could not
+// change any output and was a claim no test could check. The cross-FORM case
+// it appeared to cover is really the call site's, and
+// TestClojureHierarchy_TargetRepeatedAcrossFormsYieldsOneEdge grades it there.
 func appendImplements(out []types.RelationshipRecord, owner string, targets []string, line int, provenance string) []types.RelationshipRecord {
 	seen := map[string]bool{}
-	for _, r := range out {
-		if r.Kind == "IMPLEMENTS" {
-			seen[r.ToID] = true
-		}
-	}
 	for _, t := range targets {
 		if !clojureTargetRE.MatchString(t) || t == owner || seen[t] {
 			continue
@@ -300,9 +333,13 @@ func genClassEdges(clean string) []types.RelationshipRecord {
 	if i < 0 {
 		return nil
 	}
-	if j := i + len("(:gen-class"); j < len(clean) && !isClojureBreak(clean[j]) {
-		return nil
-	}
+	// No whole-word check on the keyword. One was written and removed: it
+	// guarded against a form whose head merely BEGINS with `:gen-class`, and
+	// Clojure has no such directive, so nothing could reach it and no test
+	// could observe it. `(comment ...)` DOES need its whole-word check —
+	// `(comments ...)` is a form a user can really write — and
+	// TestClojureHierarchy_FormMerelyStartingWithCommentIsNotBlanked grades
+	// that one.
 	end := matchParen(clean, i)
 	body := clean[i:end]
 	line := strings.Count(clean[:i], "\n") + 1

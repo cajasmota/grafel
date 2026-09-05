@@ -8,7 +8,9 @@
   Shape
   (area [_] (compute-area radius))
   Sized
-  (size [_] radius))
+  (size [_] radius)
+  java.util.Map$Entry
+  (getKey [_] :radius))
 
 (deftype Square [side]
   Shape

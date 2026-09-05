@@ -381,6 +381,22 @@ func TestClojureHierarchy_SelfConformanceIsDropped(t *testing.T) {
 	wantPairs(t, ents, "Rec-[IMPLEMENTS]->Shape")
 }
 
+// TestClojureHierarchy_SelfConformanceIsDroppedOnTheExtendArmToo repeats the
+// claim above on the OTHER producer. The self-edge guard is one line shared by
+// both arms, but the arms pass different owners, so a mutant that stops
+// passing the owner on the extend-* arm is invisible to the defrecord test.
+func TestClojureHierarchy_SelfConformanceIsDroppedOnTheExtendArmToo(t *testing.T) {
+	src := `(defrecord Rec [a])
+(extend-type Rec
+  Rec
+  (self [_] nil)
+  Shape
+  (area [_] 1))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "Rec-[IMPLEMENTS]->Shape")
+}
+
 // TestClojureHierarchy_TargetRepeatedWithinOneFormYieldsOneEdge covers the
 // dedup INSIDE a single form's tail: naming a protocol twice in one defrecord
 // states one fact. This is a different code path from the cross-form dedup
@@ -482,6 +498,127 @@ func TestClojureHierarchy_ExtendTypeOnAForeignTypeIsDropped_KnownDivergence(t *t
 `
 	ents := extract(t, "src/core.clj", src)
 	wantPairs(t, ents)
+}
+
+// TestClojureHierarchy_NestedHostClassTargetIsKept varies ONE axis — whether
+// the target uses JVM nested-class notation — and holds everything else
+// constant. `java.util.Map$Entry` is ordinary host interop; a charset without
+// `$` rejects it WHOLE (clojureTargetRE is anchored at both ends), so the
+// symptom is a silent miss rather than a truncated name. The plain target in
+// the same tail is what distinguishes "the `$` target was dropped" from "the
+// tail was dropped".
+func TestClojureHierarchy_NestedHostClassTargetIsKept(t *testing.T) {
+	src := `(defrecord Rec [a]
+  java.util.Map$Entry
+  (getKey [_] nil)
+  Shape
+  (area [_] 1))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents,
+		"Rec-[IMPLEMENTS]->java.util.Map$Entry",
+		"Rec-[IMPLEMENTS]->Shape")
+}
+
+// TestClojureHierarchy_TokenValidOnlyAtItsStartIsRejected grades the CLOSING
+// anchor of clojureTargetRE, which the opening one otherwise masks: every
+// token in TestClojureHierarchy_NonSymbolDepth1TokensAreRejectedWhole is
+// rejected by `^` alone, so nothing there observes `$`.
+//
+// `other.ns/` is a namespace qualifier with its name half missing — the shape
+// a truncated or mid-edit symbol takes. It is not common, and the test claims
+// no more than that: without the closing anchor the regex matches the valid
+// PREFIX while the caller still uses the WHOLE token as the ToID, so the
+// extractor emits an edge to a target that can never resolve. The valid
+// neighbour keeps the assertion from passing on a dropped tail.
+func TestClojureHierarchy_TokenValidOnlyAtItsStartIsRejected(t *testing.T) {
+	src := `(defrecord Rec [a]
+  other.ns/
+  Shape
+  (area [_] 1))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "Rec-[IMPLEMENTS]->Shape")
+}
+
+// TestClojureHierarchy_QuotedAndDiscardedFormsAreNotMatched grades the
+// `^\s*\(` anchor on clojureHierarchyHeadRE — a line-start anchor that admits
+// only whitespace before the paren. `'(...)` is a quoted list and `#_(...)` is
+// reader-discarded; neither is evaluated, and both put a non-whitespace
+// character before the paren, so neither line is matched.
+//
+// The forms are `extend-type`, deliberately, and the reason is worth stating:
+// on a `defrecord` the anchor is not observable, because deftypeRE carries the
+// same `^\s*\(` and so a quoted declaration produces no ENTITY for the edge to
+// anchor on — the edge would be dropped whatever this regex did. An
+// `extend-type` keys off a name instead, so this anchor is the only thing
+// standing between a quoted datum and a real edge on Rec.
+func TestClojureHierarchy_QuotedAndDiscardedFormsAreNotMatched(t *testing.T) {
+	src := `(defrecord Rec [] Shape (area [_] 1))
+'(extend-type Rec Ghost (m [_] 0))
+#_(extend-type Rec Phantom (m [_] 0))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "Rec-[IMPLEMENTS]->Shape")
+}
+
+// TestClojureHierarchy_GenClassImplementsStopsAtItsOwnVector pins that the
+// `:implements` vector is read to ITS closing bracket and no further.
+// `:methods` is a real gen-class option whose value is a vector of vectors,
+// and on one line a greedy read swallows it and reports its method names as
+// interfaces.
+func TestClojureHierarchy_GenClassImplementsStopsAtItsOwnVector(t *testing.T) {
+	src := `(ns app.core (:gen-class :implements [java.lang.Runnable] :methods [[render [] void]]))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "app.core-[IMPLEMENTS]->java.lang.Runnable")
+}
+
+// TestClojureHierarchy_CommasAreWhitespace pins that `,` separates tokens.
+// Commas are whitespace in Clojure and are written for readability in exactly
+// this position; treating one as part of a symbol yields `Shape,` as the
+// target, which resolves to nothing.
+func TestClojureHierarchy_CommasAreWhitespace(t *testing.T) {
+	src := `(defrecord Rec [a], Shape, (area [_] 1), Sized, (size [_] 2))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents,
+		"Rec-[IMPLEMENTS]->Shape",
+		"Rec-[IMPLEMENTS]->Sized")
+}
+
+// TestClojureHierarchy_UnterminatedCommentFormBlanksToEndOfFile grades
+// matchParen's unterminated-form branch, which the doc comment claims is
+// parity with the pre-existing findFormEnd. A truncated file is how it is
+// reached: the `(comment` here never closes, so everything after it is scratch
+// and no edge may come out of it.
+func TestClojureHierarchy_UnterminatedCommentFormBlanksToEndOfFile(t *testing.T) {
+	src := `(defrecord Real [] Shape (area [_] 1))
+(comment
+  (defrecord Scratch [z] Ghost (area [_] 0))
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents, "Real-[IMPLEMENTS]->Shape")
+}
+
+// TestClojureHierarchy_ExtendMapFormIsRead covers `(extend Type Proto {...})`,
+// the map form. It asserts only that the form is read with extend-type's
+// direction and that the method MAP contributes nothing — which it gets for
+// free from the depth-1 shape rule, since a map is neither a symbol nor a
+// list. It says nothing about `extend` on a foreign type, which has the same
+// anchoring limit as extend-type.
+func TestClojureHierarchy_ExtendMapFormIsRead(t *testing.T) {
+	src := `(defrecord Rec [a])
+(extend Rec
+  Shape
+  {:area (fn [_] 1)}
+  Sized
+  {:size (fn [_] 2)})
+`
+	ents := extract(t, "src/core.clj", src)
+	wantPairs(t, ents,
+		"Rec-[IMPLEMENTS]->Shape",
+		"Rec-[IMPLEMENTS]->Sized")
 }
 
 // findComp returns the first SCOPE.Component with the given name, or nil.
