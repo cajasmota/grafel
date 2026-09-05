@@ -148,7 +148,6 @@ const goPrefixedKindsDeferredMax = 0
 var goUnprefixedKindsDeferred = map[string]bool{
 	"ChannelEvent": true, // engine/websocket_edges.go
 	"File":         true, // engine/commit_coupling_edges.go — engine.KindFile, a derived artefact
-	"Migration":    true, // extractors/python/django_migration.go
 	"Route":        true, // engine/django_routes.go, engine/spring_routes.go
 	"Stream":       true, // engine/sse_edges.go
 	"Subscription": true, // engine/graphql_subscriptions.go
@@ -156,7 +155,7 @@ var goUnprefixedKindsDeferred = map[string]bool{
 }
 
 // goUnprefixedKindsDeferredMax pins the ledger's exact size.
-const goUnprefixedKindsDeferredMax = 7
+const goUnprefixedKindsDeferredMax = 6
 
 // scanGoEntityKinds runs the shared resolver over internal/ — the same subtree
 // the literal guard walked — and fails loudly if the walk read nothing, since a
@@ -575,12 +574,14 @@ func TestProducerEntityKinds6776_ResolverDoesNotCollectNonKinds(t *testing.T) {
 }
 
 // TestEntityKindDeclarations6776_MatchAllEntityKindsExactly pins the population
-// arm B2 corrected, and pins it as a SET rather than only as a count: 69
-// constants of type EntityKind, 68 of them named EntityKind*, and
+// arm B2 corrected, and pins it as a SET rather than only as a count: 82
+// constants of type EntityKind, 81 of them named EntityKind*, and
 // AllEntityKinds() listing every one with nothing extra.
 //
 // The counts were 63/62 before #6776 arm B4 declared the six SCOPE.*-prefixed
-// Go producers its ledger held; both moved by exactly six, and the 63rd/69th
+// Go producers its ledger held, and 69/68 before arm B5 declared thirteen of
+// internal/entkinds' rule-YAML ledger; each arm moved both by exactly its own
+// batch size, and the 63rd/69th/82nd
 // EntityKind-TYPED-but-not-EntityKind-NAMED constant is still
 // HTTPEndpointKindLegacy.
 //
@@ -644,12 +645,12 @@ func TestEntityKindDeclarations6776_MatchAllEntityKindsExactly(t *testing.T) {
 		})
 	}
 
-	if len(declared) != 69 {
-		t.Errorf("EntityKind-typed constants = %d, want 69; re-pin this number and the "+
+	if len(declared) != 82 {
+		t.Errorf("EntityKind-typed constants = %d, want 82; re-pin this number and the "+
 			"comment in AllEntityKinds beside EntityKindEventType", len(declared))
 	}
-	if namedEntityKind != 68 {
-		t.Errorf("constants NAMED EntityKind* = %d, want 68 (the one EntityKind-typed "+
+	if namedEntityKind != 81 {
+		t.Errorf("constants NAMED EntityKind* = %d, want 81 (the one EntityKind-typed "+
 			"constant not so named is HTTPEndpointKindLegacy)", namedEntityKind)
 	}
 	for name := range declared {

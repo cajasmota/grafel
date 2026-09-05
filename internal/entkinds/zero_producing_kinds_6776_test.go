@@ -9,7 +9,7 @@ import (
 // ---------------------------------------------------------------------------
 // Issue #6776, arm B1 — the eight kinds arm A (c428cde7a) measured at ZERO.
 //
-// Arm A's runtime entity-kind counter found eight of the 25 ledgered kinds
+// Arm A's runtime entity-kind counter found eight of the then-25 ledgered kinds
 // producing no entities on either corpus. The cheap reading is "dead rules,
 // delete them, and ratchet ruleDeclaredKindsDeferredMax down by eight".
 //
@@ -84,21 +84,31 @@ func TestZeroProducingKinds6776_SiteCountsHold(t *testing.T) {
 	}
 }
 
-// TestZeroProducingKinds6776_StayOnTheLedger records the arm-B1 decision as an
-// assertion: none of the eight was deleted, so all eight remain deferred and
-// ruleDeclaredKindsDeferredMax is unchanged at 25.
+// # Why there is no TestZeroProducingKinds6776_StayOnTheLedger any more
 //
-// It is deliberately obstructive. Dropping one of these from the ledger means
-// its rule was deleted, and this test forces that change to come here and state
-// which rule went and why — rather than the eight quietly evaporating into a
-// lower ratchet, which is the outcome arm B1 exists to prevent.
-func TestZeroProducingKinds6776_StayOnTheLedger(t *testing.T) {
-	for k := range zeroProducingKinds6776 {
-		if _, ok := ruleDeclaredKindsDeferred[k]; !ok {
-			t.Errorf("%s left ruleDeclaredKindsDeferred. Arm B1 measured its rule(s) as LIVE "+
-				"(internal/engine/zero_producing_rule_kinds_6776_test.go), so a removal here is "+
-				"either a real enum declaration — in which case delete the entry from "+
-				"zeroProducingKinds6776 too — or capability quietly deleted to lower a count.", k)
-		}
-	}
-}
+// There used to be one, asserting that all eight stayed on
+// ruleDeclaredKindsDeferred. #6776 arm B5 declared seven of them in
+// types.AllEntityKinds(), which is the LEGITIMATE way off that ledger, so the
+// test had to go or be widened. It was first widened to "on the ledger OR in
+// the enum, never neither" — and review then showed that widened form COULD
+// NOT REJECT ANYTHING ALONE, so it is deleted rather than kept as a guard that
+// looks like one:
+//
+//   - to fire, a kind here must be off BOTH accounts;
+//   - if its rule-YAML sites are still live, the live scan produces a kind that
+//     is neither valid nor ledgered, and TestNoUndeclaredRuleEntityKinds'
+//     unexpected half fails first, naming the file and line;
+//   - if the sites are gone, TestZeroProducingKinds6776_SiteCountsHold above
+//     fails, because these counts are pinned against the live scan.
+//
+// There is no third input. Two guards that only ever fire together are
+// indistinguishable from one guard, and the deleted test was the redundant one
+// in both pairs — the same reasoning that kept a BOTH-state check out of it.
+//
+// So the arm-B1 property — the eight are never quietly deleted to lower a
+// count — is carried by TestZeroProducingKinds6776_SiteCountsHold (their 17
+// sites must still exist) and by TestNoUndeclaredRuleEntityKinds (a kind off
+// the ledger must be in the enum). Removing a row from zeroProducingKinds6776
+// remains a deliberate act: it costs the site pin, and the engine-side firing
+// table in internal/engine/zero_producing_rule_kinds_6776_test.go pins the same
+// 17 sites independently.

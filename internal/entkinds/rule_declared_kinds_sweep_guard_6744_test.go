@@ -15,7 +15,10 @@ package entkinds_test
 // The live scan of the rule tree finds 532 declaration sites and 27 distinct
 // values. Exactly TWO of them are valid entity kinds — `Module` (valid only
 // because types.EntityKindModule is itself un-prefixed) and `SCOPE.IngressHost`
-// (added by this change). The other 25 are ledgered below.
+// (added by this change). The other 25 were ledgered below; #6776 arm B5
+// declared thirteen of them in types.AllEntityKinds() with their un-prefixed
+// spellings unchanged, so the ledger now holds the remaining 12 and the live
+// scan finds 15 of the 27 values valid.
 //
 // # Bound and unbound, and why the two halves of #6744 are not equal
 //
@@ -40,7 +43,8 @@ package entkinds_test
 //
 // The issue asked whether the rule layer's un-prefixed names are a deliberate
 // separate namespace or an accident. The scan settles it: it is an ACCIDENT,
-// and a systemic one. 25 of 27 declared values are outside the enum, and there
+// and a systemic one. 25 of 27 declared values were outside the enum when this
+// guard landed (12 still are, after arm B5), and there
 // is no code anywhere that treats `Route` differently from `SCOPE.Route` — they
 // are simply written into EntityRecord.Kind and land in the graph as-is, which
 // is why `Module` validates by coincidence rather than by design. Nothing
@@ -109,31 +113,18 @@ import (
 // the issue named three sites and the scan found 532, of which 25 distinct
 // values are invalid. This list must only ever SHRINK, and that is ENFORCED.
 var ruleDeclaredKindsDeferred = map[string]string{
-	"Component":      "rule_namespace", // 25 sites in 14 files; e.g. ansible/frameworks/ansible_core.yaml:63
-	"Config":         "rule_namespace", // 91 sites in 31 files; e.g. ansible/frameworks/ansible_core.yaml:31
-	"Constraint":     "rule_namespace", // python/frameworks/sqlalchemy.yaml:79
-	"Controller":     "rule_namespace", // 37 sites in 21 files; e.g. csharp/frameworks/asp_net_mvc.yaml:46
-	"Decorator":      "rule_namespace", // graphql/frameworks/graphql_schema.yaml:75
-	"Dependency":     "rule_namespace", // 20 sites in 15 files; e.g. cicd/frameworks/github_actions.yaml:49
-	"Endpoint":       "rule_namespace", // 3 sites; javascript_typescript/frameworks/electron.yaml:41
-	"Fixture":        "rule_namespace", // python/frameworks/pytest.yaml:65
-	"Implementation": "rule_namespace", // 6 sites; kotlin/frameworks/kmp.yaml:43
-	"Interface":      "rule_namespace", // 4 sites in 2 files; e.g. graphql/frameworks/graphql_schema.yaml:65
-	"Middleware":     "rule_namespace", // 29 sites in 16 files; e.g. csharp/frameworks/asp_net_core.yaml:63
-	"Migration":      "rule_namespace", // 4 sites in 3 files; e.g. python/frameworks/django.yaml:67
-	"Model":          "rule_namespace", // 42 sites in 17 files; e.g. csharp/frameworks/asp_net_core.yaml:59
-	"Operation":      "rule_namespace", // 68 sites in 28 files; e.g. ansible/frameworks/ansible_core.yaml:28
-	"Plugin":         "rule_namespace", // 5 sites in 2 files; e.g. javascript_typescript/frameworks/fastify.yaml:35
-	"Relationship":   "rule_namespace", // python/frameworks/sqlalchemy.yaml:74
-	"Route":          "rule_namespace", // 73 sites in 31 files; e.g. csharp/frameworks/asp_net_core.yaml:78
-	"Schema":         "rule_namespace", // 27 sites in 5 files; e.g. database_index/language.yaml:12
-	"Service":        "rule_namespace", // 52 sites in 28 files; e.g. ansible/frameworks/ansible_core.yaml:103
-	"Task":           "rule_namespace", // 11 sites in 4 files; e.g. ansible/frameworks/ansible_core.yaml:25
-	"Template":       "rule_namespace", // 2 sites in 2 files; e.g. ansible/frameworks/ansible_core.yaml:37
-	"Test":           "rule_namespace", // 4 sites in 2 files; e.g. java/frameworks/micronaut.yaml:101
-	"TestClass":      "rule_namespace", // python/frameworks/pytest.yaml:60
-	"TestConfig":     "rule_namespace", // python/frameworks/pytest.yaml:48
-	"View":           "rule_namespace", // 9 sites in 5 files; e.g. csharp/frameworks/net_maui.yaml:62
+	"Component":  "rule_namespace", // 25 sites in 14 files; e.g. ansible/frameworks/ansible_core.yaml:63
+	"Config":     "rule_namespace", // 91 sites in 31 files; e.g. ansible/frameworks/ansible_core.yaml:31
+	"Constraint": "rule_namespace", // python/frameworks/sqlalchemy.yaml:79
+	"Endpoint":   "rule_namespace", // 3 sites; javascript_typescript/frameworks/electron.yaml:41
+	"Model":      "rule_namespace", // 42 sites in 17 files; e.g. csharp/frameworks/asp_net_core.yaml:59
+	"Operation":  "rule_namespace", // 68 sites in 28 files; e.g. ansible/frameworks/ansible_core.yaml:28
+	"Plugin":     "rule_namespace", // 5 sites in 2 files; e.g. javascript_typescript/frameworks/fastify.yaml:35
+	"Route":      "rule_namespace", // 73 sites in 31 files; e.g. csharp/frameworks/asp_net_core.yaml:78
+	"Schema":     "rule_namespace", // 27 sites in 5 files; e.g. database_index/language.yaml:12
+	"Service":    "rule_namespace", // 52 sites in 28 files; e.g. ansible/frameworks/ansible_core.yaml:103
+	"Template":   "rule_namespace", // 2 sites in 2 files; e.g. ansible/frameworks/ansible_core.yaml:37
+	"View":       "rule_namespace", // 9 sites in 5 files; e.g. csharp/frameworks/net_maui.yaml:62
 }
 
 // ruleDeclaredKindsDeferredMax is the RATCHET on ruleDeclaredKindsDeferred: the
@@ -150,7 +141,7 @@ var ruleDeclaredKindsDeferred = map[string]string{
 //   - SHRINKS (a kind was declared or removed, which is the point) → this fires
 //     and requires the constant to come down with it, so the bar is never left
 //     slack for a later append to slip under.
-const ruleDeclaredKindsDeferredMax = 25
+const ruleDeclaredKindsDeferredMax = 12
 
 // ruleDeclaredFamily explains each family tag. A ledger entry without a stated
 // reason is not a decision, it is a silence.
