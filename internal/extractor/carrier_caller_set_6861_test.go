@@ -199,6 +199,7 @@ func TestCarrierCallerSetIsGradedFromSource_6861(t *testing.T) {
 		{"internal/extractors/hcl/extractor.go", []string{prependFileCarrier}},
 		{"internal/extractors/html/extractor.go", []string{prependFileCarrier}},
 		{"internal/extractors/fsharp/extractor.go", []string{prependFileCarrier}},
+		{"internal/extractors/shell/shell.go", []string{prependFileCarrier}},
 	}
 
 	nonTest := 0

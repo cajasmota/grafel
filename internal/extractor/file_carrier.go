@@ -76,6 +76,15 @@ import "github.com/cajasmota/grafel/internal/types"
 //     TestFSharp_ModuleNamedLikeThePathGetsNoSecondCarrier_6852, whose nested
 //     subtest is the contrast that stops it passing on a carrier that is never
 //     emitted at all.
+//     shell (#6852) reaches it by BOTH of those routes and by a third that is
+//     new: it emits hcl's BASENAME(path) file component (root depth only, and
+//     only for a script that declares a function), AND its `source`/`.` import
+//     stub is named after the SOURCED path VERBATIM — so a script that sources
+//     itself by the spelling of its own path is a path-named record at ANY
+//     depth. That is the case fsharp's import marker provably cannot produce,
+//     and it means clause 3 is not a root-depth phenomenon. Pinned by
+//     TestShell_ScriptComponentNamedLikeThePathGetsNoSecondCarrier_6852 and
+//     TestShell_SelfSourcingImportStubGetsNoSecondCarrier_6852.
 //
 // Clause 3 is checked for EVERY record, before the loop may short-circuit on
 // clause 2 being satisfied — deliberately, and the order is load-bearing.
@@ -99,9 +108,17 @@ import "github.com/cajasmota/grafel/internal/types"
 // TestErlang_CarrierIsLanguageTagged_6815). An EMPTY one is caught only for a
 // caller that does NOT run extractor.TagEntitiesLanguage: that helper fills an
 // empty Language with the extractor's own token, so for a caller that tags,
-// passing "" is equivalent under the suite, while a caller that does not tag
-// keeps whatever token this parameter is given. The second shape is the one the
-// parameter exists for.
+// passing "" is equivalent ON THE Language FIELD ALONE — unless some test in
+// that package distinguishes the two some other way, as shell's does (#6852):
+// TagEntitiesLanguage only touches a record whose Language is empty, and stamps
+// Properties["language"] when it does, so a package whose every other record
+// sets Language explicitly can observe the fill as provenance rather than as a
+// token. A caller that does not tag keeps whatever token this parameter is
+// given, and that second shape is the one the parameter exists for. The
+// asymmetry to keep in view is the direction of the error: this paragraph is
+// safe when it UNDER-claims grading for a tagging caller (a mutant dies that it
+// did not promise would), and unsafe the other way, so the clause above is a
+// softening and not a second measured fact about which callers do it.
 //
 // WHICH callers are which is deliberately NOT written down here. This paragraph
 // stated it as a MEASURED fact three times — "all three current callers", then
