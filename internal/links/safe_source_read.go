@@ -69,3 +69,27 @@ const stringScanMaxFileBytes int64 = 4*1024*1024 + 1
 func readSourceFile(abs string, maxBytes int64) ([]byte, error) {
 	return safeio.ReadFile(abs, safeio.FollowSymlinks, maxBytes)
 }
+
+// probeSourceFile answers "would readSourceFile accept abs?" without reading
+// it: same package, same symlink policy, same two-layer type gate — it just
+// closes the descriptor instead of draining it.
+//
+// It exists for the string-scan cache (#6857). A cache hit there is validated
+// on mtime+size, which says the file has not changed; it does not say the path
+// still holds a regular file that opens. Returning cached extractions on that
+// evidence alone makes "the contents were classified" an inference, at the one
+// site in this package whose contract is that a read failure is loud. This is
+// the cheapest way to keep that contract on the cache path: one open(2) and a
+// close, not a re-read and a re-hash of the file the cache exists to avoid
+// reading.
+//
+// The bound readSourceFile takes is absent on purpose — nothing is read, so
+// there is nothing to bound, and safeio's own stat gate plus O_NONBLOCK are
+// what keep the open itself from parking on a FIFO.
+func probeSourceFile(abs string) error {
+	f, err := safeio.Open(abs, safeio.FollowSymlinks)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
