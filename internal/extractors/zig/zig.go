@@ -226,7 +226,76 @@ func extractZig(src, filePath string) []types.EntityRecord {
 		entities = append(importEntities, entities...)
 	}
 
-	return entities
+	// ── #6852 — file carrier for the path-anchored IMPORTS above ─────────
+	//
+	// buildImportEntities stamps the source path as the FROM end of every
+	// import stub's IMPORTS edge, and internal/resolve/refs.go has no
+	// path→entity index: such an edge resolves iff some emitted node carries
+	// that exact string as its name. Zig emits no qualified names at all, so
+	// the byQualifiedName tier — a different consumer, and one FileCarrierFor's
+	// clause 3 never reads — cannot stand in either. Nothing here is named
+	// after the file as a rule, so without this the raw path reached the graph
+	// as the edge's FROM end: #6847's measurement, #6815's fix shape.
+	//
+	// CONDITIONAL, via extractor.PrependFileCarrier. An unconditional carrier
+	// mints one bare orphan node per .zig file across a whole repo, which no
+	// recall-shaped assertion can see (#6518, #6815). The over-firing direction
+	// is graded by TestZig_NoCarrierWithoutAnImport_6852.
+	//
+	// THE ONE SITE THAT CAN SPELL THE PATH is importTopSegment (named, not
+	// line-cited — same-file line cites go stale the next time someone edits a
+	// comment above them). It trims exactly ONE trailing extension, so in a
+	// ROOT file main.zig the target `@import("main.zig.zig")` names the import
+	// stub exactly `main.zig`, clause 3 declines, and the second node that
+	// would otherwise land under the same graph.EntityID (which does not hash
+	// Subtype — the #6369/#6480 hazard) is never minted. That is a DRIVEN cell,
+	// not a closure: TestZig_ImportStubNamedLikeThePath_6852 runs it, with a
+	// nested subtest as the contrast that stops it passing on a carrier that is
+	// never emitted at all.
+	//
+	// AT NESTED DEPTH the same route needs a path ending in '/', and that is
+	// settled by ENUMERATION rather than by argument, because four arms of
+	// #6852 shipped a closure a driven cell later disproved.
+	// import_top_segment_6852_test.go brute-forces all 5461 targets over
+	// {a _ . /} up to length 6 and finds that importTopSegment's result is
+	// always a SUBSTRING of its input — the anti-concatenation property itself,
+	// which is what defeated cobol's closure (#6899) — and that a '/'-bearing
+	// result always ENDS in '/'. The remaining cell is DRIVEN too (a path
+	// spelled "src/"); it is alive but not production-reachable, because no
+	// file on disk has a path ending in '/'. The other three name sites are
+	// verbatim `(\w+)` captures with no builder concatenating onto them, and
+	// `\w` is [0-9A-Za-z_], so none can hold the '.' every .zig path carries —
+	// OBSERVED by TestZig_WordCaptureNameSitesCannotSpellAPath_6852.
+	//
+	// PLACEMENT: last, and the two reasons are scored PART BY PART with the
+	// ENTAILED one named (the cobol lesson, #6899).
+	//
+	//  1. INDEPENDENT AND LOAD-BEARING — CLAUSE 2 REACHABILITY. The ONLY
+	//     path-anchored relationship zig emits is built in the import pass
+	//     immediately above. A carrier call placed anywhere before it sees no
+	//     anchored edge, clause 2 rejects, and NO carrier is minted at all —
+	//     the defect survives silently. Graded by
+	//     TestZig_ImportsFromEndResolves_6852, which goes red on any such move.
+	//  2. ENTAILED — CLAUSE 3 VISIBILITY. FileCarrierFor can only decline for a
+	//     record it is handed, so in general the call must run after the pass
+	//     that emits the path-named record. For zig that reason buys nothing
+	//     independently and is named rather than dressed up as a second one:
+	//     the only record that can be named after the path is an import stub,
+	//     built in the SAME pass as the anchor, so any position satisfying
+	//     reason 1 satisfies this one too.
+	//
+	//     Zig stores no index into `entities` anywhere — the struct pass hangs
+	//     its CONTAINS edges on structural refs, not on slice positions — so
+	//     dart's index-shift hazard (#6907) has no analogue here, and the
+	//     positions after the import pass are behaviourally equivalent.
+	//
+	// The "zig" token is stamped explicitly rather than left to Extract's
+	// TagEntitiesLanguage, which runs AFTER this. Every other record here sets
+	// its language explicitly, so that tagger is a no-op for them and the
+	// carrier is the one record it could fill: an empty token would be filled
+	// on the language field and caught instead by the provenance stamp the
+	// tagger leaves behind. TestZig_CarrierShape_6852 asserts both halves.
+	return extractor.PrependFileCarrier(filePath, "zig", entities)
 }
 
 // collectImports returns the textual targets of every @import("...") call.

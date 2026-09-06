@@ -126,12 +126,17 @@
 //
 // THE LEDGER IS AN EXACT SET, NOT A FLOOR, IN BOTH DIRECTIONS. A language not
 // in knownMissingCarrier6847 fails this test; so does fixing one that IS in it
-// without removing its entry. NOTE THAT THE SET SHRINKS AS LANGUAGES ARE
-// FIXED — it opened at twelve and #6852 removes one per landed arm (bicep is
-// the first), so any count written here goes stale by design. Read
-// len(knownMissingCarrier6847), not a number in prose. A guard that only checked "no NEW offender" would be blind to the
-// permissive direction — a walk that silently stopped detecting anything would
-// stay green under a floor and goes red here.
+// without removing its entry. THE SET SHRANK AS LANGUAGES WERE FIXED — it
+// opened at twelve, #6852 removed one per landed arm (bicep first, zig last),
+// and it is now EMPTY over this corpus. Read len(knownMissingCarrier6847), not
+// a number in prose.
+//
+// AN EMPTY LEDGER CHANGES WHAT THIS FILE PROVES, and the change is written up
+// at the declaration below rather than left implicit: the "still reproduces"
+// direction now iterates nothing, so the permissive failure it used to catch —
+// a walk that silently stopped detecting anything — is caught by
+// TestFileAnchoredCarrier_EveryAnchoringFileCarries_6847 instead, which
+// accounts for a non-empty population in the positive direction.
 package extractors_test
 
 import (
@@ -163,9 +168,22 @@ import (
 // for the conditional-carrier shape #6815 and #6518 settled on) and delete the
 // line. To ADD one: do not. A new offender is the defect this file exists to
 // catch; adding a line to keep it green is the failure mode #6834 names.
-var knownMissingCarrier6847 = map[string]string{
-	"zig": "zig.go:272 `FromID: filePath` on IMPORTS; no carrier emitted",
-}
+// THE SET IS NOW EMPTY, AND THAT CHANGES WHICH ASSERTION IS LOAD-BEARING.
+// While it had entries, the second loop of TestFileAnchoredCarrier_NoNewOffender_6847
+// ("every known offender still reproduces") doubled as this file's strongest
+// anti-vacuity check: a walk that silently stopped detecting anything went RED
+// there. Empty, that loop iterates nothing and can no longer fail, so "zero
+// offenders" became a conclusion a broken walk reaches just as easily as a
+// fixed tree does — the #6908 shape, an anti-vacuity guard relaxed by the very
+// change it exists to catch.
+//
+// The replacement is TestFileAnchoredCarrier_EveryAnchoringFileCarries_6847
+// below, which states the SAME invariant in the positive direction over a
+// population that is not empty and cannot become empty without failing:
+// every one of the anchoringLanguages6847 files must be MATCHED to a carrier,
+// per language and per file count. Deleting the detection step from the walk
+// now fails there instead of passing here.
+var knownMissingCarrier6847 = map[string]string{}
 
 // exercisedLanguages6847 is the exact set of registered languages the corpus
 // actually drives. It is pinned so that a corpus file being deleted, renamed
@@ -268,6 +286,8 @@ type carrierScanResult struct {
 	candidates       int
 	exercised        map[string]int
 	anchoring        map[string]int
+	carried          map[string]int
+	detected         map[string]int
 	noExtractorLangs map[string]int
 	offenders        []carrierFinding
 }
@@ -335,6 +355,8 @@ func scanCorpusForMissingCarriers() (carrierScanResult, error) {
 		candidates:       len(files),
 		exercised:        map[string]int{},
 		anchoring:        map[string]int{},
+		carried:          map[string]int{},
+		detected:         map[string]int{},
 		noExtractorLangs: map[string]int{},
 	}
 	cls := classifier.New(nil)
@@ -383,6 +405,46 @@ func scanCorpusForMissingCarriers() (carrierScanResult, error) {
 		}
 		if anchored {
 			res.anchoring[cr.Language]++
+			// PER-FILE POSITIVE CONTROL FOR THE MATCHER, run through the walk's
+			// own call rather than beside it. Take the carrier away and the file
+			// becomes a genuine offender; if the matcher does NOT report it, the
+			// matcher is not detecting anything and the empty offender list
+			// below is a no-op that reads like a guard. This is the check that
+			// replaces what an entry in knownMissingCarrier6847 used to provide:
+			// with the ledger empty, nothing else here fails when the detection
+			// step is neutered.
+			//
+			// THE CARRIER IS UN-NAMED, NOT DELETED, and the distinction is not
+			// cosmetic — deleting it was measured and was WRONG. For java,
+			// python, typescript, javascript and graphql the record that carries
+			// the path is the same record that OWNS the path-anchored edges, so
+			// removing it removes the anchor too and the matcher correctly
+			// reports nothing. Blanking the two name fields leaves the anchor in
+			// place and isolates exactly the property under test.
+			stripped := make([]types.EntityRecord, len(recs))
+			copy(stripped, recs)
+			for i := range stripped {
+				if stripped[i].Name == vrel || stripped[i].QualifiedName == vrel {
+					stripped[i].Name = ""
+					stripped[i].QualifiedName = ""
+				}
+			}
+			if len(pathAnchoredKindsMissingCarrier(vrel, stripped)) > 0 {
+				res.detected[cr.Language]++
+			}
+			// The POSITIVE half of the invariant, derived DIRECTLY from the
+			// records and NOT from the offender list below. Deriving it from
+			// `kinds` was measured and was wrong: a walk that stopped calling
+			// the matcher would then count every anchoring file as carried and
+			// report no offenders, so a real regression would produce a green
+			// run twice over. Read straight from the records, that same walk
+			// mutant leaves this count intact and the regression still fails.
+			for i := range recs {
+				if recs[i].Name == vrel || recs[i].QualifiedName == vrel {
+					res.carried[cr.Language]++
+					break
+				}
+			}
 		}
 		if kinds := pathAnchoredKindsMissingCarrier(vrel, recs); len(kinds) > 0 {
 			res.offenders = append(res.offenders, carrierFinding{lang: cr.Language, path: vrel, kinds: kinds})
@@ -422,13 +484,76 @@ func TestFileAnchoredCarrier_NoNewOffender_6847(t *testing.T) {
 	}
 }
 
+// TestFileAnchoredCarrier_EveryAnchoringFileCarries_6847 is the invariant said
+// in the POSITIVE direction, and it exists because knownMissingCarrier6847 is
+// now empty.
+//
+// "No offender" is a claim about an empty set, and an empty set is what a walk
+// that reads nothing, extracts nothing, or no longer applies the matcher also
+// produces. While the ledger had entries, the "still reproduces" loop above
+// caught that; empty, it iterates nothing. This test asks instead for a
+// NON-EMPTY population to be positively accounted for: for every language whose
+// corpus files anchor on their own path, the number of files MATCHED to a
+// carrier must equal the number that anchor — per language, per file, not as a
+// floor.
+//
+// It fails on all three of the shapes the empty ledger stopped catching:
+// deleting the matcher call, an extractor losing its carrier, and a walk that
+// silently stops extracting. It is deliberately NOT derived from
+// res.offenders — the count it reads is incremented in the same branch as the
+// offender list, so the two cannot disagree about what was measured.
+func TestFileAnchoredCarrier_EveryAnchoringFileCarries_6847(t *testing.T) {
+	res := carrierScan(t)
+
+	if diff := diffStringSets(anchoringLanguages6847, sortedStringKeys(res.carried)); diff != "" {
+		t.Errorf("the set of languages whose anchored corpus files ALL carry changed:\n%s\n"+
+			"A language that leaves this set has anchored files with no carrier — the #6815 "+
+			"defect class, now reported here as well as in the offender test, because an "+
+			"empty knownMissingCarrier6847 can no longer report it by disappearing.", diff)
+	}
+	total := 0
+	for _, lang := range anchoringLanguages6847 {
+		total += res.carried[lang]
+		if res.carried[lang] != res.anchoring[lang] {
+			t.Errorf("language %q: %d corpus files anchor on their own path but only %d carry — "+
+				"the %d-file difference is the dangling-FROM-end defect (#6815/#6847), one "+
+				"file at a time", lang, res.anchoring[lang], res.carried[lang],
+				res.anchoring[lang]-res.carried[lang])
+		}
+	}
+	// A floor on the accounted population, so this test cannot pass by having
+	// measured an empty corpus: sets that are equal because both are empty
+	// would satisfy every comparison above.
+	const minCarriedFiles6847 = 100
+	if total < minCarriedFiles6847 {
+		t.Errorf("only %d corpus files were positively accounted for, want at least %d — "+
+			"below that this test is comparing near-empty sets and the assertion is vacuous",
+			total, minCarriedFiles6847)
+	}
+
+	// THE MATCHER'S OWN POSITIVE CONTROL, measured inside the walk. Every
+	// anchoring file must become a REPORTED offender once its carrier is
+	// stripped. Without this, a pathAnchoredKindsMissingCarrier that returned
+	// nil unconditionally — or a walk that stopped calling it — would produce
+	// an empty offender list, an intact carried count, and a clean run.
+	for _, lang := range anchoringLanguages6847 {
+		if res.detected[lang] != res.anchoring[lang] {
+			t.Errorf("language %q: %d anchoring corpus files, but stripping the carrier made "+
+				"only %d of them REPORT as offenders — the detection step is not detecting, so "+
+				"an empty offender list is not evidence of anything", lang,
+				res.anchoring[lang], res.detected[lang])
+		}
+	}
+}
+
 // TestFileAnchoredCarrier_CorpusCoverage_6847 pins what the walk read. Without
 // it, deleting every corpus file for a language would leave
-// TestFileAnchoredCarrier_NoNewOffender_6847 green for the wrong reason —
-// except for the pinned offenders still in knownMissingCarrier6847, whose
-// disappearance already fails it.
-// The nine remaining #6834 shapes are not so protected, which is why the two
-// exact sets below are asserted rather than a file count alone.
+// TestFileAnchoredCarrier_NoNewOffender_6847 green for the wrong reason. That
+// used to be softened by the pinned offenders in knownMissingCarrier6847, whose
+// disappearance failed the offender test directly — but that set is empty now,
+// so nothing about a shrinking corpus is caught there any more.
+// The nine remaining #6834 shapes are not otherwise protected, which is why the
+// two exact sets below are asserted rather than a file count alone.
 func TestFileAnchoredCarrier_CorpusCoverage_6847(t *testing.T) {
 	res := carrierScan(t)
 

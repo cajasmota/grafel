@@ -111,6 +111,29 @@ import "github.com/cajasmota/grafel/internal/types"
 //     over "every Name this package emits" is the claim most likely to be
 //     wrong, because one builder concatenating a prefix onto a literal-derived
 //     operand defeats it — clojure's `.clj-kondo` correction, one package over.
+//     zig (#6852) is the LAST arm, and it answers that lesson with the strongest
+//     form the series found. Its one candidate name site, importTopSegment,
+//     trims exactly ONE trailing extension, so a ROOT main.zig importing
+//     "main.zig.zig" names an import stub exactly the path and clause 3
+//     declines — driven, not argued. What settles the NESTED question is not a
+//     character-class closure at all: the arm brute-forces the whole input
+//     space and establishes that importTopSegment's result is always a
+//     SUBSTRING of its input. That is the anti-concatenation property itself,
+//     asserted over the function rather than over a paragraph, so the edit that
+//     defeated cobol's closure — concatenating a prefix onto a literal-derived
+//     operand — fails a test here instead of quietly invalidating prose. The
+//     nested cell that remains (a path ending in '/') is DRIVEN too, and
+//     reported as alive-but-not-production-reachable by naming the input.
+//     Pinned by TestZig_ImportStubNamedLikeThePath_6852 and, for the
+//     enumeration, TestZig_ImportTopSegmentIsAlwaysASubstring_6852.
+//
+// WITH THE ZIG ARM, #6852'S LEDGER REACHED EMPTY over #6847's corpus:
+// knownMissingCarrier6847 has no entries left. That is a statement about a
+// CORPUS, not about the registered language set — reasonml and rescript are
+// confirmed offenders that corpus never reaches, and the population stays
+// unbounded above until every registered language is driven. Read
+// len(knownMissingCarrier6847) and the coverage sets beside it, never this
+// sentence, for the current state.
 //
 // Clause 3 is checked for EVERY record, before the loop may short-circuit on
 // clause 2 being satisfied — deliberately, and the order is load-bearing.
