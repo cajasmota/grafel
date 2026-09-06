@@ -37,8 +37,20 @@
 //     neighbouring source scan's property, and the source scan's stated reason
 //     for preferring a derive-shaped check — that a corpus "grows only when
 //     someone remembers to grow it" — is VINDICATED here, not superseded:
-//     dockerfile, reasonml and rescript are offenders this corpus cannot see.
+//     reasonml and rescript are offenders this corpus cannot see.
 //     The two checks are complements. Neither replaces the other.
+//
+//     A FILE CAN ALSO BE INVISIBLE FOR A REASON THAT IS NOT THE CORPUS'S.
+//     dockerfile was listed here as a third such offender and was NOT one:
+//     three fixtures existed and the CLASSIFIER dropped all three, because its
+//     basename table held the exact name `Dockerfile` while every fixture used
+//     a `*.Dockerfile` / `Dockerfile.<variant>` spelling. #6854 widened the
+//     router; all three files reported here as offenders on the next run, and
+//     the #6852 arm below fixed them. So a language missing from
+//     exercisedLanguages6847 has TWO possible causes and only one of them is a
+//     missing fixture — check the classifier before concluding the corpus is
+//     short.
+//
 //   - exercisedLanguages6847 IS HAND-MAINTAINED AND IS NOT DERIVED FROM
 //     extractor.List(). Stating that plainly, because a pinned slice that
 //     relates to nothing outside itself makes every omission read as
@@ -47,25 +59,38 @@
 //     (custom_*, python_*, lua_*) that no classifier language ever dispatches,
 //     so "registered minus exercised" is not a meaningful coverage number.
 //     What IS pinned against something external is noExtractorLanguages6847
-//     below. The unexercised BASE languages, measured, are the 24:
+//     below. The unexercised BASE languages, measured, were the 24:
 //     assembly avro c commonlisp dockerfile elm erlang haskell hcl idris
 //     jsonschema nim ocaml pony racket reasonml rescript scheme sml solidity
 //     swift_package systemverilog verilog vhdl — three of which (dockerfile,
-//     reasonml, rescript) are confirmed offenders.
-//   - ONE CORPUS DROP IS NOT A MISSING FIXTURE. dockerfile has three corpus
-//     files and reaches the extractor with NONE of them: sample.Dockerfile
-//     (x2, under testdata/fixtures/dockerfile and .../sources/dockerfile) and
-//     real-world/docker/Dockerfile.multi_stage all classify as
-//     lang="" skip=true reason="unsupported_extension" — the classifier's
-//     basename table maps the exact name "Dockerfile", not the
-//     `*.Dockerfile` / `Dockerfile.<variant>` spellings the fixtures use. The
-//     extractor is registered and the fixtures exist; the classifier is what
-//     the corpus cannot cross. Filed separately as a classifier question.
+//     reasonml, rescript) were confirmed offenders. dockerfile has since left
+//     that list: #6854 made its three fixtures classify, so it is exercised,
+//     anchoring, and fixed. The remaining two are unchanged.
+//
+//   - ONE CORPUS DROP IS NOT A MISSING FIXTURE, and dockerfile is the worked
+//     example. Its three corpus files — sample.Dockerfile (x2, under
+//     testdata/fixtures/dockerfile and .../sources/dockerfile) and
+//     real-world/docker/Dockerfile.multi_stage — all classified as
+//     lang="" skip=true reason="unsupported_extension" because the
+//     classifier's basename table mapped the exact name "Dockerfile" and not
+//     the `*.Dockerfile` / `Dockerfile.<variant>` spellings the fixtures use.
+//     The extractor was registered and the fixtures existed; the classifier
+//     was what the corpus could not cross. Fixed in #6854, landed together with
+//     the #6852 dockerfile arm. The ordering constraint runs ONE WAY, stated
+//     precisely because an earlier draft here claimed a circularity that does
+//     not exist: the CLASSIFIER half cannot land first, since it turns all
+//     three fixtures into new offenders and reddens this guard. The carrier
+//     half CAN precede it — measured, not reasoned: with the carrier applied
+//     and the classifier at its parent, this package is green and the carrier's
+//     own unit tests still grade it fully, because they drive Extract with
+//     synthetic paths rather than through the router.
+//
 //   - IT IS PER-FILE. A carrier emitted by some OTHER file's extraction would
 //     satisfy the resolver's repo-wide byName index but not this check. No
 //     in-tree extractor mints a node named after a file it is not extracting,
 //     so the two coincide today; if one ever does, this guard reports it and
 //     the entry belongs in the ledger with that reason.
+//
 //   - IT RUNS ONE PASS. Pass 2.5 engine rules and the custom-extractor
 //     dispatch are not driven here, so a carrier minted by a later pass is not
 //     seen. Same disposition as above: report, then justify in the ledger.
@@ -86,7 +111,12 @@
 //	reasonml   (reasonml/extractor.go:325)
 //	rescript   (rescript/extractor.go:296)
 //
-// none of which calls FileEntity or PrependFileCarrier either. So the known
+// none of which called FileEntity or PrependFileCarrier either AT THAT TIME.
+// dockerfile now does, and it was never really in this bucket: it turned out to
+// have three corpus files the CLASSIFIER was dropping (#6854), so once the
+// router was widened it was measured by the walk like any other language rather
+// than by a hand-written source. reasonml and rescript are still hand-driven
+// findings and still unfixed. So the known
 // total is at least FIFTEEN offenders / EIGHTEEN instances counting the three
 // #6815 fixed, and the population is unbounded above until every registered
 // language is driven. All of it is tracked in #6852. None is fixed here: each
@@ -150,11 +180,11 @@ var knownMissingCarrier6847 = map[string]string{
 // read the RIGHT things"), which a bare count of files cannot establish.
 var exercisedLanguages6847 = []string{
 	"astro", "bicep", "clojure", "cobol", "commonlisp", "cpp", "crystal",
-	"csharp", "css", "dart", "elixir", "fish", "fsharp", "go", "graphql",
-	"groovy", "html", "java", "javascript", "jcl", "just", "kotlin", "lua",
-	"markdown", "php", "protobuf", "python", "razor", "ruby", "rust", "scala",
-	"shell", "sql", "svelte", "swift", "terraform", "typescript", "vbnet",
-	"vue", "yaml", "zig",
+	"csharp", "css", "dart", "dockerfile", "elixir", "fish", "fsharp", "go",
+	"graphql", "groovy", "html", "java", "javascript", "jcl", "just", "kotlin",
+	"lua", "markdown", "php", "protobuf", "python", "razor", "ruby", "rust",
+	"scala", "shell", "sql", "svelte", "swift", "terraform", "typescript",
+	"vbnet", "vue", "yaml", "zig",
 }
 
 // anchoringLanguages6847 is the exact set of exercised languages whose corpus
@@ -164,10 +194,10 @@ var exercisedLanguages6847 = []string{
 // statements would be gone and the language would drop out of this set.
 var anchoringLanguages6847 = []string{
 	"astro", "bicep", "clojure", "cobol", "cpp", "crystal", "csharp", "dart",
-	"elixir", "fish", "fsharp", "go", "graphql", "groovy", "html", "java",
-	"javascript", "just", "kotlin", "lua", "markdown", "php", "protobuf",
-	"python", "ruby", "rust", "scala", "shell", "swift", "terraform",
-	"typescript", "vue", "yaml", "zig",
+	"dockerfile", "elixir", "fish", "fsharp", "go", "graphql", "groovy",
+	"html", "java", "javascript", "just", "kotlin", "lua", "markdown", "php",
+	"protobuf", "python", "ruby", "rust", "scala", "shell", "swift",
+	"terraform", "typescript", "vue", "yaml", "zig",
 }
 
 // noExtractorLanguages6847 is the exact set of languages the classifier DOES

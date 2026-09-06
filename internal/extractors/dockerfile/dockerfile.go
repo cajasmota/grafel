@@ -156,7 +156,31 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		return nil, nil
 	}
 
-	return []types.EntityRecord{entity}, nil
+	// #6852 — collectFrom stamps `FromID: file.Path` on the IMPORTS edge of
+	// every FROM instruction, and the only record this extractor emits is named
+	// BASENAME(file.Path), not the path. internal/resolve/refs.go has no
+	// path→entity index, so that FROM end resolves iff some emitted node
+	// carries the path as its Name: true BY ACCIDENT at a root path, where the
+	// basename IS the path, and false at every nested one. #6367 already moved
+	// the USES/CONTAINS edges off the path for exactly this reason and left the
+	// IMPORTS anchor in place under the #120 convention; the carrier is what
+	// makes that anchor resolve rather than dangle.
+	//
+	// CONDITIONAL, and both of its rejections are reachable here:
+	//   - clause 2 (nothing anchors) is unreachable from this line because a
+	//     FROM-less Dockerfile already returned above with no records at all —
+	//     that early return is the over-emission control, and it is asserted
+	//     rather than assumed;
+	//   - clause 3 (a record is already named path) fires at every ROOT path,
+	//     where buildDockerfileEntity's BASENAME(path) name IS the path. A
+	//     carrier there would land a second SCOPE.Component under the component
+	//     record's graph.EntityID, which does not hash Subtype (#6369/#6480).
+	//
+	// The lang argument is load-bearing on Language alone here, unlike a caller
+	// whose carrier passes through TagEntitiesLanguage: that call is ABOVE this
+	// line and only fills an empty Language, so a carrier prepended afterwards
+	// keeps whatever token this argument gives it.
+	return extractor.PrependFileCarrier(file.Path, "dockerfile", []types.EntityRecord{entity}), nil
 }
 
 // dockerfileData collects all instruction details during the walk.

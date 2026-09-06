@@ -597,6 +597,25 @@ var extensionLanguageMap = map[string]string{
 	// COBOL programs a job invokes. Routed to the jcl extractor, which emits
 	// the JCL→COBOL cross-language bridge (#2843).
 	".jcl": "jcl",
+	// Container build files (#6854). `<name>.Dockerfile` / `<name>.Containerfile`
+	// is the spelling editors and language servers key on, and it is the one
+	// this repo's own fixtures use. It is routed HERE rather than by a basename
+	// rule so that LanguageForExtension(".dockerfile") answers too: otherwise
+	// the unsupported-extension report keeps listing an extension the router
+	// does claim. Being an extension route also makes this form
+	// case-insensitive, unlike the case-sensitive `Dockerfile.<variant>` rule
+	// in containerVariantLanguage.
+	//
+	// A CONSEQUENCE THAT IS CHOSEN, NOT OVERLOOKED: a bare dotfile named
+	// `.dockerfile` classifies, because filepath.Ext(".dockerfile") returns the
+	// whole name. That is how EVERY entry in this map behaves — a file named
+	// `.md` is markdown, `.go` is go — so carving out an exception here would
+	// make container files the one extension in the table that answers
+	// differently for a dotfile. The uniform behaviour is kept and pinned
+	// (TestDockerfileBareDotfileIsDeliberate6854) rather than left as an
+	// unexamined accept.
+	".dockerfile":    "dockerfile",
+	".containerfile": "dockerfile",
 	// Markdown / Documentation
 	".md":       "markdown",
 	".mdx":      "markdown",
@@ -762,7 +781,163 @@ func detectLanguage(norm string) string {
 	}
 	// Fall back to basename matching for files like Dockerfile / Containerfile
 	// that carry no extension.
-	return basenameLanguageMap[base]
+	if lang, ok := basenameLanguageMap[base]; ok {
+		return lang
+	}
+	return containerVariantLanguage(base)
+}
+
+// containerVariantLanguage recognises the `Dockerfile.<variant>` /
+// `Containerfile.<variant>` prefix convention (#6854) — Dockerfile.dev,
+// Dockerfile.prod, Dockerfile.multi_stage — which the exact-basename table
+// above cannot express.
+//
+// IT RUNS LAST, AND THAT ORDERING IS HALF THE OVER-FIRING DEFENCE. Anything
+// whose trailing segment names a language the router already knows returned
+// from the extension lookup before reaching here, so `Dockerfile.md` stays
+// markdown and `Dockerfile.py` stays python without this function having to
+// name them.
+//
+// THE OTHER HALF IS isContainerBuildTarget, AND ORDERING ALONE IS NOT ENOUGH —
+// that is not a hypothetical. `Dockerfile.bak` is a backup file, not a build
+// target, and `.bak` is routed by nothing, so the ordering argument does not
+// reach it; TestMX1100_DockerfileWithExtension_NotDockerfile has forbidden
+// exactly that name since long before #6854 and caught the first cut of this
+// function.
+//
+// A BLOCKLIST OVER AN UNBOUNDED SEGMENT SPACE ACCEPTS EVERYTHING IT DOES NOT
+// NAME, so the two rules that are NOT list membership carry most of the weight.
+// The harm is concrete rather than theoretical: a backup of a real Dockerfile
+// still contains its FROM lines, so it clears the extractor's own
+// `stageCount == 0` early return and mints a duplicate SCOPE.Component plus a
+// file carrier for a file nobody builds. `~`-suffixed and purely numeric
+// segments are rejected by SHAPE precisely because no list can enumerate them.
+//
+// The variant must be exactly one non-empty segment: `Dockerfile.` and
+// `Dockerfile.a.b` are rejected, and a bare `Dockerfilex` has no separator at
+// all. The match is case-SENSITIVE, matching basenameLanguageMap — bare
+// lowercase `dockerfile` does not classify today and `dockerfile.dev` does not
+// either. The `<name>.Dockerfile` SUFFIX form is not handled here: it is a real
+// extension and is routed by extensionLanguageMap.
+func containerVariantLanguage(base string) string {
+	for _, stem := range [...]string{"Dockerfile", "Containerfile"} {
+		variant, ok := strings.CutPrefix(base, stem+".")
+		if !ok || variant == "" || strings.Contains(variant, ".") {
+			continue
+		}
+		if !isContainerBuildTarget(variant) {
+			continue
+		}
+		return "dockerfile"
+	}
+	return ""
+}
+
+// isContainerBuildTarget reports whether variant names a BUILD TARGET rather
+// than a file's state, revision or encoding. Three rules, in order, and the
+// first two exist because the third cannot be complete:
+//
+//  1. A TRAILING `~` is the editor backup marker, and it is the marker whatever
+//     precedes it — `Dockerfile.dev~` is a backup OF `Dockerfile.dev`, not a
+//     target named "dev~". Rejecting on the tilde rather than trimming it
+//     before the lookup is the difference between forbidding both
+//     `Dockerfile.bak~` AND `Dockerfile.dev~`, and forbidding only the first:
+//     trimming would hand "dev" to the lookup, which accepts it.
+//  2. A PURELY NUMERIC segment is a revision or a date stamp — `Dockerfile.1`,
+//     `Dockerfile.20260101` — never a target. `v1` is not numeric and is
+//     accepted, which is the point of testing digits rather than "starts with
+//     a digit".
+//  3. Membership of nonContainerVariantSuffixes, for the named conventions
+//     that have neither shape.
+func isContainerBuildTarget(variant string) bool {
+	if strings.HasSuffix(variant, "~") {
+		return false
+	}
+	if isAllDigits(variant) {
+		return false
+	}
+	_, blocked := nonContainerVariantSuffixes[strings.ToLower(variant)]
+	return !blocked
+}
+
+// isAllDigits reports whether s is non-empty and every byte is an ASCII digit.
+// Deliberately byte-wise rather than unicode.IsDigit: a variant carrying, say,
+// an Arabic-Indic digit is not a revision suffix any tool produces, and
+// widening this would reject names nothing generates.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// nonContainerVariantSuffixes are trailing segments naming a file's STATE,
+// FORMAT or ENCODING rather than a build target, so `Dockerfile.<one of these>`
+// is not a Dockerfile.
+//
+// Grouped by the convention that produces them, because that is what makes the
+// list auditable — a reader can ask "is my package manager's suffix here?"
+// rather than scanning an alphabetical blur.
+//
+// Every entry is graded, and derived rather than rostered:
+// TestDockerfileDenylistIsExhaustivelyGraded6854 (internal, so it can read this
+// map) walks it and asserts, per entry, that the classifier rejects
+// `Dockerfile.<entry>` AND that extensionLanguageMap claims nothing for
+// `.<entry>` — an entry the router already claims would be shadowed dead
+// weight. Adding a key here therefore cannot go ungraded, which a floor over a
+// hand-written table could not promise.
+//
+// Deliberately NOT listed: `example`, `sample`, `template`, `in`, `dist`. Those
+// name a Dockerfile that has not been rendered yet, not a non-Dockerfile.
+var nonContainerVariantSuffixes = map[string]struct{}{
+	// Editor and generic backups.
+	"bak":      {},
+	"backup":   {},
+	"bkp":      {},
+	"old":      {},
+	"new":      {},
+	"copy":     {},
+	"sav":      {},
+	"save":     {},
+	"swp":      {},
+	"swo":      {},
+	"tmp":      {},
+	"temp":     {},
+	"disabled": {},
+	// Merge / patch artefacts.
+	"orig":  {},
+	"rej":   {},
+	"patch": {},
+	"diff":  {},
+	// Package-manager conffile artefacts. dpkg and rpm both rename the file
+	// they are replacing rather than deleting it, so these land next to a real
+	// Dockerfile in any image built from a distro base.
+	"rpmsave":   {},
+	"rpmnew":    {},
+	"rpmorig":   {},
+	"dpkg-old":  {},
+	"dpkg-new":  {},
+	"dpkg-dist": {},
+	"dpkg-bak":  {},
+	// Encrypted or signed payloads. The bytes are not text, and handing them to
+	// a text extractor is worse than dropping them.
+	"gpg": {},
+	"enc": {},
+	"age": {},
+	"asc": {},
+	"pem": {},
+	"crt": {},
+	"key": {},
+	// Data / document formats the extension router does not claim.
+	"log":  {},
+	"txt":  {},
+	"json": {},
+	"lock": {},
 }
 
 // ---------------------------------------------------------------------------
