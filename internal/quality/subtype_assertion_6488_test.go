@@ -288,8 +288,8 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 			}
 		}
 	}
-	if fixtures != 32 {
-		t.Fatalf("parsed %d fixtures, want 32 — every golden expected.json must "+
+	if fixtures != 33 {
+		t.Fatalf("parsed %d fixtures, want 33 — every golden expected.json must "+
 			"keep parsing across this additive schema change", fixtures)
 	}
 	// #6815 added the three file-carrier rows below. They are subtype-asserting
@@ -299,11 +299,30 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 	// without the subtype would be satisfied by an unrelated same-named record.
 	// Re-measured here rather than inherited: this ledger is the control that
 	// forces exactly that statement.
+	//
+	// #6812 added ocaml-objects-mini's nine rows, and they are re-measured here
+	// rather than waved through as more of the same. OCaml is the first fixture
+	// in the corpus where ONE Kind carries THREE different subtypes at once:
+	// SCOPE.Component is emitted for the file carrier (subtype "file"), for
+	// `module`/`module type` declarations (subtype "module") and for `type`
+	// declarations (subtype "type"), all three inside this one fixture. A row
+	// naming only the Kind therefore states a strictly weaker thing than the
+	// author means, and a producer that reclassified a type as a module — the
+	// exact confusion #6370 found languages sitting on either side of — would
+	// satisfy it. The fixture's ten SCOPE.Operation rows deliberately carry NO
+	// subtype: `function` is the only Operation subtype the base extractor
+	// emits, so asserting it would be decoration, which is what this control
+	// exists to keep out.
 	want := map[string][]string{
 		"proto-mini":         {"Role.ROLE_ADMIN:enum_value"},
 		"erlang-otp-mini":    {"cache_server.erl:file"},
 		"nim-objects-mini":   {"store.nim:file"},
 		"groovy-grails-mini": {"PostController.groovy:file"},
+		"ocaml-objects-mini": {
+			"point:type", "bounds:type", "level:type",
+			"shapes.ml:file", "containers.ml:file", "render.ml:file",
+			"Comparable:module", "Base:module", "Extended:module",
+		},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("fixtures asserting subtype: got %v want %v", got, want)
