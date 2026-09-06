@@ -252,18 +252,30 @@ func extractDart(src, filePath string) []types.EntityRecord {
 	// mints one bare orphan node per .dart file across a whole repo, which no
 	// recall-shaped assertion can see (#6518, #6815).
 	//
-	// THE ONE Name SITE THAT CAN SPELL THE PATH is dartTopName, and it is a
-	// DRIVEN cell rather than a closure: for a ROOT path main.dart the URI
+	// THE ONE Name SITE THAT CAN SPELL THE PATH is dartTopName (named, not
+	// line-cited: a line number in this file goes stale the next time someone
+	// edits a comment above it, which is nit 1 of this arm's review), and it is
+	// a DRIVEN cell rather than a closure: for a ROOT path main.dart the URI
 	// `main.dart.dart` yields exactly `main.dart`, so clause 3 declines in
 	// favour of the import record that already carries the anchor. The other
 	// five Name sites (class / method / enum / typedef / modified class) are
 	// verbatim `(\w+)` captures with no builder concatenating onto them, and
 	// `\w` is [0-9A-Za-z_], so none can hold the '.' every production dart
-	// path carries; the enum site's QualifiedName is
-	// `scope:enum:<path>:<Name>`, strictly longer than the path. Both halves
-	// are OBSERVED by file_carrier_6852_test.go, at both depths, rather than
-	// asserted — four arms of #6852 shipped a closure a driven cell later
-	// disproved.
+	// path carries. Both halves are OBSERVED by file_carrier_6852_test.go, at
+	// both depths, rather than asserted — four arms of #6852 shipped a closure
+	// a driven cell later disproved.
+	//
+	// TWO MECHANISMS, ADJACENT AND SEPARATE — do not merge them. FileCarrierFor
+	// CLAUSE 3 compares `records[i].Name` and NOTHING ELSE, so everything above
+	// is what clause 3 sees. The enum site's QualifiedName
+	// (`scope:enum:<path>:<Name>`, strictly longer than the path — crystal's
+	// LENGTH invariant, #6905) belongs to a DIFFERENT consumer: refs.go's
+	// `byQualifiedName` exact-match tier (refs.go:2103-2109, ahead of
+	// lookupStructural), which a grounding pass has driven and confirmed binds.
+	// The invariant matters because it is the other way a record could satisfy
+	// the resolution question #6847 measures — not because clause 3 reads it.
+	// Said explicitly here because this is the file the LAST arm of #6852 (zig)
+	// will read, and inherited prose is how a wrong attribution propagates.
 	//
 	// PLACEMENT: last, and the compound is scored PART BY PART with the
 	// entailed conjunct NAMED (the cobol lesson, #6899).

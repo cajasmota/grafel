@@ -17,7 +17,13 @@
 //
 // FromID sites in internal/extractors/dart/ (non-test): exactly ONE.
 //
-//	dart.go:349  buildImportRecord  FromID: filePath   — path-anchored, IMPORTS
+//	dart.go:429  buildImportRecord  FromID: filePath   — path-anchored, IMPORTS
+//
+// (349 in the parent commit. The commit that added this reference MOVED the
+// site, so the number it shipped with pointed at the wrong function — review
+// nit 1. Read the FUNCTION NAME as the durable half; the line drifts with any
+// comment edit above it, which is why dart.go's own header now names
+// dartTopName without a line at all.)
 //
 // Every other relationship dart emits carries no FromID at all: the CALLS edges
 // extractCallRelationships builds set only ToID/Kind/Properties, and the
@@ -587,17 +593,28 @@ class App {
 // each asserted a character-class closure that no test drove.
 //
 // The fixture names EVERY one of those sites the path's stem (`api`) — the
-// closest a `\w+` capture can get to the path — and ALSO attempts the literal
-// path spelling on each of them (`class api.dart {`, `enum api.dart {`,
-// `typedef api.dart = ...`, `sealed class api.dart`). Those attempts are the
-// point: `\w` is [0-9A-Za-z_], so each regex either fails to match or captures
-// only the pre-dot run, and no record can come out named `api.dart`. The
-// assertion is over EVERY record, so a site that started concatenating a prefix
-// (cobol's route) or a new site added later shows up here.
+// closest a `\w+` capture can get to the path — and attempts the literal path
+// spelling on FOUR of the five declaration kinds: `class api.dart {`,
+// `enum api.dart {`, `typedef api.dart = ...`, `sealed class api.dart`. THE
+// METHOD SITE GETS ONLY THE STEM, and the count is stated rather than rounded
+// up to "each" because a header that claims more than its body holds is a
+// defect this repo tracks specifically and two arms of this series have already
+// shipped one (review nit 3). The omission is not a gap in the grade: a dotted
+// method name is not expressible — methodRE's `(\w+)` must be followed by
+// `\s*\(`, so `void api.dart()` cannot produce a record named `api.dart` by
+// the same closure the other four attempts drive.
 //
-// Axis VARIED: path depth, and within the source the spelling of each declared
-// name (stem vs literal path). HELD CONSTANT: the set of declaration kinds
-// present, so every site is exercised in both rows.
+// Those attempts are the point: `\w` is [0-9A-Za-z_], so each regex either
+// fails to match or captures only the pre-dot run, and no record can come out
+// named `api.dart`. The assertion is over EVERY record, so a site that started
+// concatenating a prefix (cobol's route — and the reviewer's R1 mutant, which
+// adds exactly that builder to the class Name site and DIES here) or a new site
+// added later shows up regardless.
+//
+// Axis VARIED: path depth, and within the source the spelling of the declared
+// names (stem vs literal path, the latter on the four kinds that admit it).
+// HELD CONSTANT: the set of declaration kinds present, so every site is
+// exercised in both rows.
 func TestDart_WordCharacterSitesCannotSpellThePath_6852(t *testing.T) {
 	const src = `import 'package:http/http.dart';
 
