@@ -18,17 +18,79 @@ import (
 	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
-// countPendingReindex returns how many KindReindex requests are queued for
-// repoPath's control-plane requests dir.
-func countPendingReindex(t *testing.T, repoPath string) int {
+// pendingReindexIDs returns the IDs of the KindReindex requests currently
+// queued for repoPath's control-plane requests dir.
+func pendingReindexIDs(t *testing.T, repoPath string) map[string]bool {
 	t.Helper()
 	recs, err := requests.ListPending(requestsDirForRepo(repoPath))
 	if err != nil {
 		t.Fatalf("ListPending: %v", err)
 	}
-	n := 0
+	ids := make(map[string]bool, len(recs))
 	for _, r := range recs {
 		if r.Kind == requests.KindReindex && r.RepoPath == repoPath {
+			ids[r.ID] = true
+		}
+	}
+	return ids
+}
+
+// reindexLedger scopes durable request counts to the CURRENT RUN (#6929).
+//
+// The requests ledger is durable ON PURPOSE and its root is shared: repoBaseDir
+// keys off GRAFEL_DAEMON_ROOT when that is set and only falls back to
+// GRAFEL_HOME otherwise, so a test that isolates itself with
+// `t.Setenv("GRAFEL_HOME", t.TempDir())` alone still writes its requests into
+// whatever daemon root the developer's environment names. The fake repo paths
+// below ("/repo/000"…) are stable across tests AND across runs, so the requests
+// dir for a given fake repo accumulates one file per write, forever. An
+// absolute count therefore measured "every request ever written into this root
+// for this repo", not "the requests this test caused": green against a fresh
+// root, 144 / 286 / 428-vs-2 against a root reused for a 2nd / 3rd / 4th run.
+//
+// Scoping is by IDENTITY, not by clearing the root: the ledger snapshots the
+// request IDs already on disk when the test begins, and countNew reports only
+// IDs that were NOT in that snapshot. Requests are keyed by a fresh uuid per
+// write, so "not in the snapshot" is exactly "written during this test". The
+// assertions keep their full strength — a stampede that writes 140 requests
+// still reports 140 — and no other run's durable state is destroyed.
+//
+// Build the ledger BEFORE the action under test. If it is built afterwards the
+// test's own requests land in the baseline and countNew under-reports, which
+// fails the assertion loudly (0 vs the wanted 1) rather than passing vacuously.
+type reindexLedger struct {
+	t   *testing.T
+	pre map[string]bool
+}
+
+// newReindexLedger snapshots every reindex request ID already durably present
+// anywhere under the active requests root, so no caller has to enumerate the
+// repos it is about to touch.
+func newReindexLedger(t *testing.T) *reindexLedger {
+	t.Helper()
+	l := &reindexLedger{t: t, pre: map[string]bool{}}
+	dirs, err := discoverRequestsDirs(requestsRoot())
+	if err != nil {
+		t.Fatalf("discoverRequestsDirs: %v", err)
+	}
+	for _, d := range dirs {
+		recs, err := requests.ListPending(d)
+		if err != nil {
+			t.Fatalf("ListPending(%s): %v", d, err)
+		}
+		for _, r := range recs {
+			l.pre[r.ID] = true
+		}
+	}
+	return l
+}
+
+// countNew returns how many KindReindex requests THIS RUN added for repoPath.
+func (l *reindexLedger) countNew(repoPath string) int {
+	l.t.Helper()
+	n := 0
+	for id := range pendingReindexIDs(l.t, repoPath) {
+		if !l.pre[id] {
 			n++
 		}
 	}
@@ -40,6 +102,7 @@ func countPendingReindex(t *testing.T, repoPath string) int {
 // fingerprint) writes exactly ONE reindex request, not N.
 func TestStaleReindexGuard_ExactlyOnceAcrossHeartbeats(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
+	led := newReindexLedger(t)
 	const repo = "/repo/stale"
 	g := newStaleReindexGuard()
 
@@ -55,7 +118,7 @@ func TestStaleReindexGuard_ExactlyOnceAcrossHeartbeats(t *testing.T) {
 	if firing != 1 {
 		t.Errorf("maybeEnqueue returned true %d times across 12 heartbeats, want exactly 1", firing)
 	}
-	if got := countPendingReindex(t, repo); got != 1 {
+	if got := led.countNew(repo); got != 1 {
 		t.Fatalf("pending reindex requests = %d, want exactly 1 (no storm)", got)
 	}
 }
@@ -64,6 +127,7 @@ func TestStaleReindexGuard_ExactlyOnceAcrossHeartbeats(t *testing.T) {
 // current-format repo (required=false) never enqueues.
 func TestStaleReindexGuard_CurrentRepo_NoRequest(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
+	led := newReindexLedger(t)
 	const repo = "/repo/current"
 	g := newStaleReindexGuard()
 
@@ -72,7 +136,7 @@ func TestStaleReindexGuard_CurrentRepo_NoRequest(t *testing.T) {
 			t.Fatalf("current-format repo must never enqueue (heartbeat %d)", i)
 		}
 	}
-	if got := countPendingReindex(t, repo); got != 0 {
+	if got := led.countNew(repo); got != 0 {
 		t.Fatalf("pending reindex requests = %d, want 0 for a current repo", got)
 	}
 }
@@ -84,6 +148,7 @@ func TestStaleReindexGuard_CurrentRepo_NoRequest(t *testing.T) {
 // one fresh request. This is the anti-#5891 loop-guard end to end.
 func TestStaleReindexGuard_SelfClearsAfterReindex(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
+	led := newReindexLedger(t)
 	const repo = "/repo/lifecycle"
 	g := newStaleReindexGuard()
 
@@ -100,7 +165,7 @@ func TestStaleReindexGuard_SelfClearsAfterReindex(t *testing.T) {
 			t.Fatalf("in-flight heartbeat %d must not re-enqueue (same stale generation)", i)
 		}
 	}
-	if got := countPendingReindex(t, repo); got != 1 {
+	if got := led.countNew(repo); got != 1 {
 		t.Fatalf("after in-flight heartbeats, pending = %d, want 1", got)
 	}
 
@@ -119,7 +184,7 @@ func TestStaleReindexGuard_SelfClearsAfterReindex(t *testing.T) {
 			t.Fatalf("second-generation heartbeat %d must not re-enqueue", i)
 		}
 	}
-	if got := countPendingReindex(t, repo); got != 2 {
+	if got := led.countNew(repo); got != 2 {
 		t.Fatalf("total pending across two stale generations = %d, want 2 (one per generation)", got)
 	}
 }
@@ -182,6 +247,7 @@ func heartbeat(g *staleReindexGuard, repos []string, stale map[string]bool) []st
 // requests. Pre-fix this admits all 140.
 func TestStaleReindexGuard_FirstHeartbeatDoesNotStampede(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	g := newTestGuard(clk, 2, 30*time.Second, 15*time.Minute)
 
@@ -199,7 +265,7 @@ func TestStaleReindexGuard_FirstHeartbeatDoesNotStampede(t *testing.T) {
 
 	total := 0
 	for _, r := range repos {
-		total += countPendingReindex(t, r)
+		total += led.countNew(r)
 	}
 	if total != 2 {
 		t.Fatalf("durable pending reindex requests after one heartbeat = %d, want 2", total)
@@ -282,6 +348,7 @@ func TestStaleReindexGuard_IdleWindowBetweenBatches(t *testing.T) {
 // progress for the others, it does not retry the failure.
 func TestStaleReindexGuard_StuckSlotExpires(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	g := newTestGuard(clk, 1, 30*time.Second, 15*time.Minute)
 
@@ -309,7 +376,7 @@ func TestStaleReindexGuard_StuckSlotExpires(t *testing.T) {
 	if len(got) != 1 || got[0] != "/repo/next" {
 		t.Fatalf("after the slot TTL admitted %v, want [/repo/next] — a wedged repo must not block the migration", got)
 	}
-	if n := countPendingReindex(t, "/repo/wedged"); n != 1 {
+	if n := led.countNew("/repo/wedged"); n != 1 {
 		t.Fatalf("wedged repo has %d pending requests, want exactly 1 — TTL expiry must not re-enqueue a known failure", n)
 	}
 }
@@ -438,6 +505,7 @@ func restartGuard(clk *fakeClock, batch int, cooldown, ttl time.Duration, _ []st
 func TestStaleReindexGuard_RestartDoesNotDuplicateRequests(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	t.Setenv(EnvRoot, t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
 	repos := realRepoDirs(t, "a", "b", "c", "d")
@@ -468,7 +536,7 @@ func TestStaleReindexGuard_RestartDoesNotDuplicateRequests(t *testing.T) {
 
 	total := 0
 	for _, r := range repos {
-		total += countPendingReindex(t, r)
+		total += led.countNew(r)
 	}
 	if total != 2 {
 		t.Fatalf("durable requests after 6 restarts = %d, want 2 (progress must survive restart, not reset)", total)
@@ -526,6 +594,7 @@ func TestStaleReindexGuard_LaggardDoesNotStallWholeMigration(t *testing.T) {
 func TestStaleReindexGuard_FailedRepoIsRetriedThenReported(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	t.Setenv(EnvRoot, t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	g := newTestGuard(clk, 1, 45*time.Second, 10*time.Minute)
 	g.stalledGrace = 90 * time.Second
@@ -551,12 +620,12 @@ func TestStaleReindexGuard_FailedRepoIsRetriedThenReported(t *testing.T) {
 		t.Fatal("broken repo must be reported as migration-failed, not silently dropped")
 	}
 	// And once failed it must never be admitted again.
-	before := countPendingReindex(t, "/repo/broken")
+	before := led.countNew("/repo/broken")
 	for i := 0; i < 50; i++ {
 		clk.advance(time.Minute)
 		heartbeat(g, repos, stale)
 	}
-	if got := countPendingReindex(t, "/repo/broken"); got != before {
+	if got := led.countNew("/repo/broken"); got != before {
 		t.Errorf("failed repo re-admitted after giving up: %d -> %d", before, got)
 	}
 }
@@ -571,6 +640,7 @@ func TestStaleReindexGuard_FailedRepoIsRetriedThenReported(t *testing.T) {
 func TestStaleReindexGuard_RestartWithPartialBatchDoesNotDuplicate(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	t.Setenv(EnvRoot, t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
 	repos := realRepoDirs(t, "a", "b")
@@ -595,10 +665,10 @@ func TestStaleReindexGuard_RestartWithPartialBatchDoesNotDuplicate(t *testing.T)
 			t.Errorf("re-admitted %s, which already has a queued reindex — duplicate full reindex", repoA)
 		}
 	}
-	if n := countPendingReindex(t, repoA); n != 1 {
+	if n := led.countNew(repoA); n != 1 {
 		t.Fatalf("repo A pending requests = %d, want 1 (no duplicate across restart)", n)
 	}
-	if n := countPendingReindex(t, repoB); n != 1 {
+	if n := led.countNew(repoB); n != 1 {
 		t.Fatalf("repo B pending requests = %d, want 1 (the free slot must still be usable)", n)
 	}
 }
@@ -640,6 +710,7 @@ func drainAndAck(t *testing.T, repoPath string) {
 func TestStaleReindexGuard_RestartMidIndexDoesNotDuplicate(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	t.Setenv(EnvRoot, t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
 	repos := realRepoDirs(t, "a", "b", "c", "d")
@@ -673,7 +744,7 @@ func TestStaleReindexGuard_RestartMidIndexDoesNotDuplicate(t *testing.T) {
 	// than two would mean the recovery path rebuilt the backlog.
 	total := 0
 	for _, r := range repos {
-		total += countPendingReindex(t, r)
+		total += led.countNew(r)
 	}
 	if total != 2 {
 		t.Fatalf("reindex requests after 6 mid-index restarts = %d, want exactly 2 (one resume per orphaned repo)", total)
@@ -921,6 +992,7 @@ func TestStaleReindexGuard_RestartDoesNotBurnAttempts(t *testing.T) {
 func TestStaleReindexGuard_ReconcileReEnqueuesRecoveredRepos(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	t.Setenv(EnvRoot, t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
 	const repo = "/repo/orphaned"
@@ -934,7 +1006,7 @@ func TestStaleReindexGuard_ReconcileReEnqueuesRecoveredRepos(t *testing.T) {
 	// The drain applies and removes the request; the index dies with the daemon.
 	clk.advance(2 * time.Second)
 	drainAndAck(t, repo)
-	if n := countPendingReindex(t, repo); n != 0 {
+	if n := led.countNew(repo); n != 0 {
 		t.Fatalf("precondition: pending = %d, want 0 after the drain acked", n)
 	}
 
@@ -942,7 +1014,7 @@ func TestStaleReindexGuard_ReconcileReEnqueuesRecoveredRepos(t *testing.T) {
 	g2 := newTestGuard(clk, 2, 45*time.Second, 15*time.Minute)
 	heartbeat(g2, repos, stale)
 
-	if n := countPendingReindex(t, repo); n != 1 {
+	if n := led.countNew(repo); n != 1 {
 		t.Fatalf("pending requests after restart = %d, want 1 — a recovered slot must re-tell the scheduler", n)
 	}
 }
