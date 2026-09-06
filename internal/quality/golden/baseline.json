@@ -2,7 +2,7 @@
   "_comment": "Recorded must-have recall per golden fixture. This is a ratchet, not a target: recall may not drop below these figures, and any rise must be recorded here. Regenerate with `scripts/quality/run.sh --runs 1 --update-baseline`.",
   "version": 1,
   "measured_at": "2026-09-06",
-  "measured_on": "de290e8e7",
+  "measured_on": "fc9124eef",
   "regenerate": "scripts/quality/run.sh --runs 1 --update-baseline",
   "fixtures": {
     "angular-http-mini": {
@@ -140,6 +140,14 @@
       "relationship_expected": 11,
       "entity_extracted_total": 23,
       "relationship_extracted_total": 41
+    },
+    "ocaml-objects-mini": {
+      "entity_found": 19,
+      "entity_expected": 19,
+      "relationship_found": 6,
+      "relationship_expected": 6,
+      "entity_extracted_total": 28,
+      "relationship_extracted_total": 68
     },
     "php-slim-mini": {
       "entity_found": 5,
