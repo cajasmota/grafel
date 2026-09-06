@@ -37,6 +37,7 @@ func newGroupAddCmd() *cobra.Command {
 		reposCSV  string
 		groupDocs string
 		watchers  bool
+		trackWT   bool
 		gitHooks  bool
 		rules     bool
 		mcp       bool
@@ -73,22 +74,25 @@ new group immediately via the 'group' MCP parameter.
 
 Examples:
   grafel group add new-backend --repo core=/abs/path/to/repo --index
-  grafel group add legacy --repo /abs/api --repo /abs/web --no-watchers --json`,
+  grafel group add legacy --repo /abs/api --repo /abs/web --no-watchers --json
+  # container / no service manager: worktree tracking, no OS watcher units
+  grafel group add app --repo /abs/app --track-worktrees --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gaFlags := groupAddFlags{
-				repoArgs:  repoArgs,
-				reposCSV:  reposCSV,
-				groupDocs: groupDocs,
-				watchers:  watchers,
-				gitHooks:  gitHooks,
-				rules:     rules,
-				mcp:       mcp,
-				runInst:   runInst,
-				doIndex:   doIndex,
-				jsonOut:   jsonOut,
-				tools:     toolsCSV,
-				projGuide: projGuide,
+				repoArgs:       repoArgs,
+				reposCSV:       reposCSV,
+				groupDocs:      groupDocs,
+				watchers:       watchers,
+				trackWorktrees: trackWT,
+				gitHooks:       gitHooks,
+				rules:          rules,
+				mcp:            mcp,
+				runInst:        runInst,
+				doIndex:        doIndex,
+				jsonOut:        jsonOut,
+				tools:          toolsCSV,
+				projGuide:      projGuide,
 			}
 			return runGroupAddImpl(cmd, args[0], gaFlags, "")
 		},
@@ -102,6 +106,8 @@ Examples:
 		"optional path to shared group docs")
 	cmd.Flags().BoolVar(&watchers, "watchers", false,
 		"install OS watcher units for each repo")
+	cmd.Flags().BoolVar(&trackWT, "track-worktrees", false,
+		"enable per-worktree tracking (features.track_worktrees): the daemon discovers this group's linked git worktrees and registers them as ephemeral children. Independent of --watchers — it installs NO OS watcher units and shells out to no service manager, so it is usable in containers and on hosts with no systemd/launchd")
 	cmd.Flags().BoolVar(&gitHooks, "git-hooks", true,
 		"install git hooks (post-merge/checkout reindex)")
 	cmd.Flags().BoolVar(&rules, "rules", true,
@@ -122,19 +128,30 @@ Examples:
 }
 
 type groupAddFlags struct {
-	repoArgs  []string
-	reposCSV  string
-	groupDocs string
-	watchers  bool
-	gitHooks  bool
-	rules     bool
-	mcp       bool
-	runInst   bool
-	doIndex   bool
-	jsonOut   bool
-	tools     string // --tools CSV → GroupConfig.Tools (#5701)
-	projGuide bool
+	repoArgs       []string
+	reposCSV       string
+	groupDocs      string
+	watchers       bool
+	gitHooks       bool
+	rules          bool
+	mcp            bool
+	runInst        bool
+	doIndex        bool
+	jsonOut        bool
+	trackWorktrees bool   // --track-worktrees → Features.TrackWorktrees (#6918)
+	tools          string // --tools CSV → GroupConfig.Tools (#5701)
+	projGuide      bool
 }
+
+// applyGroupConfigFn indirects applyGroupConfig at the `group add` call site.
+//
+// It is a test seam and nothing else: `group add`'s job is to turn flags into a
+// GroupConfig plus a groupApplyOptions, and the second half of that — which
+// side effects the install transaction is authorised to perform — is otherwise
+// unobservable without performing them. install.Apply gates its watcher branch
+// on `!SkipWatchers && Features.Watchers`, so an option wired wrongly can look
+// identical on disk to one wired correctly (#6918).
+var applyGroupConfigFn = applyGroupConfig
 
 type groupAddRepo struct {
 	Slug string `json:"slug"`
@@ -180,6 +197,14 @@ func runGroupAddImpl(cmd *cobra.Command, group string, f groupAddFlags, socketPa
 
 	cfg := &registry.GroupConfig{Name: group, GroupDocs: f.groupDocs}
 	cfg.Features.Watchers = f.watchers
+	// #6918: an INDEPENDENT capability from Watchers, deliberately not folded
+	// into SkipWatchers below. The daemon opts a group into worktree discovery
+	// when TrackWorktrees || Watchers, so before this flag existed the only CLI
+	// route to worktree tracking was --watchers — which also runs the OS
+	// watcher-unit install, inapplicable inside a container whose PID 1 is
+	// docker-init and which has no systemctl. Setting this flag must leave the
+	// install transaction's watcher branch exactly as --watchers alone decides.
+	cfg.Features.TrackWorktrees = f.trackWorktrees
 	cfg.Features.GitHooks = f.gitHooks
 	// Per-tool selection (#5701): an explicit --tools value wins and is validated
 	// before any registration. When omitted, cfg.Tools is left empty so
@@ -205,7 +230,7 @@ func runGroupAddImpl(cmd *cobra.Command, group string, f groupAddFlags, socketPa
 	if f.jsonOut {
 		applyOut = io.Discard
 	}
-	res, err := applyGroupConfig(applyOut, cfg, groupApplyOptions{
+	res, err := applyGroupConfigFn(applyOut, cfg, groupApplyOptions{
 		RunInstall:      f.runInst,
 		SkipHooks:       !f.gitHooks,
 		SkipWatchers:    !f.watchers,
