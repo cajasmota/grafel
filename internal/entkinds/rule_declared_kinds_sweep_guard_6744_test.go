@@ -815,6 +815,24 @@ func TestBoundPathsMirrorEngineSchema(t *testing.T) {
 // TestLedgerIsDescribedByItsOwnScan keeps this file honest about how it was
 // built: every ledger entry names a real, currently-scanned site with a
 // location, so the failure text a future author sees can point at one.
+//
+// FULLY VACUOUS TODAY, disclosed rather than left to be tripped over. #6776 arm
+// B9 emptied ruleDeclaredKindsDeferred, so this loop drives nothing and this
+// test is a green over zero entries. It is the FOURTH guard the retirement
+// relaxed, alongside enum_member_corresponds_6818_test.go's empty-ledger fatal,
+// the perFamily traffic loop above, and internal/graph/fbwriter's ledger
+// transcription.
+//
+// It is kept, and NOT given a floor, because the only floor available —
+// "the ledger is non-empty" — is the assertion arm B9 deliberately falsified.
+// What it actually observed, "a kind this file names resolves to a located
+// site", is not lost: it moved to
+// TestRuleDeclaredLedger6776_IsRetiredBecauseThePopulationIsEmpty, which pins
+// EntityKindEndpointBare's three electron.yaml sites LINE-EXACTLY. That is the
+// same property, made about the one kind that still needs it — the member
+// admitted on the strength of those sites — instead of about a ledger row that
+// no longer exists. This test remains as the drift guard that fires again the
+// moment a row comes back.
 func TestLedgerIsDescribedByItsOwnScan(t *testing.T) {
 	res := scanRepo(t)
 	for kind := range ruleDeclaredKindsDeferred {

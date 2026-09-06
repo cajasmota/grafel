@@ -17,7 +17,21 @@ package entkinds_test
 // stand-in for. So this file asserts the population directly, and the empty
 // ledger becomes a consequence rather than an assumption.
 //
-// Varies: nothing — this is a population floor plus an emptiness pin.
+// # WHAT THIS IS STRONGER AND WEAKER THAN, stated in both directions
+//
+// STRONGER than any ledger row in the direction the ledger was built for: a
+// kind outside the enum, anywhere in the rule tree, fails here with a
+// line-exact diagnosis and no row available to absorb it.
+//
+// WEAKER, on its own, in the direction the ledger held INCIDENTALLY: a row
+// named a kind, so the sweep noticed when that kind's sites disappeared. An
+// "is the set empty" question cannot notice that a MEMBER's producers vanished.
+// That is why this file also pins EntityKindEndpointBare's three sites
+// line-exactly below — the retirement would otherwise have dropped the only
+// coupling between the member and the three producers that justify it.
+//
+// Varies: nothing — this is a population floor, an emptiness pin, and a
+// site-level anchor for the member arm B9 admitted.
 // Holds constant: the live scan of the shipped rule tree.
 
 import (
@@ -60,6 +74,54 @@ func TestRuleDeclaredLedger6776_IsRetiredBecauseThePopulationIsEmpty(t *testing.
 	if res.Unresolved() != 0 {
 		t.Errorf("%d rule-YAML site(s) are unresolved; a site whose kind could not be read is "+
 			"outside the sweep below and must not be counted as clean", res.Unresolved())
+	}
+
+	// THE PREDICATE'S OWN POSITIVE CONTROL. Of the five ways a
+	// scan-and-assert-absence guard goes no-op, the floor above covers "failed
+	// to read" and the sweep below covers "read the wrong files / the wrong
+	// content / failed to detect / failed to act". The fifth is the DETECTOR
+	// itself going permissive, and it was ungraded here: making
+	// IsValidEntityKind return true for any non-empty string left this package
+	// GREEN while internal/types and internal/graph/fbwriter went red — a hole
+	// in this fixture, not in the suite, and the same discipline this arm
+	// already applies to IsHTTPEndpointKind in
+	// TestEndpointBare6776_MembershipIsNotHTTPMembership.
+	const notAKind = "SCOPE.ZZNotAKindAnyProducerWrites"
+	if types.IsValidEntityKind(notAKind) {
+		t.Fatalf("fixture is inert: IsValidEntityKind(%q) is true, so it accepts everything and "+
+			"the empty set below is a statement about a constant, not about the rule tree", notAKind)
+	}
+
+	// THE SITES THAT JUSTIFY THE MEMBER. This is the direction the retirement
+	// dropped and the ledger used to hold incidentally: with the row gone,
+	// nothing observed that EntityKindEndpointBare still HAS producers.
+	// Measured — re-spelling electron.yaml's three `entity_type: Endpoint` rows
+	// to `SCOPE.Endpoint` (the silent rename #6820 rejected) left all six
+	// packages green on this branch, and failed three tests on the parent.
+	//
+	// It is asserted LINE-EXACT rather than as a count, because the count alone
+	// would accept the three sites moving to a file that has nothing to do with
+	// Electron IPC, which is the concept the member is named for.
+	wantEndpointSites := []string{
+		"internal/engine/rules/javascript_typescript/frameworks/electron.yaml:41",
+		"internal/engine/rules/javascript_typescript/frameworks/electron.yaml:46",
+		"internal/engine/rules/javascript_typescript/frameworks/electron.yaml:52",
+	}
+	var gotEndpointSites []string
+	for _, s := range res.Sites {
+		if s.Kind == string(types.EntityKindEndpointBare) {
+			gotEndpointSites = append(gotEndpointSites, fmt.Sprintf("%s:%d", s.File, s.Line))
+		}
+	}
+	sort.Strings(gotEndpointSites)
+	if strings.Join(gotEndpointSites, ",") != strings.Join(wantEndpointSites, ",") {
+		t.Errorf("rule-YAML sites for %q:\n  got  %v\n  want %v\n\n"+
+			"#6776 arm B9 admitted this kind to types.AllEntityKinds() on the strength of exactly "+
+			"those three producers (ipcMain / ipcRenderer / contextBridge). If they are gone or "+
+			"re-spelled, the member is enum-only and that is a KindVocabularyVersion decision plus "+
+			"an enumOnlyEntityKinds row — not something to pass in silence. A re-spelling to "+
+			"SCOPE.Endpoint in particular is the rename #6820 considered and rejected.",
+			types.EntityKindEndpointBare, gotEndpointSites, wantEndpointSites)
 	}
 
 	invalid := map[string][]string{}
