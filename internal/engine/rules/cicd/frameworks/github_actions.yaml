@@ -5,6 +5,25 @@ frameworks:
   config_file: .github/workflows/*.yml
   adopted_by: GitHub repositories (native integration)
   vera_scope: Service (pipeline as Service, job as Operation)
+  # Presence signals for the requires_framework gate on the three patterns
+  # below whose regex is plain YAML and says nothing about GitHub Actions
+  # (#6927). Literal substrings, matched against whole file content by
+  # compiledRuleSet.frameworkPresent.
+  #
+  # Measured over every .yml/.yaml in a real corpus of 59 upstream repos
+  # (starter-workflows, argocd-example-apps, prometheus-helm, awesome-compose,
+  # kafka, django, rails, ...): 671 files, of which 269 sit where GitHub keeps
+  # workflows and composite actions and 402 do not. This marker set selects 265
+  # of the 269 and ZERO of the 402. The 4 it declines are not workflows at all
+  # — dependabot.yml, labeler.yml, auto_assign.yml and .pre-commit-config.yaml,
+  # which merely live in .github/ — so no workflow in the corpus is declined
+  # and no non-workflow is admitted.
+  detection:
+    import_markers:
+      - "runs-on:"
+      - "uses: actions/"
+      - "${{"
+      - ".github/workflows/"
   characteristics:
     - Event-driven (push, pull_request, schedule, workflow_dispatch)
     - Multi-job parallelism by default
@@ -34,13 +53,41 @@ file_conventions:
     name_from: filename
 
 source_patterns:
-  # Workflow name
-  - pattern: "^name:\\s+[\"']?([^\"'\\n]+)"
+  # Workflow name.
+  #
+  # `(?m)` (#6927): compiled with plain regexp.Compile at detector.go:156, so
+  # `^` meant start of TEXT. Every real workflow opens with a comment header or
+  # `name:` is preceded by one, so this fired only on the minority whose very
+  # first byte is `name:` — 99 of 269 workflow files in the corpus. Carries no
+  # `$`, so `(?m)`'s other effect cannot reach it.
+  #
+  # `requires_framework` (#6927): `^name:` is a plain column-0 YAML key with
+  # nothing about GitHub Actions in it, and the cicd bucket is aliased onto the
+  # `yaml` language (detector.go dormantBucketAliases), so ungated it types
+  # every helm Chart.yaml, pubspec.yaml and compose.yaml in the repo as a
+  # Service. Measured: 34 matches in 34 non-workflow files ungated, ZERO under
+  # the marker gate, and the gate costs nothing on the workflow side — 264
+  # matches in 264 files either way. Same shape and same remedy as #6152's
+  # falcon/cherrypy gate.
+  - pattern: "(?m)^name:\\s+[\"']?([^\"'\\n]+)"
     entity_type: Service
     name_group: 1
     scope: file
-  # Job definition
-  - pattern: "^\\s{2}(\\w[\\w-]*):\\s*\\n\\s+(?:runs-on|uses):"
+    requires_framework: true
+  # Job definition.
+  #
+  # `(?m)` (#6927). Under start-of-text this could NEVER fire: it requires two
+  # leading spaces, and a file whose first two bytes are spaces is not a
+  # workflow. Measured on the corpus: 0 matches before, 152 in 131 files after.
+  #
+  # NOT gated, and that is measured rather than assumed: the regex names
+  # `runs-on:`/`uses:` on the very next line, which is GitHub Actions' own job
+  # vocabulary, and across 402 non-workflow YAML files in the corpus the
+  # widened pattern matched ZERO times. `\s{2}` — exactly two — is what keeps
+  # it off deeper keys such as a `strategy.matrix` whose axis is named
+  # `runs-on`; widening it to `\s+` mints an Operation called `matrix`, which
+  # is a forbidden row in github-actions-workflows-mini.
+  - pattern: "(?m)^\\s{2}(\\w[\\w-]*):\\s*\\n\\s+(?:runs-on|uses):"
     entity_type: Operation
     name_group: 1
     scope: file
@@ -49,26 +96,82 @@ source_patterns:
     entity_type: Dependency
     name_group: 1
     scope: file
-  # Step with name:
-  - pattern: "^\\s+-\\s+name:\\s+[\"']?([^\"'\\n]+)"
+  # Step with name:.
+  #
+  # `(?m)` (#6927): 0 matches before, 1332 in 281 files after.
+  #
+  # `requires_framework` (#6927): `- name:` is a plain YAML list item and this
+  # rule set sees EVERY yaml file, so ungated the widened pattern types every
+  # ansible task, helm template and k8s container as a GitHub Actions step —
+  # 194 matches in 49 non-workflow files, against 1138 in 232 workflow files
+  # that the gate keeps whole.
+  #
+  # Recorded because it is invisible in the graph: those 194 Task entities are
+  # minted TODAY anyway, by ansible_core.yaml's un-anchored `- name:` -> Task
+  # rule, which carries no anchor at all, sits in the same `yaml` bucket and
+  # subsumes this pattern outright. So the gate here removes no
+  # entity the graph currently has, and a golden fixture cannot observe it. It
+  # is graded at the engine level instead, against a detector holding only this
+  # rule set (TestIssue6927_GitHubActions_GateHoldsPlainYAML). The gate is
+  # still the right call: it stops this file from depending on another rule
+  # file's accident for its own blast radius, and #6927's ansible arm is going
+  # to narrow that pattern.
+  - pattern: "(?m)^\\s+-\\s+name:\\s+[\"']?([^\"'\\n]+)"
     entity_type: Task
     name_group: 1
     scope: file
-  # on: trigger events
-  - pattern: "^on:\\s*\\n\\s+(\\w+):"
+    requires_framework: true
+  # on: trigger events (block form).
+  #
+  # `(?m)` (#6927): 1 match in 671 files before, 234 in 234 after.
+  #
+  # NOT gated: `on:` at column 0 is GitHub Actions' trigger key and nothing
+  # else writes it — ZERO matches across the corpus's 402 non-workflow YAML
+  # files. The column-0 anchor is doing real work and is graded by a forbidden
+  # row: `notification:` is a legal job name that ENDS in `on:`, so without the
+  # anchor this rule reads the job's next key and mints a Config called
+  # `needs`.
+  - pattern: "(?m)^on:\\s*\\n\\s+(\\w+):"
     entity_type: Config
     name_group: 1
     scope: file
-  # on: single event
-  - pattern: "^on:\\s+(\\w+)"
+  # on: single event.
+  #
+  # `(?m)` (#6927): 1 match in 671 files before, 235 in 235 after.
+  #
+  # It does not only match the single-event form. `\s` matches a newline, so
+  # `on:\n  push:` satisfies `^on:\s+(\w+)` too and this rule captures the
+  # FIRST event of a block-form trigger as well — which is why its corpus count
+  # (235) sits one above the block-form rule's (234) rather than complementing
+  # it. The two then mint the same Config for the same file and the duplicate
+  # folds away. Stated because the old `# on: single event` comment claimed a
+  # split that does not exist, and pinned by
+  # TestIssue6927_GitHubActions_SingleEventRuleAlsoReadsBlockForm.
+  #
+  # NOT gated, for the same measured reason as the block-form rule, and its
+  # anchor is graded by the same `notification:` forbidden row plus a second on
+  # a different shape: `node-version: 20` contains the substring `on: 20`, so
+  # dropping the anchor mints a Config called `20`.
+  - pattern: "(?m)^on:\\s+(\\w+)"
     entity_type: Config
     name_group: 1
     scope: file
-  # env: at workflow level
-  - pattern: "^env:\\s*\\n\\s+(\\w+):"
+  # env: at workflow level.
+  #
+  # `(?m)` (#6927): 0 matches before, 38 in 38 files after.
+  #
+  # `requires_framework` (#6927): a column-0 `env:` with an indented key under
+  # it is plain YAML — travis, eslint and semaphore configs all write it — and
+  # the gate is free here, keeping all 35 workflow-side matches while dropping
+  # the 3 non-workflow ones. `^env:` (column 0) is what distinguishes the
+  # WORKFLOW-level env block from a job-level or step-level one, and that half
+  # is graded by a forbidden row: `BUNDLE_PATH` sits under an indented,
+  # job-level `env:` in the fixture's build.yml.
+  - pattern: "(?m)^env:\\s*\\n\\s+(\\w+):"
     entity_type: Config
     name_group: 1
     scope: file
+    requires_framework: true
   # secrets reference
   - pattern: "secrets\\.(\\w+)"
     entity_type: Config

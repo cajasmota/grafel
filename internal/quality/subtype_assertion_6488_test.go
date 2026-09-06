@@ -288,8 +288,8 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 			}
 		}
 	}
-	if fixtures != 34 {
-		t.Fatalf("parsed %d fixtures, want 34 — every golden expected.json must "+
+	if fixtures != 35 {
+		t.Fatalf("parsed %d fixtures, want 35 — every golden expected.json must "+
 			"keep parsing across this additive schema change", fixtures)
 	}
 	// #6815 added the three file-carrier rows below. They are subtype-asserting

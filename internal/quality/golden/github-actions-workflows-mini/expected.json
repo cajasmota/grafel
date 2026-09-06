@@ -1,0 +1,175 @@
+{
+  "fixture_name": "github-actions-workflows-mini",
+  "language": "cicd",
+  "description": "GitHub Actions rule patterns (#6927, cicd arm). Six `^`-anchored patterns in rules/cicd/frameworks/github_actions.yaml were compiled without `(?m)` (detector.go:156 uses plain regexp.Compile), so `^` meant start of TEXT. Three of them could NEVER fire — `^\\s{2}...`, `^\\s+-\\s+name:` and `^env:` all need something before them — and the other three fired only on a file whose very first byte was `name:` or `on:`. Measured on 671 real YAML files from 59 upstream repos: 0 job, 0 step and 0 env matches, and 99 of 269 workflow files yielding a name. The fixture varies vertical position deliberately (nothing on line 1, the second workflow's env block last in file) and, separately, the ANCHOR axis (a job-level `env:`, a step-level `name:`, a `strategy.matrix` key) from the FRAMEWORK-GATE axis (three non-workflow YAML files that name GitHub Actions nowhere). It grades BOTH directions: a recall assertion is structurally blind to over-firing (#6902), and three of these six patterns are plain YAML that start-of-text had been gating by accident — the sqlalchemy finding from #6943, in a second language.",
+  "expected_entities": [
+    {
+      "name": "Storefront CI",
+      "kind": "Service",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "#6927 recall arm for `(?m)^name:`. Line 8, under a seven-line comment header — the shape every real workflow has, and the reason start-of-text found only 99 of 269 workflow files in the corpus."
+    },
+    {
+      "name": "Nightly Smoke",
+      "kind": "Service",
+      "source_file": "ci/workflows/nightly.yml",
+      "must_exist": true,
+      "note": "Same rule, second file, so one workflow's layout cannot be what carries the row."
+    },
+    {
+      "name": "build",
+      "kind": "Operation",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "#6927 recall arm for `(?m)^\\s{2}(\\w[\\w-]*):\\s*\\n\\s+(?:runs-on|uses):`. This rule could not fire at ALL before: it needs two leading spaces, and no file starts with them. First job in the file."
+    },
+    {
+      "name": "publish",
+      "kind": "Operation",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "Same rule, a LATER job — the vertical-position axis, which is the defect itself."
+    },
+    {
+      "name": "smoke",
+      "kind": "Operation",
+      "source_file": "ci/workflows/nightly.yml",
+      "must_exist": true,
+      "note": "Same rule through the OTHER half of its `(?:runs-on|uses)` alternation: a reusable-workflow call, which has no `runs-on:` at all. Without this row the `uses:` branch is graded by nothing."
+    },
+    {
+      "name": "pull_request",
+      "kind": "Config",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "#6927 recall arm for `(?m)^on:\\s*\\n\\s+(\\w+):` (block-form trigger). Both `on:` rules mint this one and the duplicate folds; the single-event rule is graded separately by `workflow_dispatch`, which the block-form rule cannot match."
+    },
+    {
+      "name": "workflow_dispatch",
+      "kind": "Config",
+      "source_file": "ci/workflows/nightly.yml",
+      "must_exist": true,
+      "note": "#6927 recall arm for `(?m)^on:\\s+(\\w+)` on a genuine single-event `on:` line, which `^on:\\s*\\n` cannot reach."
+    },
+    {
+      "name": "REGISTRY",
+      "kind": "Config",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "#6927 recall arm for `(?m)^env:\\s*\\n\\s+(\\w+):` — another rule that could never fire under start-of-text."
+    },
+    {
+      "name": "SMOKE_REGION",
+      "kind": "Config",
+      "source_file": "ci/workflows/nightly.yml",
+      "must_exist": true,
+      "note": "Same rule at the OTHER extreme of the vertical axis: the workflow-level `env:` block is the LAST construct in nightly.yml, as far from start-of-text as the file allows."
+    },
+    {
+      "name": "actions/checkout@v4",
+      "kind": "Dependency",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "CONTROL, held constant. `uses:\\s+(\\S+)` carries no `^`, so it was green before the fix and must stay green. Without a control, 'the anchored rules came back' and 'rule loading broke entirely' look identical."
+    },
+    {
+      "name": "ubuntu-latest",
+      "kind": "Config",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "Second CONTROL on a different rule (`runs-on:\\s+(\\S+)`), un-anchored and untouched."
+    },
+    {
+      "name": "Compile assets",
+      "kind": "Task",
+      "source_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "CONTROL, and deliberately NOT evidence for `(?m)^\\s+-\\s+name:` -> Task. ansible_core.yaml's un-anchored `- name:` -> Task rule is in the same `yaml` bucket and mints this entity whether or not the GitHub Actions step rule fires, so this row was green before the fix too. The step rule's own two directions are graded at engine level, against a detector holding only this rule set (TestIssue6927_GitHubActions_*)."
+    }
+  ],
+  "forbidden_entities": [
+    {
+      "name": "storefront-chart",
+      "kind": "Service",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction, and the reason this change is not `(?m)` alone. `^name:` is a plain column-0 YAML key; the cicd bucket is aliased onto the `yaml` language, so under `(?m)` alone it types every helm Chart.yaml, pubspec.yaml and compose.yaml in a repo as a GitHub Actions Service — 34 matches in 34 non-workflow files across the measured corpus. deploy/helm/Chart.yaml names GitHub Actions nowhere; `requires_framework: true` is what holds this row. Deleting that key mints it."
+    },
+    {
+      "name": "MATRIX_KEY",
+      "kind": "Config",
+      "must_exist": false,
+      "note": "Second row for the same gate on a different rule and a different file shape: ops/legacy-ci.yml is a travis-style config whose column-0 `env:` block would otherwise be read as a workflow-level env block. One row could be held by an accident of one file; two of different shapes cannot."
+    },
+    {
+      "name": "Compile assets",
+      "kind": "Service",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ANCHOR direction for `^name:`, and deliberately INSIDE ci/workflows/build.yml, which satisfies the framework gate. The Chart.yaml row above is held by the gate and so says nothing about the anchor; this one is held by the anchor alone, so the two fences are graded separately and their mutants are distinguishable. `^name:` -> `^\\s*name:` mints a Service for every step name in the workflow. Note the same string is an expected TASK: the kinds are what separate them."
+    },
+    {
+      "name": "Build and test",
+      "kind": "Service",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ANCHOR direction for `^name:`, and the row that actually grades it. `^name:` -> `^\\s*name:` was ALIVE at BOTH levels on first scoring: a step's `- name:` opens with a dash, so `\\s*` cannot reach it and the `Compile assets` row above says nothing about that mutant. A JOB's `name:` — the display-name key, indented and dash-less — is what the widened anchor claims, and it is the shape a real workflow carries. Two anchor rows for one fence, because the first one was passing for the wrong reason."
+    },
+    {
+      "name": "BUNDLE_PATH",
+      "kind": "Config",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ANCHOR direction for `^env:`. Column 0 is the whole of what distinguishes the WORKFLOW-level env block from a job-level one, and build.yml declares `env: BUNDLE_PATH` indented inside the `build` job. `^env:` -> `^\\s*env:` mints it."
+    },
+    {
+      "name": "matrix",
+      "kind": "Operation",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, INDENT direction for the job rule. `\\s{2}` means EXACTLY two, which is what keeps the rule off deeper keys; build.yml carries the idiomatic `strategy.matrix.runs-on` axis list, so `\\s{2}` -> `\\s+` reads `matrix:` as a job name and mints an Operation for it. This is the only forbidden row the job rule has, because across 402 non-workflow YAML files in the corpus the widened rule matched ZERO times — it names `runs-on:`/`uses:` itself and is self-gating, so it takes no requires_framework."
+    },
+    {
+      "name": "needs",
+      "kind": "Config",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ANCHOR direction for BOTH `on:` rules — the two that are deliberately left ungated, so the column-0 anchor is the entire fence. `notification:` is a legal job name that ENDS in `on:`, so dropping `^` makes both rules read the job's next key and mint a Config called `needs`."
+    },
+    {
+      "name": "20",
+      "kind": "Config",
+      "must_exist": false,
+      "note": "Second row for the same anchor on a different shape: `node-version: 20` contains the substring `on: 20`, so a `^`-less `on:\\s+(\\w+)` mints a Config named `20`. A `- name:`-shaped row and a `<key>: <value>`-shaped row cannot both be held by one accident of spelling."
+    }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "Storefront CI",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "ci/workflows/build.yml",
+      "kind": "CONTAINS",
+      "to_name": "build",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "CONTROL, held constant. Workflow-contains-job comes from the structured extractor in internal/extractors/yaml, NOT from these regex rules, and is green before and after. It is asserted because #6490 requires every fixture to grade its language's edge extraction with something, and because it is the row that would catch a regression in the structured path while the rule path stays green."
+    },
+    {
+      "from_name": "Storefront CI",
+      "from_kind": "SCOPE.Operation",
+      "from_file": "ci/workflows/build.yml",
+      "kind": "CONTAINS",
+      "to_name": "notification",
+      "to_kind": "SCOPE.Operation",
+      "to_file": "ci/workflows/build.yml",
+      "must_exist": true,
+      "note": "Same edge for the job the REGEX rule cannot see: `notification:` is followed by `needs:` rather than `runs-on:`, and `(?m)^\\s{2}(\\w[\\w-]*):\\s*\\n\\s+(?:runs-on|uses):` only looks at the immediately-next line. Recorded as an edge rather than as prose so the gap between the two producers is observed rather than asserted."
+    },
+    {
+      "from_name": "build.yml",
+      "from_kind": "SCOPE.Document",
+      "from_file": "ci/workflows/build.yml",
+      "kind": "IMPORTS",
+      "to_name": "gha:actions/checkout",
+      "to_kind": "SCOPE.External",
+      "must_exist": true,
+      "note": "CONTROL on a second edge kind and a second producer path (the external-action synthesiser in internal/external), so one broken emitter cannot take the whole relationship assertion with it."
+    }
+  ]
+}
