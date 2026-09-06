@@ -58,7 +58,7 @@ file_conventions:
 source_patterns:
   # Classic-style HTTP verb routes: get "/path" do ... end
   # Also matches: post, put, patch, delete, head, options
-  - pattern: "^\\s*(get|post|put|patch|delete|head|options)\\s+[\"']([^\"']+)[\"']\\s+do"
+  - pattern: "(?m)^\\s*(get|post|put|patch|delete|head|options)\\s+[\"']([^\"']+)[\"']\\s+do"
     entity_type: Route
     name_group: 2
     scope: file
@@ -70,37 +70,45 @@ source_patterns:
     scope: class
 
   # Helper block: helpers do ... end
-  - pattern: "^\\s*helpers\\s+do"
+  - pattern: "(?m)^\\s*helpers\\s+do"
     entity_type: Service
     name_group: 0
     scope: file
 
   # Helper include: helpers HelperModule
-  - pattern: "^\\s*helpers\\s+(\\w+(?:::\\w+)*)"
+  #
+  # The capture is anchored on a CONSTANT (leading uppercase), not on \w+.
+  # `helpers do` is a block, not an include, and `\w+` captured its `do` as a
+  # module name — emitting a junk `Service` entity literally named "do" beside
+  # the real `helpers do` block entity above. That was invisible while the
+  # `(?m)` defect (#6917) kept both patterns from firing at all; restoring the
+  # anchor makes it visible on the first real app. Ruby module names are
+  # constants, so requiring one is the language's own rule, not a hack.
+  - pattern: "(?m)^\\s*helpers\\s+([A-Z]\\w*(?:::\\w+)*)"
     entity_type: Service
     name_group: 1
     scope: file
 
   # Before filter: before "/path" do or before do
-  - pattern: "^\\s*before\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
+  - pattern: "(?m)^\\s*before\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
     entity_type: Middleware
     name_group: 0
     scope: file
 
   # After filter: after "/path" do or after do
-  - pattern: "^\\s*after\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
+  - pattern: "(?m)^\\s*after\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
     entity_type: Middleware
     name_group: 0
     scope: file
 
   # Configure block: configure :production do
-  - pattern: "^\\s*configure\\s*(?::(\\w+))?\\s*do"
+  - pattern: "(?m)^\\s*configure\\s*(?::(\\w+))?\\s*do"
     entity_type: Config
     name_group: 1
     scope: file
 
   # Error handler: error 404 do or error Sinatra::NotFound do
-  - pattern: "^\\s*error\\s+(\\d+|[A-Z]\\w*(?:::\\w+)*)\\s+do"
+  - pattern: "(?m)^\\s*error\\s+(\\d+|[A-Z]\\w*(?:::\\w+)*)\\s+do"
     entity_type: Middleware
     name_group: 1
     scope: file
@@ -115,7 +123,7 @@ source_patterns:
 relationship_rules:
   # Route calls helper: references a helper method by name in the route block
   # e.g.  get "/foo" do\n    some_helper\n  end
-  - pattern: "^\\s*(get|post|put|patch|delete)\\s+[\"']([^\"']+)[\"'][^\\n]*\\n(?:[^\\n]*\\n)*?[^\\n]*\\b(\\w+_helper|authenticate!|authorize!)\\b"
+  - pattern: "(?m)^\\s*(get|post|put|patch|delete)\\s+[\"']([^\"']+)[\"'][^\\n]*\\n(?:[^\\n]*\\n)*?[^\\n]*\\b(\\w+_helper|authenticate!|authorize!)\\b"
     source_type: Route
     target_type: Service
     relationship: CALLS
@@ -131,7 +139,7 @@ relationship_rules:
     target_group: 2
 
   # use middleware: use Rack::Session::Cookie
-  - pattern: "^\\s*use\\s+(\\w+(?:::\\w+)*)"
+  - pattern: "(?m)^\\s*use\\s+(\\w+(?:::\\w+)*)"
     source_type: Controller
     target_type: Middleware
     relationship: REGISTERED_ON
