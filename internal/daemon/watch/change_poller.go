@@ -380,14 +380,26 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 	return changed
 }
 
-// existsOnDisk reports whether rel names a REGULAR file inside repoRoot.
+// existsOnDisk reports whether rel names an entry inside repoRoot that the
+// INDEXER would index — which is the only question the candidate set cares
+// about, in both directions:
 //
-// Lstat, not Stat: a dangling symlink must read as absent, and walk.WalkRepo
-// hands nothing but regular files to the indexer either, so a path that is not
-// one can never acquire a manifest stamp and would be permanently dirty.
+//   - A path the indexer will never stamp must not enter the candidate set, or
+//     it reads as new on every cycle forever (blocker 1 above).
+//   - A path the indexer WILL stamp must not be refused, or a change to it is
+//     never noticed while a full walk would have picked it up.
+//
+// So it delegates to walk.IndexableEntryType — the walker's OWN entry-type
+// gate — rather than deciding for itself. An earlier version asked
+// os.Lstat().Mode().IsRegular() here, which answers about the LINK and not its
+// target, and diverged from walk.irregularSkipRule (which resolves a symlink
+// with os.Stat and indexes a link to a regular file). The result was the second
+// bullet: a new symlink-to-source in a tracked directory, reported by git as
+// untracked, refused here, indexed by every full walk (#6932 review, MA-1).
+// TestExistsOnDisk_AgreesWithWalker pins the agreement over an enumerated
+// entry-type space, so the two cannot drift apart again in either direction.
 func existsOnDisk(repoRoot, rel string) bool {
-	fi, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(rel)))
-	return err == nil && fi.Mode().IsRegular()
+	return walk.IndexableEntryType(filepath.Join(repoRoot, filepath.FromSlash(rel)))
 }
 
 // gitStatusDiscovery runs `git status --porcelain -z -unormal` in repoRoot and

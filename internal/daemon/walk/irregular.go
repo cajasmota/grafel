@@ -52,7 +52,19 @@ import (
 // side closes it: internal/safeio opens with O_NONBLOCK and re-checks the type
 // with fstat on the descriptor.
 func irregularSkipRule(absPath string, d fs.DirEntry) (string, bool) {
-	mode := d.Type()
+	return irregularSkipRuleMode(absPath, d.Type())
+}
+
+// irregularSkipRuleMode is irregularSkipRule's body, taking the LSTAT-SHAPED
+// type bits directly instead of an fs.DirEntry.
+//
+// Split out so a caller that holds a PATH rather than a walk entry can ask the
+// walker the same question and get the same answer — see IndexableEntryType.
+// The two must not be able to drift: the poller in internal/daemon/watch
+// admits a git-reported path to its candidate set only if the walker would
+// index it, and any divergence is a file one half indexes and the other half
+// never notices changing (#6932 review, MA-1).
+func irregularSkipRuleMode(absPath string, mode fs.FileMode) (string, bool) {
 	if mode&os.ModeSymlink != 0 {
 		fi, err := os.Stat(absPath)
 		if err != nil {
@@ -77,6 +89,38 @@ func irregularSkipRule(absPath string, d fs.DirEntry) (string, bool) {
 		return "symlink-to-directory", true
 	}
 	return "irregular:" + irregularKind(mode), true
+}
+
+// IndexableEntryType reports whether the entry at absPath is one WalkRepo would
+// hand to an extractor, deciding from the path alone.
+//
+// It is the walker's own entry-type gate, reached from outside the walk: it
+// Lstats the path to recover the type bits filepath.WalkDir would have handed
+// irregularSkipRule, then applies that identical rule — including the os.Stat
+// resolution of a symlink, so a link to a regular file is indexable and a
+// dangling link, a link to a directory, and a FIFO are not.
+//
+// WHY IT IS SHARED RATHER THAN REIMPLEMENTED (#6932 review, MA-1). The polling
+// change-detector needs exactly this predicate to decide whether a path git
+// reported can ever acquire a manifest stamp. Its first version asked
+// os.Lstat().Mode().IsRegular() instead, which answers about the LINK rather
+// than its target, so a newly created symlink-to-source in a tracked directory
+// was refused as a candidate while WalkRepo indexed it with no skip entry: a
+// file the index contains and the poller can never see change. Two predicates
+// answering "would grafel index this?" is one predicate too many, and the
+// agreement is asserted over an enumerated entry-type space rather than
+// assumed — see TestExistsOnDisk_AgreesWithWalker.
+//
+// A path that does not exist, or that cannot be Lstat-ed at all, is not
+// indexable. It never opens the entry, so — like the gate it delegates to — it
+// cannot itself block on a FIFO.
+func IndexableEntryType(absPath string) bool {
+	fi, err := os.Lstat(absPath)
+	if err != nil {
+		return false
+	}
+	_, skip := irregularSkipRuleMode(absPath, fi.Mode().Type())
+	return !skip
 }
 
 // irregularKind names the entry type for the skip report. The names are
