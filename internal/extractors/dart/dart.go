@@ -239,7 +239,87 @@ func extractDart(src, filePath string) []types.EntityRecord {
 	// class/method records above.
 	entities = append(entities, extractDartTypes(src, filePath)...)
 
-	return entities
+	// ── #6852 — file carrier for the path-anchored IMPORTS above ─────────
+	//
+	// buildImportRecord stamps `FromID: filePath` on every import's IMPORTS
+	// edge, and internal/resolve/refs.go has no path→entity index: a
+	// path-valued FromID resolves iff some emitted node carries that exact
+	// string as its Name (or QualifiedName). Nothing here does as a rule, so
+	// without this the raw path reached the graph as the edge's FROM end —
+	// #6847's measurement, #6815's fix shape.
+	//
+	// CONDITIONAL, via extractor.PrependFileCarrier. An unconditional carrier
+	// mints one bare orphan node per .dart file across a whole repo, which no
+	// recall-shaped assertion can see (#6518, #6815).
+	//
+	// THE ONE Name SITE THAT CAN SPELL THE PATH is dartTopName (named, not
+	// line-cited: a line number in this file goes stale the next time someone
+	// edits a comment above it, which is nit 1 of this arm's review), and it is
+	// a DRIVEN cell rather than a closure: for a ROOT path main.dart the URI
+	// `main.dart.dart` yields exactly `main.dart`, so clause 3 declines in
+	// favour of the import record that already carries the anchor. The other
+	// five Name sites (class / method / enum / typedef / modified class) are
+	// verbatim `(\w+)` captures with no builder concatenating onto them, and
+	// `\w` is [0-9A-Za-z_], so none can hold the '.' every production dart
+	// path carries. Both halves are OBSERVED by file_carrier_6852_test.go, at
+	// both depths, rather than asserted — four arms of #6852 shipped a closure
+	// a driven cell later disproved.
+	//
+	// TWO MECHANISMS, ADJACENT AND SEPARATE — do not merge them. FileCarrierFor
+	// CLAUSE 3 compares `records[i].Name` and NOTHING ELSE, so everything above
+	// is what clause 3 sees. The enum site's QualifiedName
+	// (`scope:enum:<path>:<Name>`, strictly longer than the path — crystal's
+	// LENGTH invariant, #6905) belongs to a DIFFERENT consumer: refs.go's
+	// `byQualifiedName` exact-match tier (refs.go:2103-2109, ahead of
+	// lookupStructural), which a grounding pass has driven and confirmed binds.
+	// The invariant matters because it is the other way a record could satisfy
+	// the resolution question #6847 measures — not because clause 3 reads it.
+	// Said explicitly here because this is the file the LAST arm of #6852 (zig)
+	// will read, and inherited prose is how a wrong attribution propagates.
+	//
+	// PLACEMENT: last, and the compound is scored PART BY PART with the
+	// entailed conjunct NAMED (the cobol lesson, #6899).
+	//
+	//  1. INDEPENDENT AND PRODUCTION-REACHABLE — THE INDEX HAZARD.
+	//     classSpan.idx is an INDEX INTO `entities`, dereferenced in the
+	//     method pass as `entities[cls.idx].Relationships = append(...)` to
+	//     hang each method's CONTAINS edge on its enclosing class.
+	//     THE HAZARD WINDOW IS NARROWER THAN "ANYWHERE EARLIER", and saying so
+	//     precisely is the point: an earlier draft of this comment claimed a
+	//     carrier placed between the IMPORT pass and the CLASS pass shifts the
+	//     stored indices, and MUTANT SCORING DISPROVED IT — `idx :=
+	//     len(entities)` is evaluated inside the class loop, so a head
+	//     insertion BEFORE that loop is absorbed and the move survives every
+	//     test (recorded as M5 in the PR, ALIVE and equivalent). The window
+	//     that really bites is strictly BETWEEN the class loop and the method
+	//     loop: the spans are recorded and not yet dereferenced, so a head
+	//     insertion there shifts every stored idx by one and each class's
+	//     CONTAINS edges land on the record before it. Nothing crashes; the
+	//     graph is quietly wrong.
+	//     It is not entailed by clause 2 — dart's import pass runs FIRST, so
+	//     the path-anchored edge is already in `entities` and a CONDITIONAL
+	//     carrier placed in that window really is emitted, unlike clojure
+	//     (#6897) where the same move minted nothing and the hazard graded
+	//     itself away. Graded by
+	//     TestDart_CarrierPlacementDoesNotShiftTheContainsPass_6852, which
+	//     kills that move with wrong-owner CONTAINS rows (M5b).
+	//  2. ENTAILED IN EFFECT — CLAUSE-3 VISIBILITY OF THE TYPE PASS.
+	//     FileCarrierFor can only decline for a record it is handed, so in
+	//     general the call must run after the extractDartTypes append above.
+	//     For dart that reason buys nothing and is named here rather than
+	//     dressed up as a second independent one: every name extractDartTypes
+	//     emits is a `(\w+)` slice and cannot spell a '.'-bearing path, and
+	//     the one reachable clause-3 route is emitted in the FIRST pass, so
+	//     clause 3 sees it wherever after the import loop the call sits. Its
+	//     unreachability is what
+	//     TestDart_WordCharacterSitesCannotSpellThePath_6852 observes.
+	//
+	// The "dart" token is stamped explicitly rather than left to Extract's
+	// TagEntitiesLanguage, which runs AFTER this and would fill an empty one —
+	// so the token is graded through the Properties["language"] provenance
+	// route, not through the Language field alone. See
+	// TestDart_CarrierShape_6852.
+	return extractor.PrependFileCarrier(filePath, "dart", entities)
 }
 
 // methodStartIsClass reports whether the byte offset is inside a class's
