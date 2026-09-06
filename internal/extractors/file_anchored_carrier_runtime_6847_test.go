@@ -164,9 +164,8 @@ import (
 // line. To ADD one: do not. A new offender is the defect this file exists to
 // catch; adding a line to keep it green is the failure mode #6834 names.
 var knownMissingCarrier6847 = map[string]string{
-	"crystal": "extractor.go:161 `FromID: filePath` on IMPORTS; no carrier emitted",
-	"dart":    "path-anchored IMPORTS; no carrier emitted",
-	"zig":     "zig.go:272 `FromID: filePath` on IMPORTS; no carrier emitted",
+	"dart": "path-anchored IMPORTS; no carrier emitted",
+	"zig":  "zig.go:272 `FromID: filePath` on IMPORTS; no carrier emitted",
 }
 
 // exercisedLanguages6847 is the exact set of registered languages the corpus
