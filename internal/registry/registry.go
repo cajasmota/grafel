@@ -192,6 +192,43 @@ type GroupConfig struct {
 		// the cross-host rules block. Default false: it is opt-in to avoid
 		// nagging users who don't want it (#4273).
 		AgentHooks bool `json:"agent_hooks,omitempty"`
+		// ChangeDetection selects which change detector observes this group's
+		// working trees (#6932). One of:
+		//
+		//   "fsnotify" (default) — the fs watcher. Costs one inotify watch
+		//       descriptor per DIRECTORY on Linux, recursively: 976 per
+		//       worktree measured on this repo, and up to ~10,700 for one lane
+		//       at GRAFEL_MAX_WORKTREES_PER_REPO=10.
+		//   "poll"     — the descriptor-free ChangePoller (hybrid B of #6932):
+		//       `git status --porcelain -unormal` for discovery plus a
+		//       stat-sweep of the index manifest's own key set for the change
+		//       decision. Zero watch descriptors. This is the container lane:
+		//       fs.inotify.max_user_watches is per-UID, host-level and NOT
+		//       namespaced, so every container running as the same UID draws
+		//       from one pool and none of them can raise it.
+		//   "auto"     — reserved for #6932 arm B, which will project the
+		//       inotify cost before subscribing and switch on the BUDGET (not
+		//       on repo size), ANNOUNCING the switch in `grafel status` and
+		//       /diagnostics. Arm A accepts the value and resolves it to
+		//       "fsnotify"; see ChangeDetectionMode / PollingEnabled.
+		//
+		// An unrecognised value resolves to "fsnotify" rather than failing the
+		// group: a typo must not leave a group with no detector at all.
+		//
+		// Example fleet JSON:
+		//   "features": { "change_detection": "poll" }
+		ChangeDetection string `json:"change_detection,omitempty"`
+		// ChangePollIntervalSeconds is the poll cadence for
+		// change_detection="poll". Zero or negative selects
+		// DefaultChangePollInterval (30 s).
+		//
+		// A cycle costs ~60 ms per worktree (macOS/APFS; #6932's table is
+		// unvalidated on Linux/overlayfs), so 2 s is ~3% of a core per
+		// worktree and 30 s is ~0.2% (~2% across ten worktrees). Immediacy is
+		// not the point: checkout/merge/rebase are already covered by git
+		// hooks and GitHeadPoller's 2 s .git/HEAD poll, and grafel already
+		// documents a bounded-staleness contract at 2 s (reloadBeforeCall).
+		ChangePollIntervalSeconds int `json:"change_poll_interval_seconds,omitempty"`
 	} `json:"features"`
 	// Tools is the set of AI coding tools this group's install targets,
 	// identified by ToolAdapter ID (e.g. "claude", "cursor", "copilot").

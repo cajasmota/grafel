@@ -105,6 +105,37 @@ type Config struct {
 	// starts. Assigning w.quarantine afterwards would be an unsynchronised
 	// write to a field that goroutine reads on every event.
 	disableQuarantine bool
+
+	// Delegate, when non-nil, replaces this Watcher's fsnotify subscription
+	// with an alternative change detector (#6932 arm A — poll mode).
+	//
+	// It is a SEAM, not a second Watcher. Every path that subscribes a repo
+	// today — DefaultManager.Resume, DefaultManager.SubscribeGroup, the
+	// worktree activation handler — goes through Watcher.AddRepo, so routing
+	// there routes all of them at once and nothing else in the daemon has to
+	// know which detector is live. The Watcher keeps its repos map (so
+	// Repos()/Stats() still answer "is this repo observed?" truthfully), keeps
+	// its sink, and simply takes no watch descriptors.
+	//
+	// Nil is the default and is byte-for-byte the pre-#6932 behaviour.
+	//
+	// Note that the fsnotify backend handle is still opened in poll mode: that
+	// is ONE inotify instance for the daemon with zero watches on it, against
+	// the ~976 watch descriptors PER WORKTREE that subscribing costs. Removing
+	// the handle entirely would mean not constructing the Watcher at all, which
+	// is a restructure of the engine plane, not a mode.
+	Delegate SubscriptionDelegate
+}
+
+// SubscriptionDelegate is the alternative change detector a Watcher hands its
+// repos to when Config.Delegate is set. *ChangePoller implements it.
+//
+// AddRepo returns an error when the repo could not be taken on; the Watcher
+// then does NOT record the repo, because a repo listed as watched that nothing
+// observes is the silent half-failure #6932 exists to remove.
+type SubscriptionDelegate interface {
+	AddRepo(repoPath string) error
+	RemoveRepo(repoPath string)
 }
 
 func (c *Config) debounce() time.Duration {
@@ -561,6 +592,14 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 // transparency surface / CLI (Q2). May be nil if the feature is disabled.
 func (w *Watcher) Quarantine() *QuarantineTracker { return w.quarantine }
 
+// ChangeDelegate returns the alternative change detector this Watcher routes
+// subscriptions to, or nil when it uses fsnotify (#6932 arm A).
+//
+// It answers "which detector is actually live?", which is the question #6932
+// arm B must ANSWER OUT LOUD in `grafel status` and /diagnostics — a mode
+// switch nobody can see is no improvement on a watcher nobody can see failing.
+func (w *Watcher) ChangeDelegate() SubscriptionDelegate { return w.cfg.Delegate }
+
 // quarantineSweep periodically re-evaluates quarantined directories and
 // auto-un-quarantines any that have gone quiet (self-heal). The interval is a
 // fraction of the heal window so recovery is responsive without busy-looping.
@@ -618,6 +657,25 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 	}
 	w.repos[abs] = &repoState{path: abs}
 	w.mu.Unlock()
+
+	// Poll mode (#6932 arm A): hand the repo to the delegate and subscribe
+	// NOTHING. Returns 0 directories because 0 directories were subscribed —
+	// the count is the descriptor cost, and in this mode it is genuinely zero.
+	if d := w.cfg.Delegate; d != nil {
+		if err := d.AddRepo(abs); err != nil {
+			w.mu.Lock()
+			if rs, ok := w.repos[abs]; ok {
+				if rs.timer != nil {
+					rs.timer.Stop()
+				}
+				delete(w.repos, abs)
+			}
+			w.mu.Unlock()
+			return 0, err
+		}
+		w.logger.Info("watcher: registered via change-detection delegate — 0 fs watch descriptors", "repo", abs)
+		return 0, nil
+	}
 
 	added, err := w.subscribeRepo(abs)
 	if err != nil {
@@ -900,6 +958,13 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
 		return
+	}
+	// Poll mode (#6932 arm A). The rest of this function is a no-op for a
+	// delegated repo — it subscribed no directories and reserved no
+	// descriptors — but it is left to run rather than short-circuited so a
+	// watcher that switched modes mid-life still unwinds whatever it holds.
+	if d := w.cfg.Delegate; d != nil {
+		d.RemoveRepo(abs)
 	}
 	w.mu.Lock()
 	if rs, ok := w.repos[abs]; ok {
