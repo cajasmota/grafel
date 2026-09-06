@@ -18,8 +18,8 @@
       "entity_expected": 12,
       "relationship_found": 11,
       "relationship_expected": 11,
-      "entity_extracted_total": 20,
-      "relationship_extracted_total": 47
+      "entity_extracted_total": 22,
+      "relationship_extracted_total": 49
     },
     "csharp-aspnet-core-mini": {
       "entity_found": 4,
