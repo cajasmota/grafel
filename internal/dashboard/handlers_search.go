@@ -192,9 +192,17 @@ func isHTTPEndpointEntity(bareKind, rawKind string) bool {
 	// ipcRenderer / contextBridge); it is not an HTTP route and keeps
 	// its spelling. IPC channels stay on the compound topology and
 	// entity search — see electron_ipc_not_http_6820_test.go.
+	// `Route`, by contrast, is compared on the STRIPPED kind, so
+	// BOTH of its spellings match: bare "Route" (types.EntityKindRouteBare —
+	// the Java route extractors) and "SCOPE.Route" (types.EntityKindRoute —
+	// the Lua OpenResty/Lapis/Kong extractors, Vaadin @Route pages and the
+	// utoipa / api-gateway / frontend-route synthesisers). Both are live HTTP
+	// routes and both are in types.AllEntityKinds(); comparing the raw kind
+	// here accepted one and silently dropped the other (#6894 — see
+	// scope_route_kind_6894_test.go).
 	return types.IsHTTPEndpointKind(bareKind) ||
 		strings.EqualFold(bareKind, httpEndpointKind) ||
-		rawKind == string(types.EntityKindEndpoint) || rawKind == "Route"
+		rawKind == string(types.EntityKindEndpoint) || bareKind == "Route"
 }
 
 // searchDocFiles walks a directory looking for markdown files whose names or
