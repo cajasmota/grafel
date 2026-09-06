@@ -1,10 +1,17 @@
-// depth_walker_inherit_accuracy_6812_test.go — MEASUREMENT harness for the
-// hand-rolled depth walker at extractor.go:422 (`extractModuleBody`).
+// depth_walker_inherit_accuracy_6812_test.go — MEASUREMENT harness for
+// `extractModuleBody`, the one structural judgement the OCaml extractor owns.
 //
-// #6812 states plainly that nobody has measured how often that walker gets
-// `inherit` context wrong, and that the number must exist before committing to
-// a tree-sitter migration. This file is that measurement. It changes NO
-// production behaviour and adds no pattern to the extractor.
+// #6812 states plainly that nobody had measured how often the hand-rolled
+// depth walker got `inherit` context wrong, and that the number had to exist
+// before committing to a tree-sitter migration. Arm 1 of this file was that
+// measurement. ARM 2 IS THE MIGRATION, and this file is now a BEFORE-AND-AFTER
+// rather than a before: the retired walker is preserved verbatim as
+// legacyDepthWalkerBody and scored alongside the CST-backed
+// `extractModuleBody`, over the same inputs and the same reference, in a
+// single run. Without that, every figure #6812 rests on would be a claim in a
+// PR body that nothing in the repo can reproduce.
+//
+// It still adds no pattern to the extractor.
 //
 // # What "inherit context" means here, operationally
 //
@@ -17,20 +24,30 @@
 //	truth span    = [openerStart, offset of the block's real matching `end`)
 //	an `inherit` is MIS-ATTRIBUTED when exactly one of the two spans contains it.
 //
-// The walker is driven the way production drives it: `extractModuleBody` is
-// handed a position from which the block's OPENING keyword is still ahead
-// (extractor.go:153 passes the end of the `module Foo =` match, with `struct`
-// still to come), so the opener increments depth. That is not a detail — see
-// the divergence table below.
+// Both producers are driven the way production drives them: they are handed a
+// position from which the block's OPENING keyword is still ahead (extractor.go
+// passes the end of the `module Foo =` match, with `struct` still to come).
+// For the walker that is what makes the opener increment depth; for the
+// CST-backed implementation it is the "first opener at or after `from`"
+// contract in blocks.go. That is not a detail — see the divergence table
+// below.
 //
 // # Ground truth
 //
 // refMatchEnd below is a small OCaml block matcher written for this test only.
-// It differs from the production walker in four ways that are each an
-// independent defect of the production walker, so a positive control matters:
+// It differs from the RETIRED walker in four ways that are each an independent
+// defect of that walker, so a positive control matters:
 // TestReferenceBlockMatcher_PositiveControls pins it against hand-computed
 // answers, including every hazard class it is supposed to survive. A
 // measurement whose reference is unvalidated measures nothing.
+//
+// Its role changed in arm 2 and the change is stated in full on
+// TestDepthWalker_InheritAttribution_CorpusMeasurement: against a CST-backed
+// producer it is no longer an independent oracle (arm 1 established that
+// refMatchEnd and the grammar agree, 595/595), but it is not vacuous either —
+// it shares no line with blocks.go and still grades everything the wiring
+// added on top of the grammar. Read that note before quoting an agreement
+// figure from this file as a confirmation.
 //
 // # Corpus
 //
@@ -48,9 +65,92 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+// ---------------------------------------------------------------------------
+// The retired depth walker, kept as the #6812 baseline
+// ---------------------------------------------------------------------------
+
+// legacyDepthWalkerBody is `extractModuleBody` EXACTLY as it stood at
+// 2de485618, the commit that measured it. It was deleted from production when
+// the vendored tree-sitter grammar was wired in (arm 2), and it lives on here
+// as test-only code for one reason: without it every figure in #6812 becomes a
+// claim in a PR body that nothing in the repo can reproduce.
+//
+// Keeping it means the enumeration and the corpus measurement below grade TWO
+// producers against one independent reference in a single run, so "the CST
+// implementation is better" is a measurement taken here rather than a
+// before/after taken across two checkouts. It is never called by production
+// code; `extractModuleBody` is.
+func legacyDepthWalkerBody(src string, afterPos int) string {
+	if afterPos >= len(src) {
+		return ""
+	}
+	rest := src[afterPos:]
+
+	depth := 0
+	found := false
+	endPos := 0
+
+	openKW := regexp.MustCompile(`\b(struct|sig|object|begin)\b`)
+	closeKW := regexp.MustCompile(`\bend\b`)
+
+	i := 0
+	for i < len(rest) {
+		if i+1 < len(rest) && rest[i] == '(' && rest[i+1] == '*' {
+			i += 2
+			for i < len(rest) {
+				if i+1 < len(rest) && rest[i] == '*' && rest[i+1] == ')' {
+					i += 2
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if rest[i] == '"' {
+			i++
+			for i < len(rest) && rest[i] != '"' {
+				if rest[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if rest[i] == '\'' && i+2 < len(rest) && rest[i+2] == '\'' {
+			i += 3
+			continue
+		}
+
+		remaining := rest[i:]
+		if om := openKW.FindStringIndex(remaining); om != nil && om[0] == 0 {
+			depth++
+			i += om[1]
+			continue
+		}
+		if cm := closeKW.FindStringIndex(remaining); cm != nil && cm[0] == 0 {
+			if depth == 0 {
+				endPos = i
+				found = true
+				break
+			}
+			depth--
+			i += cm[1]
+			continue
+		}
+		i++
+	}
+
+	if found {
+		return rest[:endPos]
+	}
+	return extractLetBody(src, afterPos)
+}
 
 // ---------------------------------------------------------------------------
 // Reference OCaml block matcher (test-only ground truth)
@@ -348,6 +448,30 @@ func tail(src string, i int) string {
 // The DIVERGING SET is recorded below as a literal; a change to the walker
 // that moves any combination in or out of it fails this test, which is what
 // makes the #6812 finding reproducible without a network.
+//
+// # Re-derived for the grammar wiring (#6812 arm 2)
+//
+// The enumeration now runs BOTH producers over the same 32 inputs against the
+// same reference:
+//
+//   - legacyDepthWalkerBody — the retired regex depth walker, verbatim. Its
+//     diverging set is UNCHANGED at the recorded 18/32, so arm 1's finding is
+//     still reproducible in-repo rather than only in a PR body.
+//   - extractModuleBody — now CST-backed. Its diverging set is EMPTY, and that
+//     is recorded as its own literal.
+//
+// An empty set is a weak-looking assertion, so be precise about what it can
+// still catch: `endsAgree` fails on ANY disagreement in either direction, so a
+// producer that truncates, over-reaches, returns "" or silently falls back to
+// the indentation heuristic all land in cstDivergingCombinations6812 and fail
+// here. The direction that would be invisible — a producer that agrees for the
+// wrong reason — is exactly what running the legacy walker alongside it
+// answers: if the two sets ever coincide, the wiring has been reverted or
+// bypassed, and the 18-entry assertion fails first.
+//
+// Axis-E inertness and the E-symmetry count are asserted against the LEGACY
+// set, where they are non-vacuous. Asserting them over an empty set would be
+// two guards that pass by having nothing to look at.
 func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 	type axes struct{ closeAtCol0, endIdent, nestedComment, quotedString, trailer bool }
 	build := func(a axes) string {
@@ -390,16 +514,16 @@ func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 			flag(a.nestedComment, "C") + flag(a.quotedString, "D") + flag(a.trailer, "E")
 	}
 
-	// Recorded from the enumeration below at the commit that added this file,
-	// against a clone of github.com/ocaml/ocaml as the corpus for the headline
-	// figure. Written out rather than computed so a behaviour change is a
-	// diff and not a silently different pass.
-	wantDiverging := map[string]bool{}
-	for _, k := range divergingCombinations6812 {
-		wantDiverging[k] = true
+	producers := []struct {
+		name string
+		body func(string, int) string
+		got  []string
+		want []string
+	}{
+		{name: "legacy regex depth walker", body: legacyDepthWalkerBody, want: divergingCombinations6812},
+		{name: "CST-backed extractModuleBody", body: extractModuleBody, want: cstDivergingCombinations6812},
 	}
 
-	var got []string
 	for i := 0; i < 32; i++ {
 		a := axes{
 			closeAtCol0:   i&1 != 0,
@@ -417,39 +541,52 @@ func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 		if len(inh) != 1 {
 			t.Fatalf("%s: generator premise broken, want exactly 1 inherit, got %d", label(a), len(inh))
 		}
-		walkEnd := len(extractModuleBody(src, 0))
 		inTruth := inh[0] < truth
-		inWalker := inh[0] < walkEnd
 		if !inTruth {
 			t.Fatalf("%s: generator premise broken, the inherit is not inside the block", label(a))
 		}
-		// The criterion is block-end disagreement ALONE. It used to read
-		// `!endsAgree(...) || inTruth != inWalker`, and the second term was
-		// dead: a mutant deleting the first left the test unable to find any
-		// divergence at all, because NO generated input mis-attributes its
-		// `inherit` (review N2). The generator always writes the `inherit` as
-		// the first body line, so every span that disagrees still contains it.
-		// Asserting that positively, here, is what keeps the dead term from
-		// coming back as a claim nothing checks.
-		if inTruth != inWalker {
-			t.Fatalf("%s: this generator is not supposed to be able to produce an "+
-				"inherit MIS-ATTRIBUTION — it varies where the block ENDS, and the "+
-				"inherit is always the first body line. If it now can, the enumerated "+
-				"finding changed and both write-ups need re-deriving.", label(a))
+		for p := range producers {
+			walkEnd := len(producers[p].body(src, 0))
+			inWalker := inh[0] < walkEnd
+			// The criterion is block-end disagreement ALONE. It used to read
+			// `!endsAgree(...) || inTruth != inWalker`, and the second term was
+			// dead: a mutant deleting the first left the test unable to find any
+			// divergence at all, because NO generated input mis-attributes its
+			// `inherit` (review N2). The generator always writes the `inherit` as
+			// the first body line, so every span that disagrees still contains it.
+			// Asserting that positively, here, is what keeps the dead term from
+			// coming back as a claim nothing checks. It is asserted for BOTH
+			// producers: a CST-backed span that started BEFORE the `inherit`
+			// would break the premise just as surely as one that stopped short.
+			if inTruth != inWalker {
+				t.Fatalf("%s [%s]: this generator is not supposed to be able to produce an "+
+					"inherit MIS-ATTRIBUTION — it varies where the block ENDS, and the "+
+					"inherit is always the first body line. If it now can, the enumerated "+
+					"finding changed and both write-ups need re-deriving.", label(a), producers[p].name)
+			}
+			if !endsAgree(src, walkEnd, truth) {
+				producers[p].got = append(producers[p].got, label(a))
+				t.Logf("%s [%s] BLOCK-END DIVERGES: span end=%d, true end=%d (inherit@%d is inside both spans)",
+					label(a), producers[p].name, walkEnd, truth, inh[0])
+			}
 		}
-		if !endsAgree(src, walkEnd, truth) {
-			got = append(got, label(a))
-			t.Logf("%s BLOCK-END DIVERGES: walker end=%d, true end=%d (inherit@%d is inside both spans)",
-				label(a), walkEnd, truth, inh[0])
+	}
+	for p := range producers {
+		if strings.Join(producers[p].got, ",") != strings.Join(producers[p].want, ",") {
+			t.Fatalf("diverging set changed for %s.\n got: %v\nwant: %v",
+				producers[p].name, producers[p].got, producers[p].want)
 		}
 	}
-	if len(got) == 0 {
-		t.Fatalf("no combination diverged — extractModuleBody's behaviour changed; " +
-			"re-derive the #6812 figure rather than deleting this test")
+	// The whole point of running both is that they differ. Without this the two
+	// set assertions above could BOTH be satisfied by a producers table whose
+	// second entry had been pointed back at the first — the `want` literals
+	// would then simply be wrong together, and nothing would say so.
+	if len(producers[0].got) <= len(producers[1].got) {
+		t.Fatalf("the retired walker (%d diverging) is not doing worse than the CST-backed one (%d) — "+
+			"the wiring has been reverted or the table is pointed at one producer twice",
+			len(producers[0].got), len(producers[1].got))
 	}
-	if strings.Join(got, ",") != strings.Join(divergingCombinations6812, ",") {
-		t.Fatalf("diverging set changed.\n got: %v\nwant: %v", got, divergingCombinations6812)
-	}
+	got := producers[0].got
 	// Axis E is INERT, and that is asserted rather than left as padding. The
 	// review found E (and, before it was respelled, B) changed no outcome in
 	// any of the 16 pairs, which meant "32 combinations" overstated what was
@@ -473,10 +610,12 @@ func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 	if len(got)%2 != 0 {
 		t.Fatalf("axis E is documented INERT, so the diverging set must be E-symmetric, got %d entries", len(got))
 	}
-	t.Logf("%d/32 enumerated combinations put the WRONG END on the block. "+
-		"0/32 mis-attribute the `inherit` — see the guard above; inherit "+
+	t.Logf("retired regex depth walker: %d/32 enumerated combinations put the WRONG END on the block; "+
+		"CST-backed extractModuleBody: %d/32. "+
+		"0/32 mis-attribute the `inherit` for EITHER producer — see the guard above; inherit "+
 		"mis-attribution is carried by TestDepthWalker_InheritIsMisAttributed_Constructed "+
-		"and by the corpus measurement, not by this enumeration.", len(got))
+		"and by the corpus measurement, not by this enumeration.",
+		len(producers[0].got), len(producers[1].got))
 }
 
 // TestDepthWalker_InheritIsMisAttributed_Constructed is the smallest input
@@ -510,47 +649,115 @@ func TestDepthWalker_InheritIsMisAttributed_Constructed(t *testing.T) {
 		t.Fatalf("premise: want 2 object tokens, got %d", len(objs))
 	}
 
-	var mis int
-	for i, o := range objs {
-		truth := refMatchEnd(src, o)
-		if truth < 0 {
-			t.Fatalf("premise: reference failed on a constructed case")
-		}
-		walkEnd := o + len(extractModuleBody(src, o))
-		for j, in := range inherits {
-			inTruth := in >= o && in < truth
-			inWalker := in >= o && in < walkEnd
-			if inTruth != inWalker {
-				mis++
-				t.Logf("object #%d span [%d,%d) (true end %d) mis-attributes inherit #%d at %d: in_truth=%v in_walker=%v",
-					i, o, walkEnd, truth, j, in, inTruth, inWalker)
+	count := func(body func(string, int) string) int {
+		var mis int
+		for i, o := range objs {
+			truth := refMatchEnd(src, o)
+			if truth < 0 {
+				t.Fatalf("premise: reference failed on a constructed case")
+			}
+			walkEnd := o + len(body(src, o))
+			for j, in := range inherits {
+				inTruth := in >= o && in < truth
+				inWalker := in >= o && in < walkEnd
+				if inTruth != inWalker {
+					mis++
+					t.Logf("object #%d span [%d,%d) (true end %d) mis-attributes inherit #%d at %d: in_truth=%v in_walker=%v",
+						i, o, walkEnd, truth, j, in, inTruth, inWalker)
+				}
 			}
 		}
+		return mis
 	}
-	if mis == 0 {
-		t.Fatalf("NO MIS-ATTRIBUTION — the walker now agrees with the reference on this input. " +
-			"That is a behaviour change in extractModuleBody; re-derive the #6812 figure before deleting this test.")
+
+	// #6812 arm 2: the input is unchanged and so is the legacy verdict. What is
+	// asserted now is a PAIR — the retired walker still mis-attributes here, and
+	// the CST-backed producer does not. Asserting only the second would be an
+	// absence over a population that a broken generator could empty; asserting
+	// both means the fix is graded against a demonstrated failure on the same
+	// bytes rather than against a claim about them.
+	legacyMis := count(legacyDepthWalkerBody)
+	if legacyMis == 0 {
+		t.Fatalf("the RETIRED walker no longer mis-attributes on this input — legacyDepthWalkerBody " +
+			"is supposed to be extractModuleBody verbatim as of 2de485618. Either it was edited or " +
+			"the reference moved; either way the #6812 figure needs re-deriving, not this test deleting.")
 	}
-	t.Logf("constructed input: %d/%d (object, inherit) attributions wrong", mis, len(objs)*len(inherits))
+	cstMis := count(extractModuleBody)
+	if cstMis != 0 {
+		t.Fatalf("the CST-backed extractModuleBody mis-attributes %d/%d (object, inherit) pairs on the "+
+			"input the grammar wiring exists to fix", cstMis, len(objs)*len(inherits))
+	}
+	t.Logf("constructed input: retired walker %d/%d (object, inherit) attributions wrong, CST-backed %d/%d",
+		legacyMis, len(objs)*len(inherits), cstMis, len(objs)*len(inherits))
 }
 
 // ---------------------------------------------------------------------------
 // The measurement, on a real corpus (env-gated)
 // ---------------------------------------------------------------------------
 
+// TestDepthWalker_InheritAttribution_CorpusMeasurement is #6812's headline
+// figure, and since arm 2 it is a BEFORE and AFTER taken in one run: the
+// retired regex depth walker and the CST-backed extractModuleBody are scored
+// over the same files, the same blocks and the same reference.
+//
+// # What the reference is still for, now that the producer is CST-backed
+//
+// This deserves saying plainly rather than letting a tautology read as a pass.
+// Arm 1's reviewer cross-checked refMatchEnd against THIS repo's vendored
+// tree-sitter OCaml grammar over these same files: 595 blocks compared, 595
+// agree. So refMatchEnd and the grammar are known to answer the same question
+// the same way, and "the CST-backed producer agrees with refMatchEnd" is
+// therefore NOT the independent confirmation it was when the producer was a
+// regex walker.
+//
+// SAY THE ARITHMETIC, because it bounds the claim precisely and nobody
+// re-derives it from two comments in different files. Arm 1's equivalence was
+// established over 595 blocks. THIS measurement's population is 633. So 38
+// blocks were never inside the established equivalence, and the residual
+// disagreements number 37 — i.e. essentially all of them sit outside the range
+// where the reference and the grammar are known to coincide, and over the ~595
+// where they do coincide the agreement is definitional modulo the wiring.
+// That is the honest reading of the 100%/100% figures: they are a strong
+// result about the WIRING LAYER, and they are not 633 independent
+// confirmations of the grammar.
+//
+// It is not vacuous either, and the distinction is the code in between.
+// refMatchEnd is a hand-written matcher that shares no line with blocks.go;
+// what it still grades is everything the wiring added on top of the grammar —
+// which node types count as openers, pairing an opener with the `end` of the
+// SAME parent node, rejecting zero-width MISSING closers, the binary search
+// for "first opener at or after `from`", and the per-source memo handing back
+// the right file's index. Every one of those is a place this arm could have
+// been wrong, and none of them is in the grammar.
+//
+// What the reference can no longer do is arbitrate a disagreement. If the two
+// ever differ, this test says so but cannot say which is right; that verdict
+// needs the grammar's own S-expression, not another run of this test.
 func TestDepthWalker_InheritAttribution_CorpusMeasurement(t *testing.T) {
 	root := os.Getenv("GRAFEL_OCAML_CORPUS")
 	if root == "" {
 		t.Skip("set GRAFEL_OCAML_CORPUS to a checkout of real OCaml source to run the measurement")
 	}
+
+	type score struct {
+		name            string
+		body            func(string, int) string
+		blockEndWrong   int
+		blockEndWrongOK int // …of which sit in a file the grammar parses CLEANLY
+		inheritEnclosed int
+		inheritMissed   int
+		inheritSpurious int
+	}
+	producers := []*score{
+		{name: "retired regex depth walker", body: legacyDepthWalkerBody},
+		{name: "CST-backed extractModuleBody", body: extractModuleBody},
+	}
+
 	var (
 		files, blocks, unmatched int
-		blockEndWrong            int
 		inheritTotal             int
-		inheritEnclosed          int
-		inheritMissed            int
-		inheritSpurious          int
 		filesWithInherit         int
+		filesWithErrors          int
 		unmatchedFiles           []string
 	)
 	err := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
@@ -568,12 +775,20 @@ func TestDepthWalker_InheritAttribution_CorpusMeasurement(t *testing.T) {
 			// The question is about `inherit` context, so the population is the
 			// files that contain one. Scoped rather than sampled: EVERY such
 			// file in the corpus is measured. (It is also what keeps the run
-			// finishable — the production walker re-runs two regexes at every
-			// byte of the remaining file, so it is quadratic per block.)
+			// finishable — the retired walker re-runs two regexes at every byte
+			// of the remaining file, so it is quadratic per block.)
 			return nil
 		}
 		inheritTotal += len(inh)
 		filesWithInherit++
+		// Whether the GRAMMAR had to recover on this file, taken from the tree
+		// rather than from the file's name. errors.ml is the corpus's one
+		// deliberately-malformed file, and hard-coding its path here would make
+		// the assertion below true by naming rather than by measurement.
+		recovered := blockIndexFor(src).hasError
+		if recovered {
+			filesWithErrors++
+		}
 		for _, o := range objectOffsets(src) {
 			truth := refMatchEnd(src, o)
 			if truth < 0 {
@@ -584,29 +799,34 @@ func TestDepthWalker_InheritAttribution_CorpusMeasurement(t *testing.T) {
 				continue
 			}
 			blocks++
-			walkEnd := o + len(extractModuleBody(src, o))
-			if !endsAgree(src, walkEnd, truth) {
-				blockEndWrong++
-			}
-			for _, in := range inh {
-				inTruth := in >= o && in < truth
-				inWalker := in >= o && in < walkEnd
-				switch {
-				case inTruth && inWalker:
-					inheritEnclosed++
-				case inTruth && !inWalker:
-					// The walker's block stops SHORT of an inherit that is
-					// really inside the block: a real inheritance edge the
-					// regex path would not attribute.
-					inheritEnclosed++
-					inheritMissed++
-				case !inTruth && inWalker:
-					// The walker's block runs PAST its end and swallows an
-					// inherit belonging to a later block: an edge attributed to
-					// the wrong owner. Recall assertions are structurally blind
-					// to this direction (#6902), which is why it is counted
-					// separately rather than folded into one error figure.
-					inheritSpurious++
+			for _, s := range producers {
+				walkEnd := o + len(s.body(src, o))
+				if !endsAgree(src, walkEnd, truth) {
+					s.blockEndWrong++
+					if !recovered {
+						s.blockEndWrongOK++
+					}
+				}
+				for _, in := range inh {
+					inTruth := in >= o && in < truth
+					inWalker := in >= o && in < walkEnd
+					switch {
+					case inTruth && inWalker:
+						s.inheritEnclosed++
+					case inTruth && !inWalker:
+						// The span stops SHORT of an inherit that is really
+						// inside the block: a real inheritance edge this
+						// producer would not attribute.
+						s.inheritEnclosed++
+						s.inheritMissed++
+					case !inTruth && inWalker:
+						// The span runs PAST its end and swallows an inherit
+						// belonging to a later block: an edge attributed to the
+						// wrong owner. Recall assertions are structurally blind
+						// to this direction (#6902), which is why it is counted
+						// separately rather than folded into one error figure.
+						s.inheritSpurious++
+					}
 				}
 			}
 		}
@@ -626,29 +846,89 @@ func TestDepthWalker_InheritAttribution_CorpusMeasurement(t *testing.T) {
 	}
 	t.Logf("corpus=%s files=%d files_with_inherit=%d", root, files, filesWithInherit)
 	t.Logf("object blocks matched by reference=%d (unmatched, excluded=%d)", blocks, unmatched)
-	t.Logf("BLOCK-END WRONG: %d/%d (%s)", blockEndWrong, blocks, pct(blockEndWrong, blocks))
-	t.Logf("inherit tokens in those files=%d; (block,inherit) pairs truly enclosed=%d",
-		inheritTotal, inheritEnclosed)
-	// Recall and precision are reported separately and never summed into one
-	// rate. Adding them gave 230/216 = 106.5%, which is not a rate at all:
-	// `spurious` is drawn from every (block, inherit) pair in the file while
-	// `enclosed` counts only the truly-enclosed ones, so the two have different
-	// denominators (review).
-	correct := inheritEnclosed - inheritMissed
-	attributed := correct + inheritSpurious
-	t.Logf("INHERIT RECALL: %d/%d truly-enclosed pairs are inside the walker's span (%s); "+
-		"%d MISSED", correct, inheritEnclosed, pct(correct, inheritEnclosed), inheritMissed)
-	t.Logf("INHERIT PRECISION: %d/%d pairs the walker attributes are right (%s); "+
-		"%d SPURIOUS", correct, attributed, pct(correct, attributed), inheritSpurious)
-	t.Logf("so the walker attributes %d pairs, %d of them wrong — more wrong than right",
-		attributed, inheritSpurious+inheritMissed)
+	t.Logf("inherit tokens in those files=%d; files the grammar had to RECOVER on=%d", inheritTotal, filesWithErrors)
+	for _, s := range producers {
+		t.Logf("--- %s ---", s.name)
+		t.Logf("BLOCK-END WRONG: %d/%d (%s); of those, %d are in files the grammar parses cleanly",
+			s.blockEndWrong, blocks, pct(s.blockEndWrong, blocks), s.blockEndWrongOK)
+		// Recall and precision are reported separately and never summed into
+		// one rate. Adding them gave 230/216 = 106.5%, which is not a rate at
+		// all: `spurious` is drawn from every (block, inherit) pair in the file
+		// while `enclosed` counts only the truly-enclosed ones, so the two have
+		// different denominators (review).
+		correct := s.inheritEnclosed - s.inheritMissed
+		attributed := correct + s.inheritSpurious
+		t.Logf("(block,inherit) pairs truly enclosed=%d", s.inheritEnclosed)
+		t.Logf("INHERIT RECALL: %d/%d truly-enclosed pairs are inside the span (%s); %d MISSED",
+			correct, s.inheritEnclosed, pct(correct, s.inheritEnclosed), s.inheritMissed)
+		t.Logf("INHERIT PRECISION: %d/%d pairs attributed are right (%s); %d SPURIOUS",
+			correct, attributed, pct(correct, attributed), s.inheritSpurious)
+		t.Logf("attributes %d pairs, %d of them wrong", attributed, s.inheritSpurious+s.inheritMissed)
+	}
 	if len(unmatchedFiles) > 0 {
 		t.Logf("sample files holding a block the REFERENCE could not match (excluded from every "+
-			"figure above, so they neither help nor hurt the walker): %v", unmatchedFiles)
+			"figure above, so they neither help nor hurt either producer): %v", unmatchedFiles)
 	}
-	if blockEndWrong == 0 {
-		t.Fatalf("zero block-end errors over %d blocks — that contradicts the constructed cases; "+
-			"suspect the harness before believing it", blocks)
+	legacy, cst := producers[0], producers[1]
+	if legacy.blockEndWrong == 0 {
+		t.Fatalf("the RETIRED walker made zero block-end errors over %d blocks — that contradicts "+
+			"the constructed cases; suspect the harness before believing it", blocks)
+	}
+	// The acceptance criterion for #6812 arm 2, asserted rather than left to a
+	// reader of the log. Written as a strict improvement in BOTH directions
+	// because a producer can buy precision by attributing less: a span that
+	// stopped at the opener would have perfect precision and no recall.
+	if cst.blockEndWrong >= legacy.blockEndWrong {
+		t.Fatalf("the CST-backed producer put the wrong end on %d/%d blocks against the retired "+
+			"walker's %d — the wiring bought nothing", cst.blockEndWrong, blocks, legacy.blockEndWrong)
+	}
+	if cst.inheritMissed > legacy.inheritMissed {
+		t.Fatalf("the CST-backed producer MISSES more truly-enclosed inherits (%d) than the retired "+
+			"walker (%d) — precision was bought with recall", cst.inheritMissed, legacy.inheritMissed)
+	}
+	if cst.inheritSpurious >= legacy.inheritSpurious {
+		t.Fatalf("the CST-backed producer attributes %d spurious inherits against the retired "+
+			"walker's %d", cst.inheritSpurious, legacy.inheritSpurious)
+	}
+	// The strongest thing this corpus can say about the wiring, and much
+	// stronger than a bounded error count: on VALID OCaml the CST-backed
+	// producer and the independent reference do not disagree at all. Every
+	// residual disagreement is in a file tree-sitter itself reports as broken,
+	// which is where the two are entitled to differ — recovery is a heuristic
+	// and refMatchEnd is not the same heuristic.
+	//
+	// Asserted as an exact zero rather than a threshold. A threshold would let
+	// a real regression on valid source hide under a budget the malformed file
+	// already fills.
+	if cst.blockEndWrongOK != 0 {
+		t.Fatalf("the CST-backed producer disagrees with the reference on %d blocks in files the "+
+			"grammar parses WITHOUT error — those are not recovery artefacts and need explaining",
+			cst.blockEndWrongOK)
+	}
+	// The zero above is only worth something if the classifier splits the
+	// corpus. It has TWO ways to be a no-op and both are checked, because a
+	// guard against one of them reads as a guard against the classifier
+	// (review Q2):
+	//
+	//   - nothing classified as recovered — then `blockEndWrongOK` counts every
+	//     disagreement and the assertion is merely strict;
+	//   - EVERYTHING classified as recovered — then `blockEndWrongOK` can never
+	//     be anything but 0 and the assertion is unreachable. This is the
+	//     dangerous direction, and the one the first version missed.
+	//
+	// The second is pinned through the LEGACY producer rather than through a
+	// file count: the retired walker is known to get block ends wrong on
+	// perfectly valid OCaml, so if not a single one of its 479 errors lands in
+	// a cleanly-parsed file, the classifier has swallowed the whole corpus.
+	if filesWithErrors == 0 {
+		t.Fatalf("no file in the corpus needed recovery, so the assertion above was vacuous — " +
+			"this corpus is supposed to contain testsuite/tests/generated-parse-errors/errors.ml")
+	}
+	if legacy.blockEndWrongOK == 0 {
+		t.Fatalf("not one of the retired walker's %d block-end errors is in a file the grammar "+
+			"parses cleanly — the ERROR classifier is bucketing the whole corpus as recovered, "+
+			"which makes the CST assertion above unreachable rather than true",
+			legacy.blockEndWrong)
 	}
 }
 
@@ -678,3 +958,29 @@ var divergingCombinations6812 = []string{
 	"-----", "-BC--", "ABC--", "-B-D-", "AB-D-", "--CD-", "A-CD-", "-BCD-", "ABCD-",
 	"----E", "-BC-E", "ABC-E", "-B-DE", "AB-DE", "--CDE", "A-CDE", "-BCDE", "ABCDE",
 }
+
+// cstDivergingCombinations6812 is the re-derived diverging set for the
+// CST-backed extractModuleBody (#6812 arm 2). It is EMPTY: none of the 32
+// enumerated combinations puts the wrong end on the block once the span comes
+// from the grammar.
+//
+// Each of the four axes the enumeration crosses is one of the walker's four
+// measured defects, and the empty set is the per-axis account of why:
+//
+//	A  an INDENTED `end` — defect (1), the scan never terminating on a balanced
+//	   block, so every well-formed block fell through to the indentation
+//	   fallback and the fallback consumed past the `end` line. A node span has
+//	   no counter to fail to terminate.
+//	B  an identifier ENDING in `end` (`append`) — defect (2), `\b` evaluated at
+//	   offset 0 of a re-sliced string. The grammar tokenises, so `append` is a
+//	   method_name and never a closing keyword. Note this axis is where the
+//	   walker accidentally CANCELLED defect (1) on its own (`-B---` did not
+//	   diverge); the CST does not need the cancellation.
+//	C  a NESTED comment — defect (3). `(* (* q *) end *)` is one `comment` node.
+//	D  a `{|…|}` quoted string holding `end` — defect (4). It is a
+//	   `quoted_string` node with a `quoted_string_content` child.
+//
+// Recorded as a named empty literal rather than as `len(got) == 0` so that the
+// two producers are asserted the same way, and so the day a combination starts
+// diverging the failure reads as a diff against a recorded set.
+var cstDivergingCombinations6812 = []string{}
