@@ -346,7 +346,58 @@ func extractCrystal(src, filePath string) []types.EntityRecord {
 	entities = append(entities, extractAliases(src, filePath)...)
 	entities = append(entities, extractSpecSuite(src, filePath)...)
 
-	return entities
+	// ── 5. #6852 — file carrier for the path-anchored IMPORTS above ──────
+	//
+	// Section 1 stamps `FromID: filePath` on every require's IMPORTS edge, and
+	// internal/resolve/refs.go has no path→entity index: a path-valued FromID
+	// resolves iff some emitted node carries that exact string as its Name.
+	// Nothing here does as a rule (the seven Name sites are enumerated in
+	// file_carrier_6852_test.go's header), so without this the raw path reached
+	// the graph as the edge's FROM end — #6847's measurement, #6815's fix.
+	//
+	// CONDITIONAL, via extractor.PrependFileCarrier. An unconditional carrier
+	// mints one bare orphan node per .cr file across a whole repo, which no
+	// recall-shaped assertion can see (#6518, #6815).
+	//
+	// PLACEMENT: last, for TWO independent reasons, each SCORED by its own
+	// mutant — because a placement comment that lists reasons without a mutant
+	// per reason is prose (the clojure/cobol lesson, #6897). Note what the
+	// scoring showed about the two tests, since "one mutant each" would
+	// otherwise read as "two independently-necessary cells": the depth-pass
+	// cell (reason 2) kills BOTH moves and strictly dominates for placement,
+	// so the CONTAINS test is never the SOLE killer of a placement move. It is
+	// not redundant — it pins CONTAINS ownership in the carrier's presence,
+	// which is a separate regression — but only reason 2's cell is load-bearing
+	// for the placement itself.
+	//
+	//  1. THE INDEX HAZARD. scopeSpan.idx is an INDEX INTO `entities`,
+	//     dereferenced at :325 to hang each def/macro's CONTAINS edge on its
+	//     enclosing scope; a head-insertion before that step shifts every
+	//     stored index by one and the edges land on the wrong records. Unlike
+	//     clojure (#6897) this is NOT entailed by the carrier's own condition:
+	//     section 1 runs FIRST, so the anchor already exists before `scopes` is
+	//     built and a conditional carrier placed earlier really is emitted.
+	//     Graded by TestCrystal_CarrierPlacementDoesNotShiftTheContainsPass_6852
+	//     — which kills the move with wrong-owner CONTAINS rows, alongside
+	//     reason 2's cell.
+	//  2. CLAUSE-3 VISIBILITY OF THE DEPTH PASSES. FileCarrierFor can only
+	//     decline for a record it is handed, so the call must run after the
+	//     extractEnums / extractAliases / extractSpecSuite appends above or a
+	//     record one of them names could take a second node under one
+	//     graph.EntityID (#6369/#6480). Graded by
+	//     TestCrystal_DepthPassRecordNamedLikeThePathGetsNoSecondCarrier_6852,
+	//     which is the ONLY thing that kills that move — reason 1's test does
+	//     not, since every scopeSpan.idx has been dereferenced by then.
+	//
+	// The tagging call in Extract is NOT a third reason: it is a grading route,
+	// not a correctness constraint (see below).
+	//
+	// The "crystal" token is stamped explicitly rather than left to Extract's
+	// TagEntitiesLanguage, which runs after this and would fill an empty one —
+	// so the token is graded through the Properties["language"] provenance
+	// route, not through the Language field alone. See
+	// TestCrystal_CarrierShape_6852.
+	return extractor.PrependFileCarrier(filePath, "crystal", entities)
 }
 
 // ---------------------------------------------------------------------------
