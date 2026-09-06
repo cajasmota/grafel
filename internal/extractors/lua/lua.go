@@ -133,10 +133,24 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	//     class module that requires its parent has the class made out of the
 	//     IMPORT record (TestLua_CarrierPlacementDoesNotShiftTheOOPPass_6852).
 	//
-	// It comes BEFORE the tagging calls
-	// so the carrier is the same kind of record as its siblings; the "lua"
-	// token here is what keeps it from being the one record filled in by
-	// TagEntitiesLanguage (proto's #6356 trap).
+	// PLACEMENT RELATIVE TO THE TAGGING PAIR IS NOT A THIRD CONJUNCT, and this
+	// paragraph used to imply it was. What is load-bearing is the non-empty
+	// "lua" TOKEN: the carrier arrives with Language already set, so
+	// TagEntitiesLanguage — which fills only an EMPTY token — is a no-op on it,
+	// and the call may sit on either side of the tagging pair with no
+	// observable difference. That is equivalence in production, not merely
+	// under this suite: there is nothing for a fixture to notice. The token is
+	// what keeps the carrier off the fill path and out of proto's #6356 trap
+	// (file_carrier_6852_test.go asserts it carries no Properties["language"],
+	// which holds on both sides for the same reason).
+	//
+	// The dependency runs the other way from the way it reads. Scored, so the
+	// next reader need not re-run it: moving this call BELOW the tagging pair
+	// is ALIVE and equivalent; the same move TOGETHER WITH lang -> "" is DEAD
+	// (carrier Language = "", want "lua"). So placement here becomes
+	// load-bearing only if the token is ever emptied — which is the state that
+	// compound mutant reaches, and the reason to change the two together or
+	// not at all.
 	entities = extractor.PrependFileCarrier(file.Path, "lua", entities)
 
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
