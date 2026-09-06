@@ -102,6 +102,60 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// Subtype="class" and attach EXTENDS edges to their parent table.
 	applyOOP(file, moduleTableIdx, entities)
 
+	// Pass 5 (#6852) — give the IMPORTS edges makeImportRecord anchors on
+	// file.Path a FROM end that resolves. internal/resolve/refs.go has no
+	// path→entity index, so a path-valued FromID resolves iff some emitted
+	// record carries that exact string as its Name, and nothing lua emits is
+	// named after the file: import records take the REQUIRED module's name,
+	// module tables the local variable's, operations the function's. So the
+	// edge dangled at every depth, root included — html's and fsharp's shape,
+	// not terraform's or shell's, neither of which had a root hole.
+	//
+	// CONDITIONAL, via PrependFileCarrier: a .lua file with no require has
+	// nothing to carry, and an unconditional carrier would mint one bare orphan
+	// node per lua file across a whole repo — a change no recall-shaped
+	// assertion can see (#6815, #6518). It also declines when an import record
+	// is ALREADY named the path (a module requiring itself by the spelling of
+	// its own path), since graph.EntityID does not hash Subtype and the second
+	// node would land under the first one's id (#6369/#6480).
+	//
+	// PLACEMENT IS LOAD-BEARING, and for a reason no earlier arm had.
+	// moduleTableIdx maps a module-table name to its INDEX in entities, and it
+	// has TWO consumers, so the rule has two conjuncts and each is graded
+	// separately rather than as one claim:
+	//
+	//   - AFTER walkLua, which appends the CONTAINS edges through that index.
+	//     Prepending before it re-homes them onto the wrong record
+	//     (TestLua_CarrierShape_6852's CONTAINS-owner row).
+	//   - AFTER applyOOP, which promotes a module table to Subtype="class" and
+	//     hangs its EXTENDS edge off the same index. Prepending BETWEEN the two
+	//     passes leaves CONTAINS correct and moves only the promotion, so a
+	//     class module that requires its parent has the class made out of the
+	//     IMPORT record (TestLua_CarrierPlacementDoesNotShiftTheOOPPass_6852).
+	//
+	// PLACEMENT RELATIVE TO THE TAGGING PAIR IS NOT A THIRD CONJUNCT, and this
+	// paragraph used to imply it was. What is load-bearing is the non-empty
+	// "lua" TOKEN: the carrier arrives with Language already set, so
+	// TagEntitiesLanguage — which fills only an EMPTY token — is a no-op on it,
+	// and the call may sit on either side of the tagging pair with no
+	// observable difference. That is equivalence in production, not merely
+	// under this suite: there is nothing for a fixture to notice. The token is
+	// what keeps the carrier off the fill path and out of proto's #6356 trap
+	// (file_carrier_6852_test.go asserts it carries no Properties["language"],
+	// which holds on both sides though by DIFFERENT routes: at the placement
+	// shipped here TagEntitiesLanguage is handed the carrier and skips it on
+	// its Language != "" continue, while under the moved placement the carrier
+	// is prepended afterwards and is never handed to the tagger at all).
+	//
+	// The dependency runs the other way from the way it reads. Scored, so the
+	// next reader need not re-run it: moving this call BELOW the tagging pair
+	// is ALIVE and equivalent; the same move TOGETHER WITH lang -> "" is DEAD
+	// (carrier Language = "", want "lua"). So placement here becomes
+	// load-bearing only if the token is ever emptied — which is the state that
+	// compound mutant reaches, and the reason to change the two together or
+	// not at all.
+	entities = extractor.PrependFileCarrier(file.Path, "lua", entities)
+
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "lua")
 	extractor.TagEntitiesLanguage(entities, "lua")
