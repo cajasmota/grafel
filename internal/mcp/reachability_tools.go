@@ -302,10 +302,22 @@ func endpointRollup(lg *LoadedGroup, repoFilter []string) (total, reachable int)
 
 // isEndpointKind reports whether a kind is an HTTP endpoint surface (both the
 // SCOPE.Endpoint scope kind and the http_endpoint_definition cross-link kind).
+// The switch body is byte-identical to the dashboard's isEndpointReachKind
+// (internal/dashboard/handlers_coverage_reach.go), which mirrors this one by
+// design (#5060) — keep them in step.
+//
+// #6902: BOTH Route spellings match. "SCOPE.Route" (types.EntityKindRoute)
+// and bare "Route" (types.EntityKindRouteBare) name the SAME concept, an HTTP
+// route — unlike the Endpoint pair, where the bare spelling is Electron IPC
+// (#6820/#6893). #6776 arm B7 added both kinds together because both are
+// live, and four golden fixtures assert bare-"Route" entities with
+// must_exist:true, so accepting only the prefixed spelling hid entities CI
+// guarantees exist from this tool.
 func isEndpointKind(kind string) bool {
 	switch types.EntityKind(kind) {
 	case types.EntityKindEndpoint,
 		types.EntityKindRoute,
+		types.EntityKindRouteBare,
 		types.EntityKindHTTPEndpointDefinition:
 		return true
 	}

@@ -153,11 +153,25 @@ func (a *reachAccumulator) summarize() *ReachabilitySummary {
 
 // isEndpointReachKind reports whether a kind is an HTTP endpoint surface for
 // the reachability roll-up. Mirrors the MCP tool's isEndpointKind (#5060) so
-// the dashboard and MCP agree on what counts as an endpoint.
+// the dashboard and MCP agree on what counts as an endpoint — the two switch
+// bodies are byte-identical and must stay that way.
+//
+// #6902: BOTH Route spellings match. "SCOPE.Route" (types.EntityKindRoute) is
+// emitted by the Lua routing extractors, Vaadin @Route pages and the engine's
+// gateway/frontend-route synthesisers; bare "Route"
+// (types.EntityKindRouteBare) is emitted by internal/custom/java/{play,
+// spring_webflux,akka_http,javalin,vertx,struts}_routes.go and
+// internal/engine/{spring,django}_routes.go. Unlike the Endpoint pair — where
+// bare "Endpoint" is Electron IPC and "SCOPE.Endpoint" is HTTP (#6820/#6893)
+// — the two Route spellings name the SAME concept, an HTTP route, and #6776
+// arm B7 added both kinds together because both are live. Four golden
+// fixtures assert bare-"Route" entities with must_exist:true, so accepting
+// only the prefixed spelling excluded entities CI guarantees exist.
 func isEndpointReachKind(kind string) bool {
 	switch types.EntityKind(kind) {
 	case types.EntityKindEndpoint,
 		types.EntityKindRoute,
+		types.EntityKindRouteBare,
 		types.EntityKindHTTPEndpointDefinition:
 		return true
 	}

@@ -101,11 +101,22 @@ var reachabilityEdgeKinds = map[string]bool{
 // frameworkEntryKinds are entity kinds whose presence implies a
 // framework-managed entry-point. Used to seed the BFS without needing
 // inbound edges.
+//
+// #6902: BOTH Route spellings are seeds. "SCOPE.Route" comes from the Lua
+// routing extractors, Vaadin @Route pages and the engine's gateway /
+// frontend-route synthesisers; bare "Route" comes from
+// internal/custom/java/{play,spring_webflux,akka_http,javalin,vertx,struts}_routes.go
+// and internal/engine/{spring,django}_routes.go. They name the same concept —
+// an HTTP route — and #6776 arm B7 added both kinds together because both are
+// live. Seeding only the prefixed one persisted every Java/Spring/Django
+// route into the sidecar as unreachable, along with everything only it reaches.
+// internal/mcp/dead_code.go's frameworkEntryKindsMCP mirrors this map.
 var frameworkEntryKinds = map[string]bool{
 	"http_endpoint_definition": true,
 	"http_endpoint":            true,
 	"SCOPE.Endpoint":           true,
 	"SCOPE.Route":              true,
+	"Route":                    true, // #6902
 	"SCOPE.MessageTopic":       true,
 	"SCOPE.GrpcMethod":         true,
 	"SCOPE.ServerlessFunction": true,
