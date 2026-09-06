@@ -39,6 +39,21 @@ func printDaemonDetail(w io.Writer, st proto.StatusReply) {
 		fmt.Fprintf(w, "  watcher: %d repo(s) NOT WATCHED — file-descriptor budget full (%d/%d used); edits there will not re-index\n",
 			st.WatcherUnwatched, st.WatcherFDUsed, st.WatcherFDLimit)
 	}
+	// #6921: an fsnotify queue overflow dropped file events that are never
+	// redelivered. Printed on its own line and NOT gated on the watcher line
+	// above, for the same reason the descriptor line is not: the condition is
+	// about events that did NOT arrive, so the counters that gate that line say
+	// nothing about whether this one applies. A rescan has already re-covered
+	// the dropped window; the line exists so a user who saw a stale answer can
+	// tell an overflow from a healthy watcher, which is otherwise impossible.
+	if st.WatcherOverflows > 0 {
+		fmt.Fprintf(w, "  watcher: %d fsnotify queue overflow(s) — file events were DROPPED and never redelivered; %d full rescan(s) triggered to recover",
+			st.WatcherOverflows, st.WatcherOverflowRescans)
+		if st.WatcherLastOverflow != "" {
+			fmt.Fprintf(w, " (last: %s)", st.WatcherLastOverflow)
+		}
+		fmt.Fprintln(w)
+	}
 	if st.QueueLen > 0 || len(st.IndexInFlight) > 0 ||
 		len(st.PendingAlgo) > 0 || len(st.PendingLinks) > 0 {
 		fmt.Fprintf(w, "  scheduler: queue=%d in_flight=%d pending_algo=%d pending_links=%d\n",
