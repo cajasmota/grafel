@@ -55,6 +55,16 @@
 // scheduler enqueue; under-firing is the silent corruption this whole issue is
 // about. The asymmetry is deliberate.
 //
+// That statement is only true if the changed set can actually reach empty, so
+// "level-triggered" is a claim about CONVERGENCE and it is tested as one. The
+// first version of this file did not converge on an uncommitted deletion or a
+// staged rename: a path git reports, disk does not have, and the index pass
+// prunes from the manifest read as new on every cycle forever, so the poller
+// re-fired while manifest and disk AGREED. See existsOnDisk, and
+// TestChangePoller_DeletionConverges / _StagedRenameConverges — both assert a
+// bounded number of cycles, not first-cycle detection, because first-cycle
+// detection is exactly what hid the bug.
+//
 // WARM-UP (arm D of #6932). A fresh worktree's first `git status` costs
 // 2.4-9.0 s until git's untracked cache exists; every subsequent one is ~60 ms.
 // AddRepo therefore sets core.untrackedCache=true and runs one throwaway
@@ -329,12 +339,29 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 	}
 
 	// Half 2 — discovery. Paths git knows about that the manifest does not.
+	//
+	// A discovered path is taken as a candidate ONLY when it exists on disk.
+	// Without that filter an uncommitted deletion — `rm foo.go`, or the origin
+	// half of a staged `git mv`, which is what every refactor looks like for
+	// minutes at a time — never converges: git reports it until the commit, it
+	// is absent from disk, and the very index pass the poller asks for PRUNES it
+	// from the manifest. diff.isChanged then calls it "new" forever, and poll
+	// mode enqueues a full reindex every interval for a repo whose manifest and
+	// disk already agree. That is the #5665/#5667 loop shape, entering through
+	// the git half instead of the walk half.
+	//
+	// Dropping it costs nothing: a deletion of an INDEXED file is still caught,
+	// because the path is a manifest key and half 1 sweeps those
+	// unconditionally — it just stops being reported once the manifest no
+	// longer claims it, which is exactly convergence.
 	files, dirs, ok := gitStatusDiscovery(abs)
 	if !ok {
 		p.logger.Warn("change-poller: git status failed — sweeping the manifest key set only", "repo", abs)
 	}
 	for _, f := range files {
-		cand[f] = struct{}{}
+		if _, known := cand[f]; known || existsOnDisk(abs, f) {
+			cand[f] = struct{}{}
+		}
 	}
 	for _, d := range dirs {
 		for _, rel := range walkUntrackedSubtree(abs, d) {
@@ -351,6 +378,16 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 	changed, _ := diff.Filter(abs, rels, m)
 	sort.Strings(changed)
 	return changed
+}
+
+// existsOnDisk reports whether rel names a REGULAR file inside repoRoot.
+//
+// Lstat, not Stat: a dangling symlink must read as absent, and walk.WalkRepo
+// hands nothing but regular files to the indexer either, so a path that is not
+// one can never acquire a manifest stamp and would be permanently dirty.
+func existsOnDisk(repoRoot, rel string) bool {
+	fi, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(rel)))
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // gitStatusDiscovery runs `git status --porcelain -z -unormal` in repoRoot and

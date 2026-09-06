@@ -142,3 +142,110 @@ func TestWatcher_NoDelegate_StillSubscribes(t *testing.T) {
 		t.Fatal("fsnotify mode subscribed 0 directories — the control is vacuous")
 	}
 }
+
+// backendWatchList asks FSNOTIFY what it subscribed, not grafel's own counter.
+// A counter a component keeps about itself is a diagnostic signature; the
+// library's record of what it handed the kernel is the artefact.
+func backendWatchList(w *Watcher) int {
+	w.mu.Lock()
+	fs := w.fs
+	w.mu.Unlock()
+	if fs == nil {
+		return 0
+	}
+	return len(fs.WatchList())
+}
+
+// #6932 review, blocker 2: restartBackend is a SECOND subscribe path. It walks
+// w.repos and calls subscribeRepo directly, never AddRepo — and poll mode
+// deliberately populates w.repos so Repos()/Stats() stay truthful. Without the
+// guard, one backend restart converts a poll-mode daemon into a full fsnotify
+// subscriber: ~976 descriptors per worktree, in exactly the container whose
+// inotify pool cannot be raised, with the poller never told.
+func TestWatcher_PollDelegate_BackendRestartResubscribesNothing(t *testing.T) {
+	repo := delegateRepo(t)
+	d := &recordingDelegate{}
+	w, err := NewWatcherConfig(Config{Debounce: time.Hour, Delegate: d}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer w.Stop()
+
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if n := backendWatchList(w); n != 0 {
+		t.Fatalf("fsnotify backend already holds %d paths before the restart", n)
+	}
+	// Premise: the repo IS in w.repos, so the re-subscribe loop has something
+	// to iterate. Otherwise this test passes for the wrong reason.
+	if repos := w.Repos(); len(repos) != 1 {
+		t.Fatalf("fixture premise broken: w.repos holds %v, so restartBackend would iterate nothing", repos)
+	}
+
+	if !w.restartBackend() {
+		t.Fatal("restartBackend reported a stop was in flight")
+	}
+
+	if n := backendWatchList(w); n != 0 {
+		t.Fatalf("a backend restart subscribed %d paths in poll mode; must be 0", n)
+	}
+	if _, dirs, _, _, _ := w.Stats(); dirs != 0 {
+		t.Fatalf("a backend restart left %d directory subscriptions in poll mode", dirs)
+	}
+}
+
+// The control. Without a delegate, restartBackend DOES re-subscribe — so the
+// assertion above measures the guard, not a watcher that cannot subscribe.
+func TestWatcher_NoDelegate_BackendRestartResubscribes(t *testing.T) {
+	repo := delegateRepo(t)
+	w, err := NewWatcherConfig(Config{Debounce: time.Hour}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer w.Stop()
+
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	before := backendWatchList(w)
+	if before == 0 {
+		t.Fatal("fsnotify mode subscribed nothing — the control is vacuous")
+	}
+	if !w.restartBackend() {
+		t.Fatal("restartBackend reported a stop was in flight")
+	}
+	if after := backendWatchList(w); after != before {
+		t.Fatalf("backend re-subscribed %d paths after a restart, want %d", after, before)
+	}
+}
+
+// The seam's own claim, at the backend rather than at grafel's counter:
+// AddRepo in delegate mode hands fsnotify nothing at all.
+func TestWatcher_PollDelegate_BackendWatchListIsZero(t *testing.T) {
+	repo := delegateRepo(t)
+	d := &recordingDelegate{}
+	w, err := NewWatcherConfig(Config{Debounce: time.Hour, Delegate: d}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer w.Stop()
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if n := backendWatchList(w); n != 0 {
+		t.Fatalf("fsnotify backend WatchList = %d in poll mode; must be 0", n)
+	}
+
+	ctrl, err := NewWatcherConfig(Config{Debounce: time.Hour}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer ctrl.Stop()
+	if _, err := ctrl.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if n := backendWatchList(ctrl); n == 0 {
+		t.Fatal("fsnotify backend WatchList = 0 in fsnotify mode — the comparison is vacuous")
+	}
+}

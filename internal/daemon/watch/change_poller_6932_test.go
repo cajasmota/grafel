@@ -603,3 +603,159 @@ func TestChangePoller_DiscoversPathsNeedingQuoting(t *testing.T) {
 		}
 	}
 }
+
+// --- convergence on removals (#6932 review, blocker 1) ---------------------
+
+// cpConverges runs cycles until the changed set is empty, up to maxCycles, and
+// returns the number of cycles that still reported something.
+//
+// The assertion is CONVERGENCE, not first-cycle detection. First-cycle
+// detection is what every other case in this file asserts, and it is exactly
+// what hid the non-converging deletion: cycle 1 was correct.
+func cpConverges(t *testing.T, p *ChangePoller, repo string, maxCycles int) int {
+	t.Helper()
+	n := 0
+	for i := 0; i < maxCycles; i++ {
+		got := cpCycle(t, p, repo)
+		if len(got) == 0 {
+			return n
+		}
+		n++
+		if i == maxCycles-1 {
+			t.Fatalf("did NOT converge after %d cycles — still reporting %v (a full reindex enqueued every interval, forever)", maxCycles, got)
+		}
+	}
+	return n
+}
+
+// An uncommitted deletion is what every refactor looks like for minutes at a
+// time. git reports it until the commit, disk does not have it, and the index
+// pass the poller asks for PRUNES it from the manifest — so a candidate set
+// that takes git's report unconditionally calls it new forever.
+func TestChangePoller_DeletionConverges(t *testing.T) {
+	repo, state := cpNewRepo(t)
+	cpIndexPass(t, repo, state)
+	p, submits := cpNewTestPoller(t, repo, state)
+
+	if err := os.Remove(filepath.Join(repo, "alpha.go")); err != nil {
+		t.Fatal(err)
+	}
+	// Premise: git reports the deletion, and keeps reporting it (uncommitted).
+	if out := strings.TrimSpace(cpGitRun(t, repo, "status", "--porcelain", "-unormal")); !strings.Contains(out, "alpha.go") {
+		t.Fatalf("fixture premise broken: git does not report the deletion: %q", out)
+	}
+	// Cycle 1 must SEE it: the file is still a manifest key.
+	if got := cpCycle(t, p, repo); !cpContains(got, "alpha.go") {
+		t.Fatalf("deletion not detected on the first cycle: %v", got)
+	}
+	// The index pass prunes it. Disk and manifest now agree.
+	cpIndexPass(t, repo, state)
+	if keys := cpManifestKeys(t, state); cpContains(keys, "alpha.go") {
+		t.Fatalf("fixture premise broken: the index pass did not prune the deleted file: %v", keys)
+	}
+	// git STILL reports it — this is what the candidate set must not take.
+	if out := strings.TrimSpace(cpGitRun(t, repo, "status", "--porcelain", "-unormal")); !strings.Contains(out, "alpha.go") {
+		t.Fatalf("fixture premise broken: git stopped reporting the deletion, so the loop is untested: %q", out)
+	}
+
+	before := len(*submits)
+	if n := cpConverges(t, p, repo, 6); n != 0 {
+		t.Fatalf("post-prune cycles still reported the deletion %d times", n)
+	}
+	if after := len(*submits); after != before {
+		t.Fatalf("poller submitted %d more reindex requests after convergence", after-before)
+	}
+}
+
+// The other half of the same record shape: a staged rename's ORIGIN path. It is
+// added deliberately (the origin's manifest entry must be re-examined) — right
+// for one cycle, wrong for every cycle after the entry is gone.
+func TestChangePoller_StagedRenameConverges(t *testing.T) {
+	repo, state := cpNewRepo(t)
+	cpIndexPass(t, repo, state)
+	p, _ := cpNewTestPoller(t, repo, state)
+
+	cpGitRun(t, repo, "mv", "alpha.go", "renamed alpha.go")
+	out := strings.TrimSpace(cpGitRun(t, repo, "status", "--porcelain", "-unormal"))
+	if !strings.HasPrefix(out, "R") {
+		t.Fatalf("fixture premise broken: expected a rename record, got %q", out)
+	}
+	got := cpCycle(t, p, repo)
+	for _, want := range []string{"alpha.go", "renamed alpha.go"} {
+		if !cpContains(got, want) {
+			t.Fatalf("rename: %q missing from the first changed set %v", want, got)
+		}
+	}
+	cpIndexPass(t, repo, state)
+	if keys := cpManifestKeys(t, state); cpContains(keys, "alpha.go") {
+		t.Fatalf("fixture premise broken: the index pass did not prune the rename origin: %v", keys)
+	}
+	if n := cpConverges(t, p, repo, 6); n != 0 {
+		t.Fatalf("post-prune cycles still reported the rename origin %d times", n)
+	}
+}
+
+// The `-z` rename record is two NUL-separated paths, and the parser must
+// CONSUME the second one. Without that, the origin record is re-read as a
+// status record and rec[3:] chops its first three bytes, manufacturing a path
+// ("ha.go") that is on no disk and in no manifest — blocker 1's loop, by
+// parser bug. Asserted on the exact discovered set, not on a superset.
+func TestGitStatusDiscovery_RenameRecordShape(t *testing.T) {
+	repo, _ := cpNewRepo(t)
+	cpGitRun(t, repo, "mv", "alpha.go", "renamed alpha.go")
+
+	files, dirs, ok := gitStatusDiscovery(repo)
+	if !ok {
+		t.Fatal("gitStatusDiscovery failed")
+	}
+	if len(dirs) != 0 {
+		t.Fatalf("unexpected untracked dirs: %v", dirs)
+	}
+	sort.Strings(files)
+	want := []string{"alpha.go", "renamed alpha.go"}
+	if !reflect.DeepEqual(files, want) {
+		t.Fatalf("rename record parsed as %v, want exactly %v", files, want)
+	}
+}
+
+// A discovered path that is not a REGULAR file can never acquire a manifest
+// stamp, so taking it as a candidate is permanent dirt. Lstat, so a dangling
+// symlink reads as absent rather than as its (missing) target.
+func TestChangePoller_DanglingSymlinkDoesNotStickDirty(t *testing.T) {
+	repo, state := cpNewRepo(t)
+	cpIndexPass(t, repo, state)
+	p, _ := cpNewTestPoller(t, repo, state)
+
+	if err := os.Symlink(filepath.Join(repo, "does-not-exist.go"), filepath.Join(repo, "dangling.go")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if out := strings.TrimSpace(cpGitRun(t, repo, "status", "--porcelain", "-unormal")); !strings.Contains(out, "dangling.go") {
+		t.Fatalf("fixture premise broken: git does not report the symlink: %q", out)
+	}
+	if n := cpConverges(t, p, repo, 4); n != 0 {
+		t.Fatalf("a dangling symlink stayed dirty for %d cycles", n)
+	}
+}
+
+// --- V4: the documented zero-interval default ------------------------------
+
+// Config.ChangePollInterval / ChangePollerConfig.Interval are both documented
+// as "zero selects the default". A zero reaching time.NewTicker panics the loop
+// goroutine, so the default is a contract, not a nicety.
+func TestNewChangePoller_IntervalDefaults(t *testing.T) {
+	for _, in := range []time.Duration{0, -1, -time.Hour} {
+		p := NewChangePoller(ChangePollerConfig{Interval: in}, func(string, bool) {}, nil)
+		if got := p.Interval(); got != DefaultChangePollInterval {
+			t.Fatalf("Interval(%v) = %v, want the default %v", in, got, DefaultChangePollInterval)
+		}
+	}
+	p := NewChangePoller(ChangePollerConfig{Interval: 7 * time.Second}, func(string, bool) {}, nil)
+	if got := p.Interval(); got != 7*time.Second {
+		t.Fatalf("an explicit interval was overridden: %v", got)
+	}
+	// The consequence: a zero-interval poller can actually be Started without
+	// panicking its loop goroutine.
+	z := NewChangePoller(ChangePollerConfig{}, func(string, bool) {}, nil)
+	z.Start()
+	z.Stop()
+}

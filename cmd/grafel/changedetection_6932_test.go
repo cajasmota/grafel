@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -38,4 +41,81 @@ func TestResolveChangeDetection(t *testing.T) {
 			}
 		})
 	}
+}
+
+// writeFleet lays down an isolated GRAFEL_HOME holding registry.json plus one
+// group config per body, and returns nothing — daemonChangeDetection reads it
+// through the real registry loader.
+func writeFleet(t *testing.T, groupBodies ...string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("GRAFEL_HOME", home)
+
+	type ref struct {
+		Name       string `json:"name"`
+		ConfigPath string `json:"config_path"`
+	}
+	var refs []ref
+	for i, body := range groupBodies {
+		name := "g" + string(rune('a'+i))
+		p := filepath.Join(home, name+".json")
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, ref{Name: name, ConfigPath: p})
+	}
+	reg := map[string]any{"version": 1, "groups": refs}
+	b, err := json.Marshal(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "registry.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// #6932 review, V3: resolveChangeDetection was split out and is well tested,
+// but daemonChangeDetection — the half that actually READS the fleet — had one
+// production call site and zero tests. Under a mutant returning (false, 0),
+// `"change_detection": "poll"` in fleet.json did nothing and the whole suite
+// stayed green: both ends of the boot wiring ungraded while only the extracted
+// middle was pinned (#6533).
+func TestDaemonChangeDetection_ReadsTheFleet(t *testing.T) {
+	t.Run("poll group turns it on with its interval", func(t *testing.T) {
+		writeFleet(t,
+			`{"group":"ga","features":{"change_detection":"poll","change_poll_interval_seconds":7}}`,
+			`{"group":"gb","features":{"watchers":true}}`,
+		)
+		poll, iv := daemonChangeDetection()
+		if !poll || iv != 7*time.Second {
+			t.Fatalf("got (%v, %v), want (true, 7s)", poll, iv)
+		}
+	})
+	t.Run("no poll group leaves it off", func(t *testing.T) {
+		writeFleet(t,
+			`{"group":"ga","features":{"change_detection":"fsnotify"}}`,
+			`{"group":"gb","features":{"change_detection":"auto"}}`,
+		)
+		poll, iv := daemonChangeDetection()
+		if poll || iv != 0 {
+			t.Fatalf("got (%v, %v), want (false, 0)", poll, iv)
+		}
+	})
+	t.Run("an unreadable group config does not hide a poll group", func(t *testing.T) {
+		writeFleet(t,
+			`{ this is not json`,
+			`{"group":"gb","features":{"change_detection":"poll"}}`,
+		)
+		poll, iv := daemonChangeDetection()
+		if !poll || iv != registry.DefaultChangePollInterval {
+			t.Fatalf("got (%v, %v), want (true, %v)", poll, iv, registry.DefaultChangePollInterval)
+		}
+	})
+	t.Run("empty fleet", func(t *testing.T) {
+		writeFleet(t)
+		poll, iv := daemonChangeDetection()
+		if poll || iv != 0 {
+			t.Fatalf("got (%v, %v), want (false, 0)", poll, iv)
+		}
+	})
 }

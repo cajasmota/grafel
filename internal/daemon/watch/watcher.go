@@ -109,13 +109,32 @@ type Config struct {
 	// Delegate, when non-nil, replaces this Watcher's fsnotify subscription
 	// with an alternative change detector (#6932 arm A — poll mode).
 	//
-	// It is a SEAM, not a second Watcher. Every path that subscribes a repo
-	// today — DefaultManager.Resume, DefaultManager.SubscribeGroup, the
-	// worktree activation handler — goes through Watcher.AddRepo, so routing
-	// there routes all of them at once and nothing else in the daemon has to
-	// know which detector is live. The Watcher keeps its repos map (so
+	// It is a SEAM, not a second Watcher. The Watcher keeps its repos map (so
 	// Repos()/Stats() still answer "is this repo observed?" truthfully), keeps
 	// its sink, and simply takes no watch descriptors.
+	//
+	// There are THREE paths in this file that hand a directory to the backend,
+	// not one, and the delegate has to be honoured at all three. Enumerated,
+	// with how each was verified:
+	//
+	//   1. AddRepo -> subscribeRepo. The only path the daemon's callers reach:
+	//      DefaultManager.Resume, DefaultManager.SubscribeGroup, and the
+	//      worktree activation handler all call AddRepo. Verified by
+	//      TestWatcher_PollDelegate_TakesNoSubscriptions and, end to end
+	//      through the engine plane, by TestEnginePlane_PollModeTakesNoWatchDescriptors.
+	//
+	//   2. restartBackend -> subscribeRepo, over w.repos DIRECTLY. It does not
+	//      go through AddRepo, and poll mode populates w.repos, so before
+	//      #6932's review this converted a poll-mode daemon into a full
+	//      fsnotify subscriber on one backend restart. Verified by
+	//      TestWatcher_PollDelegate_BackendRestartResubscribesNothing.
+	//
+	//   3. subscribeDirRecursive, from a Create event. Unreachable in poll mode
+	//      today because a backend with zero watches delivers no events —
+	//      guarded by accident, so it is now guarded by a decision instead.
+	//      NOT independently verified: constructing a Create event for a
+	//      directory in a mode that subscribes nothing means driving the
+	//      backend directly, and the guard is a bare early return.
 	//
 	// Nil is the default and is byte-for-byte the pre-#6932 behaviour.
 	//
@@ -1383,6 +1402,23 @@ func (w *Watcher) restartBackend() bool {
 		w.mu.Unlock()
 
 		// Re-subscribe.
+		//
+		// #6932 arm A, review blocker 2: this is a SECOND subscribe path. It
+		// does not go through AddRepo, and poll mode deliberately keeps its
+		// repos in w.repos (so Repos()/Stats() stay truthful), so without this
+		// guard one backend restart silently converts a poll-mode daemon into a
+		// full fsnotify subscriber — ~976 descriptors per worktree, in exactly
+		// the container whose pool cannot be raised, with the poller never told.
+		//
+		// Not reachable today (a backend holding zero watches has little reason
+		// to close its channel), but arm B's runtime auto-switch makes it live,
+		// and the guard is cheaper than the note explaining why it is safe
+		// without one. The delegate is unaffected by a backend restart: it holds
+		// its own repo set and its own loop.
+		if w.cfg.Delegate != nil {
+			repos = nil
+			w.logger.Info("watcher: backend restarted in delegate (poll) mode — nothing to re-subscribe")
+		}
 		for _, abs := range repos {
 			if n, err := w.subscribeRepo(abs); err != nil {
 				w.logger.Error("watcher: restart re-subscribe failed", "repo", abs, "err", err)
@@ -1986,6 +2022,13 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 	// would make chargeEventOpen keep recording markers for a walk that is over,
 	// and those markers are consumed by nothing (#6493).
 	defer w.releaseInFlight(root)
+	// #6932 arm A: the third subscribe path. Unreachable in delegate (poll)
+	// mode today only because a backend with zero watches delivers no Create
+	// events to enqueue this walk — i.e. it is guarded by an accident, not by a
+	// decision. Make it a decision, for the same reason as restartBackend.
+	if w.cfg.Delegate != nil {
+		return
+	}
 	repo := w.repoFor(filepath.Join(root, "_"))
 	if repo == "" {
 		return
