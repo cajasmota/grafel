@@ -487,6 +487,43 @@ func TestClojure_NamespaceNamedLikeThePathGetsNoSecondCarrier_6852(t *testing.T)
 				"the path as its Name, got %d", n)
 		}
 	})
+	// The path-named namespace record with NO relationships of its own. This is
+	// the PERMISSIVE WIDENING control, and it is a separate cell rather than a
+	// variation of the row above: the plausible maintainer edit to clause 3 is
+	//
+	//	if records[i].Name == path && len(records[i].Relationships) > 0 {
+	//
+	// on the reasoning that "a path-named record carrying no edges is not really
+	// the file's node, so minting a proper carrier beside it is harmless". astro
+	// (#6891) scored that mutant and killed it — but only with an astro fixture.
+	// Against clojure's package alone it was ALIVE, because the root fixture
+	// above declares a defn and its namespace record therefore owns a CONTAINS.
+	// A root file whose ns form has a :require and NO top-level declaration is
+	// the ordinary shape that separates them, and it is production-reachable —
+	// a re-export/facade namespace is exactly that. Distinguishable and
+	// ungraded, so it is graded here rather than recorded.
+	t.Run("root_namespace_owning_no_edges", func(t *testing.T) {
+		const path = "core.clj"
+		src := "(ns " + path + "\n  (:require [clojure.string :as str]))\n"
+		recs := runClj6852(t, src, path)
+		if n := len(cljPathAnchored6852(recs, path)); n == 0 {
+			t.Fatal("premise: the fixture must still anchor an IMPORTS on the path")
+		}
+		named := cljNamedExactly6852(recs, path)
+		if len(named) != 1 {
+			t.Fatalf("exactly 1 record may be named %q, got %d", path, len(named))
+		}
+		if n := len(named[0].Relationships); n != 0 {
+			t.Fatalf("premise: the path-named namespace record must own ZERO relationships "+
+				"here, got %d — otherwise this cell is the same as the one above and the "+
+				"permissive widening of clause 3 is not under test", n)
+		}
+		if n := len(cljCarriers6852(recs, path)); n != 0 {
+			t.Errorf("no file carrier may be minted beside a path-named record that owns no "+
+				"edges, got %d — graph.EntityID does not hash Subtype (#6369/#6480), so the "+
+				"two land under one id", n)
+		}
+	})
 	t.Run("nested_contrast", func(t *testing.T) {
 		const path = "src/app/core.clj"
 		src := "(ns " + path + "\n  (:require [clojure.string :as str]))\n\n(defn render [p] (str/join \",\" p))\n"
@@ -556,9 +593,11 @@ func TestClojure_CarrierShape_6852(t *testing.T) {
 	}
 }
 
-// TestClojure_CarrierPlacementDoesNotShiftTheExtendPass_6852 pins the ONE
-// placement conjunct in this package that is load-bearing, and it is graded on
-// its own rather than left inside a bulleted comment.
+// TestClojure_CarrierPlacementDoesNotShiftTheExtendPass_6852 pins the index
+// hazard the carrier's position could reach, graded on its own rather than left
+// inside a bulleted comment — and the grading is what showed the hazard to be
+// ENTAILED by clause 2 rather than an independent placement constraint. See the
+// paragraph below the mechanism.
 //
 // extractClojure keeps `comps`, a slice of compOffset{idx, name} where idx is an
 // INDEX INTO THE ENTITY SLICE. Step 3b dereferences it — `rec := &entities[cp.idx]`
@@ -569,12 +608,23 @@ func TestClojure_CarrierShape_6852(t *testing.T) {
 // the graph is quietly wrong. That is lua's #6885 hazard, in a package that has
 // it too.
 //
+// THE MUTANT THIS KILLS IS NOT "the carrier moved", AND THAT IS THE FINDING.
+// Moving the SHIPPED (conditional) call above step 3b — or above step 4 — is
+// DEAD, but on the EMPTINESS of the result, never on ordering: importEntities
+// do not enter `entities` until the head-prepend at clojure.go:316, so clause 2
+// rejects at every earlier point and no carrier is minted at all. The index
+// hazard is therefore ENTAILED by the clause-2 requirement rather than an
+// independent constraint on that call, and the only shape that reaches it is an
+// UNCONDITIONAL carrier placed before step 3b. Scored: that mutant produces
+// FOUR wrong-owner rows here (the carrier takes Triangle's IMPLEMENTS -> Shape;
+// Hexagon's IMPLEMENTS -> Sized lands on Triangle), at both depths — and the
+// SAME unconditional carrier placed AFTER step 3b produces ZERO, which is what
+// separates this test's subject from the over-emission tests' subject.
+//
 // The enumeration behind "the ONE conjunct": compOffset.idx has exactly one
 // consumer (clojure.go:283, step 3b). opOffset.idx has ZERO consumers — step 4
 // reads only op.name — so a shift cannot be observed through it, and no test is
-// written for something that cannot be observed. The final
-// `entities = append(head, entities...)` invalidates both, which is why the
-// carrier is prepended AFTER it and not before.
+// written for something that cannot be observed.
 //
 // The fixture is the ordinary Clojure shape that makes this production-reachable
 // — a namespace that requires its protocols and then extends its own records —

@@ -333,12 +333,31 @@ func extractClojure(src, filePath string) []types.EntityRecord {
 	// unconditional carrier would mint one bare orphan node per .clj file across
 	// a whole repo, which no recall-shaped assertion can see (#6815, #6518).
 	//
-	// PLACEMENT IS LOAD-BEARING, and for ONE reason that is graded rather than
-	// argued: compOffset.idx (step 3b, `&entities[cp.idx]`) is an INDEX into
-	// this slice, so an insertion at position 0 before that step re-homes every
-	// extend-type / extend-protocol edge onto the record before its owner.
-	// Pinned by TestClojure_CarrierPlacementDoesNotShiftTheExtendPass_6852.
-	// opOffset.idx has no consumer at all, so it is not a second reason.
+	// PLACEMENT. The call goes LAST, and the reason is CLAUSE 2 rather than the
+	// index hazard below — the two read alike in prose and were measured apart.
+	// PrependFileCarrier judges anchoring over the slice it is HANDED, and
+	// importEntities (the only records carrying a path-anchored FromID) do not
+	// enter `entities` until the head-prepend just above. Move this call any
+	// earlier and the carrier is not misplaced, it is never minted at all: the
+	// "carrier before step 3b" and "carrier before step 4" mutants both die on
+	// the EMPTINESS of the result, never reaching the ordering question.
+	//
+	// THE INDEX HAZARD IS REAL BUT ENTAILED, and which of those it is is the
+	// point. compOffset.idx (step 3b, `&entities[cp.idx]`) is an INDEX into this
+	// slice, so an insertion at position 0 before that step re-homes every
+	// extend-type / extend-protocol edge onto the record BEFORE its owner —
+	// lua's #6885 hazard, present here too, silent rather than fatal. It cannot
+	// be reached by moving THIS call anywhere, because clause 2 rejects at every
+	// earlier point; it is reachable only by an UNCONDITIONAL carrier placed
+	// there, which is how it is scored. Pinned by
+	// TestClojure_CarrierPlacementDoesNotShiftTheExtendPass_6852: under that
+	// mutant the carrier takes Triangle's IMPLEMENTS -> Shape and Hexagon's
+	// IMPLEMENTS -> Sized lands on Triangle, at both depths. The SAME
+	// unconditional carrier placed after step 3b produces ZERO wrong-owner rows,
+	// which is what separates the placement half from the conditional half.
+	//
+	// opOffset.idx has ZERO consumers — step 4 reads only op.name — so it is not
+	// a third reason and no test is written for something unobservable.
 	return extractor.PrependFileCarrier(filePath, "clojure", entities)
 }
 
