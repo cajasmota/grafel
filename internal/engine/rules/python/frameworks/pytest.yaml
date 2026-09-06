@@ -51,12 +51,28 @@ file_conventions:
 # source_patterns: regex patterns that match pytest constructs in source files.
 source_patterns:
   # Test function: def test_something(...)
-  - pattern: "^def\\s+(test_\\w+)\\s*\\("
+  #
+  # `(?m)` is load-bearing (#6927). detector.go compiles these patterns with
+  # plain regexp.Compile, so without it `^` means start of TEXT and this rule
+  # could only fire when a test function was the FIRST thing in the file. Every
+  # realistic pytest module opens with a docstring or an import block, so the
+  # rule extracted NOTHING — not degraded, absent. The pattern carries no `$`,
+  # so `(?m)`'s other effect cannot reach it.
+  - pattern: "(?m)^def\\s+(test_\\w+)\\s*\\("
     entity_type: Test
     name_group: 1
     scope: file
   # Test class: class TestSomething
-  - pattern: "^class\\s+(Test\\w+)\\s*"
+  #
+  # `(?m)` for the same reason (#6927). No `$` in the pattern.
+  #
+  # The `Test\\w+` capture was checked against what it newly reaches on real
+  # Python: it accepts `class Testing:` and `class TestHarness(Base):` as well
+  # as `class TestInvoices:`. That is not an over-fire — it is pytest's OWN
+  # collection rule, whose `python_classes` default is the glob `Test*` — so it
+  # is left as written rather than narrowed to a stricter spelling pytest itself
+  # does not use.
+  - pattern: "(?m)^class\\s+(Test\\w+)\\s*"
     entity_type: TestClass
     name_group: 1
     scope: file
