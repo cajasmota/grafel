@@ -192,6 +192,18 @@ func ParseIgnoreFile(dir, path, source string) (*IgnoreFile, error) {
 // Returns (skip=true, lineNum) when the last matching pattern is a
 // positive (non-negated) rule.
 func (ig *IgnoreFile) MatchDir(relPath string) (bool, int) {
+	return ig.MatchPath(relPath, true)
+}
+
+// MatchPath is MatchDir generalised to an entry that may be a FILE.
+//
+// isDir is load-bearing for exactly one pattern form: a trailing-slash rule
+// (`build/`) matches a DIRECTORY named build and never a file named build.
+// Every other form applies to both kinds. Before #6931 the walker only ever
+// asked about directories, so dirOnly was parsed and never consulted; once the
+// file branch consults the stack it becomes the difference between git's answer
+// and an over-broad one.
+func (ig *IgnoreFile) MatchPath(relPath string, isDir bool) (bool, int) {
 	if len(ig.patterns) == 0 {
 		return false, 0
 	}
@@ -216,6 +228,9 @@ func (ig *IgnoreFile) MatchDir(relPath string) (bool, int) {
 	matchedLine := 0
 
 	for _, pat := range ig.patterns {
+		if pat.dirOnly && !isDir {
+			continue
+		}
 		var ok bool
 		if pat.anchored {
 			// Anchored: match against path-from-dir using full path match.
@@ -345,11 +360,25 @@ func (s *IgnoreStack) Pop() {
 // pattern in a child IgnoreFile overrides a positive match in a parent.
 // Returns (skip=true, "source:lineN") when the final decision is to skip.
 func (s *IgnoreStack) Match(relPath string) (bool, string) {
+	return s.MatchPath(relPath, true)
+}
+
+// MatchFile is Match for a regular file. It exists so the walker's file branch
+// reads as deliberately as its directory branch — before #6931 the file branch
+// consulted no ignore layer at all, so `*.pb.go` in .gitignore was matched by
+// `git check-ignore` and indexed by grafel.
+func (s *IgnoreStack) MatchFile(relPath string) (bool, string) {
+	return s.MatchPath(relPath, false)
+}
+
+// MatchPath is Match with an explicit entry kind. See IgnoreFile.MatchPath for
+// why the kind matters (trailing-slash, directory-only patterns).
+func (s *IgnoreStack) MatchPath(relPath string, isDir bool) (bool, string) {
 	// Walk the stack from bottom (root) to top (most-nested).
 	matched := false
 	rule := ""
 	for _, ig := range s.files {
-		ok, line := ig.MatchDir(relPath)
+		ok, line := ig.MatchPath(relPath, isDir)
 		if ok {
 			matched = true
 			rule = ruleLabel(ig.Source, line)

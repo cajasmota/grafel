@@ -112,6 +112,13 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 	// root-level .gitignore and .grafelignore. This matters when a monorepo is
 	// registered as package roots (for example <repo>/src): the top-level
 	// .grafelignore should still govern those child roots.
+	//
+	// Order is git's precedence, lowest first (#6922): core.excludesFile and
+	// .git/info/exclude sit BELOW everything in the tree, so any .gitignore or
+	// .grafelignore rule — including a negation — outranks them.
+	for _, ex := range gitExcludeIgnoreFiles(root) {
+		igStack.Push(ex)
+	}
 	for _, parent := range inheritedGrafelIgnores(root) {
 		igStack.Push(parent)
 	}
@@ -271,6 +278,29 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 		// to explain. It goes through the same SkipEntry + PrintSkipped channel
 		// as every other skip layer in this walk.
 		if rule, skip := irregularSkipRule(absPath, d); skip {
+			skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: rule})
+			if opts.PrintSkipped != nil {
+				fmt.Fprintf(opts.PrintSkipped, "[skip] %s (rule: %s)\n", absPath, rule)
+			}
+			return nil
+		}
+
+		// Layers 1+3 (P0/P2) for FILES (#6931). Everything above this line
+		// branched only on d.IsDir(), so the ignore stack was consulted for
+		// directories and NEVER for files: `*.pb.go`, `graph.json` or
+		// `dist/**/*.js` in .gitignore were matched by `git check-ignore` and
+		// indexed by grafel anyway. Generated code is exactly what a file-level
+		// .gitignore pattern is usually for.
+		//
+		// It runs AFTER the entry-type gate so a FIFO is still reported as the
+		// hazard it is rather than disappearing under an ignore rule, and BEFORE
+		// the sparse filter so an ignored path is attributed to the ignore rule
+		// that a user can act on rather than to sparse checkout's deliberate
+		// silence.
+		//
+		// The skip is REPORTED, never silent — same SkipEntry + PrintSkipped
+		// channel as every other layer (#6338).
+		if skip, rule := igStack.MatchFile(rel); skip {
 			skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: rule})
 			if opts.PrintSkipped != nil {
 				fmt.Fprintf(opts.PrintSkipped, "[skip] %s (rule: %s)\n", absPath, rule)
