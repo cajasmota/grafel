@@ -702,6 +702,38 @@ const (
 	gateOffDigest6601     = "d073c83f287b2f6b3b93c0479b7dc55887ee292760b00217ebad1de0ecc0dcdf"
 	gateOffDigest6742     = "cb82b3285e410ea566ccdb4a44260cd858c4d6df0c210120e9d00129535edafe"
 	gateOffDigest6862     = "3a2e047ca1b7e4325e3b1fe625409be815afd47e80db8464836fee88c8670c4d"
+	// gateOffDigest6809 is the current pin. #6809 removed the relationship_rules
+	// that named ONE capture group and ONE entity type for both endpoints, so
+	// every edge they emitted was FromID==ToID by construction. Two of them
+	// reached this fixture through sqlalchemy.yaml's
+	// `from <anything> import <Capitalised>` rule, which fired on Django/DRF
+	// imports that have nothing to do with SQLAlchemy.
+	//
+	// The delta is 142/287 -> 141/283, enumerated member by member (dumped from
+	// the gate-OFF graph before and after, diffed; NOT derived from the counts):
+	//
+	//	-E SCOPE.External Response
+	//	     minted only to terminate the self-loop below; `Response` is
+	//	     referenced nowhere else in the fixture.
+	//	-R Model:Response          -[DEPENDS_ON]-> SCOPE.External Response
+	//	     from `from rest_framework.response import Response` in
+	//	     myapp/views.py; the source endpoint never bound at all.
+	//	-R Module:_external        -[CONTAINS]->   SCOPE.External Response
+	//	     the containment edge carrying the entity above; it goes with it.
+	//	-R Model Order myapp/models.py -[DEPENDS_ON]-> Model Order myapp/models.py
+	//	     from `from myapp.models import Order`, in serializers.py AND
+	//	     views.py, deduped to one fully-resolved self-loop.
+	//	-R SCOPE.Component OrderSerializer myapp/serializers.py -[DEPENDS_ON]->
+	//	     (itself), from `from myapp.serializers import OrderSerializer` in
+	//	     views.py. rewritePythonModelImports had already rewritten this
+	//	     edge's TARGET kind Model->Component; the resolver then bound the
+	//	     source to the same component, so the post-pass did not save it.
+	//
+	// Every removed member is a self-loop or the external stub that existed only
+	// to terminate one. No real edge and no positioned entity moved: the file
+	// components, the two /orders endpoints, the six C# hierarchy edges and the
+	// language histogram above are all unchanged.
+	gateOffDigest6809 = "acfd2bc242dc7eadee89bf94de824776d5e8fc8c60078397e569d86ba3ebeb4d"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -709,8 +741,17 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6862 {
+	if got == gateOffDigest6809 {
 		return
+	}
+	if got == gateOffDigest6862 {
+		t.Fatalf("gate-OFF graph reverted to the pre-#6809 baseline — a relationship_rule " +
+			"that names the same capture group AND the same entity type for both " +
+			"endpoints is compiling again, so `from rest_framework.response import " +
+			"Response` and `from myapp.models import Order` are emitting DEPENDS_ON " +
+			"edges whose FromID equals their ToID. Check that compile() still refuses " +
+			"the shape and that sqlalchemy.yaml has not regrown its " +
+			"`from <anything> import <Capitalised>` rule")
 	}
 	if got == gateOffDigest6742 {
 		t.Fatalf("gate-OFF graph hashes to the pre-#6862 tuple — entityTupleKey has " +
@@ -752,10 +793,11 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6862 %s\n post-#6742 %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6862, gateOffDigest6742,
-		gateOffDigest6601, gateOffDigest6485, gateOffDigest6152, gateOffDigest6138,
-		gateOffDigest6118, gateOffDigest6118Base, len(off.Entities), len(off.Relationships))
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6809 %s\n post-#6862 %s\n post-#6742 %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6809, gateOffDigest6862,
+		gateOffDigest6742, gateOffDigest6601, gateOffDigest6485, gateOffDigest6152,
+		gateOffDigest6138, gateOffDigest6118, gateOffDigest6118Base,
+		len(off.Entities), len(off.Relationships))
 }
 
 // TestSemanticDigestGradesEntityLanguage6862 pins, in behavioural terms rather
@@ -866,13 +908,25 @@ func TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain(t *testing.T)
 	//	CreateOrderHandler   -[IMPLEMENTS]-> IRequestHandler
 	//	CleanupJob           -[IMPLEMENTS]-> IJob
 	//
-	// Entities stay at 142: every supertype here is external to the fixture, so
-	// the six edges dangle on bare names and mint no node. Both real /orders
+	// Entities stayed at 142 there: every supertype is external to the fixture,
+	// so the six edges dangle on bare names and mint no node. Both real /orders
 	// endpoints and both real handler IMPLEMENTS edges are unaffected; see the
 	// block comment above the digest constants for the item-by-item delta.
+	//
+	// Then #6809 removed the relationship_rules that named one capture group and
+	// one entity type for BOTH endpoints, taking 1 entity and 4 edges with them
+	// (142/287 -> 141/283). The five removed members are enumerated one by one
+	// in the gateOffDigest6809 comment; in short they are two DEPENDS_ON
+	// self-loops from `from myapp.models import Order` and
+	// `from myapp.serializers import OrderSerializer`, one half-bound
+	// `Model:Response -> SCOPE.External Response` self-loop from
+	// `from rest_framework.response import Response`, and the SCOPE.External
+	// `Response` stub plus its Module:_external CONTAINS edge, which existed
+	// only to terminate that third one. Nothing that came out of a file was
+	// removed, which is why the file-component positions below are untouched.
 	const (
-		wantEntities = 142
-		wantRels     = 287
+		wantEntities = 141
+		wantRels     = 283
 	)
 	if len(off.Entities) != wantEntities || len(off.Relationships) != wantRels {
 		t.Fatalf("gate-OFF graph size moved: entities=%d (want %d) relationships=%d (want %d) — "+
