@@ -31,6 +31,15 @@ import (
 // than a hand-picked list, and the walker's verdict is DERIVED from a real
 // WalkRepo run rather than restated — the test cannot encode a belief about
 // what the walker does.
+//
+// AXES. Varied: the entry TYPE. Held constant, deliberately: the extension
+// (every name ends .go), the ignore state (no .gitignore in the fixture) and
+// the sparse state (not a sparse checkout). Those three are WalkRepo's other
+// file-branch gates and existsOnDisk does not reproduce any of them — see its
+// doc comment. Holding them constant is what makes a failure here attributable
+// to the entry-type rule; it is NOT a claim that the two predicates agree in
+// general, and they do not: an untracked photo.png is walker-refused and
+// existsOnDisk-admitted, which is #6940.
 func TestExistsOnDisk_AgreesWithWalker(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")

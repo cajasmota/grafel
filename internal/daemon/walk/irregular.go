@@ -91,32 +91,59 @@ func irregularSkipRuleMode(absPath string, mode fs.FileMode) (string, bool) {
 	return "irregular:" + irregularKind(mode), true
 }
 
-// IndexableEntryType reports whether the entry at absPath is one WalkRepo would
-// hand to an extractor, deciding from the path alone.
+// IndexableEntryType reports whether the entry at absPath passes WalkRepo's
+// ENTRY-TYPE gate — and nothing else.
 //
-// It is the walker's own entry-type gate, reached from outside the walk: it
-// Lstats the path to recover the type bits filepath.WalkDir would have handed
-// irregularSkipRule, then applies that identical rule — including the os.Stat
-// resolution of a symlink, so a link to a regular file is indexable and a
-// dangling link, a link to a directory, and a FIFO are not.
+// It is exactly irregularSkipRule, reached from a path instead of from a walk
+// entry: Lstat recovers the type bits filepath.WalkDir would have supplied,
+// then the identical rule runs, including the os.Stat resolution of a symlink.
+// So a link to a regular file passes; a dangling link, a symlink loop, a link
+// to a directory, a directory, a FIFO, a device and a socket do not, and
+// neither does a path that cannot be Lstat-ed at all.
 //
-// WHY IT IS SHARED RATHER THAN REIMPLEMENTED (#6932 review, MA-1). The polling
-// change-detector needs exactly this predicate to decide whether a path git
-// reported can ever acquire a manifest stamp. Its first version asked
-// os.Lstat().Mode().IsRegular() instead, which answers about the LINK rather
-// than its target, so a newly created symlink-to-source in a tracked directory
-// was refused as a candidate while WalkRepo indexed it with no skip entry: a
-// file the index contains and the poller can never see change. Two predicates
-// answering "would grafel index this?" is one predicate too many, and the
-// agreement is asserted over an enumerated entry-type space rather than
-// assumed — see TestExistsOnDisk_AgreesWithWalker.
+// WHAT IT DOES NOT SEE. WalkRepo's file branch applies FOUR gates in order,
+// and this reproduces one of them:
 //
-// A path that does not exist, or that cannot be Lstat-ed at all, is not
-// indexable. It never opens the entry, so — like the gate it delegates to — it
-// cannot itself block on a FIFO.
+//  1. shouldSkipFileByExt  — the indexed-extension filter (#1629). NOT here:
+//     IndexableEntryType(".../photo.png") is true and WalkRepo skips it.
+//  2. irregularSkipRule    — the entry-type gate (#6416). THIS IS THE ONE.
+//  3. igStack.MatchFile    — the file-level .gitignore/.grafelignore layer
+//     (#6931/#6933). NOT here: it needs the walk's inherited ignore stack,
+//     which is built by descending from the root and cannot be reconstructed
+//     from a single path.
+//  4. the sparse-checkout filter (#2181). NOT here: it needs opts.Sparse.
+//
+// A caller that needs "would WalkRepo index this path?" must not use this
+// function for that question — it answers a strictly weaker one, and the
+// difference is a superset, not a subset. Callers relying on the weaker answer
+// should say which of the other three gates their own input has already
+// excluded. The polling change-detector in internal/daemon/watch is the
+// current caller; see existsOnDisk for what it does and does not establish.
+//
+// WHY IT IS SHARED RATHER THAN REIMPLEMENTED (#6932 review, MA-1). That
+// consumer needs the entry-type gate specifically, and its first version
+// reimplemented it as os.Lstat().Mode().IsRegular() — which answers about the
+// LINK rather than its target. WalkRepo indexed a symlink-to-source with no
+// skip entry while the poller refused it as a candidate, so the index held a
+// file whose changes nothing could observe. Two predicates answering one
+// question is one too many; the agreement is now pinned over an enumerated
+// entry-type space by TestExistsOnDisk_AgreesWithWalker.
+//
+// It never opens the entry, so — like the gate it delegates to — it cannot
+// itself block on a FIFO.
 func IndexableEntryType(absPath string) bool {
 	fi, err := os.Lstat(absPath)
 	if err != nil {
+		return false
+	}
+	// A real directory never reaches WalkRepo's file branch at all — WalkDir
+	// sends it down the directory branch — so the file-branch rule has no
+	// verdict to give about one. irregularSkipRuleMode happens to return
+	// skip=true for it via its symlink-to-directory case, which is the right
+	// answer for the wrong reason: two independent decisions coinciding. Decide
+	// it here instead, so widening that branch cannot silently change what this
+	// function says about a plain directory.
+	if fi.IsDir() {
 		return false
 	}
 	_, skip := irregularSkipRuleMode(absPath, fi.Mode().Type())

@@ -380,24 +380,36 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 	return changed
 }
 
-// existsOnDisk reports whether rel names an entry inside repoRoot that the
-// INDEXER would index — which is the only question the candidate set cares
-// about, in both directions:
+// existsOnDisk reports whether rel names an entry inside repoRoot that passes
+// the walker's ENTRY-TYPE gate — see walk.IndexableEntryType, which it is.
 //
-//   - A path the indexer will never stamp must not enter the candidate set, or
-//     it reads as new on every cycle forever (blocker 1 above).
+// It is a NECESSARY condition for a git-reported path to become a candidate,
+// not a sufficient one. It is the entry-type axis only, and the candidate set
+// wants that axis in both directions:
+//
+//   - A path the indexer will never stamp must not enter the set, or it reads
+//     as new on every cycle forever (blocker 1 above). The entry-type axis of
+//     that is a FIFO or a dangling link git reports.
 //   - A path the indexer WILL stamp must not be refused, or a change to it is
-//     never noticed while a full walk would have picked it up.
+//     never noticed while a full walk would have picked it up. The entry-type
+//     axis of that is a symlink to a source file (#6932 review, MA-1: this
+//     asked os.Lstat().Mode().IsRegular(), which answers about the LINK, while
+//     the walker resolves the link and indexes it).
 //
-// So it delegates to walk.IndexableEntryType — the walker's OWN entry-type
-// gate — rather than deciding for itself. An earlier version asked
-// os.Lstat().Mode().IsRegular() here, which answers about the LINK and not its
-// target, and diverged from walk.irregularSkipRule (which resolves a symlink
-// with os.Stat and indexes a link to a regular file). The result was the second
-// bullet: a new symlink-to-source in a tracked directory, reported by git as
-// untracked, refused here, indexed by every full walk (#6932 review, MA-1).
-// TestExistsOnDisk_AgreesWithWalker pins the agreement over an enumerated
-// entry-type space, so the two cannot drift apart again in either direction.
+// WHAT IT DOES NOT ESTABLISH, and therefore what this function does NOT
+// promise: WalkRepo applies three further gates the predicate cannot see — the
+// indexed-extension filter, the file-level ignore layer (#6931/#6933), and the
+// sparse-checkout filter. A git-reported path that clears the entry-type gate
+// and is then refused by one of those three still enters the candidate set and
+// still cannot converge. An untracked `photo.png` is the driven example; a
+// tracked-but-gitignored file is the second, widened by #6933. That residual is
+// filed as #6940 and deliberately NOT fixed here —
+// closing it means teaching the poller the walk's inherited ignore stack and
+// sparse state, which is a different change with a different cost.
+//
+// The delegation is what keeps the one axis it DOES decide from drifting: the
+// poller's entry-type test IS the walker's, and TestExistsOnDisk_AgreesWithWalker
+// pins the agreement over an enumerated entry-type space rather than assuming it.
 func existsOnDisk(repoRoot, rel string) bool {
 	return walk.IndexableEntryType(filepath.Join(repoRoot, filepath.FromSlash(rel)))
 }
