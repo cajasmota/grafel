@@ -1,0 +1,59 @@
+{
+  "fixture_name": "ruby-sinatra-modular-mini",
+  "language": "ruby",
+  "description": "Modular-style Sinatra app (#6917): routes, filters, error handlers and a configure block all live INDENTED inside `class MyApp < Sinatra::Base`, and every file opens with `require` lines rather than a DSL call. That shape is the whole point — sinatra.yaml's `^\\s*`-anchored patterns were compiled without `(?m)`, so `^` meant start-of-TEXT and every one of them could only fire on a file's opening construct. Against this fixture the pre-fix binary extracted ZERO Route, Middleware, Config and Service entities from the YAML rules; the four http_endpoint_definition entities came from the separate Ruby extractor and are unaffected, which is exactly why the defect could hide. The fixture varies ONE axis — the vertical position of each Sinatra construct (never line 1) — and holds the constructs themselves at their idiomatic spellings.",
+  "expected_entities": [
+    { "name": "/invoices", "kind": "Route", "source_file": "app.rb", "must_exist": true,
+      "note": "#6917 recall arm. `get '/invoices' do` and `post '/invoices' do` sit indented inside the class body. Extracted ZERO Routes before the fix." },
+    { "name": "/invoices/:id", "kind": "Route", "source_file": "app.rb", "must_exist": true,
+      "note": "#6917 FINDING: the fixture registers FOUR routes (GET/POST /invoices, GET/DELETE /invoices/:id) and the graph carries TWO Route entities. sinatra.yaml names a Route by `name_group: 2` — the path alone — and detector.go dedupes on entityType:name:file, so the verb is lost and same-path registrations collapse. Independent of the anchor defect; recorded here so the collapse is visible rather than inferred." },
+
+    { "name": "MyApp", "kind": "Controller", "source_file": "app.rb", "must_exist": true,
+      "note": "The `class MyApp < Sinatra::Base` pattern was never `^`-anchored, so it was the ONE sinatra construct that already worked. Held constant on purpose: it is the control that says the fix changed only what the anchors gated." },
+
+    { "name": "production", "kind": "Config", "source_file": "app.rb", "must_exist": true,
+      "note": "`configure :production do`, indented." },
+    { "name": "404", "kind": "Middleware", "source_file": "app.rb", "must_exist": true,
+      "note": "`error 404 do`, indented and near the END of the file — the furthest possible position from start-of-text." },
+    { "name": "before '/admin/*' do", "kind": "Middleware", "source_file": "app.rb", "must_exist": true,
+      "note": "FINDING: the name is the whole matched line because the rule uses `name_group: 0`. Ugly, pre-existing, and pinned so a later cleanup is a deliberate change rather than an accident." },
+    { "name": "after do", "kind": "Middleware", "source_file": "app.rb", "must_exist": true },
+
+    { "name": "helpers do", "kind": "Service", "source_file": "app.rb", "must_exist": true,
+      "note": "The `helpers do ... end` block form." },
+    { "name": "AuthHelpers", "kind": "Service", "source_file": "app.rb", "must_exist": true,
+      "note": "The `helpers AuthHelpers` include form — a DIFFERENT rule from the block above, and the one whose capture was tightened from `\\w+` to `[A-Z]\\w*`. Present so that tightening is graded rather than assumed." },
+
+    { "name": "http:GET:/invoices", "kind": "http_endpoint_definition", "source_file": "app.rb", "must_exist": true,
+      "note": "Produced by the Ruby EXTRACTOR, not by sinatra.yaml, and therefore unaffected by #6917 in either direction. These four rows are the fixture's held-constant axis: they were green before the fix and must stay green after it, which is what distinguishes 'the YAML rules came back' from 'something moved in Ruby extraction'." },
+    { "name": "http:POST:/invoices", "kind": "http_endpoint_definition", "source_file": "app.rb", "must_exist": true },
+    { "name": "http:GET:/invoices/{id}", "kind": "http_endpoint_definition", "source_file": "app.rb", "must_exist": true },
+    { "name": "http:DELETE:/invoices/{id}", "kind": "http_endpoint_definition", "source_file": "app.rb", "must_exist": true }
+  ],
+  "forbidden_entities": [
+    { "name": "do", "kind": "Service", "must_exist": false,
+      "note": "#6917 forbidden arm. The `helpers <Module>` include rule used to capture `(\\w+)`, which matched the `do` of `helpers do` and minted a Service entity literally named \"do\" next to the real block entity. It could not fire while the anchor defect kept both patterns dead; restoring `(?m)` made it reachable, so the capture was narrowed to a Ruby constant `([A-Z]\\w*(?:::\\w+)*)`. Reverting that narrowing puts this row back and turns the fixture red." },
+    { "name": "Whatever", "kind": "Service", "must_exist": false,
+      "note": "#6917 forbidden arm, over-firing direction. `(?m)` is what lets `^\\s*` reach an INDENTED line for the first time, so a receiver-prefixed call is now the live risk. src/receiver_calls.rb calls `server.helpers Whatever` — a valid Ruby constant that the CAPTURE would happily accept, so ONLY the line anchor keeps it out. Dropping the `^` from the helpers rule puts this entity in the graph; this row is what grades the anchor rather than the capture." },
+    { "name": "/never-registered", "kind": "Route", "must_exist": false,
+      "note": "Appears in src/receiver_calls.rb only inside a `#` comment (`# get '/never-registered' do`). A comment opens the line with `#`, so `^\\s*get` cannot reach it — this row grades that." }
+  ],
+  "expected_relationships": [
+    { "from_name": "/invoices", "from_kind": "Route", "from_file": "app.rb",
+      "kind": "CALLS", "to_name": "json_helper", "to_kind": "SCOPE.Operation", "to_file": "app.rb",
+      "must_exist": true,
+      "note": "#6917 recall arm for the RELATIONSHIP rules, which carry the same defect as the source patterns. The route->helper edge comes from a `(?m)^\\s*(get|post|...)` pattern and produced nothing before the fix." },
+    { "from_name": "/invoices/:id", "from_kind": "Route", "from_file": "app.rb",
+      "kind": "CALLS", "to_name": "json_helper", "to_kind": "SCOPE.Operation", "to_file": "app.rb",
+      "must_exist": true },
+    { "from_name": "MyApp", "from_kind": "Controller", "from_file": "app.rb",
+      "kind": "EXTENDS", "to_name": "Sinatra::Base", "to_kind": "SCOPE.Component", "to_file": "app.rb",
+      "must_exist": true,
+      "note": "Held constant: an un-anchored construct, green before and after." },
+
+    { "from_name": "MyApp", "from_kind": "Controller", "from_file": "app.rb",
+      "kind": "REGISTERED_ON", "to_bare_name": "Rack::Session::Cookie",
+      "must_exist": false, "nice_to_have": true,
+      "note": "#6917 FINDING, and the one part of the issue's driven evidence this fixture CANNOT grade. `use Rack::Session::Cookie` lives in src/config.ru, and the indexer skips that file entirely (`processed=3 extracted=3 skipped=2` — config.ru and Gemfile are not recognised as Ruby by extension). So the `use` relationship rule is fixed and unobserved: the engine-level test TestIssue6917_UseDirectiveAfterRequire drives it directly instead. Making config.ru extractable is a separate change." }
+  ]
+}
