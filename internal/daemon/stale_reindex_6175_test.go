@@ -31,6 +31,7 @@ import (
 func TestStaleReindexGuard_DeclinedRepoIsNotRetriedForever(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	t.Setenv(EnvRoot, t.TempDir())
+	led := newReindexLedger(t)
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 
 	const declined = "/repo/worktree"
@@ -62,7 +63,7 @@ func TestStaleReindexGuard_DeclinedRepoIsNotRetriedForever(t *testing.T) {
 	if admissions != 0 {
 		t.Errorf("a repo the scheduler declines to accept was admitted %d times over 12 simulated hours, want 0", admissions)
 	}
-	if n := countPendingReindex(t, declined); n != 0 {
+	if n := led.countNew(declined); n != 0 {
 		t.Errorf("wrote %d reindex request(s) for a repo whose enqueue the scheduler drops, want 0", n)
 	}
 	if !othersMigrated {
