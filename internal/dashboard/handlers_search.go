@@ -187,9 +187,14 @@ func searchPathsLinear(grp *DashGroup, qLow string, limit int) []map[string]any 
 
 // isHTTPEndpointEntity mirrors the multi-kind check used elsewhere (#1217).
 func isHTTPEndpointEntity(bareKind, rawKind string) bool {
+	// #6820: key on SCOPE.Endpoint, the HTTP kind. Bare "Endpoint" is the
+	// Electron rule pack's IPC-channel kind (electron.yaml ipcMain /
+	// ipcRenderer / contextBridge); it is not an HTTP route and keeps
+	// its spelling. IPC channels stay on the compound topology and
+	// entity search — see electron_ipc_not_http_6820_test.go.
 	return types.IsHTTPEndpointKind(bareKind) ||
 		strings.EqualFold(bareKind, httpEndpointKind) ||
-		rawKind == "Endpoint" || rawKind == "Route"
+		rawKind == string(types.EntityKindEndpoint) || rawKind == "Route"
 }
 
 // searchDocFiles walks a directory looking for markdown files whose names or

@@ -122,9 +122,14 @@ func buildSearchIndex(g *DashGroup) *SearchIndex {
 
 			// HTTP endpoint side-index.
 			bareKind := dashStripScopePrefix(e.Kind)
+			// #6820: key on SCOPE.Endpoint, the HTTP kind. Bare "Endpoint" is the
+			// Electron rule pack's IPC-channel kind (electron.yaml ipcMain /
+			// ipcRenderer / contextBridge); it is not an HTTP route and keeps
+			// its spelling. IPC channels stay on the compound topology and
+			// entity search — see electron_ipc_not_http_6820_test.go.
 			if types.IsHTTPEndpointKind(bareKind) ||
 				strings.EqualFold(bareKind, httpEndpointKind) ||
-				e.Kind == "Endpoint" || e.Kind == "Route" {
+				e.Kind == string(types.EntityKindEndpoint) || e.Kind == "Route" {
 
 				path := e.PropGet("path")
 				if path == "" {
