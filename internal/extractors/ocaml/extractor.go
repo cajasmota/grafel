@@ -5,6 +5,9 @@
 //   - Module declarations (`module Foo = struct ... end`, file-level) → SCOPE.Component (subtype="module")
 //   - `let`/`let rec` function definitions → SCOPE.Operation (subtype="function")
 //   - `type` declarations → SCOPE.Component (subtype="type")
+//   - `class` / `class type` declarations → SCOPE.Component (subtype="class" /
+//     "class_type"), with EXTENDS / IMPLEMENTS edges — CST-backed, hierarchy.go
+//     (#6370)
 //   - `open Foo` statements → IMPORTS edges
 //   - Function calls → CALLS edges
 //   - CONTAINS edges (module → top-level declarations)
@@ -261,7 +264,12 @@ func extractOCaml(src, filePath string) []types.EntityRecord {
 		})
 	}
 
-	// 4. Add CONTAINS edges from explicit module declarations to functions inside.
+	// 4. class / class type declarations, with their EXTENDS / IMPLEMENTS
+	// edges. CST-backed and emitted from hierarchy.go — see that file for why
+	// the class vocabulary had to arrive with the edge rather than after it.
+	entities = append(entities, classEntities(src, filePath, imports)...)
+
+	// 5. Add CONTAINS edges from explicit module declarations to functions inside.
 	// We use a simple heuristic: for each module declaration, find the let bindings
 	// that follow within the module body.
 	addModuleContains(src, filePath, &entities, seenModules, letSeen)

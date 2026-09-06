@@ -311,6 +311,12 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 	// exact confusion #6370 found languages sitting on either side of — would
 	// satisfy it.
 	//
+	// #6370's OCaml arm took that same Kind to FIVE subtypes, adding `class`
+	// and `class_type`. The number is the argument: with five meanings under
+	// one Kind in one fixture, a Kind-only row for a class distinguishes
+	// almost nothing, so every class row here carries its subtype and the
+	// per-row reason is written beside the rows themselves.
+	//
 	// EIGHT of the fixture's ten SCOPE.Operation rows deliberately carry NO
 	// subtype: `function` is the only Operation subtype the base extractor
 	// emits, so asserting it there would be decoration, which is what this
@@ -340,6 +346,24 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 			"shapes.ml:file", "containers.ml:file", "render.ml:file",
 			"Comparable:module", "Base:module", "Extended:module",
 			"make_logger:function", "make_counter:function",
+			// #6370's OCaml arm. Every class row asserts its subtype, and the
+			// subtype is the load-bearing half rather than decoration: the
+			// arm introduces TWO new subtypes at once — `class` and
+			// `class_type` — and they are what decide which hierarchy KIND
+			// the construct produces (`inherit` on a class_type is EXTENDS; a
+			// class's `: class-type` annotation is IMPLEMENTS). A row naming
+			// only SCOPE.Component would be satisfied by the fixture's
+			// module, type, file and import rows alike, and specifically by a
+			// producer that emitted `printer` as a class rather than a class
+			// type — the exact collapse the forbidden rows fence in the edge
+			// direction, asserted here in the entity direction so the two are
+			// graded separately.
+			"shape:class", "circle:class", "square:class",
+			"labelled:class", "tagged_circle:class",
+			"printer:class_type", "verbose_printer:class_type",
+			"basic_printer:class", "relay_printer:class",
+			"remote_relay:class", "spawning_printer:class",
+			"stream_writer:class",
 		},
 	}
 	if len(got) != len(want) {

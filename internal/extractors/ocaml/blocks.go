@@ -112,6 +112,13 @@ type blockIndex struct {
 	// residual disagreement with the reference is in a file the grammar itself
 	// reports as broken, which is a much stronger claim than a bounded count.
 	hasError bool
+	// classes are the file's `class` / `class type` bindings, read off the
+	// SAME tree by hierarchy.go (#6370). They live here so hierarchy
+	// extraction costs no second parse: this index is already built once per
+	// OCaml file and memoised on the source text, and parsing again for one
+	// more walk would double this package's cgo work. Nothing in the block
+	// spans depends on them, and nothing else in this file reads them.
+	classes []classDecl
 }
 
 var (
@@ -150,6 +157,7 @@ func buildBlockIndex(src string) *blockIndex {
 	}
 	bi.parsed = true
 	bi.collect(root)
+	bi.classes = collectClasses(root, src)
 	sort.Ints(bi.openers)
 	return bi
 }
