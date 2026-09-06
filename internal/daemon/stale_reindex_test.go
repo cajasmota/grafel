@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,9 +64,22 @@ type reindexLedger struct {
 	pre map[string]bool
 }
 
+// requestFileSuffix is the on-disk suffix requests.Write appends to the record
+// ID (requests.go:101, unexported there). The ID is the filename STEM, which is
+// all a baseline snapshot needs.
+const requestFileSuffix = ".request.json"
+
 // newReindexLedger snapshots every reindex request ID already durably present
 // anywhere under the active requests root, so no caller has to enumerate the
 // repos it is about to touch.
+//
+// It reads directory ENTRIES rather than calling requests.ListPending, because
+// ListPending is not a pure read: it deletes any request whose ack is already
+// on disk (requests.go:236) as exactly-once catch-up cleanup. Sweeping the
+// WHOLE root with it would make this helper WRITE into every repo directory in
+// a shared root, once per test — i.e. a fix for cross-run interference that
+// itself interferes across runs, which is how the next #6929 gets created.
+// TestReindexLedgerSnapshotIsPure pins that the snapshot mutates nothing.
 func newReindexLedger(t *testing.T) *reindexLedger {
 	t.Helper()
 	l := &reindexLedger{t: t, pre: map[string]bool{}}
@@ -74,15 +88,58 @@ func newReindexLedger(t *testing.T) *reindexLedger {
 		t.Fatalf("discoverRequestsDirs: %v", err)
 	}
 	for _, d := range dirs {
-		recs, err := requests.ListPending(d)
+		entries, err := os.ReadDir(d)
 		if err != nil {
-			t.Fatalf("ListPending(%s): %v", d, err)
+			t.Fatalf("ReadDir(%s): %v", d, err)
 		}
-		for _, r := range recs {
-			l.pre[r.ID] = true
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			if id, ok := strings.CutSuffix(e.Name(), requestFileSuffix); ok {
+				l.pre[id] = true
+			}
 		}
 	}
 	return l
+}
+
+// TestReindexLedgerSnapshotIsPure is the guard on the guard. newReindexLedger
+// sweeps the ENTIRE requests root, including repo directories belonging to
+// other tests and other runs, so its one non-negotiable property is that
+// taking a baseline changes nothing on disk. The file at risk is specifically
+// an ACKED request: that is the one requests.ListPending removes as catch-up
+// cleanup, so a ListPending-based sweep deletes another run's state as a side
+// effect of measuring it.
+func TestReindexLedgerSnapshotIsPure(t *testing.T) {
+	t.Setenv("GRAFEL_HOME", t.TempDir())
+	t.Setenv(EnvRoot, t.TempDir())
+
+	const other = "/repo/some-other-run"
+	dir := requestsDirForRepo(other)
+	id, err := requests.Write(dir, requests.Record{Kind: requests.KindReindex, RepoPath: other})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := requests.WriteAck(dir, id, requests.Ack{ID: id, Status: requests.StatusOK, AppliedAt: time.Now()}); err != nil {
+		t.Fatalf("WriteAck: %v", err)
+	}
+	path := filepath.Join(dir, id+requestFileSuffix)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("precondition: planted request is not on disk: %v", err)
+	}
+
+	led := newReindexLedger(t)
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("newReindexLedger destroyed another run's durable request %s: %v", path, err)
+	}
+	// Positive control. Without it the survival assertion above is satisfied by
+	// a snapshot that reads NOTHING — the vacuous pass that would let a future
+	// rewrite reintroduce the side effect undetected.
+	if !led.pre[id] {
+		t.Fatalf("baseline did not observe the planted request %s — the sweep read nothing, so purity is untested", id)
+	}
 }
 
 // countNew returns how many KindReindex requests THIS RUN added for repoPath.
