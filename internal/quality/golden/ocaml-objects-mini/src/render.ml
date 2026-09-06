@@ -1,6 +1,14 @@
 (* Objects built inside function bodies — the axis where `inherit` sits inside
-   a `let` body rather than at a class declaration — plus the identifiers that
-   a depth walker keying on `end` / `object` / `sig` mis-tokenises. #6812 *)
+   a `let` body rather than at a class declaration — plus three identifiers
+   that vary how a depth walker keying on `end` mis-tokenises them. #6812
+
+   `backend` and `legend` END with `end`, so Go's `\bend\b` re-run against the
+   remaining slice DOES match them. `append_all` does not: `_` is a word
+   character to Go's `\b`, so `end_all` never matches. The three are here to
+   put both outcomes of that hazard in the corpus, and the difference between
+   them is the point — an earlier version spelled all three with a trailing
+   `_word` and so contained only the non-triggering case while claiming to
+   vary the position. *)
 
 open Buffer
 
@@ -32,10 +40,10 @@ let make_counter start =
 let append_all buf parts =
   List.iter (fun p -> Buffer.add_string buf p) parts
 
-let backend_label lvl =
+let backend lvl =
   match lvl with
   | Debug -> "debug"
   | Info -> "info"
   | Error -> "error"
 
-let legend_of parts = String.concat ", " parts
+let legend parts = String.concat ", " parts

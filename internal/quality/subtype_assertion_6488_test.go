@@ -300,7 +300,7 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 	// Re-measured here rather than inherited: this ledger is the control that
 	// forces exactly that statement.
 	//
-	// #6812 added ocaml-objects-mini's nine rows, and they are re-measured here
+	// #6812 added ocaml-objects-mini's eleven rows, and they are re-measured here
 	// rather than waved through as more of the same. OCaml is the first fixture
 	// in the corpus where ONE Kind carries THREE different subtypes at once:
 	// SCOPE.Component is emitted for the file carrier (subtype "file"), for
@@ -309,10 +309,27 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 	// naming only the Kind therefore states a strictly weaker thing than the
 	// author means, and a producer that reclassified a type as a module — the
 	// exact confusion #6370 found languages sitting on either side of — would
-	// satisfy it. The fixture's ten SCOPE.Operation rows deliberately carry NO
+	// satisfy it.
+	//
+	// EIGHT of the fixture's ten SCOPE.Operation rows deliberately carry NO
 	// subtype: `function` is the only Operation subtype the base extractor
-	// emits, so asserting it would be decoration, which is what this control
-	// exists to keep out.
+	// emits, so asserting it there would be decoration, which is what this
+	// control exists to keep out. `make_logger` and `make_counter` DO carry it,
+	// and the line between them is the one principle this fixture now applies
+	// everywhere: an assertion is kept when it distinguishes something a
+	// plausible producer could get wrong, and dropped when it cannot. Those two
+	// are the `let x = object … end` pair — the one place in the corpus where a
+	// CST-backed producer has a real choice about what kind of thing a `let`
+	// bound to an object body IS (function? method? class?), and reclassifying
+	// them is exactly the silent recall change #6812 says must not happen
+	// invisibly. `make_logger` is also the row the fixture exists for.
+	//
+	// The same principle governs the fixture's forbidden rows, which a review
+	// found resolved the opposite way: three hierarchy fences were KEPT as
+	// future-facing while these subtype rows were DROPPED as redundant, both
+	// being arguments about a producer that does not exist yet. Those fences
+	// have since each been demonstrated to fire under their own mutant, which
+	// is what the principle demands of a kept row and what none of them had.
 	want := map[string][]string{
 		"proto-mini":         {"Role.ROLE_ADMIN:enum_value"},
 		"erlang-otp-mini":    {"cache_server.erl:file"},
@@ -322,6 +339,7 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 			"point:type", "bounds:type", "level:type",
 			"shapes.ml:file", "containers.ml:file", "render.ml:file",
 			"Comparable:module", "Base:module", "Extended:module",
+			"make_logger:function", "make_counter:function",
 		},
 	}
 	if len(got) != len(want) {

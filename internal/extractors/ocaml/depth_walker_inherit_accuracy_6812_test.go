@@ -160,17 +160,25 @@ func refMatchEnd(src string, from int) int {
 			i = j
 			continue
 		}
-		switch tokenAt(src, i) {
+		switch kw := tokenAt(src, i); kw {
 		case "struct", "object", "begin", "sig":
 			depth++
-			i += 6 // longest opener; exact length is irrelevant, all are >0
+			// Advance by the token's OWN length. `i += 6` (the longest opener)
+			// was wrong and its comment — "exact length is irrelevant" — was
+			// false: `sig` is 3 bytes and `begin` is 5, so the scan skipped 3
+			// resp. 1 bytes of real source, and a comment or string opener
+			// landing in that window was read as code. `module type T = sig end`
+			// returned -1 and `sig (* end *) … end` returned the `end` INSIDE
+			// the comment. Invisible to the controls below before this fix,
+			// because every comment control opened with the 6-byte `object`.
+			i += len(kw)
 			continue
 		case "end":
 			depth--
 			if depth == 0 {
 				return i
 			}
-			i += 3
+			i += len(kw)
 			continue
 		}
 		i++
@@ -254,6 +262,22 @@ func TestReferenceBlockMatcher_PositiveControls(t *testing.T) {
 		{"identifier ending in end", "let x = object method append = 1 method backend = 2 §end"},
 		{"identifier ending in object", "let x = object method myobject = 1 §end"},
 		{"identifier ending in sig", "let x = object method design = 1 §end"},
+		// The three above exercise only the LEADING identifier boundary. These
+		// five exercise the TRAILING one — an identifier that STARTS with a
+		// keyword — which no control covered until a mutant deleting tokenAt's
+		// trailing check survived the whole package (review N1).
+		{"identifier starting with end", "let x = object method endian = 1 §end"},
+		{"identifier starting with sig", "let x = object method signature = 1 §end"},
+		{"identifier starting with object", "let x = object method objects = 1 §end"},
+		{"identifier starting with begin", "let x = object method beginning = 1 §end"},
+		{"identifier starting with struct", "let x = object method structure = 1 §end"},
+		// And these three pin `i += len(kw)`: they open with a 3- or 5-byte
+		// keyword, so a scan advancing by a fixed 6 steps over the bytes that
+		// follow it. Every other control opens with the 6-byte `object`, which
+		// is exactly why that defect was invisible.
+		{"empty sig block", "module type T = sig §end"},
+		{"comment immediately after sig", "module type T = sig (* end *) val f : int §end"},
+		{"comment immediately after begin", "let x = object method a = begin(* end *) 1 end §end"},
 		{"end inside string", "let x = object method a = \"end end\" §end"},
 		{"end inside comment", "let x = object (* end *) method a = 1 §end"},
 		{"end inside NESTED comment", "let x = object (* (* end *) end *) method a = 1 §end"},
@@ -308,12 +332,22 @@ func tail(src string, i int) string {
 //	D quotedString — the body contains a {|…|} quoted string holding `end`
 //	E trailer      — a further top-level declaration follows the block
 //
-// Each input holds exactly one `object … end` block with exactly one
-// `inherit` in it, so a divergence is directly an `inherit` mis-attribution
-// rather than a proxy for one. The DIVERGING SET is recorded below as a
-// literal; a change to the walker that moves any combination in or out of it
-// fails this test, which is what makes the #6812 measurement reproducible
-// without a network.
+// WHAT THIS DOES AND DOES NOT SHOW, stated because the first version of this
+// test claimed more than it measured: every input holds exactly one
+// `object … end` block with exactly one `inherit`, and what the enumeration
+// varies is where the block ENDS. It does NOT produce a single `inherit`
+// mis-attribution — 0 of 32 — because the `inherit` is always the first body
+// line and every disagreeing span still contains it. A divergence here is
+// therefore block-end divergence, which is the walker's structural judgement
+// and the mechanism the attribution would rest on, but it is a PROXY for
+// mis-attribution and not an instance of one. The instances live in
+// TestDepthWalker_InheritIsMisAttributed_Constructed (a sibling pair inside a
+// module, where one block's span swallows the other's `inherit`) and in the
+// corpus measurement's 230 pairs. The guard inside the loop pins the 0.
+//
+// The DIVERGING SET is recorded below as a literal; a change to the walker
+// that moves any combination in or out of it fails this test, which is what
+// makes the #6812 finding reproducible without a network.
 func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 	type axes struct{ closeAtCol0, endIdent, nestedComment, quotedString, trailer bool }
 	build := func(a axes) string {
@@ -321,7 +355,12 @@ func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 		b.WriteString("let c = object\n")
 		b.WriteString("  inherit base\n")
 		if a.endIdent {
-			b.WriteString("  method append_all x = x\n")
+			// `append`, NOT `append_all`. Go's `\b` treats `_` as a word
+			// character, so `\bend\b` never matches inside `end_all` and the
+			// axis was INERT — it changed no outcome in any of the 16 pairs
+			// (review). It exists to grade defect (2), the slice-relative `\b`,
+			// and with the underscore it graded nothing at all.
+			b.WriteString("  method append x = x\n")
 		}
 		if a.nestedComment {
 			b.WriteString("  (* (* q *) end *)\n")
@@ -384,10 +423,24 @@ func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 		if !inTruth {
 			t.Fatalf("%s: generator premise broken, the inherit is not inside the block", label(a))
 		}
-		if !endsAgree(src, walkEnd, truth) || inTruth != inWalker {
+		// The criterion is block-end disagreement ALONE. It used to read
+		// `!endsAgree(...) || inTruth != inWalker`, and the second term was
+		// dead: a mutant deleting the first left the test unable to find any
+		// divergence at all, because NO generated input mis-attributes its
+		// `inherit` (review N2). The generator always writes the `inherit` as
+		// the first body line, so every span that disagrees still contains it.
+		// Asserting that positively, here, is what keeps the dead term from
+		// coming back as a claim nothing checks.
+		if inTruth != inWalker {
+			t.Fatalf("%s: this generator is not supposed to be able to produce an "+
+				"inherit MIS-ATTRIBUTION — it varies where the block ENDS, and the "+
+				"inherit is always the first body line. If it now can, the enumerated "+
+				"finding changed and both write-ups need re-deriving.", label(a))
+		}
+		if !endsAgree(src, walkEnd, truth) {
 			got = append(got, label(a))
-			t.Logf("%s DIVERGES: walker end=%d, true end=%d, inherit@%d in_walker=%v",
-				label(a), walkEnd, truth, inh[0], inWalker)
+			t.Logf("%s BLOCK-END DIVERGES: walker end=%d, true end=%d (inherit@%d is inside both spans)",
+				label(a), walkEnd, truth, inh[0])
 		}
 	}
 	if len(got) == 0 {
@@ -397,7 +450,33 @@ func TestDepthWalker_ObjectBlockEnd_EnumeratedSpace(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(divergingCombinations6812, ",") {
 		t.Fatalf("diverging set changed.\n got: %v\nwant: %v", got, divergingCombinations6812)
 	}
-	t.Logf("%d/32 enumerated combinations mis-attribute the `inherit`", len(got))
+	// Axis E is INERT, and that is asserted rather than left as padding. The
+	// review found E (and, before it was respelled, B) changed no outcome in
+	// any of the 16 pairs, which meant "32 combinations" overstated what was
+	// being crossed. B is now live; E is not, and the reason is worth pinning:
+	// the fallback's stop condition is the next column-0 line, so whether a
+	// further top-level declaration follows the block cannot change where the
+	// span ends. An E that ever starts mattering is a real change in the
+	// fallback and should fail here rather than quietly widen the table.
+	diverging := map[string]bool{}
+	for _, k := range got {
+		diverging[k] = true
+	}
+	for _, k := range got {
+		if !strings.HasSuffix(k, "E") {
+			continue
+		}
+		if withoutE := k[:4] + "-"; !diverging[withoutE] {
+			t.Fatalf("axis E is documented INERT but %q diverges while %q does not", k, withoutE)
+		}
+	}
+	if len(got)%2 != 0 {
+		t.Fatalf("axis E is documented INERT, so the diverging set must be E-symmetric, got %d entries", len(got))
+	}
+	t.Logf("%d/32 enumerated combinations put the WRONG END on the block. "+
+		"0/32 mis-attribute the `inherit` — see the guard above; inherit "+
+		"mis-attribution is carried by TestDepthWalker_InheritIsMisAttributed_Constructed "+
+		"and by the corpus measurement, not by this enumeration.", len(got))
 }
 
 // TestDepthWalker_InheritIsMisAttributed_Constructed is the smallest input
@@ -550,11 +629,19 @@ func TestDepthWalker_InheritAttribution_CorpusMeasurement(t *testing.T) {
 	t.Logf("BLOCK-END WRONG: %d/%d (%s)", blockEndWrong, blocks, pct(blockEndWrong, blocks))
 	t.Logf("inherit tokens in those files=%d; (block,inherit) pairs truly enclosed=%d",
 		inheritTotal, inheritEnclosed)
-	t.Logf("INHERIT MISSED (truly inside the block, outside the walker's span): %d/%d (%s)",
-		inheritMissed, inheritEnclosed, pct(inheritMissed, inheritEnclosed))
-	t.Logf("INHERIT SPURIOUS (outside the block, inside the walker's span): %d", inheritSpurious)
-	t.Logf("INHERIT MIS-ATTRIBUTED, either direction: %d/%d (%s)",
-		inheritMissed+inheritSpurious, inheritEnclosed, pct(inheritMissed+inheritSpurious, inheritEnclosed))
+	// Recall and precision are reported separately and never summed into one
+	// rate. Adding them gave 230/216 = 106.5%, which is not a rate at all:
+	// `spurious` is drawn from every (block, inherit) pair in the file while
+	// `enclosed` counts only the truly-enclosed ones, so the two have different
+	// denominators (review).
+	correct := inheritEnclosed - inheritMissed
+	attributed := correct + inheritSpurious
+	t.Logf("INHERIT RECALL: %d/%d truly-enclosed pairs are inside the walker's span (%s); "+
+		"%d MISSED", correct, inheritEnclosed, pct(correct, inheritEnclosed), inheritMissed)
+	t.Logf("INHERIT PRECISION: %d/%d pairs the walker attributes are right (%s); "+
+		"%d SPURIOUS", correct, attributed, pct(correct, attributed), inheritSpurious)
+	t.Logf("so the walker attributes %d pairs, %d of them wrong — more wrong than right",
+		attributed, inheritSpurious+inheritMissed)
 	if len(unmatchedFiles) > 0 {
 		t.Logf("sample files holding a block the REFERENCE could not match (excluded from every "+
 			"figure above, so they neither help nor hurt the walker): %v", unmatchedFiles)
@@ -569,20 +656,25 @@ func TestDepthWalker_InheritAttribution_CorpusMeasurement(t *testing.T) {
 // TestDepthWalker_ObjectBlockEnd_EnumeratedSpace. See that test for the axis
 // letters.
 var divergingCombinations6812 = []string{
-	// Listed in the enumeration's own iteration order (bitmask ascending), so
-	// the failure message reads as a diff rather than a set comparison.
+	// Listed in the enumeration's own iteration order (bitmask ascending), so a
+	// failure reads as a diff rather than a set comparison. 18 of 32.
 	//
 	// A absent — the block's `end` INDENTED, which is how an object inside a
-	// `let` is conventionally written — is on its own enough: the indentation
-	// fallback keeps consuming past the `end` line and the span over-reaches.
-	// That is the single most common shape in the corpus.
+	// `let` is conventionally written — diverges on its own: the indentation
+	// fallback consumes past the `end` line. That is the corpus's commonest
+	// shape.
 	//
-	// C+D together — a nested comment plus a quoted string — diverge in the
-	// other direction, truncating the block's own content. NEITHER diverges
-	// alone: the fallback survives each in isolation. That interaction is the
-	// reason this table is enumerated rather than hand-picked; three rounds of
-	// hand-written cases produced zero divergences before this test replaced
-	// them.
-	"-----", "-B---", "--CD-", "A-CD-", "-BCD-", "ABCD-",
-	"----E", "-B--E", "--CDE", "A-CDE", "-BCDE", "ABCDE",
+	// B (an identifier ENDING in `end`, spelled `append` — see the generator
+	// for why the underscore mattered) is live in both directions, which is the
+	// whole reason it was respelled. `-B---` does NOT diverge: the phantom
+	// `end` inside `append` takes depth 1->0 early, so the block's real `end`
+	// is then seen AT depth 0 and terminates the scan at the right place — the
+	// defect accidentally cancels defect (1). Add a comment or a quoted string
+	// on top (`-BC--`, `-B-D-`) and it stops cancelling and starts truncating.
+	//
+	// C and D each diverge only in company. Neither `--C--` nor `---D-` is
+	// here; `--CD-` is. Testing them in isolation finds nothing, which is why
+	// this table is enumerated and not hand-picked.
+	"-----", "-BC--", "ABC--", "-B-D-", "AB-D-", "--CD-", "A-CD-", "-BCD-", "ABCD-",
+	"----E", "-BC-E", "ABC-E", "-B-DE", "AB-DE", "--CDE", "A-CDE", "-BCDE", "ABCDE",
 }
