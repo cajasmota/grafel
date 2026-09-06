@@ -204,6 +204,23 @@ type Config struct {
 	// watcher_bulk_threshold). Added in #1270.
 	WatcherConfig watch.Config
 
+	// ChangeDetectionPoll selects the descriptor-free polling change detector
+	// instead of fsnotify subscriptions (#6932 arm A). It is derived from
+	// features.change_detection == "poll" on any registered group; see
+	// daemonChangeDetectionPoll in cmd/grafel/daemon.go.
+	//
+	// It is daemon-wide, not per-group, because there is ONE Watcher for the
+	// whole daemon and the inotify pool it draws from is per-UID and
+	// host-level — the resource the mode exists to protect is not partitioned
+	// by group either. Opting one group in therefore opts the daemon in, which
+	// is the conservative direction: poll mode is complete (it is what #6932
+	// measured hybrid B for), just coarser.
+	ChangeDetectionPoll bool
+
+	// ChangePollInterval is the poll cadence when ChangeDetectionPoll is set.
+	// Zero selects watch.DefaultChangePollInterval (30 s).
+	ChangePollInterval time.Duration
+
 	// OnWatcherReady is called with the live watcher after it is
 	// successfully created and repos are subscribed. Allows callers
 	// (e.g. cmd/grafel) to wire the watcher into the dashboard

@@ -105,6 +105,56 @@ type Config struct {
 	// starts. Assigning w.quarantine afterwards would be an unsynchronised
 	// write to a field that goroutine reads on every event.
 	disableQuarantine bool
+
+	// Delegate, when non-nil, replaces this Watcher's fsnotify subscription
+	// with an alternative change detector (#6932 arm A — poll mode).
+	//
+	// It is a SEAM, not a second Watcher. The Watcher keeps its repos map (so
+	// Repos()/Stats() still answer "is this repo observed?" truthfully), keeps
+	// its sink, and simply takes no watch descriptors.
+	//
+	// There are THREE paths in this file that hand a directory to the backend,
+	// not one, and the delegate has to be honoured at all three. Enumerated,
+	// with how each was verified:
+	//
+	//   1. AddRepo -> subscribeRepo. The only path the daemon's callers reach:
+	//      DefaultManager.Resume, DefaultManager.SubscribeGroup, and the
+	//      worktree activation handler all call AddRepo. Verified by
+	//      TestWatcher_PollDelegate_TakesNoSubscriptions and, end to end
+	//      through the engine plane, by TestEnginePlane_PollModeTakesNoWatchDescriptors.
+	//
+	//   2. restartBackend -> subscribeRepo, over w.repos DIRECTLY. It does not
+	//      go through AddRepo, and poll mode populates w.repos, so before
+	//      #6932's review this converted a poll-mode daemon into a full
+	//      fsnotify subscriber on one backend restart. Verified by
+	//      TestWatcher_PollDelegate_BackendRestartResubscribesNothing.
+	//
+	//   3. subscribeDirRecursive, from a Create event. Unreachable in poll mode
+	//      today because a backend with zero watches delivers no events —
+	//      guarded by accident, so it is now guarded by a decision instead.
+	//      NOT independently verified: constructing a Create event for a
+	//      directory in a mode that subscribes nothing means driving the
+	//      backend directly, and the guard is a bare early return.
+	//
+	// Nil is the default and is byte-for-byte the pre-#6932 behaviour.
+	//
+	// Note that the fsnotify backend handle is still opened in poll mode: that
+	// is ONE inotify instance for the daemon with zero watches on it, against
+	// the ~976 watch descriptors PER WORKTREE that subscribing costs. Removing
+	// the handle entirely would mean not constructing the Watcher at all, which
+	// is a restructure of the engine plane, not a mode.
+	Delegate SubscriptionDelegate
+}
+
+// SubscriptionDelegate is the alternative change detector a Watcher hands its
+// repos to when Config.Delegate is set. *ChangePoller implements it.
+//
+// AddRepo returns an error when the repo could not be taken on; the Watcher
+// then does NOT record the repo, because a repo listed as watched that nothing
+// observes is the silent half-failure #6932 exists to remove.
+type SubscriptionDelegate interface {
+	AddRepo(repoPath string) error
+	RemoveRepo(repoPath string)
 }
 
 func (c *Config) debounce() time.Duration {
@@ -561,6 +611,14 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 // transparency surface / CLI (Q2). May be nil if the feature is disabled.
 func (w *Watcher) Quarantine() *QuarantineTracker { return w.quarantine }
 
+// ChangeDelegate returns the alternative change detector this Watcher routes
+// subscriptions to, or nil when it uses fsnotify (#6932 arm A).
+//
+// It answers "which detector is actually live?", which is the question #6932
+// arm B must ANSWER OUT LOUD in `grafel status` and /diagnostics — a mode
+// switch nobody can see is no improvement on a watcher nobody can see failing.
+func (w *Watcher) ChangeDelegate() SubscriptionDelegate { return w.cfg.Delegate }
+
 // quarantineSweep periodically re-evaluates quarantined directories and
 // auto-un-quarantines any that have gone quiet (self-heal). The interval is a
 // fraction of the heal window so recovery is responsive without busy-looping.
@@ -618,6 +676,25 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 	}
 	w.repos[abs] = &repoState{path: abs}
 	w.mu.Unlock()
+
+	// Poll mode (#6932 arm A): hand the repo to the delegate and subscribe
+	// NOTHING. Returns 0 directories because 0 directories were subscribed —
+	// the count is the descriptor cost, and in this mode it is genuinely zero.
+	if d := w.cfg.Delegate; d != nil {
+		if err := d.AddRepo(abs); err != nil {
+			w.mu.Lock()
+			if rs, ok := w.repos[abs]; ok {
+				if rs.timer != nil {
+					rs.timer.Stop()
+				}
+				delete(w.repos, abs)
+			}
+			w.mu.Unlock()
+			return 0, err
+		}
+		w.logger.Info("watcher: registered via change-detection delegate — 0 fs watch descriptors", "repo", abs)
+		return 0, nil
+	}
 
 	added, err := w.subscribeRepo(abs)
 	if err != nil {
@@ -900,6 +977,13 @@ func (w *Watcher) RemoveRepo(repoPath string) {
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
 		return
+	}
+	// Poll mode (#6932 arm A). The rest of this function is a no-op for a
+	// delegated repo — it subscribed no directories and reserved no
+	// descriptors — but it is left to run rather than short-circuited so a
+	// watcher that switched modes mid-life still unwinds whatever it holds.
+	if d := w.cfg.Delegate; d != nil {
+		d.RemoveRepo(abs)
 	}
 	w.mu.Lock()
 	if rs, ok := w.repos[abs]; ok {
@@ -1318,6 +1402,23 @@ func (w *Watcher) restartBackend() bool {
 		w.mu.Unlock()
 
 		// Re-subscribe.
+		//
+		// #6932 arm A, review blocker 2: this is a SECOND subscribe path. It
+		// does not go through AddRepo, and poll mode deliberately keeps its
+		// repos in w.repos (so Repos()/Stats() stay truthful), so without this
+		// guard one backend restart silently converts a poll-mode daemon into a
+		// full fsnotify subscriber — ~976 descriptors per worktree, in exactly
+		// the container whose pool cannot be raised, with the poller never told.
+		//
+		// Not reachable today (a backend holding zero watches has little reason
+		// to close its channel), but arm B's runtime auto-switch makes it live,
+		// and the guard is cheaper than the note explaining why it is safe
+		// without one. The delegate is unaffected by a backend restart: it holds
+		// its own repo set and its own loop.
+		if w.cfg.Delegate != nil {
+			repos = nil
+			w.logger.Info("watcher: backend restarted in delegate (poll) mode — nothing to re-subscribe")
+		}
 		for _, abs := range repos {
 			if n, err := w.subscribeRepo(abs); err != nil {
 				w.logger.Error("watcher: restart re-subscribe failed", "repo", abs, "err", err)
@@ -1921,6 +2022,13 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 	// would make chargeEventOpen keep recording markers for a walk that is over,
 	// and those markers are consumed by nothing (#6493).
 	defer w.releaseInFlight(root)
+	// #6932 arm A: the third subscribe path. Unreachable in delegate (poll)
+	// mode today only because a backend with zero watches delivers no Create
+	// events to enqueue this walk — i.e. it is guarded by an accident, not by a
+	// decision. Make it a decision, for the same reason as restartBackend.
+	if w.cfg.Delegate != nil {
+		return
+	}
 	repo := w.repoFor(filepath.Join(root, "_"))
 	if repo == "" {
 		return

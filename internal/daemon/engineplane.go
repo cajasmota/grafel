@@ -200,12 +200,48 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 		}
 
 		wcfg := cfg.WatcherConfig
-		watcher, werr := watch.NewWatcherConfig(wcfg, func(repo string, bulk bool) {
+		// The one sink both detectors share. #6932 arm A is explicit that poll
+		// mode must NOT invent a second reindex path: whichever detector is
+		// live, a settled repo becomes exactly this scheduler enqueue.
+		indexSink := func(repo string, bulk bool) {
 			if bulk {
 				logger.Info("watcher: bulk trigger — enqueuing full reindex", "repo", repo)
 			}
 			scheduler.Enqueue(repo)
-		}, logger)
+		}
+
+		// #6932 arm A — poll mode. Opt-in only (features.change_detection =
+		// "poll"); "auto" resolves to fsnotify until arm B builds the budget
+		// probe, so nothing changes here for anyone who does not set the flag.
+		//
+		// The poller is installed as the Watcher's subscription DELEGATE
+		// rather than as a parallel subsystem, so every existing subscribe
+		// path (DefaultManager.Resume, SubscribeGroup, the worktree activation
+		// handler) routes to it without knowing it exists — and takes zero
+		// inotify watch descriptors doing so.
+		var changePoller *watch.ChangePoller
+		if cfg.ChangeDetectionPoll {
+			changePoller = watch.NewChangePoller(watch.ChangePollerConfig{
+				Interval:      cfg.ChangePollInterval,
+				BulkThreshold: wcfg.BulkThreshold,
+				// The manifest is per (repo, ref): a linked worktree on another
+				// branch has its own file-index.json, and diffing a worktree
+				// against the primary's manifest would report the whole branch
+				// delta on every cycle.
+				StateDir: func(repoPath string) string {
+					ref := gitmeta.Capture(repoPath).Ref
+					if sd := StateDirForRepoRef(repoPath, ref); sd != "" {
+						return sd
+					}
+					return StateDirForRepo(repoPath)
+				},
+			}, indexSink, logger)
+			wcfg.Delegate = changePoller
+			logger.Info("watcher: change detection = poll (#6932) — fsnotify subscriptions disabled, 0 watch descriptors",
+				"interval", cfg.ChangePollInterval.String())
+		}
+
+		watcher, werr := watch.NewWatcherConfig(wcfg, indexSink, logger)
 		if werr != nil {
 			logger.Warn("watcher: disabled", "err", werr)
 		} else {
@@ -213,6 +249,10 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 				svc.watcher = watcher
 			}
 			ep.add(watcher.Stop)
+			if changePoller != nil {
+				changePoller.Start()
+				ep.add(changePoller.Stop)
+			}
 
 			// PH1b (Option B): start the .git/HEAD poller alongside the
 			// fsnotify watcher. .git/ remains in SkipDirs (no fsnotify

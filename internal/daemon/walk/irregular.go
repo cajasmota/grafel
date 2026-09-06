@@ -52,7 +52,19 @@ import (
 // side closes it: internal/safeio opens with O_NONBLOCK and re-checks the type
 // with fstat on the descriptor.
 func irregularSkipRule(absPath string, d fs.DirEntry) (string, bool) {
-	mode := d.Type()
+	return irregularSkipRuleMode(absPath, d.Type())
+}
+
+// irregularSkipRuleMode is irregularSkipRule's body, taking the LSTAT-SHAPED
+// type bits directly instead of an fs.DirEntry.
+//
+// Split out so a caller that holds a PATH rather than a walk entry can ask the
+// walker the same question and get the same answer — see IndexableEntryType.
+// The two must not be able to drift: the poller in internal/daemon/watch
+// admits a git-reported path to its candidate set only if the walker would
+// index it, and any divergence is a file one half indexes and the other half
+// never notices changing (#6932 review, MA-1).
+func irregularSkipRuleMode(absPath string, mode fs.FileMode) (string, bool) {
 	if mode&os.ModeSymlink != 0 {
 		fi, err := os.Stat(absPath)
 		if err != nil {
@@ -77,6 +89,65 @@ func irregularSkipRule(absPath string, d fs.DirEntry) (string, bool) {
 		return "symlink-to-directory", true
 	}
 	return "irregular:" + irregularKind(mode), true
+}
+
+// IndexableEntryType reports whether the entry at absPath passes WalkRepo's
+// ENTRY-TYPE gate — and nothing else.
+//
+// It is exactly irregularSkipRule, reached from a path instead of from a walk
+// entry: Lstat recovers the type bits filepath.WalkDir would have supplied,
+// then the identical rule runs, including the os.Stat resolution of a symlink.
+// So a link to a regular file passes; a dangling link, a symlink loop, a link
+// to a directory, a directory, a FIFO, a device and a socket do not, and
+// neither does a path that cannot be Lstat-ed at all.
+//
+// WHAT IT DOES NOT SEE. WalkRepo's file branch applies FOUR gates in order,
+// and this reproduces one of them:
+//
+//  1. shouldSkipFileByExt  — the indexed-extension filter (#1629). NOT here:
+//     IndexableEntryType(".../photo.png") is true and WalkRepo skips it.
+//  2. irregularSkipRule    — the entry-type gate (#6416). THIS IS THE ONE.
+//  3. igStack.MatchFile    — the file-level .gitignore/.grafelignore layer
+//     (#6931/#6933). NOT here: it needs the walk's inherited ignore stack,
+//     which is built by descending from the root and cannot be reconstructed
+//     from a single path.
+//  4. the sparse-checkout filter (#2181). NOT here: it needs opts.Sparse.
+//
+// A caller that needs "would WalkRepo index this path?" must not use this
+// function for that question — it answers a strictly weaker one, and the
+// difference is a superset, not a subset. Callers relying on the weaker answer
+// should say which of the other three gates their own input has already
+// excluded. The polling change-detector in internal/daemon/watch is the
+// current caller; see existsOnDisk for what it does and does not establish.
+//
+// WHY IT IS SHARED RATHER THAN REIMPLEMENTED (#6932 review, MA-1). That
+// consumer needs the entry-type gate specifically, and its first version
+// reimplemented it as os.Lstat().Mode().IsRegular() — which answers about the
+// LINK rather than its target. WalkRepo indexed a symlink-to-source with no
+// skip entry while the poller refused it as a candidate, so the index held a
+// file whose changes nothing could observe. Two predicates answering one
+// question is one too many; the agreement is now pinned over an enumerated
+// entry-type space by TestExistsOnDisk_AgreesWithWalker.
+//
+// It never opens the entry, so — like the gate it delegates to — it cannot
+// itself block on a FIFO.
+func IndexableEntryType(absPath string) bool {
+	fi, err := os.Lstat(absPath)
+	if err != nil {
+		return false
+	}
+	// A real directory never reaches WalkRepo's file branch at all — WalkDir
+	// sends it down the directory branch — so the file-branch rule has no
+	// verdict to give about one. irregularSkipRuleMode happens to return
+	// skip=true for it via its symlink-to-directory case, which is the right
+	// answer for the wrong reason: two independent decisions coinciding. Decide
+	// it here instead, so widening that branch cannot silently change what this
+	// function says about a plain directory.
+	if fi.IsDir() {
+		return false
+	}
+	_, skip := irregularSkipRuleMode(absPath, fi.Mode().Type())
+	return !skip
 }
 
 // irregularKind names the entry type for the skip report. The names are

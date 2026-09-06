@@ -787,6 +787,7 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 	// Captured by value here; the pointer below is the sole owner (issue #2406).
 	extractorCfg := extractor.ConfigFromEnv()
 
+	pollMode, pollInterval := daemonChangeDetection()
 	cfg := daemon.Config{
 		Layout:       layout,
 		Logger:       logger,
@@ -810,10 +811,15 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 		// #3353/#3354: linked-worktree discovery + working-tree watching.
 		// Only groups with track_worktrees or watchers enabled are returned;
 		// nil → discovery not started.
-		WorktreeParents:    daemonWorktreeParents,
-		SchedulerIndex:     daemonSchedulerIndex,
-		SchedulerLinks:     daemonSchedulerLinks,
-		SchedulerGroupAlgo: daemonSchedulerGroupAlgo,
+		WorktreeParents: daemonWorktreeParents,
+		// #6932 arm A: opt-in polling change detection. pollMode is true only
+		// when some registered group sets features.change_detection = "poll";
+		// "auto" is accepted and resolves to fsnotify until arm B.
+		ChangeDetectionPoll: pollMode,
+		ChangePollInterval:  pollInterval,
+		SchedulerIndex:      daemonSchedulerIndex,
+		SchedulerLinks:      daemonSchedulerLinks,
+		SchedulerGroupAlgo:  daemonSchedulerGroupAlgo,
 		// #5403: settled-group overlay-freshness sweep. The scheduler polls this
 		// on GRAFEL_OVERLAY_SWEEP_INTERVAL (default 10m; "0" disables) and re-arms
 		// a debounced + CPU-capped group-algo pass for each stale group.
@@ -1121,6 +1127,59 @@ func groupHasIndexedMember(group string) bool {
 		return false
 	}
 	return len(mt) > 0
+}
+
+// daemonChangeDetection resolves the daemon-wide change-detection mode from
+// the fleet (#6932 arm A). Polling is enabled when ANY registered group sets
+// features.change_detection = "poll"; the interval is the smallest one those
+// groups ask for.
+//
+// Daemon-wide, not per-group, for the reason recorded on
+// daemon.Config.ChangeDetectionPoll: there is one Watcher for the whole
+// daemon, and the inotify pool the mode exists to protect is per-UID and
+// host-level — it is not partitioned by group either.
+//
+// "auto" is accepted, normalised and IGNORED here. GroupConfig.PollingEnabled
+// is the single place that decides what runs today, so arm B's budget probe
+// changes that function and nothing else.
+func daemonChangeDetection() (bool, time.Duration) {
+	groups, err := registry.Groups()
+	if err != nil {
+		return false, 0
+	}
+	cfgs := make([]*registry.GroupConfig, 0, len(groups))
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		cfgs = append(cfgs, cfg)
+	}
+	return resolveChangeDetection(cfgs)
+}
+
+// resolveChangeDetection is the decision daemonChangeDetection loads for: poll
+// mode is on when ANY group asks for it, and the interval is the SMALLEST any
+// asking group requested.
+//
+// Smallest, not largest or first: the interval is a staleness bound, so
+// honouring the tightest request satisfies every group at once, and the cost of
+// doing so is the ~0.2%-of-a-core-per-worktree figure in #6932's table rather
+// than anything a user would notice. Split out from the fleet load so the rule
+// is graded on its own, without a registry on disk.
+func resolveChangeDetection(cfgs []*registry.GroupConfig) (bool, time.Duration) {
+	poll := false
+	var interval time.Duration
+	for _, cfg := range cfgs {
+		if cfg == nil || !cfg.PollingEnabled() {
+			continue
+		}
+		poll = true
+		if iv := cfg.ChangePollInterval(); interval == 0 || iv < interval {
+			interval = iv
+		}
+	}
+	return poll, interval
 }
 
 // daemonWorktreeParents returns the registered repos whose group opts into
