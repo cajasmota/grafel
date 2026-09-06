@@ -1,0 +1,21 @@
+# A Kubernetes Deployment. It carries none of the ansible presence markers.
+#
+# The gate is a literal SUBSTRING match over whole file content, comments
+# included, so this header deliberately does not list which markers are absent
+# - writing them down is what would admit the file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront-api
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: storefront-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/storefront/api:1.4.0
+          command:
+            - /usr/local/bin/api

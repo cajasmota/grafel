@@ -10,6 +10,55 @@ frameworks:
       - ansible
       - ansible-inventory
       - ansible-doc
+    # Presence signals for the requires_framework gate on the shorthand-module
+    # rule below (#6927). Literal substrings, matched against whole file
+    # content by compiledRuleSet.frameworkPresent. Note `config_files:
+    # ansible.cfg` above is NOT this signal — Detect is handed one file's
+    # content and cannot see a sibling.
+    #
+    # Measured over 992 real .yml/.yaml files: 309 ansible-shaped (4 upstream
+    # ansible repos — ansible-examples, ansible-for-devops, geerlingguy's
+    # docker and nginx roles) and 683 not (59 upstream repos in
+    # archigraph-corpora). Each of these seven markers matches ZERO of the 683
+    # on its own; the union takes the shorthand-module rule from 59 matches in
+    # 43 non-ansible files to 0 in 0, while keeping 128 of its 156
+    # in-framework matches.
+    #
+    # The 28 in-framework matches the gate declines, named rather than
+    # rounded away, because 15 of them are the gate WORKING:
+    #
+    #   * 15 are one file — ansible-for-devops's kube-flannel-vagrant.yml, a
+    #     Kubernetes manifest that happens to live in an ansible repo. Its
+    #     `template:` keys are k8s pod templates, not ansible modules, and
+    #     declining them is correct.
+    #   * 13 in 11 files are real losses, and they have one shape: a tiny
+    #     `roles/*/handlers/main.yml` holding `- name: restart apache` and
+    #     `service:` with `state: restarted`, which carries none of these
+    #     seven. `notify:` and `handlers:` would recover them but each admits
+    #     two non-ansible files, so the trade was declined; a later arm with a
+    #     bigger corpus should re-measure it.
+    #
+    # Blind spots. Zero-of-683 is a measurement, not a proof:
+    #
+    #   * `state: present` is a module ARGUMENT idiom, not an ansible-only
+    #     token. Any YAML declaring desired state can write it.
+    #   * `ansible_` is measured on repos that predate collections, which is
+    #     also why `ansible.builtin.` — the canonical FQCN prefix and the most
+    #     obviously correct marker here — is load-bearing for only 6 corpus
+    #     files and costs nothing to drop on THIS corpus. It is kept because
+    #     the corpus is old, not because the corpus grades it. Deleting it
+    #     alone is DEAD at the engine suite (one minimal task file per marker)
+    #     AND at the fixture gate, where a role handlers/main.yml carries it as
+    #     its ONLY marker and loses its Module without it — which is the input
+    #     shape #6945 had to be told its fixture was missing.
+    import_markers:
+      - "ansible.builtin."
+      - "become:"
+      - "gather_facts"
+      - "ansible_"
+      - "with_items:"
+      - ".j2"
+      - "state: present"
   version_signal: ansible.version (in playbooks or ansible --version output)
   notes: >-
     Ansible Core is the open-source orchestration engine. Detected by ansible.cfg
@@ -63,16 +112,90 @@ source_patterns:
     entity_type: Component
     name_group: 1
     scope: file
-  # Ansible module usage (e.g., ansible.builtin.copy:)
-  - pattern: "\\s+(\\w+\\.\\w+\\.\\w+):\\s*$"
+  # Ansible module usage by fully-qualified collection name
+  # (e.g. ansible.builtin.copy:).
+  #
+  # `(?m)` (#6927). This pattern carries NO `^`, so start-of-text was never
+  # its problem — `$` was. detector.go:156 compiles with plain
+  # regexp.Compile, where Go's `$` means end of TEXT and, unlike Perl, does
+  # not even allow a trailing newline before it. So this rule could fire only
+  # on a file whose LAST construct is a bare module key with no arguments
+  # under it, which no real task file is. Measured: ZERO matches across 992
+  # real YAML files, in ansible repos and outside them alike.
+  #
+  # What `$` BECOMES is the point, and here it becomes exactly right. Under
+  # `(?m)` it is end-of-LINE, so the rule reads "an FQCN key with nothing
+  # after the colon" — which is precisely the block form, a module whose
+  # arguments are the indented mapping below it. The rule still means what its
+  # name says; it just stops requiring that the module be the last thing in
+  # the file. Measured after: 22 matches in 9 files.
+  #
+  # `requires_framework: true`, even though this pattern measured ZERO matches
+  # in all 683 non-ansible files ungated. The three-segment dotted shape looks
+  # like a framework signal — a collection FQCN — but it is not one: a dotted
+  # key alone on its line is written by traefik labels in map form
+  # (`traefik.http.routers:`), by java-style `com.example.app:` config keys
+  # and by k8s annotation maps. Zero-of-683 is a measurement, not a proof, and
+  # the gate costs literally nothing here — all 9 in-framework files and all
+  # 22 matches survive it, checked file by file rather than in aggregate. A
+  # fence that is free is not worth declining on the strength of one corpus.
+  #
+  # So this rule has TWO fences and they are graded separately: the `$`, by an
+  # INLINE `ansible.builtin.debug: msg=hi` inside a file that SATISFIES the
+  # gate (dropping `\s*$` mints a Module for it), and the gate, by a
+  # `traefik.http.routers:` map key in a compose file that names ansible
+  # nowhere.
+  #
+  # Blind spot, unchanged by this fix: the INLINE `key=value` module form is
+  # invisible to this rule, before and after. That is a pre-existing recall
+  # gap, not something `(?m)` widened, and it is the same gap the `$` row pins
+  # shut from the other side.
+  - pattern: "(?m)\\s+(\\w+\\.\\w+\\.\\w+):\\s*$"
     entity_type: Module
     name_group: 1
     scope: file
-  # Built-in module shorthand (e.g., copy:, template:, service:)
-  - pattern: "^\\s+(apt|yum|dnf|pip|copy|template|file|service|systemd|command|shell|debug|set_fact|include_tasks|include_role|import_tasks|import_role):\\s*$"
+    requires_framework: true
+  # Built-in module shorthand (e.g. copy:, template:, service:).
+  #
+  # `(?m)` (#6927). Under start-of-text this could never fire at all: it needs
+  # `^` AND `$` at once, i.e. a file whose entire content is one indented key.
+  # Measured: ZERO matches across 992 real YAML files.
+  #
+  # `$` becomes end-of-line, which is right for the same reason as the FQCN
+  # rule above — block form, arguments in the mapping below. `^` becomes
+  # start-of-line, which is what makes the rule readable at all: the key must
+  # OPEN its line.
+  #
+  # `requires_framework: true` (#6927), because unlike the FQCN rule this one
+  # has no framework signal in its regex — `copy`, `template`, `file`,
+  # `service`, `command` and `debug` are ordinary English words that ordinary
+  # YAML uses as keys, and dormantBucketAliases maps the `ansible` bucket onto
+  # the whole `yaml` language, so every file in every repo is offered to it.
+  # Measured ungated on the 683 non-ansible files: 59 matches in 43 files,
+  # dominated by `template:` (41) from argocd ApplicationSets, helm chart
+  # templates and k8s PodTemplateSpecs, plus `service:` (7) from helm values,
+  # `file:` (5), `command:` (3) and `debug:` (3). Under the marker gate: 0 of
+  # 683, with 128 of the 156 in-framework matches kept. Same shape and same
+  # remedy as #6152's falcon/cherrypy gate and #6945's `^\s+- name:` gate.
+  #
+  # The two fences are graded separately: the gate holds a k8s Deployment
+  # whose `template:` is at the right indentation and would otherwise match,
+  # and the ANCHOR is held inside a file that satisfies the gate — an inline
+  # `copy: src=a dest=b`, which `\s*$` must decline. Naming the killing
+  # mutant, as #6945's job rule does: dropping `\s*$` mints a Module called
+  # `copy` for that inline task, which is a forbidden row in
+  # ansible-playbook-modules-mini.
+  #
+  # Blind spot: the alternation is a hand-written list of 18 names, so a
+  # shorthand module outside it (`user:`, `lineinfile:`, `git:`, `uri:`) is
+  # not seen. That is unchanged by this fix, and it is why the list itself is
+  # pinned as an exact set rather than by membership — a rule that grows a
+  # generic `(\w+)` there would type every block-form key in every gated file.
+  - pattern: "(?m)^\\s+(apt|yum|dnf|pip|copy|template|file|service|systemd|command|shell|debug|set_fact|include_tasks|include_role|import_tasks|import_role):\\s*$"
     entity_type: Module
     name_group: 1
     scope: file
+    requires_framework: true
   # handlers: section trigger
   - pattern: "notify:\\s+[\"']?([^\"'\\n]+)"
     entity_type: Operation

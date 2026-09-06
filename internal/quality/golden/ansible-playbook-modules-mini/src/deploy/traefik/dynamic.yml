@@ -1,0 +1,9 @@
+# Traefik file-provider dynamic configuration. Middleware names are
+# user-chosen, so a dotted one is legal - and it has exactly the shape the
+# ansible FQCN module rule keys on. It carries none of the ansible presence
+# markers, and as in deploy/k8s/deployment.yaml this header does not name them.
+http:
+  middlewares:
+    storefront.rate.limiter:
+      rateLimit:
+        average: 100

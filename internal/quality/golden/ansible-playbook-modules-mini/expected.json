@@ -1,0 +1,125 @@
+{
+  "fixture_name": "ansible-playbook-modules-mini",
+  "language": "ansible",
+  "description": "Ansible Core rule patterns (#6927, the `$`-side arm). Two module rules in rules/ansible/frameworks/ansible_core.yaml were compiled without `(?m)`. Both carry a `$`, and in Go `$` without `(?m)` is end of TEXT with no trailing-newline allowance, so the FQCN rule needed the file to END with a bare module key and the shorthand rule needed `^` AND `$` at once — a file whose entire content is one indented key. Measured across 992 real YAML files (59 upstream repos plus 4 upstream ansible repos): ZERO matches for either, inside ansible repos and outside them alike. Under `(?m)` the `$` becomes end of LINE, which is exactly the block form — a module key with its arguments in the mapping below it — so both rules finally mean what their names say. The shorthand rule is plain English (`copy`, `template`, `file`, `service`, `command`) and the ansible bucket is aliased onto the whole `yaml` language, so it needed a framework gate: 59 matches in 43 non-ansible files ungated, 0 gated. The FQCN rule measured zero over-fire but is gated too, because the gate costs nothing here and a dotted map key is not ansible-only. The fixture separates the ANCHOR/`$` axis (inline forms and a commented-out module, inside files that satisfy the gate) from the GATE axis (a k8s manifest and a traefik config that name ansible nowhere), and grades the shorthand rule's NAME axis separately from both."
+  ,
+  "expected_entities": [
+    {
+      "name": "ansible.builtin.apt",
+      "kind": "Module",
+      "source_file": "provisioning/roles/storefront/tasks/main.yml",
+      "must_exist": true,
+      "note": "#6927 recall arm for `(?m)\\s+(\\w+\\.\\w+\\.\\w+):\\s*$`. First module in the file — under end-of-TEXT only a module that is the LAST construct in the file could ever match, so a first-in-file row is the shape the old pattern was furthest from reaching."
+    },
+    {
+      "name": "community.docker.docker_container",
+      "kind": "Module",
+      "source_file": "provisioning/roles/storefront/tasks/main.yml",
+      "must_exist": true,
+      "note": "Same rule, LAST module in the file (the vertical axis) and a NON-builtin collection, so `ansible.builtin.` cannot be what the rule is really keying on."
+    },
+    {
+      "name": "ansible.builtin.service",
+      "kind": "Module",
+      "source_file": "provisioning/roles/storefront/handlers/main.yml",
+      "must_exist": true,
+      "note": "Same rule in a SECOND file — a role handlers/main.yml — so one file's layout is not what carries the FQCN rule's rows."
+    },
+    {
+      "name": "template",
+      "kind": "Module",
+      "source_file": "provisioning/roles/storefront/tasks/main.yml",
+      "must_exist": true,
+      "note": "#6927 recall arm for the shorthand rule `(?m)^\\s+(apt|yum|...|import_role):\\s*$`, which could not fire AT ALL before: it needs `^` and `$` simultaneously. `template` is also the single most common over-fire word for this rule outside ansible — 41 of its 59 non-ansible corpus matches — which is why deploy/k8s/deployment.yaml carries a k8s `template:` in exactly the matching shape and is held by the gate."
+    },
+    {
+      "name": "service",
+      "kind": "Module",
+      "source_file": "provisioning/roles/storefront/tasks/main.yml",
+      "must_exist": true,
+      "note": "Same rule, a different alternation entry and a later position in the file."
+    },
+    {
+      "name": "Install nginx",
+      "kind": "Task",
+      "source_file": "provisioning/roles/storefront/tasks/main.yml",
+      "must_exist": true,
+      "note": "CONTROL, held constant. `-\\s+name:\\s+[\\\"']?([^\\\"'\\n]+)` carries no anchor and no gate, so it was green before this change and must stay green."
+    },
+    {
+      "name": "restart nginx",
+      "kind": "Operation",
+      "source_file": "provisioning/roles/storefront/tasks/main.yml",
+      "must_exist": true,
+      "note": "Second CONTROL on a second un-anchored rule (`notify:\\s+[\\\"']?([^\\\"'\\n]+)`), untouched by this change and the source endpoint of the edge asserted below."
+    }
+  ],
+  "forbidden_entities": [
+    {
+      "name": "copy",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, `$` direction for the shorthand rule, INSIDE a file that satisfies the framework gate — so this row is held by the anchor alone and is distinguishable from the gate rows below. The task writes the deprecated inline form `copy: src=... dest=...`; `\\s*$` is what declines it. Named in the rule comment as its own killing mutant: dropping `\\s*$` mints a Module called `copy`."
+    },
+    {
+      "name": "systemd",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, `^` direction for the shorthand rule — a separate half of the same anchor, in the same gate-satisfying file. A commented-out module block (`# - systemd:`) puts the key on a line it does not OPEN; without `^` the rule's own `\\s+` reaches it through the comment marker and mints a Module for code that is switched off."
+    },
+    {
+      "name": "lineinfile",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, NAME direction for the shorthand rule, again inside the gate-satisfying file, so the name axis is graded independently of both the anchor and the gate (#6943's lesson: a fixture that pins one axis does not pin its neighbour). The alternation is a hand-written list of 18 module names; `lineinfile` is a real ansible module that is deliberately NOT in it. Replacing the alternation with `(\\w+)` mints this row — and would type every block-form key in every gated file."
+    },
+    {
+      "name": "ansible.builtin.debug",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, `$` direction for the FQCN rule, the second of the two rules this arm widens. `ansible.builtin.debug: msg=...` is the inline form; end-of-line is the whole of what declines it. That rule has no `^` at all, so `$` is its only anchor and this is the only row that grades it."
+    },
+    {
+      "name": "nginx.conf",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, NAME direction for the FQCN rule. `\\w+\\.\\w+\\.\\w+` is exactly three dotted segments because that is what a collection FQCN is; a two-segment key is a variable name, and `set_fact` sets one called `nginx.conf` in block form. Loosening the third segment to `(?:\\.\\w+)?` mints it. Inside the gate-satisfying file, so this is about the shape and not the gate."
+    },
+    {
+      "name": "command",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction for the shorthand rule. deploy/k8s/deployment.yaml is a Kubernetes Deployment carrying a block-form `command:` (and a `template:`) at matching indentation and naming ansible nowhere; `requires_framework: true` is the only thing declining it. `command` rather than `template` because forbidden rows are matched by name and kind globally, and `template` is a must-have from the tasks file — a forbidden row that collides with an expected one is unfireable, which is the #6938 shape this issue asks each row to be checked against."
+    },
+    {
+      "name": "storefront.rate.limiter",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction for the FQCN rule — the rule whose over-fire measured ZERO across 683 non-ansible files, which is why it is gated on a named blind spot rather than on a count. A traefik file-provider config names its middlewares, dots are legal in a middleware name, and a dotted key in block form is indistinguishable from a collection FQCN by shape alone. This file is constructed, not sampled: the corpus contained no such key, which is exactly why zero-of-683 was treated as a measurement and not a proof."
+    }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "Install nginx",
+      "from_kind": "Task",
+      "from_file": "provisioning/roles/storefront/tasks/main.yml",
+      "kind": "CALLS",
+      "to_name": "restart nginx",
+      "to_kind": "Operation",
+      "to_file": "provisioning/roles/storefront/tasks/main.yml",
+      "must_exist": true,
+      "note": "The notify-triggers-handler edge. Its rule is un-anchored and untouched here, so it is a CONTROL — but a load-bearing one: the notify sits on the FIRST task on purpose, because `name:\\s+([^\\n]+)[\\s\\S]*?notify:` takes the first `name:` in the file as its source endpoint regardless of which task the notify belongs to. Putting it anywhere else would have asserted an edge that is right by accident."
+    },
+    {
+      "from_name": "deployment.yaml",
+      "from_kind": "SCOPE.Document",
+      "from_file": "deploy/k8s/deployment.yaml",
+      "kind": "CONTAINS",
+      "to_name": "storefront-api",
+      "to_kind": "SCOPE.Service",
+      "to_file": "deploy/k8s/deployment.yaml",
+      "must_exist": true,
+      "note": "CONTROL on a second producer path — the structured YAML extractor in internal/extractors/yaml — and deliberately in the file the framework gate DECLINES, so it also witnesses that the gate suppresses the ansible rules for that file without suppressing the file itself."
+    }
+  ]
+}

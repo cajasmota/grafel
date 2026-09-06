@@ -1,0 +1,18 @@
+# A GitHub Actions release workflow. Stored at ci/ rather than .github/ because
+# the walker skips .github outright (#6946).
+#
+# It declares no compose service block anywhere, so the compose service rule's
+# framework gate declines this file. The gate is a literal SUBSTRING match over
+# the whole file, comments included, so this header deliberately does not spell
+# the marker out - a comment saying "no such key here" would itself be the key.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  deploy:
+    environment:
+      name: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4

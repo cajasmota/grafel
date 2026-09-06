@@ -1,0 +1,46 @@
+---
+# Role tasks for the storefront web tier.
+#
+# Every module below is written in BLOCK form (key alone on its line, arguments
+# in the mapping under it) except where a row deliberately grades the inline
+# form, which the rules must decline.
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+  notify: restart nginx
+
+- name: Render the site config
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+
+- name: Drop the maintenance page
+  copy: src=maintenance.html dest=/var/www/maintenance.html
+
+# - systemd:
+#     name: nginx
+#     state: reloaded
+
+- name: Report the rendered path
+  ansible.builtin.debug: msg=/etc/nginx/nginx.conf
+
+- name: Ensure the vhost include
+  lineinfile:
+    path: /etc/nginx/nginx.conf
+    line: include conf.d/*.conf
+
+- name: Tune worker counts
+  ansible.builtin.set_fact:
+    nginx.conf:
+      worker_processes: 4
+
+- name: Keep nginx running
+  service:
+    name: nginx
+    state: started
+
+- name: Publish the edge container
+  community.docker.docker_container:
+    name: storefront-edge
+    image: ghcr.io/storefront/api:1.4.0
