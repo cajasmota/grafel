@@ -21,6 +21,16 @@ import (
 // few cases, and asserts the walked set EXACTLY (set equality, not "contains"),
 // so over-exclusion is graded as loudly as under-exclusion (#6902).
 //
+// TWO AXES ARE KNOWINGLY UNGRADED, and the claim is bounded accordingly: the
+// nested-.gitignore rows below use BARE-NAME patterns only. nested x anchored
+// (`/x.go`) and nested x slash-bearing glob (`sub/x.go`) cannot be graded here
+// because IgnoreFile.Dir is dead — filepath.Rel(d, filepath.Join(d, rel)) is
+// rel for every input, so a nested file's patterns are matched against the
+// ROOT-relative path and no anchored nested rule fires at all. That is a
+// pre-existing UNDER-exclusion, filed as #6936; fixing it would change
+// MatchDir too, which is exactly the directory behaviour this change is
+// careful not to touch.
+//
 // VARIED, one axis per row:
 //   - pattern form: bare name, rooted `/name`, glob, negation `!`,
 //     trailing-slash dir-only
@@ -47,6 +57,45 @@ func writeIgnoreFixtureFile(t *testing.T, root, p, content string) {
 	}
 }
 
+// hermeticGitEnv gives the calling test its own HOME, its own XDG config root
+// and its own (empty) global + system git config, and returns the fake home.
+//
+// It is not hygiene, it is correctness for THIS feature. #6922 makes WalkRepo's
+// output a function of `core.excludesFile`, which git resolves from the
+// developer's own global config, and of $XDG_CONFIG_HOME/git/ignore when that
+// key is unset. Without this, two failures land on contributors and on nobody
+// here:
+//
+//   - a machine with core.excludesFile set (the spelling git's own docs
+//     recommend) makes the unset-key row of the fallback test unreachable, so
+//     the test is RED there and green here;
+//   - a machine with `*.go` in its global ignore file makes the fixtures' own
+//     `git add` skip the seed files, so `git commit` fails with "nothing to
+//     commit" and the test dies before it tests anything.
+//
+// Both were found by scoring an environment mutant, not by reading the code.
+func hermeticGitEnv(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	// UserHomeDir reads $HOME on unix and %USERPROFILE% on Windows; expandTilde
+	// goes through it, so both must be pinned or the tilde row is platform-lucky.
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	// Empty files, not os.DevNull: git accepts a missing path here, but a real
+	// empty file is the same on every platform and cannot be a device special.
+	for _, kv := range [][2]string{
+		{"GIT_CONFIG_GLOBAL", filepath.Join(home, "gitconfig")},
+		{"GIT_CONFIG_SYSTEM", filepath.Join(home, "gitsystem")},
+	} {
+		if err := os.WriteFile(kv[1], nil, 0o644); err != nil {
+			t.Fatalf("write %s: %v", kv[1], err)
+		}
+		t.Setenv(kv[0], kv[1])
+	}
+	return home
+}
+
 func mustGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
@@ -63,6 +112,7 @@ func ignoreSourceFixture(t *testing.T) (string, []string) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
+	home := hermeticGitEnv(t)
 	root := t.TempDir()
 	mustGit(t, root, "init", "-q")
 
@@ -90,13 +140,20 @@ func ignoreSourceFixture(t *testing.T) (string, []string) {
 	}, "\n")+"\n")
 
 	// ---- source 4: core.excludesFile (#6922) ---------------------------
-	// Set at the LOCAL config level so the test never reads or writes the
-	// developer's real global git config.
-	globalIgnore := filepath.Join(t.TempDir(), "global_ignore")
-	if err := os.WriteFile(globalIgnore, []byte("excluded_by_global.go\nprec_b.go\n"), 0o644); err != nil {
+	// Written under the FAKE home and configured as `~/global_ignore`, not as
+	// an absolute path. That spelling is the one git's own documentation uses
+	// (`core.excludesFile = ~/.gitignore_global`), and it is what drives
+	// expandTilde END TO END: with an absolute value here, deleting the
+	// expandTilde CALL in globalExcludesPath leaves the whole package green
+	// while a real user's entire global ignore layer silently no-ops. The
+	// helper having its own unit test does not pin the call site.
+	//
+	// Set at the LOCAL config level, on top of the hermetic global/system
+	// config, so the test neither reads nor writes the developer's real one.
+	if err := os.WriteFile(filepath.Join(home, "global_ignore"), []byte("excluded_by_global.go\nprec_b.go\n"), 0o644); err != nil {
 		t.Fatalf("write global ignore: %v", err)
 	}
-	mustGit(t, root, "config", "core.excludesFile", globalIgnore)
+	mustGit(t, root, "config", "core.excludesFile", "~/global_ignore")
 
 	// ---- the tree ------------------------------------------------------
 	for _, p := range []string{
@@ -235,6 +292,7 @@ func TestInfoExcludeIsSharedWithLinkedWorktrees_6922(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
+	hermeticGitEnv(t)
 	main := t.TempDir()
 	mustGit(t, main, "init", "-q")
 	mustGit(t, main, "config", "user.email", "t@example.com")
@@ -277,6 +335,7 @@ func TestExcludeSourcesAreNotAppliedBelowTopLevel_6922(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
+	hermeticGitEnv(t)
 	top := t.TempDir()
 	mustGit(t, top, "init", "-q")
 	writeIgnoreFixtureFile(t, top, ".git/info/exclude", "excluded_by_info.go\n")
@@ -313,11 +372,11 @@ func TestGlobalExcludesPath_ConfigThenXDGFallback_6922(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
+	hermeticGitEnv(t)
 	repo := t.TempDir()
 	mustGit(t, repo, "init", "-q")
 
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
+	xdg := os.Getenv("XDG_CONFIG_HOME") // pinned by hermeticGitEnv
 
 	if got, want := globalExcludesPath(repo), filepath.Join(xdg, "git", "ignore"); got != want {
 		t.Errorf("unset core.excludesFile: got %q, want the XDG fallback %q", got, want)
@@ -334,10 +393,7 @@ func TestGlobalExcludesPath_ConfigThenXDGFallback_6922(t *testing.T) {
 // core.excludesFile. Without it a configured `~/.gitignore_global` is opened
 // as a literal directory named "~" and the whole layer silently no-ops.
 func TestExpandTilde_6922(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("no home dir")
-	}
+	home := hermeticGitEnv(t)
 	if got, want := expandTilde("~/ig"), filepath.Join(home, "ig"); got != want {
 		t.Errorf("expandTilde(~/ig) = %q, want %q", got, want)
 	}

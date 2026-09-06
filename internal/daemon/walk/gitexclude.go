@@ -29,25 +29,15 @@ const (
 )
 
 // gitExcludeIgnoreFiles returns the non-.gitignore ignore sources for the repo
-// containing root, ordered LOWEST precedence first — core.excludesFile, then
-// .git/info/exclude — so a caller can Push them onto an IgnoreStack before the
-// tree's own .gitignore files, which must outrank both.
-//
-// Entries that do not exist, are empty, or contain no patterns are omitted, so
-// a non-git directory yields nil and costs two bounded git calls.
-//
-// Patterns in both files are anchored at the git TOP-LEVEL. When root is a
-// subdirectory of the top-level (a monorepo registered by package root) the
-// patterns are rewritten relative to root by the same helper that handles
-// inherited .grafelignore files, so an anchored `/build` in info/exclude does
-// not silently become "anything named build" under the child root.
-// gitExcludeIgnoreFiles returns the non-.gitignore ignore sources for the repo
 // at root, ordered LOWEST precedence first — core.excludesFile, then
 // .git/info/exclude — so a caller can Push them onto an IgnoreStack before the
 // tree's own .gitignore files, which must outrank both.
 //
-// Entries that do not exist, are empty, or contain no patterns are omitted, so
-// a non-git directory yields nil and costs one bounded git call.
+// Entries that do not exist, are empty, or contain no patterns are omitted. The
+// cost is at most THREE bounded git calls per WalkRepo — `rev-parse
+// --show-toplevel`, `config --get core.excludesFile`, `rev-parse
+// --git-common-dir` — all outside the WalkDir callback, so it is per walk and
+// not per entry. A non-git directory yields nil after the first.
 //
 // SCOPE, deliberately: patterns in both files are anchored at the git
 // TOP-LEVEL, so they are applied ONLY when root IS the top-level. A walk rooted

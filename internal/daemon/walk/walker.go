@@ -150,6 +150,32 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 			return nil
 		}
 
+		// Pop the nested ignore files of every directory this entry is no
+		// longer inside.
+		//
+		// This runs for BOTH entry kinds, and that is the whole point (#6931).
+		// It used to live inside the d.IsDir() branch, which is correct only
+		// while the stack decides directories: filepath.WalkDir is lexical DFS,
+		// so after a subtree finishes, every FILE visited before the next
+		// DIRECTORY entry still saw that subtree's .gitignore on the stack.
+		// Harmless while nothing asked it about files — a directory entry pops
+		// first — and an over-exclusion the moment the file branch asks. A
+		// `pkg/sub/.gitignore` holding `victim.go` deleted `pkg/victim.go` and
+		// the repo-root `victim.go`, neither of which git considers ignored,
+		// because "sub" sorts before "victim.go" and no directory intervened.
+		for len(depthEntries) > 0 {
+			top := depthEntries[len(depthEntries)-1]
+			// If the current path is NOT under the tracked dir, pop.
+			if !strings.HasPrefix(absPath+string(filepath.Separator), top.absDir+string(filepath.Separator)) {
+				for i := 0; i < top.count; i++ {
+					igStack.Pop()
+				}
+				depthEntries = depthEntries[:len(depthEntries)-1]
+			} else {
+				break
+			}
+		}
+
 		if d.IsDir() {
 			base := d.Name()
 
@@ -181,20 +207,6 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 					}
 					skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: "dir-cap"})
 					return filepath.SkipDir
-				}
-			}
-
-			// Pop entries for directories we've left.
-			for len(depthEntries) > 0 {
-				top := depthEntries[len(depthEntries)-1]
-				// If the current path is NOT under the tracked dir, pop.
-				if !strings.HasPrefix(absPath+string(filepath.Separator), top.absDir+string(filepath.Separator)) {
-					for i := 0; i < top.count; i++ {
-						igStack.Pop()
-					}
-					depthEntries = depthEntries[:len(depthEntries)-1]
-				} else {
-					break
 				}
 			}
 
