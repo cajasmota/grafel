@@ -193,6 +193,13 @@ func rel6917Kinds(rs []types.RelationshipRecord) []string {
 // nowhere else. There is deliberately no real route in this file: a decoy file
 // that also contains a genuine construct cannot distinguish "the decoy was
 // rejected" from "the real one was accepted".
+//
+// EVERY receiver-prefixed form this file's comments enumerate must actually
+// APPEAR in it. `server.error 500 do` was named in prose and missing from the
+// source, and that gap was a live hole: a mutant relaxing the error rule's
+// anchor to `^\s*[\w.]*` minted a `Middleware "500"` while keeping recall at
+// 13/13 and forbidden hits at 0, so nothing but the ratchet's aggregate
+// entity ceiling could see it (PR #6926 review, M7).
 const sinatraDecoys = `require 'sinatra/base'
 
 class Decoys
@@ -214,6 +221,10 @@ class Decoys
     server.configure :production do
       server.before do
         server.after do
+          server.error 500 do
+            nil
+          end
+        end
       end
     end
   end
@@ -260,6 +271,10 @@ func TestIssue6917_MultilinePatternsDoNotOverFire(t *testing.T) {
 	for _, known := range []struct{ kind, name string }{
 		{"Route", "/from-a-heredoc"},
 		{"Config", "from_a_heredoc"},
+		// The heredoc's `helpers do` line mints a Service too. It was the one
+		// YAML-minted heredoc entity the pin did not cover, because the sweeps
+		// below covered Route and Middleware but not Service.
+		{"Service", "helpers do"},
 	} {
 		if !has6917Entity(res, known.kind, known.name) {
 			t.Errorf("heredoc over-firing is no longer happening for %s %q — good news; "+
@@ -276,12 +291,65 @@ func TestIssue6917_MultilinePatternsDoNotOverFire(t *testing.T) {
 	}
 	for _, name := range entity6917Names(res, "Middleware") {
 		t.Errorf("over-fired: Middleware %q extracted from a decoy file whose only "+
-			"before/after text is `server.before do` on another receiver", name)
+			"before/after/error text is `server.before do`, `server.after do` and "+
+			"`server.error 500 do` — all on another receiver", name)
 	}
 	for _, name := range entity6917Names(res, "Route") {
 		if name == "/from-a-heredoc" {
 			continue // the pinned heredoc limitation above
 		}
 		t.Errorf("over-fired: Route %q extracted from a decoy file with no routes", name)
+	}
+	// Service is swept like Route and Middleware. Without this the heredoc's
+	// `helpers do` was unpinned and `server.helpers <X>` was graded only by the
+	// two named rows above — a blanket sweep is what catches the form nobody
+	// thought to name.
+	for _, name := range entity6917Names(res, "Service") {
+		if name == "helpers do" {
+			continue // the pinned heredoc limitation above
+		}
+		t.Errorf("over-fired: Service %q extracted from a decoy file with no helpers", name)
+	}
+}
+
+// sinatraReceiverOnlyDecoys isolates the receiver-prefixed forms from the
+// heredoc, and exists because a false entity can hide by DEDUPING against a
+// name something legitimate also produced.
+//
+// `server.helpers do` matches as `helpers do` under `name_group: 0` — the
+// identical name the heredoc's own `helpers do` line yields — and
+// detector.go's `entityType:name:file` dedupe collapses the two. So inside
+// sinatraDecoys a rule that dropped the `^` from the helpers-block pattern
+// emitted a false Service and changed NOTHING observable: same name, same
+// kind, same file (PR #6926 review, M6). Removing the neighbour that supplies
+// the collision is the whole point of the second file.
+const sinatraReceiverOnlyDecoys = `require 'sinatra/base'
+
+class Builder
+  def run(server)
+    server.helpers do
+      server.get '/nope' do
+        server.configure :nope do
+        end
+      end
+    end
+  end
+end
+`
+
+// TestIssue6917_ReceiverPrefixedCallsAreNotSinatraDSL sweeps EVERY entity kind
+// sinatra.yaml can mint, against a file that declares none of them. It is the
+// blanket form of the forbidden arm: the named rows in
+// TestIssue6917_MultilinePatternsDoNotOverFire grade the forms somebody thought
+// to name, and this grades the ones nobody did.
+func TestIssue6917_ReceiverPrefixedCallsAreNotSinatraDSL(t *testing.T) {
+	res := detect6917Ruby(t, "app/builder.rb", sinatraReceiverOnlyDecoys)
+
+	for _, kind := range []string{"Route", "Middleware", "Config", "Service"} {
+		for _, name := range entity6917Names(res, kind) {
+			t.Errorf("over-fired: %s %q — every sinatra-shaped call in this file "+
+				"is prefixed with a `server.` receiver and none of them is a DSL "+
+				"invocation", kind, name)
+		}
 	}
 }
