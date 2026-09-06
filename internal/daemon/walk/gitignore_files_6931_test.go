@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // --- #6931 / #6922 -----------------------------------------------------------
@@ -76,14 +78,25 @@ func writeIgnoreFixtureFile(t *testing.T, root, p, content string) {
 // Both were found by scoring an environment mutant, not by reading the code.
 func hermeticGitEnv(t *testing.T) string {
 	t.Helper()
-	home := t.TempDir()
-	// UserHomeDir reads $HOME on unix and %USERPROFILE% on Windows; expandTilde
-	// goes through it, so both must be pinned or the tilde row is platform-lucky.
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	// Empty files, not os.DevNull: git accepts a missing path here, but a real
-	// empty file is the same on every platform and cannot be a device special.
+	// IsolateHome, not a hand-rolled t.Setenv("HOME", ...): redirecting HOME
+	// alone trips the #6735 sweep guard, and for a real reason — registry.HomeDir
+	// prefers GRAFEL_HOME and only falls back to the OS home, so a fixture that
+	// moves HOME while an ambient GRAFEL_HOME survives has the code under test
+	// reading a different directory than the fixture wrote to. IsolateHome sets
+	// HOME, USERPROFILE, GRAFEL_HOME, GRAFEL_DAEMON_ROOT and both XDG vars
+	// together, and asserts the redirect actually left the real user home.
+	//
+	// It matters here beyond hygiene: expandTilde resolves through
+	// os.UserHomeDir (HOME on unix, %USERPROFILE% on Windows), and the
+	// core.excludesFile fallback reads $XDG_CONFIG_HOME — both are fixture
+	// inputs, not incidental environment.
+	home := testsupport.IsolateHome(t)
+	// IsolateHome does NOT touch git's own config resolution, so these stay:
+	// they are what neutralises a hostile ~/.gitconfig (a global
+	// core.excludesFile, or a global ignore holding *.go that makes the
+	// fixtures' own `git add` skip the seed files). Empty files, not
+	// os.DevNull: git accepts a missing path here, but a real empty file is the
+	// same on every platform and cannot be a device special.
 	for _, kv := range [][2]string{
 		{"GIT_CONFIG_GLOBAL", filepath.Join(home, "gitconfig")},
 		{"GIT_CONFIG_SYSTEM", filepath.Join(home, "gitsystem")},
