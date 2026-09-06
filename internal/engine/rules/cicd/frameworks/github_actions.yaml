@@ -81,13 +81,26 @@ source_patterns:
     scope: file
 
 relationship_rules:
-  # Job needs another job
-  - pattern: "needs:\\s+\\[?([\\w-]+)"
-    source_type: Operation
-    target_type: Operation
-    relationship: CALLS
-    source_group: 1
-    target_group: 1
+  # REMOVED (#6809) — "Job needs another job":
+  #
+  #   pattern: "needs:\\s+\\[?([\\w-]+)"
+  #   source_type: Operation  target_type: Operation
+  #   source_group: 1  target_group: 1
+  #
+  # `needs: build` captures the DEPENDED-ON job, which is the target. The
+  # depending job is the enclosing YAML key two lines up, and the pattern never
+  # sees it — so naming group 1 for both endpoints emitted
+  # `Operation:build -[CALLS]-> Operation:build`, a literal self-loop for every
+  # `needs:` in every workflow.
+  #
+  # Not repaired by mirroring the `uses:` rule below. That rule's
+  # `(\\w[\\w-]*):[\\s\\S]*?` window is positional, not structural: with several
+  # jobs in one file the FIRST job key pairs with a LATER job's `needs:`, which
+  # is one false edge plus one missing edge (#6666), and a workflow with one
+  # `uses:` per job hides that while a `needs:` graph — where every job but the
+  # first has one — would not. It also drops all but the first entry of a
+  # `needs: [a, b, c]` list. Job dependency wants the YAML structure, not a
+  # regex window over it.
   # uses: reusable action
   - pattern: "(\\w[\\w-]*):[\\s\\S]*?uses:\\s+(\\S+)"
     source_type: Operation

@@ -186,6 +186,42 @@ func (d *Detector) compile() {
 				// green — the exact failure mode this feature exists to end.
 				// Reject it loudly instead. (source_group: 0 on its own is a
 				// separate defect, tracked in #6788, and is left alone here.)
+				// #6809: a rule that names the SAME capture group AND the same
+				// entity type for both endpoints cannot express a two-endpoint
+				// relation. extractGroup returns one string for both ends, so
+				// FromID and ToID are built from identical parts and EVERY edge
+				// the rule can ever emit is a literal self-loop — by
+				// construction, before any resolver is involved. Five rules
+				// wore this shape and emitted 13 such edges over the golden
+				// corpus alone.
+				//
+				// The two conditions are checked TOGETHER on purpose, and
+				// neither alone would be correct:
+				//
+				//   * same capture, DIFFERENT types is the deliberate
+				//     "one capture, two endpoint types" idiom — django's
+				//     `from <app>.models import X` is View -> Model on group 1.
+				//     Twelve loaded rules rely on it.
+				//   * same type, DIFFERENT captures is how genuine recursion
+				//     and task composition are written — celery's
+				//     `chain(a.s() | b.s())` is Task -> Task on groups 1 and 2.
+				//
+				// There is no opt-out. All five colliding rules were examined
+				// against real source (#6809 step 2) and none was deliberate —
+				// notably the SQLAlchemy ForeignKey rule, which could not have
+				// encoded a self-referential FK even if one were wanted: it
+				// reuses the REFERENCED table for both ends, so it reports a
+				// self-FK for every foreign key regardless of the declaring
+				// model. A silent exemption keyed on nothing would be worse
+				// than the defect; a rule that genuinely wants a self-edge must
+				// come with the case that justifies adding one.
+				if rr.SourceGroup == rr.TargetGroup && rr.SourceType == rr.TargetType {
+					log.Printf("engine: relationship_rule in %s names capture group %d and "+
+						"entity type %q for BOTH endpoints, so every edge it emits is "+
+						"FromID==ToID by construction — rule skipped (#6809): %q",
+						lang, rr.SourceGroup, rr.SourceType, rr.Pattern)
+					continue
+				}
 				if rr.Terminator != "" && (rr.SourceGroup == 0 || rr.TargetGroup == 0) {
 					log.Printf("engine: relationship_rule in %s declares terminator %q with "+
 						"source_group=%d target_group=%d; group 0 is the whole match, so the "+

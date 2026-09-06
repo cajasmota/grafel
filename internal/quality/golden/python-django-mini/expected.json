@@ -125,6 +125,10 @@
     { "from_name": "ActiveUserManager.get_queryset", "from_kind": "SCOPE.Operation", "from_file": "users/models.py",
       "kind": "CALLS", "to_name": "ActiveUserManager.by_email", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
       "must_exist": false,
-      "note": "Reverse-direction false positive guard." }
+      "note": "Reverse-direction false positive guard." },
+    { "from_name": "User", "from_kind": "Model", "from_file": "users/models.py",
+      "kind": "DEPENDS_ON", "to_name": "User", "to_kind": "Model", "to_file": "users/models.py",
+      "must_exist": false,
+      "note": "#6809 — the Model User entity does not depend on itself. This row FIRED before the fix: sqlalchemy.yaml's `from <anything> import <Capitalised>` rule named capture group 1 and entity type Model for both endpoints, so `from users.models import User` in users/views.py, users/admin.py and users/signals.py each built `Model:User -> Model:User` literally at emission (detector.go), and one of them survived resolution into the persisted graph with both endpoints bound to the real Model entity. Unlike most forbidden rows this one needed no fixture work to become real — the fixture already emitted the edge." }
   ]
 }

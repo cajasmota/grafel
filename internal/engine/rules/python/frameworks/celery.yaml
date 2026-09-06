@@ -89,13 +89,26 @@ source_patterns:
 
 # relationship_rules: regex patterns that produce edges between entities.
 relationship_rules:
-  # Task calls another task via .delay() or .apply_async()
-  - pattern: "(\\w+)\\.(?:delay|apply_async)\\s*\\("
-    source_type: Task
-    target_type: Task
-    relationship: CALLS
-    source_group: 1
-    target_group: 1
+  # REMOVED (#6809) — "Task calls another task via .delay() / .apply_async()":
+  #
+  #   pattern: "(\\w+)\\.(?:delay|apply_async)\\s*\\("
+  #   source_type: Task  target_type: Task  source_group: 1  target_group: 1
+  #
+  # `send_email.delay(...)` captures the CALLEE, which is the target. The caller
+  # is the enclosing function, and the pattern never sees it — so naming group 1
+  # for both endpoints emitted `Task:send_email -[CALLS]-> Task:send_email` for
+  # every call site, a literal self-loop by construction rather than real
+  # recursion. #6808 deliberately exempts CALLS from its self-loop drop because
+  # a self-CALLS edge is usually genuine recursion worth keeping; that exemption
+  # is exactly what let this rule's output through, and widening it would have
+  # deleted real recursion to catch a rule-authoring defect.
+  #
+  # Not repaired here: recovering the caller needs containment (which `def` body
+  # is this call in), and an `[\\s\\S]*?` window from a `def` header to a
+  # `.delay(` is the #6666 false-pairing shape — Python has no block terminator
+  # literal to bound it, and FindAllStringSubmatch's non-overlapping matches
+  # would give each `def` at most one callee. The sibling composition rule below
+  # shows the shape that DOES work: two captures inside one construct.
   # App config loaded via app.config_from_object
   - pattern: "(\\w+)\\.config_from_object\\s*\\(\\s*[\"']([^\"']+)[\"']"
     source_type: Config

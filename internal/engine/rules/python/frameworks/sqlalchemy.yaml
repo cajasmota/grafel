@@ -80,19 +80,35 @@ source_patterns:
     name_group: 1
     scope: file
 
-relationship_rules:
-  # Model imports another model
-  - pattern: "from\\s+[\\w.]+\\s+import\\s+([A-Z]\\w*)"
-    source_type: Model
-    target_type: Model
-    relationship: DEPENDS_ON
-    source_group: 1
-    target_group: 1
-  # ForeignKey table reference
-  - pattern: "ForeignKey\\s*\\(\\s*[\"']([\\w]+)\\.[\\w]+[\"']"
-    source_type: Model
-    target_type: Model
-    relationship: DEPENDS_ON
-    source_group: 1
-    target_group: 1
+# relationship_rules: intentionally empty (#6809).
+#
+# Both rules this file used to carry named capture group 1 and entity type
+# `Model` for BOTH endpoints, so every edge either could emit was
+# `FromID == ToID` by construction — not by accident, and not recoverable
+# downstream. They are removed rather than repaired, for reasons that differ:
+#
+#   "from\\s+[\\w.]+\\s+import\\s+([A-Z]\\w*)"   DEPENDS_ON Model -> Model
+#     Commented "Model imports another model", but the pattern names no module
+#     and no framework: it matched EVERY capitalised import in EVERY Python
+#     file, whether or not SQLAlchemy was anywhere near it. Over the golden
+#     corpus it fired 12 times and produced 12 self-loops — `Model:JsonResponse`
+#     and `Model:AppConfig` in a Django app, `Model:FastAPI` and
+#     `Model:APIRouter` in a FastAPI app, `Model:Redis` and `Model:Queue` in an
+#     RQ app. The intent it was reaching for is already expressed correctly, and
+#     narrowly, twice: django.yaml's `from <app>.models import (\\w+)`
+#     (View -> Model) and flask.yaml's `from [\\w.]+models import (\\w+)`
+#     (both capture once and name two DIFFERENT endpoint types). Nothing is lost
+#     with this gone.
+#
+#   "ForeignKey\\s*\\(\\s*[\"']([\\w]+)\\.[\\w]+[\"']"  DEPENDS_ON Model -> Model
+#     `ForeignKey("users.id")` captures the REFERENCED table, which is the
+#     target. The source is the class declaring the column — `class Order(Base)`
+#     — and it is nowhere in the pattern. Reusing the referenced table for the
+#     source does not encode a self-referential FK: it reports one for EVERY
+#     foreign key, including `Order -> users`, so the edge is wrong exactly when
+#     a self-FK is not what the source says. Recovering the real source needs
+#     containment (which class body is this column in), and a regex `[\\s\\S]*?`
+#     window across a Python class body is the #6666 false-pairing shape with no
+#     terminator literal available to bound it. That wants a structural
+#     extractor, not a wider regex.
 
