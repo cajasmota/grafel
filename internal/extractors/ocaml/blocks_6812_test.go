@@ -235,3 +235,87 @@ func TestBlockIndex_EndBeforeFromIsRefused(t *testing.T) {
 		t.Fatalf("got (%d,%v), want (9,true)", e, ok)
 	}
 }
+
+// TestBlockIndex_NonBlockKeywordsAreNotOpeners pins blockOpeners in the
+// ADDITION direction. Review Q1.
+//
+// M2 and M3 delete `begin` and `sig` from the set and both die. Nothing
+// covered the other direction, and an over-broad opener is the more dangerous
+// mistake of the two: a phantom opener sitting BEFORE the real one wins the
+// "first opener at or after `from`" search, has no `end` of its own, and makes
+// bodyEnd decline — so the block silently falls back to the indentation
+// heuristic and its `inherit` is dropped. That shows up only as recall loss,
+// which is the direction recall-shaped assertions are structurally blind to
+// (#6902), and it is the same shape as #6943: one direction of a set graded,
+// its neighbour left open.
+//
+// The fixture is ENUMERATED rather than hand-picked at `then`, because a fence
+// aimed at one keyword is a fence one keyword wide. The source carries every
+// OCaml keyword that could plausibly be mistaken for a block opener —
+// including the four that legitimately introduce nesting in the surface syntax
+// (`then`, `else`, `do`, `with`) — so adding ANY of them to the set moves the
+// opener count off 1 and fails here.
+func TestBlockIndex_NonBlockKeywordsAreNotOpeners(t *testing.T) {
+	src := "let c = if cond then object\n" +
+		"    inherit base\n" +
+		"    method a = match x with Some y -> y | None -> 0\n" +
+		"    method b = try (fun z -> z) 1 with _ -> 0\n" +
+		"    method d = for i = 0 to 2 do ignore i done\n" +
+		"    method e = while false do () done\n" +
+		"    method f = let g = 1 in g\n" +
+		"  end else other\n"
+
+	bi := blockIndexFor(src)
+	if !bi.parsed {
+		t.Fatal("the grammar produced no tree")
+	}
+	if len(bi.openers) != 1 {
+		var got []string
+		for _, o := range bi.openers {
+			got = append(got, src[o:min(o+8, len(src))])
+		}
+		t.Fatalf("want exactly the `object` indexed as a block, got %d openers %v — a keyword that "+
+			"does not open an `… end` block is in blockOpeners", len(bi.openers), got)
+	}
+
+	// And the block is still answered from the index rather than declined. This
+	// is the half that catches an addition whose phantom opener precedes the
+	// real one: bodyEnd would return ok=false and extractModuleBody would fall
+	// back, which the opener count alone would not notice if the phantom
+	// happened to share a parent node.
+	end, ok := bi.bodyEnd(0)
+	if !ok {
+		t.Fatal("bodyEnd declined — a phantom opener before the `object` won the search")
+	}
+	if want := strings.Index(src, "  end else"); end != want+2 {
+		t.Fatalf("block end at %d, want %d (%q)", end, want+2, src[end:min(end+10, len(src))])
+	}
+	if !strings.Contains(src[:end], "inherit base") {
+		t.Fatalf("the block's span no longer contains its own `inherit`: %q", src[:end])
+	}
+}
+
+// TestBlockOpeners_ExactSet is the catch-all behind the test above, for a
+// keyword that fixture does not happen to contain. A set assertion on its own
+// would be a tautology restating the declaration; paired with the behavioural
+// test it is the residue — it says "four, and these four", and any fifth entry
+// has to argue for itself in a diff rather than arrive silently.
+func TestBlockOpeners_ExactSet(t *testing.T) {
+	want := map[string]bool{"struct": true, "sig": true, "object": true, "begin": true}
+	if len(blockOpeners) != len(want) {
+		t.Fatalf("blockOpeners has %d entries, want %d: %v", len(blockOpeners), len(want), blockOpeners)
+	}
+	for k := range want {
+		if !blockOpeners[k] {
+			t.Fatalf("blockOpeners is missing %q", k)
+		}
+	}
+	for k := range blockOpeners {
+		if !want[k] {
+			t.Fatalf("blockOpeners has an extra entry %q — every `… end` block in "+
+				"tree-sitter-ocaml opens with one of struct/sig/object/begin; a fifth entry "+
+				"either closes no block (and will decline, dropping the real block) or is a "+
+				"grammar change that needs its own fixture", k)
+		}
+	}
+}

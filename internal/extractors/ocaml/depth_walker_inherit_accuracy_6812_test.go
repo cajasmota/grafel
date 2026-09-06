@@ -710,6 +710,17 @@ func TestDepthWalker_InheritIsMisAttributed_Constructed(t *testing.T) {
 // therefore NOT the independent confirmation it was when the producer was a
 // regex walker.
 //
+// SAY THE ARITHMETIC, because it bounds the claim precisely and nobody
+// re-derives it from two comments in different files. Arm 1's equivalence was
+// established over 595 blocks. THIS measurement's population is 633. So 38
+// blocks were never inside the established equivalence, and the residual
+// disagreements number 37 — i.e. essentially all of them sit outside the range
+// where the reference and the grammar are known to coincide, and over the ~595
+// where they do coincide the agreement is definitional modulo the wiring.
+// That is the honest reading of the 100%/100% figures: they are a strong
+// result about the WIRING LAYER, and they are not 633 independent
+// confirmations of the grammar.
+//
 // It is not vacuous either, and the distinction is the code in between.
 // refMatchEnd is a hand-written matcher that shares no line with blocks.go;
 // what it still grades is everything the wiring added on top of the grammar —
@@ -894,9 +905,30 @@ func TestDepthWalker_InheritAttribution_CorpusMeasurement(t *testing.T) {
 			"grammar parses WITHOUT error — those are not recovery artefacts and need explaining",
 			cst.blockEndWrongOK)
 	}
+	// The zero above is only worth something if the classifier splits the
+	// corpus. It has TWO ways to be a no-op and both are checked, because a
+	// guard against one of them reads as a guard against the classifier
+	// (review Q2):
+	//
+	//   - nothing classified as recovered — then `blockEndWrongOK` counts every
+	//     disagreement and the assertion is merely strict;
+	//   - EVERYTHING classified as recovered — then `blockEndWrongOK` can never
+	//     be anything but 0 and the assertion is unreachable. This is the
+	//     dangerous direction, and the one the first version missed.
+	//
+	// The second is pinned through the LEGACY producer rather than through a
+	// file count: the retired walker is known to get block ends wrong on
+	// perfectly valid OCaml, so if not a single one of its 479 errors lands in
+	// a cleanly-parsed file, the classifier has swallowed the whole corpus.
 	if filesWithErrors == 0 {
 		t.Fatalf("no file in the corpus needed recovery, so the assertion above was vacuous — " +
 			"this corpus is supposed to contain testsuite/tests/generated-parse-errors/errors.ml")
+	}
+	if legacy.blockEndWrongOK == 0 {
+		t.Fatalf("not one of the retired walker's %d block-end errors is in a file the grammar "+
+			"parses cleanly — the ERROR classifier is bucketing the whole corpus as recovered, "+
+			"which makes the CST assertion above unreachable rather than true",
+			legacy.blockEndWrong)
 	}
 }
 
