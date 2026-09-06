@@ -69,6 +69,14 @@
       "entity_extracted_total": 41,
       "relationship_extracted_total": 93
     },
+    "github-actions-workflows-mini": {
+      "entity_found": 12,
+      "entity_expected": 12,
+      "relationship_found": 3,
+      "relationship_expected": 3,
+      "entity_extracted_total": 55,
+      "relationship_extracted_total": 72
+    },
     "go-chi-mini": {
       "entity_found": 20,
       "entity_expected": 20,

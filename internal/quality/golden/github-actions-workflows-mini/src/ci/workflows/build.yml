@@ -1,0 +1,48 @@
+# Storefront build pipeline.
+#
+# Deliberately NOT under .github/: internal/daemon/walk/walker.go's
+# hardcodedSkipDirs skips `.github` outright, so a workflow stored where GitHub
+# actually looks for it is never walked and these rules would grade nothing.
+# GitHub's own starter-workflows repo stores workflow YAML at ci/*.yml, which is
+# the layout copied here.
+name: Storefront CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+env:
+  REGISTRY: ghcr.io
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build and test
+    env:
+      BUNDLE_PATH: vendor/bundle
+    strategy:
+      matrix:
+        runs-on: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile assets
+        run: make assets
+      # - name: Deploy to staging
+      #   run: make deploy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Upload bundle
+        run: make upload
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/upload-artifact@v4
+      - name: Push image
+        run: docker push "$REGISTRY/storefront"
+  notification:
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post build result
+        run: ./ci/notify.sh

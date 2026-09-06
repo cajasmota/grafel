@@ -1,0 +1,8 @@
+# Nightly smoke run against the deployed storefront.
+name: Nightly Smoke
+on: workflow_dispatch
+jobs:
+  smoke:
+    uses: ./.github/workflows/build.yml
+env:
+  SMOKE_REGION: eu-west-1

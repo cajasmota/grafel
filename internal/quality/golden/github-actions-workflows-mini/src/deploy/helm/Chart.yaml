@@ -1,0 +1,6 @@
+apiVersion: v2
+name: storefront-chart
+description: Storefront deployment chart
+type: application
+version: 0.4.1
+appVersion: "1.16.0"
