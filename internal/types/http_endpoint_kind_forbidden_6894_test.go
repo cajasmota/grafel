@@ -43,9 +43,13 @@ func TestIsHTTPEndpointKind_ForbiddenRows(t *testing.T) {
 	}
 
 	for _, reject := range []string{
-		// The Electron IPC spelling. It deliberately has no constant — #6776
-		// arm B8 left it off the enum on purpose (#6820).
-		"Endpoint",
+		// The Electron IPC spelling. #6776 arm B9 made it a valid ENTITY kind
+		// (EntityKindEndpointBare) once #6820 was decided, and that is exactly
+		// why this row matters MORE than it did: "it is in the vocabulary now"
+		// is the argument that would fold it into the switch above, and doing
+		// so re-exports IPC channels into the OpenAPI document (#6893). Entity
+		// membership and HTTP membership are different questions.
+		string(EntityKindEndpointBare),
 		string(EntityKindEndpoint),
 		string(EntityKindRouteBare),
 		string(EntityKindRoute),

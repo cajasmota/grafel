@@ -698,17 +698,69 @@ const (
 	// either way: IsValidEntityKind is membership in a string set that never
 	// reads SourceFile. The same point was settled for `Config` in arm B7.
 	//
-	// WHY `Endpoint` IS NOT HERE. It is the one pair on this ledger that is
-	// NOT a synonym. The bare spelling is declared only by
+	// WHY `Endpoint` WAS NOT HERE, and where it went. It is the one pair on
+	// this ledger that is NOT a synonym. The bare spelling is declared only by
 	// javascript_typescript/frameworks/electron.yaml — Electron IPC channels —
-	// while SCOPE.Endpoint names the HTTP concept. Migrating it as a synonym
-	// would put two different concepts under one enum member, which is the one
-	// thing the B5-B8 selection rule has never done. That is #6820 and it
-	// needs an owner ruling, so `Endpoint` stays on internal/entkinds' ledger
-	// and ruleDeclaredKindsDeferredMax lands at 1, not 0.
+	// while SCOPE.Endpoint names the HTTP concept. Arm B8 would have had to
+	// migrate it under the same "same concept, different spelling" heading as
+	// its three, and that heading is false for it, so it was held back at
+	// ruleDeclaredKindsDeferredMax = 1 pending #6820. Arm B9 declares it below
+	// on a DIFFERENT footing, and takes that ledger to zero.
 	EntityKindConstraintBare EntityKind = "Constraint"
 	EntityKindPluginBare     EntityKind = "Plugin"
 	EntityKindTemplateBare   EntityKind = "Template"
+
+	// #6776 arm B9 — the LAST kind on internal/entkinds' rule-YAML ledger, and
+	// the end of the B series. The ledger is retired rather than ratcheted to
+	// zero; internal/entkinds/rule_ledger_retired_6776_test.go carries the
+	// measurement that replaces it (532 rule-YAML sites, zero of them naming a
+	// kind AllEntityKinds() rejects).
+	//
+	// THIS ROW IS NOT A `Bare` SPELLING OF ANYTHING, and that is the one way it
+	// differs from every row in the B6/B7/B8 blocks above. Those all read "the
+	// SPELLING, not a second concept". This one IS a second concept:
+	//
+	//   Endpoint — three sites, all in
+	//              javascript_typescript/frameworks/electron.yaml:41,46,52
+	//              (`ipcMain.handle` / `ipcRenderer.invoke` /
+	//              `contextBridge.exposeInMainWorld`). It is an ELECTRON IPC
+	//              CHANNEL. SCOPE.Endpoint (EntityKindEndpoint above) is the
+	//              HTTP entrypoint. They share seven letters and nothing else:
+	//              an IPC channel never had a URL.
+	//
+	// The `Bare` suffix is kept only because the identifier `EntityKindEndpoint`
+	// is taken; it names the spelling, and the concept note is the paragraph
+	// above rather than the suffix.
+	//
+	// WHY MEMBERSHIP IS STILL THE RIGHT ANSWER FOR A DIFFERENT CONCEPT.
+	// #6776's ruling is that enum membership tracks what producers EMIT, not
+	// what a vocabulary designer would have minted. detector.go writes the
+	// declared string verbatim into EntityRecord.Kind, so these three sites put
+	// `Endpoint` in every Electron graph whether or not this list carries it;
+	// the only question membership answers is whether IsValidEntityKind then
+	// rejects an entity grafel itself produced. A distinct concept is a reason
+	// for a distinct MEMBER — which is what this is — not a reason to keep a
+	// produced kind outside the vocabulary.
+	//
+	// WHY IT IS SAFE NOW AND WAS NOT AT ARM B8. #6820 was decided on
+	// 2026-09-06: fix the ten consumer sites, no rename, no stored-graph
+	// migration. `9706a5cde` repointed the HTTP and OpenAPI panes at
+	// SCOPE.Endpoint (and `fa05d3e2c` did the `Route` twin), so no consumer
+	// reads the bare spelling as HTTP any more. The hazard arm B8 named — a
+	// misleading vocabulary name, with IPC channels reachable through
+	// HTTP-shaped consumers — is closed at the consumers rather than by
+	// withholding membership.
+	//
+	// MEMBERSHIP IS NOT HTTP MEMBERSHIP. IsHTTPEndpointKind must keep
+	// REJECTING this string; http_endpoint_kind_forbidden_6894_test.go pins
+	// that, and endpoint_bare_kind_6776_test.go pins it again in this arm's own
+	// name, because "it is a valid kind now" is exactly the reasoning that
+	// would fold it into the HTTP switch and re-export IPC channels into the
+	// OpenAPI document.
+	//
+	// Spelling unchanged — nothing is renamed or retired — so
+	// KindVocabularyVersion does not move.
+	EntityKindEndpointBare EntityKind = "Endpoint"
 )
 
 // AllEntityKinds returns every EntityKind that grafel extractors are
@@ -858,10 +910,13 @@ func AllEntityKinds() []EntityKind {
 		EntityKindServiceBare,
 		// #6776 arm B8: three of the four kinds left on the ledger — see the
 		// const block for the concept note behind each pair, and for why
-		// Endpoint is deliberately not among them (#6820).
+		// Endpoint was not among them (#6820).
 		EntityKindConstraintBare,
 		EntityKindPluginBare,
 		EntityKindTemplateBare,
+		// #6776 arm B9: the last one, and NOT a spelling pair — the Electron
+		// IPC channel kind, distinct from SCOPE.Endpoint. See the const block.
+		EntityKindEndpointBare,
 	}
 }
 

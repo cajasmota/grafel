@@ -162,17 +162,21 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 //
 // Varies: the shape of the non-member. Holds constant: the validator.
 //
-//	Endpoint               the ONE un-prefixed rule-declared kind left on
-//	                       internal/entkinds' ledger after arm B8. It is not
-//	                       leftover work: bare `Endpoint` is Electron IPC
-//	                       (electron.yaml) while SCOPE.Endpoint is the HTTP
-//	                       concept, so it is the one pair on that ledger that
-//	                       is not a synonym, and #6820 owns the ruling.
 //	File                   the commit-coupling synthetic, deliberately NOT
 //	                       promoted (894 entities of an internal artefact) —
-//	                       and, since arm B8, also the second kind
-//	                       internal/graph/fbwriter's arm-A fixture asserts is
+//	                       and, since arm B8, also one of the kinds
+//	                       internal/graph/fbwriter's arm-A fixtures assert is
 //	                       still invalid
+//
+// THE RULE-DECLARED AXIS IS GONE FROM THIS TABLE, and its absence is a fact
+// about the tree rather than a gap. It held `Endpoint`, the last row on
+// internal/entkinds' ledger; #6776 arm B9 declared it, and there is now NO
+// rule-declared kind outside the enum for this table to name — that is asserted
+// directly, over a live scan, by internal/entkinds'
+// TestRuleDeclaredLedger6776_IsRetiredBecauseThePopulationIsEmpty. Re-adding a
+// row here would mean inventing a string no producer writes, which is what the
+// SCOPE.Workflows row already covers.
+//
 //	ChannelEvent           a Go producer's UN-prefixed kind: B4 promoted the
 //	                       prefixed ledger only, not goUnprefixedKindsDeferred
 //	Workflow               the prefix-stripped spelling of a promoted kind — a
@@ -182,11 +186,10 @@ func TestEntityKindEnum6776_B4_PromotedKindsAreValid(t *testing.T) {
 //	SCOPE.ExternalAPI      retired by #6451; re-admitting it would undo that
 func TestEntityKindEnum6776_B4_KindsOutsideTheEnumStayOutside(t *testing.T) {
 	for axis, kind := range map[string]string{
-		"rule-declared, the one pair #6820 holds back (fbwriter's arm-A fixture depends on it)": "Endpoint",
-		"the commit-coupling synthetic, deliberately not promoted (fbwriter's second control)":  "File",
-		"a Go producer's un-prefixed kind, on the other B3 ledger":                              "ChannelEvent",
-		"the prefix-stripped spelling of a kind B4 DID promote":                                 "Workflow",
-		"a near-miss spelling that no producer writes":                                          "SCOPE.Workflows",
+		"the commit-coupling synthetic, deliberately not promoted (an fbwriter control)": "File",
+		"a Go producer's un-prefixed kind, on the other B3 ledger":                       "ChannelEvent",
+		"the prefix-stripped spelling of a kind B4 DID promote":                          "Workflow",
+		"a near-miss spelling that no producer writes":                                   "SCOPE.Workflows",
 		"retired by #6451": "SCOPE.ExternalAPI",
 	} {
 		if types.IsValidEntityKind(kind) {
