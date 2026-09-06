@@ -783,6 +783,54 @@ var cpKnownPathA = []cpKnown{
 		Contains: []string{"SCOPE.Operation/cp_use_class@cphandler_delta.py→«unbound»:CALLS"},
 	},
 
+	// ── #6942 family: `except <mod>.<Class>` binds differently on the two paths ──
+	//
+	// The FULL rebuild resolves `except cperrs_static.CpNotFound` to the real
+	// class entity in the untouched file; the INCREMENTAL run does not find it
+	// and synthesises a placeholder `SCOPE.ExceptionType` at the `<exception>`
+	// pseudo-file instead. Which side is right is genuinely open — a dedicated
+	// exception kind may be the better model — but they are not the same graph.
+	//
+	// These four entries are NEW here and the reason they are new is worth
+	// keeping, because it is not "a fix regressed something". Until #6927 the
+	// two paths AGREED, for the wrong reason: `cperrs_static.py` opens with
+	// `class CpNotFound(Exception):` on LINE 1, and sqlalchemy.yaml's
+	// `^class\s+([A-Z]\w*)\s*\(\w+\)\s*:` -> Model was compiled without
+	// `(?m)`, so start-of-text was the one position it could reach and it minted
+	// a junk `Model|CpNotFound` beside the real `SCOPE.Component|CpNotFound` in
+	// the same file. Two same-named entities in one file made the reference
+	// ambiguous, so the full rebuild ALSO declined to bind and also fell back to
+	// the synthetic. #6927 gates that pattern behind `requires_framework`, the
+	// junk entity goes, full starts resolving, and the incremental gap shows.
+	//
+	// Isolated by measurement rather than argued: with `(?m)` applied and
+	// `requires_framework` removed from that one pattern, this test is green;
+	// with the gate on, it reports exactly these four rows.
+	{
+		Issue:    "#6942",
+		Why:      "Incremental cannot resolve the caught exception to the class in an untouched file and synthesises a SCOPE.ExceptionType placeholder instead. Unfixed; which path is correct is undecided.",
+		Bucket:   cpEntityInvented,
+		Contains: []string{"SCOPE.ExceptionType|exception:CpNotFound", "<exception>"},
+	},
+	{
+		Issue:    "#6942",
+		Why:      "The CATCHES edge onto that synthesised placeholder.",
+		Bucket:   cpEdgeInvented,
+		Contains: []string{"SCOPE.Operation/cp_handle@cphandler_delta.py→SCOPE.ExceptionType/exception:CpNotFound@<exception>:CATCHES"},
+	},
+	{
+		Issue:    "#6942",
+		Why:      "Module CONTAINS for the synthesised placeholder. Listed separately from the CATCHES edge so one of them going quiet cannot be absorbed by the other.",
+		Bucket:   cpEdgeInvented,
+		Contains: []string{"→SCOPE.ExceptionType/exception:CpNotFound@<exception>:CONTAINS"},
+	},
+	{
+		Issue:    "#6942",
+		Why:      "The LOST half: the full rebuild's CATCHES edge, bound to the real class in the untouched file. This row is the whole of the disagreement — it is what incremental does not produce.",
+		Bucket:   cpEdgeLost,
+		Contains: []string{"SCOPE.Operation/cp_handle@cphandler_delta.py→SCOPE.Component/CpNotFound@cperrs_static.py:CATCHES"},
+	},
+
 	// ── #6094 family: a duplicated row persisted into graph.fb ── ALL FIXED ──
 	//
 	// This block held three entries and now holds none. They came off the

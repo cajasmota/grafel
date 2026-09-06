@@ -197,6 +197,14 @@
       "entity_extracted_total": 28,
       "relationship_extracted_total": 57
     },
+    "python-pytest-sqlalchemy-mini": {
+      "entity_found": 10,
+      "entity_expected": 10,
+      "relationship_found": 2,
+      "relationship_expected": 2,
+      "entity_extracted_total": 67,
+      "relationship_extracted_total": 171
+    },
     "python-rq-mini": {
       "entity_found": 3,
       "entity_expected": 3,

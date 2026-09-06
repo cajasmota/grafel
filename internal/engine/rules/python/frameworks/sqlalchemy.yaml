@@ -55,15 +55,43 @@ source_patterns:
     name_group: 1
     scope: file
   # DeclarativeBase subclass: class Base(DeclarativeBase): pass
-  - pattern: "^class\\s+(\\w+)\\s*\\([^)]*DeclarativeBase[^)]*\\)\\s*:"
+  #
+  # `(?m)` is load-bearing (#6927). detector.go compiles these patterns with
+  # plain regexp.Compile, so without it `^` meant start of TEXT and this rule
+  # only fired when the declarative base opened the file. A models module opens
+  # with a docstring or an import block, so it extracted nothing. No `$` in the
+  # pattern, so `(?m)`'s other effect cannot reach it.
+  #
+  # No framework gate needed: the `DeclarativeBase` literal in the base list is
+  # itself the SQLAlchemy evidence.
+  - pattern: "(?m)^class\\s+(\\w+)\\s*\\([^)]*DeclarativeBase[^)]*\\)\\s*:"
     entity_type: Schema
     name_group: 1
     scope: class
   # Model class: class User(Base):
-  - pattern: "^class\\s+([A-Z]\\w*)\\s*\\(\\w+\\)\\s*:"
+  #
+  # `(?m)` for the same reason (#6927) — and `requires_framework` BECAUSE of it.
+  #
+  # Read literally, this pattern describes "a module-level class with exactly
+  # one simple base", which is plain Python syntax and not a SQLAlchemy
+  # construct at all: `class ConfigError(Exception):` and
+  # `class Serializer(object):` both satisfy it. Detect resolves rule sets by
+  # file.Language alone, so switching `(?m)` on without a gate would type EVERY
+  # single-base class in EVERY indexed Python file as a `Model`. The start-of-
+  # text anchor was the only thing holding that back, by accident.
+  #
+  # This is the same shape #6152 already had to gate for falcon.yaml and
+  # cherrypy.yaml (`class Foo:` -> Controller), and it carries the same remedy:
+  # the pattern now fires only in files whose content shows one of the
+  # frameworks.detection.import_markers above. The trade is deliberate — a
+  # models module that imports its Base from a sibling and names sqlalchemy
+  # nowhere loses this entity (the `*/models.py` file_convention still types the
+  # file), which is a far smaller cost than mistyping every class in the repo.
+  - pattern: "(?m)^class\\s+([A-Z]\\w*)\\s*\\(\\w+\\)\\s*:"
     entity_type: Model
     name_group: 1
     scope: class
+    requires_framework: true
   # create_engine: engine = create_engine("...")
   - pattern: "(\\w+)\\s*=\\s*create_(?:async_)?engine\\s*\\("
     entity_type: Service

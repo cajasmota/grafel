@@ -1,0 +1,156 @@
+{
+  "fixture_name": "python-pytest-sqlalchemy-mini",
+  "language": "python",
+  "description": "pytest + SQLAlchemy rule patterns (#6927, python arm). Four `^`-anchored patterns in pytest.yaml and sqlalchemy.yaml were compiled without `(?m)`, so `^` meant start-of-TEXT and each could only fire on a file's opening construct. Every file here opens with a docstring, so the pre-fix binary extracted ZERO Test, TestClass, Schema and Model entities from those four rules. The fixture varies ONE axis \u2014 the vertical position of each construct (never line 1; one indented inside a class; one last-in-file) \u2014 and holds the constructs at their idiomatic spellings. It grades BOTH directions: src/tests/helpers.py and src/app/serializers.py declare nothing and exist only to supply forbidden rows, because a recall assertion cannot see a pattern that started matching too much (#6902).",
+  "expected_entities": [
+    {
+      "name": "test_creates_customer",
+      "kind": "Test",
+      "source_file": "tests/test_invoices.py",
+      "must_exist": true,
+      "note": "#6927 recall arm. Module-level test AFTER a docstring, an import block and a fixture. Extracted ZERO before the fix."
+    },
+    {
+      "name": "test_rejects_negative_amount",
+      "kind": "Test",
+      "source_file": "tests/test_invoices.py",
+      "must_exist": true,
+      "note": "The LAST construct in the file \u2014 furthest possible position from start-of-text."
+    },
+    {
+      "name": "TestInvoiceTotals",
+      "kind": "TestClass",
+      "source_file": "tests/test_invoices.py",
+      "must_exist": true,
+      "note": "#6927 recall arm for `^class\\s+(Test\\w+)`. The capture accepts any `Test*` name, which is pytest's OWN python_classes default rather than an over-fire, so it was left as written."
+    },
+    {
+      "name": "customer",
+      "kind": "Fixture",
+      "source_file": "tests/test_invoices.py",
+      "must_exist": true,
+      "note": "CONTROL, held constant. The @pytest.fixture pattern is NOT `^`-anchored, so it was green before the fix and must stay green. Without it, 'the rules came back' and 'rule loading broke entirely' would look the same."
+    },
+    {
+      "name": "Registry",
+      "kind": "Schema",
+      "must_exist": true,
+      "note": "#6927 recall arm for `(?m)^class\\s+(\\w+)\\s*\\([^)]*DeclarativeBase[^)]*\\)`, and the ONLY row that grades it. In app/models.py the two class patterns both match `class Base(DeclarativeBase):` and the downstream class-shadow fold collapses the result, so removing `(?m)` from the DeclarativeBase pattern there changed NOTHING observable \u2014 measured, not assumed: the mutant left the fixture at an identical 57 entities and an identical recall. app/db.py declares `class Registry(MappedAsDataclass, DeclarativeBase):`, whose two-name base list the Model pattern's `\\(\\w+\\)` cannot match, so this Schema entity has exactly one producer. No source_file: the graph carries no file attribution for it."
+    },
+    {
+      "name": "Base",
+      "kind": "Model",
+      "source_file": "app/models.py",
+      "must_exist": true,
+      "note": "FINDING, pinned rather than papered over: `class Base(DeclarativeBase):` satisfies BOTH class patterns \u2014 the Model one because `(\\w+)` accepts `DeclarativeBase` as a single simple base \u2014 so the declarative base is minted twice. Unreachable while the anchor defect kept both patterns dead; `(?m)` makes it live. Recorded so a later narrowing is a deliberate change rather than an accident."
+    },
+    {
+      "name": "Customer",
+      "kind": "Model",
+      "source_file": "app/models.py",
+      "must_exist": true,
+      "note": "#6927 recall arm for `^class\\s+([A-Z]\\w*)\\s*\\(\\w+\\)`, which also carries `requires_framework: true` \u2014 see the forbidden rows for why."
+    },
+    {
+      "name": "Invoice",
+      "kind": "Model",
+      "source_file": "app/models.py",
+      "must_exist": true,
+      "note": "Declared last in the file."
+    },
+    {
+      "name": "Invoice",
+      "kind": "Relationship",
+      "source_file": "app/models.py",
+      "must_exist": true,
+      "note": "CONTROL, held constant: `= relationship(\"Invoice\")` is un-anchored, green before and after."
+    },
+    {
+      "name": "customers.id",
+      "kind": "Constraint",
+      "source_file": "app/models.py",
+      "must_exist": true,
+      "note": "CONTROL, held constant: `ForeignKey(\"customers.id\")` is un-anchored, green before and after."
+    }
+  ],
+  "forbidden_entities": [
+    {
+      "name": "test_commented_out",
+      "kind": "Test",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ANCHOR direction. src/tests/helpers.py holds `# def test_commented_out(client):`. A `#` opens the line, so ONLY the line anchor keeps it out \u2014 dropping the `^` from `(?m)^def\\s+(test_\\w+)` mints it. Verified capable of firing by that mutant, not assumed (#6938)."
+    },
+    {
+      "name": "TestCommentedOut",
+      "kind": "TestClass",
+      "must_exist": false,
+      "note": "Same, for `(?m)^class\\s+(Test\\w+)`: `# class TestCommentedOut:` in src/tests/helpers.py."
+    },
+    {
+      "name": "test_nested_helper",
+      "kind": "Test",
+      "must_exist": false,
+      "note": "`def test_nested_helper(inner):` indented inside `build_client()` in src/tests/helpers.py. Kept out by the anchor alone; widening it to `^\\s*def` mints it. This row is what makes that widening a deliberate change with a forbidden row to move, rather than a silent one."
+    },
+    {
+      "name": "TestNestedHelper",
+      "kind": "TestClass",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, INDENTED direction for the CLASS anchor. PR #6943 review R3: the `def` anchor was pinned on two axes (a `#`-commented line and an indented one) and the `class` anchor on only one, so `(?m)^class\\s+(Test\\w+)` -> `(?m)^\\s*class\\s+(Test\\w+)` left the engine suite green AND this fixture at exit 0, 10/10, zero forbidden hits \u2014 its column-0 half was graded by nothing, and a nested `class TestX:` is production-reachable. `class TestNestedHelper:` is declared inside `build_client()` in src/tests/helpers.py; that widening is what mints it."
+    },
+    {
+      "name": "LegacyInvoice",
+      "kind": "Model",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ANCHOR direction for the Model rule \u2014 and deliberately inside src/app/models.py, which DOES import sqlalchemy. The serializers.py rows below are kept out by the framework GATE and so say nothing about the anchor; this row satisfies the gate and is kept out by the anchor alone, so the two fences are graded separately and their mutants are distinguishable."
+    },
+    {
+      "name": "ConfigError",
+      "kind": "Model",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, BLAST-RADIUS direction, and the reason this change is not `(?m)` alone. `^class\\s+([A-Z]\\w*)\\s*\\(\\w+\\)\\s*:` describes a module-level class with one simple base \u2014 plain Python syntax \u2014 and Detect resolves rule sets by file.Language, so under `(?m)` it would type EVERY such class in EVERY indexed Python file as a Model. src/app/serializers.py names sqlalchemy nowhere; `requires_framework: true` (the #6152 remedy already applied to falcon/cherrypy) is what holds it. Removing that key mints this entity."
+    },
+    {
+      "name": "Serializer",
+      "kind": "Model",
+      "must_exist": false,
+      "note": "Second row for the same fence, on `class Serializer(object):` \u2014 one row could be held by an accident of the name, two of different shapes cannot."
+    },
+    {
+      "name": "ConfigError",
+      "kind": "Schema",
+      "must_exist": false,
+      "note": "Sweep of the OTHER kind sqlalchemy.yaml's class patterns can mint, so a mutant that widened the DeclarativeBase pattern instead of the Model one is also caught."
+    },
+    {
+      "name": "SessionFactory",
+      "kind": "Model",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, CAPTURE direction. PR #6943 review R2: widening the Model pattern's `\\(\\w+\\)` to `\\([^)]*\\)` was distinguishable and ungraded. On `Registry` it is invisible \u2014 that class already carries a Schema entity, so the second mint is absorbed by the class-shadow fold and surfaces only as an accidental recall loss with ZERO forbidden hits. `class SessionFactory(LoggingMixin, BaseFactory):` in src/app/db.py has a two-name base list, no DeclarativeBase and no second producer, so the same widening lands here as a visible false Model."
+    }
+  ],
+  "expected_relationships": [
+    {
+      "from_name": "Customer",
+      "from_kind": "Model",
+      "from_file": "app/models.py",
+      "kind": "EXTENDS",
+      "to_name": "Base",
+      "to_kind": "Model",
+      "to_file": "app/models.py",
+      "must_exist": true,
+      "note": "#6927 recall arm at the EDGE level. BOTH endpoints are entities the widened Model pattern mints, so this edge does not exist at all unless the anchor fix holds \u2014 it is the downstream consequence of the fix, not a restatement of it. It also keeps this fixture from being exempted by `asserts_no_relationships`, which would leave edge extraction for this language graded by nothing."
+    },
+    {
+      "from_name": "Invoice",
+      "from_kind": "Model",
+      "from_file": "app/models.py",
+      "kind": "EXTENDS",
+      "to_name": "Base",
+      "to_kind": "Model",
+      "to_file": "app/models.py",
+      "must_exist": true,
+      "note": "Same edge for the model declared LAST in the file."
+    }
+  ]
+}
