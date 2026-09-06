@@ -318,7 +318,28 @@ func extractClojure(src, filePath string) []types.EntityRecord {
 		entities = append(importEntities, entities...)
 	}
 
-	return entities
+	// 5. File carrier (#6852). buildImportEntities stamps `FromID: filePath` on
+	// every IMPORTS edge, and internal/resolve/refs.go has no path→entity index:
+	// a path-valued FromID resolves iff some emitted node carries that exact
+	// string as its Name. Nothing clojure emits does — the namespace record is
+	// named the ns symbol, operations and classes are named their declaration
+	// symbol, and an import stub is topSegment(module) — so without this the
+	// raw path reached the graph as the edge's FROM end.
+	//
+	// CONDITIONAL, deliberately: extractor.PrependFileCarrier emits nothing when
+	// no relationship is anchored on the path (a namespace with no :require) and
+	// nothing when some record is ALREADY named the path (a root core.clj whose
+	// header reads `(ns core.clj)` — nsRE captures a dotted `[\w\-\.]+`). An
+	// unconditional carrier would mint one bare orphan node per .clj file across
+	// a whole repo, which no recall-shaped assertion can see (#6815, #6518).
+	//
+	// PLACEMENT IS LOAD-BEARING, and for ONE reason that is graded rather than
+	// argued: compOffset.idx (step 3b, `&entities[cp.idx]`) is an INDEX into
+	// this slice, so an insertion at position 0 before that step re-homes every
+	// extend-type / extend-protocol edge onto the record before its owner.
+	// Pinned by TestClojure_CarrierPlacementDoesNotShiftTheExtendPass_6852.
+	// opOffset.idx has no consumer at all, so it is not a second reason.
+	return extractor.PrependFileCarrier(filePath, "clojure", entities)
 }
 
 // importSpec describes one resolved import entry.
