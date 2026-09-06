@@ -359,9 +359,16 @@ func extractCrystal(src, filePath string) []types.EntityRecord {
 	// mints one bare orphan node per .cr file across a whole repo, which no
 	// recall-shaped assertion can see (#6518, #6815).
 	//
-	// PLACEMENT: last, for TWO independent reasons. Each has its own mutant,
-	// because a placement comment that lists reasons without one per reason is
-	// prose (the clojure/cobol lesson, #6897).
+	// PLACEMENT: last, for TWO independent reasons, each SCORED by its own
+	// mutant — because a placement comment that lists reasons without a mutant
+	// per reason is prose (the clojure/cobol lesson, #6897). Note what the
+	// scoring showed about the two tests, since "one mutant each" would
+	// otherwise read as "two independently-necessary cells": the depth-pass
+	// cell (reason 2) kills BOTH moves and strictly dominates for placement,
+	// so the CONTAINS test is never the SOLE killer of a placement move. It is
+	// not redundant — it pins CONTAINS ownership in the carrier's presence,
+	// which is a separate regression — but only reason 2's cell is load-bearing
+	// for the placement itself.
 	//
 	//  1. THE INDEX HAZARD. scopeSpan.idx is an INDEX INTO `entities`,
 	//     dereferenced at :325 to hang each def/macro's CONTAINS edge on its
@@ -370,7 +377,9 @@ func extractCrystal(src, filePath string) []types.EntityRecord {
 	//     clojure (#6897) this is NOT entailed by the carrier's own condition:
 	//     section 1 runs FIRST, so the anchor already exists before `scopes` is
 	//     built and a conditional carrier placed earlier really is emitted.
-	//     Graded by TestCrystal_CarrierPlacementDoesNotShiftTheContainsPass_6852.
+	//     Graded by TestCrystal_CarrierPlacementDoesNotShiftTheContainsPass_6852
+	//     — which kills the move with wrong-owner CONTAINS rows, alongside
+	//     reason 2's cell.
 	//  2. CLAUSE-3 VISIBILITY OF THE DEPTH PASSES. FileCarrierFor can only
 	//     decline for a record it is handed, so the call must run after the
 	//     extractEnums / extractAliases / extractSpecSuite appends above or a

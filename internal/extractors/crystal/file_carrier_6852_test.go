@@ -34,9 +34,21 @@ package crystal_test
 //	depth.go:289      "spec_suite:" + BASENAME(path) minus ".cr"
 //
 // plus extractor.EnumEntity's `name`, which is enumRE's `[A-Z][\w:]*` trimmed.
-// No site sets QualifiedName at all, so the resolution question refs.go asks
-// (Name or QualifiedName) and the question FileCarrierFor asks (Name) coincide
-// for this package.
+//
+// QualifiedName: EXACTLY ONE site sets it, and an earlier version of this header
+// said none did — a false premise, corrected here rather than quietly edited.
+// extractEnums delegates to extractor.EnumEntity, which stamps
+// QualifiedName = EnumQualifiedName(sourceFile, name) (enum_valueset.go:139),
+// i.e. "scope:enum:" + sourceFile + ":" + Name. The CONCLUSION survives, by the
+// same length invariant that closes depth.go:289 rather than by a character
+// class: equality with path would need path to begin with "scope:enum:" and then
+// len(QualifiedName) = 11 + len(sourceFile) + 1 + len(Name) > len(path), since
+// sourceFile IS path here and Name is non-empty (EnumEntity returns ok=false
+// otherwise). So no enum record can be named the path by either field, at any
+// depth, and refs.go's question (Name OR QualifiedName) and FileCarrierFor's
+// (Name) select the same records for this package — which is a conclusion, not
+// the absence of a producer. crNamedExactly6852 below checks BOTH fields, so the
+// cells measure it rather than inheriting it from this paragraph.
 //
 // TWO of those seven can equal the path, and BOTH are driven below rather than
 // argued:
@@ -790,9 +802,17 @@ func TestCrystal_CarrierShape_6852(t *testing.T) {
 // moved earlier simply mints nothing. FOR CRYSTAL IT IS NOT ENTAILED: the
 // require pass is step 1, so the path-anchored edge already exists in `entities`
 // before `scopes` is built, and a CONDITIONAL carrier placed between step 2 and
-// step 3 is emitted for real and shifts the slice for real. The reason the
-// shipped call sits at the END of extractCrystal is therefore this hazard and
-// nothing else, and this test is its grade.
+// step 3 is emitted for real and shifts the slice for real. This test is that
+// hazard's grade.
+//
+// It is NOT the placement's only reason, and not the sole killer of any
+// placement move. The second reason is clause-3 visibility of the depth passes,
+// graded by TestCrystal_DepthPassRecordNamedLikeThePathGetsNoSecondCarrier_6852
+// — and that cell kills BOTH the step-3 move (scored here) and the step-4 move,
+// so it strictly dominates for placement while this test dominates for nothing.
+// What this test uniquely pins is CONTAINS OWNERSHIP IN THE CARRIER'S PRESENCE,
+// which is a separate regression from where the call sits: it is the row that
+// goes red if a future edit re-homes those edges while leaving the call last.
 //
 // The enumeration behind "the ONE consumer": scopeSpan.idx is read at exactly
 // one site (extractor.go:325). `opIdx` in emitOperation is assigned and then
