@@ -13,13 +13,23 @@ package entkinds_test
 // validation, so a rule file can mint any string it likes.
 //
 // The live scan of the rule tree finds 532 declaration sites and 27 distinct
-// values. Exactly TWO of them are valid entity kinds — `Module` (valid only
+// values. Exactly TWO of them were valid entity kinds — `Module` (valid only
 // because types.EntityKindModule is itself un-prefixed) and `SCOPE.IngressHost`
-// (added by this change). The other 25 were ledgered below; #6776 arms B5-B8
-// declared twenty-four of them in types.AllEntityKinds() with their un-prefixed
-// spellings unchanged (thirteen at B5, four at B6, four at B7, three at B8).
+// (added by this change). The other 25 were ledgered below; #6776 arms B5-B9
+// declared ALL of them in types.AllEntityKinds() with their un-prefixed
+// spellings unchanged (thirteen at B5, four at B6, four at B7, three at B8, one
+// at B9).
 //
-// DO NOT RESTATE THE REMAINDER AS A NUMBER HERE — it went stale three arms
+// # THE LEDGER IS RETIRED, and this is the one number safe to state here
+//
+// Not "ratcheted to zero": the POPULATION is empty, and that is measured rather
+// than inferred from an empty map. rule_ledger_retired_6776_test.go scans the
+// rule tree and asserts, over a floor that catches a collapsed scan, that not
+// one of the 532 sites names a kind AllEntityKinds() rejects. Every guard in
+// this file that treated an empty ledger as evidence of a broken scan was
+// correct to, while the ledger was the only evidence; it is not any more.
+//
+// DO NOT RESTATE A REMAINDER AS A NUMBER HERE — it went stale three arms
 // running before this sentence replaced it. ruleDeclaredKindsDeferred below is
 // the population, and it is pinned by exact set equality in both directions
 // plus ruleDeclaredKindsDeferredMax, so reading it is always current and
@@ -78,6 +88,13 @@ package entkinds_test
 // migration is triaged — anything new that is not on the ledger fails,
 // immediately, naming the file and line.
 //
+// That stance was about the ORDER of the work, not about never finishing it,
+// and #6776 kept it: the population was published, ranked and migrated arm by
+// arm over B5-B9, each arm naming its sites, and only then did the ledger go
+// empty. With the ratchet at 0 the sweep is now strictly stricter than it was
+// — any rule-declared kind outside the enum fails, with no ledger row
+// available to absorb it.
+//
 // # The ratchet, and why it is spelled this way
 //
 // ruleDeclaredKindsDeferredMax pins the ledger's EXACT size, so an author who
@@ -117,9 +134,18 @@ import (
 // Every entry was produced by the live scan, not transcribed from the issue —
 // the issue named three sites and the scan found 532, of which 25 distinct
 // values are invalid. This list must only ever SHRINK, and that is ENFORCED.
-var ruleDeclaredKindsDeferred = map[string]string{
-	"Endpoint": "rule_namespace", // 3 sites; javascript_typescript/frameworks/electron.yaml:41
-}
+// RETIRED, and EMPTY is the finished state rather than a hole. #6776 arm B9
+// declared the last entry (`Endpoint`, the Electron IPC kind) in
+// internal/types/kinds.go, and the population this ledger stood in for is now
+// measured directly by rule_ledger_retired_6776_test.go: 532 rule-YAML sites,
+// zero naming a kind AllEntityKinds() rejects. That measurement is what makes
+// the emptiness readable as "nothing left to defer" rather than "the scan
+// stopped looking", which is the only reading an empty map could otherwise
+// carry.
+//
+// The map is kept, not deleted, so the next drift lands on a mechanism instead
+// of inventing one — and so the ratchet below can hold it at zero.
+var ruleDeclaredKindsDeferred = map[string]string{}
 
 // ruleDeclaredKindsDeferredMax is the RATCHET on ruleDeclaredKindsDeferred: the
 // EXACT number of entries the ledger is allowed to hold.
@@ -135,23 +161,23 @@ var ruleDeclaredKindsDeferred = map[string]string{
 //   - SHRINKS (a kind was declared or removed, which is the point) → this fires
 //     and requires the constant to come down with it, so the bar is never left
 //     slack for a later append to slip under.
-const ruleDeclaredKindsDeferredMax = 1
+const ruleDeclaredKindsDeferredMax = 0
 
 // ruleDeclaredFamily explains each family tag. A ledger entry without a stated
 // reason is not a decision, it is a silence.
+// EMPTY because the ledger is. The one family it held, `rule_namespace`,
+// explained the un-prefixed rule-YAML spelling as an accident rather than a
+// second namespace; #6776 acted on that reading across arms B4-B9 and there is
+// now no deferred kind for it to explain. It is deliberately not left standing
+// with no rows: TestYAMLHalfObservesDeclaredKinds requires live YAML traffic
+// for every family here, so an unused family is either a red suite or, once
+// that check goes unreachable, a documented slot inviting a row with no
+// decision behind it. TestRuleDeclaredLedger6776_EveryFamilyIsUsedByARow is the
+// standing check on that direction.
 var ruleDeclaredFamily = map[string]struct {
 	Origin string
 	Why    string
-}{
-	"rule_namespace": {
-		Origin: entkinds.OriginRuleYAML,
-		Why: "an un-prefixed name declared by internal/engine/rules/**/*.yaml. " +
-			"internal/engine/detector.go:411 writes SourcePattern.EntityType straight into " +
-			"types.EntityRecord.Kind with no validation, so the string reaches the graph exactly " +
-			"as spelled. The un-prefixed spelling is an accident, not a namespace — see the file " +
-			"header. Fixing it is a ~530-site migration filed separately.",
-	},
-}
+}{}
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -523,6 +549,15 @@ func TestYAMLHalfObservesDeclaredKinds(t *testing.T) {
 	// Positive, per-mechanism traffic for the ledger itself: the YAML half must
 	// carry ledgered sites, or the exact-set comparison above is measuring an
 	// empty set against an empty set.
+	//
+	// UNREACHABLE TODAY, and deliberately kept: ruleDeclaredFamily is empty
+	// since #6776 arm B9 retired the ledger, so this loop drives nothing. It is
+	// the check that fires again the moment a family is reintroduced with no
+	// live YAML site behind it. What it can no longer do — object to a family
+	// with no ledger ROW — is carried by
+	// TestRuleDeclaredLedger6776_EveryFamilyIsUsedByARow, and the sentinels
+	// above still hold the YAML half of the scan to real, located traffic
+	// without depending on the ledger at all.
 	perFamily := map[string]int{}
 	for _, s := range yamlSites(res) {
 		if fam, ok := ruleDeclaredKindsDeferred[s.Kind]; ok {

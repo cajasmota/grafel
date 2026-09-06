@@ -17,7 +17,7 @@ package types_test
 //     invisible to it.
 //
 // MEASURED at the time this guard was added: 93 EntityKind constants declared,
-// 93 elements in AllEntityKinds(), every element an *ast.Ident, zero duplicate
+// 93 elements in AllEntityKinds() (94/94 since #6776 arm B9), every element an *ast.Ident, zero duplicate
 // values, zero conversion literals, zero constants sharing a value, and no
 // EntityKind constant declared outside kinds.go. So this ships as a RATCHET,
 // not a repair — the roster is correct today and nothing observed that it was.

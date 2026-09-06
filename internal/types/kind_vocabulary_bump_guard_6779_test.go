@@ -102,6 +102,10 @@ var pinnedEntityKindVocabulary = []string{
 	"Controller",
 	"Decorator",
 	"Dependency",
+	// #6776 arm B9 — bare `Endpoint`, the Electron IPC channel kind. ADDED,
+	// not renamed or retired, so KindVocabularyVersion does not move: the bump
+	// rule is about spellings that DISAPPEAR and strand stored graphs.
+	"Endpoint",
 	"Fixture",
 	"Implementation",
 	"Interface",

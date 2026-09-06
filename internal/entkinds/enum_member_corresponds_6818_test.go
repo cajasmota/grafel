@@ -435,6 +435,19 @@ func TestEnumOnlyEntityKinds6818_AllowListDoesNotRot(t *testing.T) {
 // an entry the enum also carries, "non-deferred enum member" stops being a
 // synonym for "enum member" and the sweep needs the exclusion it currently does
 // without.
+//
+// # THE ANTI-VACUITY FATAL ON AN EMPTY LEDGER IS GONE, AND WAS NOT SIMPLY DROPPED
+//
+// This test used to t.Fatal when ruleDeclaredKindsDeferred was empty, on the
+// premise that an empty ledger cannot be told apart from a scan that stopped
+// looking. #6776 arm B9 retired the ledger — the last row, `Endpoint`, is now
+// an enum member — so that premise had to be either honoured (leaving the arm
+// unable to finish) or REPLACED. It is replaced, by a stronger statement of the
+// same thing: rule_ledger_retired_6776_test.go asserts, against a live scan
+// with a floor under it, that ZERO of the 532 rule-YAML sites names a kind
+// outside the enum. Emptiness is now a measured fact with its own guard, so
+// this test asserts it rather than refusing it — a ledger that comes BACK is
+// then the anomaly, and the row loop below still grades it.
 func TestEnumEntityKinds6818_NoDeferredLedgerOverlapsTheEnum(t *testing.T) {
 	inEnum := map[string]bool{}
 	for _, k := range enumEntityKindStrings() {
@@ -443,8 +456,11 @@ func TestEnumEntityKinds6818_NoDeferredLedgerOverlapsTheEnum(t *testing.T) {
 	if len(inEnum) == 0 {
 		t.Fatal("types.AllEntityKinds() is empty; the disjointness below would hold vacuously")
 	}
-	if len(ruleDeclaredKindsDeferred) == 0 {
-		t.Fatal("ruleDeclaredKindsDeferred is empty; the disjointness below would hold vacuously")
+	if len(ruleDeclaredKindsDeferred) != 0 {
+		t.Logf("ruleDeclaredKindsDeferred has %d row(s); #6776 arm B9 retired it, so the loop "+
+			"below is grading a ledger that came back — check "+
+			"TestRuleDeclaredLedger6776_IsRetiredBecauseThePopulationIsEmpty first",
+			len(ruleDeclaredKindsDeferred))
 	}
 	for k := range ruleDeclaredKindsDeferred {
 		if inEnum[k] {
