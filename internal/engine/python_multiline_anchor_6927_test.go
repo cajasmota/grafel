@@ -98,6 +98,10 @@ class Invoice(Base):
 
     id = Column(Integer, primary_key=True)
     customer_id = Column(Integer, ForeignKey("customers.id"))
+
+
+class SessionFactory(LoggingMixin, BaseFactory):
+    pass
 `
 
 func detect6927Python(t *testing.T, path, src string) *DetectResult {
@@ -243,7 +247,10 @@ def build_client():
     def test_nested_helper(inner):
         return inner
 
-    return test_nested_helper
+    class TestNestedHelper:
+        pass
+
+    return test_nested_helper, TestNestedHelper
 `
 
 // TestIssue6927_PythonPatternsDoNotOverFire is the forbidden arm required by
@@ -265,6 +272,14 @@ func TestIssue6927_PythonPatternsDoNotOverFire(t *testing.T) {
 		{"TestClass", "TestCommentedOut"},
 		// Indented inside another def. Only the anchor keeps it out.
 		{"Test", "test_nested_helper"},
+		// PR #6943 review R3. The `def` anchor was pinned on BOTH axes — a
+		// `#`-commented line and an indented one — and the `class` anchor on
+		// only the commented one, so its column-0 half was graded by nothing:
+		// `(?m)^class\s+(Test\w+)` -> `(?m)^\s*class\s+(Test\w+)` left this
+		// suite green AND the golden fixture at exit 0, 10/10, zero forbidden
+		// hits. A class nested inside a function is production-reachable, so
+		// this is a real widening and not a hypothetical one.
+		{"TestClass", "TestNestedHelper"},
 	}
 	for _, f := range forbidden {
 		if has6927Entity(res, f.kind, f.name) {
@@ -345,6 +360,17 @@ func TestIssue6927_ModelAnchorIsGradedInsideAFrameworkFile(t *testing.T) {
 	if has6927Entity(res, "Model", "LegacyInvoice") {
 		t.Errorf("over-fired: Model \"LegacyInvoice\" extracted from a `# class " +
 			"LegacyInvoice(Base):` comment")
+	}
+
+	// PR #6943 review R2. The Model pattern's capture requires a SINGLE simple
+	// base — `\(\w+\)` — and widening it to `\([^)]*\)` was distinguishable
+	// and ungraded. `SessionFactory` has a two-name base list, no
+	// DeclarativeBase and therefore no second producer, so the widening lands
+	// here as a visible false Model rather than being absorbed.
+	if has6927Entity(res, "Model", "SessionFactory") {
+		t.Errorf("over-fired: Model \"SessionFactory\" — `class SessionFactory(" +
+			"LoggingMixin, BaseFactory):` has two names in its base list and is " +
+			"not a model declaration")
 	}
 	// Blanket sweep: the named row grades the form somebody thought to name;
 	// this grades the ones nobody did.

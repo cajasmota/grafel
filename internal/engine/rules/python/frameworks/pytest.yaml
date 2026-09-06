@@ -68,10 +68,21 @@ source_patterns:
   #
   # The `Test\\w+` capture was checked against what it newly reaches on real
   # Python: it accepts `class Testing:` and `class TestHarness(Base):` as well
-  # as `class TestInvoices:`. That is not an over-fire — it is pytest's OWN
-  # collection rule, whose `python_classes` default is the glob `Test*` — so it
-  # is left as written rather than narrowed to a stricter spelling pytest itself
-  # does not use.
+  # as `class TestInvoices:`. The NAME half of that breadth follows pytest's
+  # `python_classes` default, which is the glob `Test*`.
+  #
+  # It is NOT the same rule as pytest's, and the gap is a known false-positive
+  # shape rather than a claim of parity: pytest's collection is CONJUNCTIVE —
+  # `python_files` AND `python_classes` — so it only considers classes inside
+  # files matching `test_*.py` / `*_test.py`. This pattern carries no file half
+  # at all, because source_patterns are resolved by file.Language and have no
+  # way to express one. A `Test*`-named class in ordinary source is therefore
+  # typed as a TestClass here and would NOT be collected by pytest. Measured on
+  # a 3365-file Python corpus during the PR #6943 review: one such hit,
+  # `class TestConfig(Config):` in a settings module (`^def test_` had zero
+  # non-test hits). Left as written at that rate rather than narrowed to a
+  # spelling pytest itself does not use — recorded so the next reader is not
+  # told something untrue about why.
   - pattern: "(?m)^class\\s+(Test\\w+)\\s*"
     entity_type: TestClass
     name_group: 1

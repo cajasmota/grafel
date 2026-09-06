@@ -93,6 +93,12 @@
       "note": "`def test_nested_helper(inner):` indented inside `build_client()` in src/tests/helpers.py. Kept out by the anchor alone; widening it to `^\\s*def` mints it. This row is what makes that widening a deliberate change with a forbidden row to move, rather than a silent one."
     },
     {
+      "name": "TestNestedHelper",
+      "kind": "TestClass",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, INDENTED direction for the CLASS anchor. PR #6943 review R3: the `def` anchor was pinned on two axes (a `#`-commented line and an indented one) and the `class` anchor on only one, so `(?m)^class\\s+(Test\\w+)` -> `(?m)^\\s*class\\s+(Test\\w+)` left the engine suite green AND this fixture at exit 0, 10/10, zero forbidden hits \u2014 its column-0 half was graded by nothing, and a nested `class TestX:` is production-reachable. `class TestNestedHelper:` is declared inside `build_client()` in src/tests/helpers.py; that widening is what mints it."
+    },
+    {
       "name": "LegacyInvoice",
       "kind": "Model",
       "must_exist": false,
@@ -115,6 +121,12 @@
       "kind": "Schema",
       "must_exist": false,
       "note": "Sweep of the OTHER kind sqlalchemy.yaml's class patterns can mint, so a mutant that widened the DeclarativeBase pattern instead of the Model one is also caught."
+    },
+    {
+      "name": "SessionFactory",
+      "kind": "Model",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, CAPTURE direction. PR #6943 review R2: widening the Model pattern's `\\(\\w+\\)` to `\\([^)]*\\)` was distinguishable and ungraded. On `Registry` it is invisible \u2014 that class already carries a Schema entity, so the second mint is absorbed by the class-shadow fold and surfaces only as an accidental recall loss with ZERO forbidden hits. `class SessionFactory(LoggingMixin, BaseFactory):` in src/app/db.py has a two-name base list, no DeclarativeBase and no second producer, so the same widening lands here as a visible false Model."
     }
   ],
   "expected_relationships": [

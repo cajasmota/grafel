@@ -21,4 +21,8 @@ def build_client():
     def test_nested_helper(inner):
         return inner
 
-    return test_nested_helper
+    class TestNestedHelper:
+        """A class nested inside a function. Column 0 is the ONLY thing keeping
+        it out — `(?m)^class` cannot reach an indented line."""
+
+    return test_nested_helper, TestNestedHelper
