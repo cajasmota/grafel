@@ -1,5 +1,16 @@
 # THROWAWAY diagnostic workflow for #6875. Delete with the branch.
 # test.yml does not run on `push`, so this branch gets its own runner.
+#
+# Round 3. Rounds 1-2 established:
+#   - Defender real-time + WSearch are OFF on windows-latest, and a 1-writer
+#     control never gets denied => no external handle.
+#   - 8-way self-contention denies ~45% of renames, but only ever needed <=5
+#     attempts against a 41 budget.
+#   - CPU saturation makes the test 100x SLOWER but LESS collision-prone.
+# Neither round reproduced the failure -- but the CI failure rate is roughly
+# 1 in 20,000 writes and rounds 1-2 sampled only ~3,800. This round samples
+# ~200,000 writes so the heavy tail can actually show up, and probes the
+# holder live at the moment any rename crosses the production budget.
 name: diag6875
 
 on:
@@ -20,73 +31,40 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - name: Runner environment
-        shell: pwsh
-        run: |
-          Write-Host "cores=$env:NUMBER_OF_PROCESSORS"
-          Write-Host "--- Defender ---"
-          try {
-            Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled,AntivirusEnabled,OnAccessProtectionEnabled | Format-List
-            Get-MpPreference | Select-Object DisableRealtimeMonitoring | Format-List
-          } catch { Write-Host "Defender query failed: $_" }
-          try { Get-Service WSearch | Format-List Name,Status,StartType } catch { Write-Host "WSearch query failed: $_" }
-
-      # ---- IDLE baseline -------------------------------------------------
-      - name: Contention profile (IDLE)
+      # ~200 x 960 writes. Any rename crossing 41 attempts triggers a live
+      # Restart Manager + os.Stat probe of the destination from inside the
+      # retry loop, while the other writers are still running.
+      - name: High-sample contention profile (IDLE)
         shell: pwsh
         env:
           GRAFEL_DIAG_6875: '1'
         run: |
-          go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=2 -v -timeout 30m 2>&1 | Tee-Object -FilePath profile-idle.txt
+          go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=200 -v -timeout 45m 2>&1 | Tee-Object -FilePath profile-high.txt
+          Write-Host "=== renames that EXCEEDED the production budget ==="
+          Select-String -Path profile-high.txt -Pattern 'EXCEEDED the production budget of 41: [1-9]' | ForEach-Object { $_.Line }
+          Write-Host "=== live holder probes ==="
+          Select-String -Path profile-high.txt -Pattern 'LIVE PROBE|RestartManager|os.Stat\(dest\)' | ForEach-Object { $_.Line }
+          Write-Host "=== worst max-attempts seen ==="
+          Select-String -Path profile-high.txt -Pattern 'writes=320' | ForEach-Object { $_.Line } | Sort-Object -Unique
           exit 0
 
-      # ---- LOADED: this is what the real `test` leg looks like. It runs
-      # `go test ./...` with -p = 4 on a 4-core runner, so the atomicfile test's
-      # 8 goroutines are timesliced against dozens of other test processes.
-      # 16 CPU burners on 4 cores is a proxy for that oversubscription.
-      - name: Contention profile (CPU-SATURATED)
-        shell: pwsh
-        env:
-          GRAFEL_DIAG_6875: '1'
-        run: |
-          $burners = 1..16 | ForEach-Object {
-            Start-Process -PassThru -WindowStyle Hidden pwsh -ArgumentList '-NoProfile','-Command','while($true){ $x=1; for($i=0;$i -lt 3000000;$i++){ $x = ($x*7 + 13) % 1000003 } }'
-          }
-          Write-Host "started $($burners.Count) CPU burners on $env:NUMBER_OF_PROCESSORS cores"
-          Start-Sleep -Seconds 5
-          try {
-            go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=3 -v -timeout 40m 2>&1 | Tee-Object -FilePath profile-loaded.txt
-          } finally {
-            $burners | ForEach-Object { try { Stop-Process -Id $_.Id -Force } catch {} }
-          }
-          exit 0
-
-      # ---- The actual reproduction attempt: the UNMODIFIED production test,
-      # real 41-attempt budget, under the same saturation.
-      - name: Production test under CPU saturation (repro attempt)
+      # The unmodified production test, real 41-attempt budget, high count.
+      # ~400 x 320 = 128,000 writes. At the observed CI rate this should fail
+      # a handful of times if the CI failures are this test's own contention.
+      - name: Production test failure rate at high count
         shell: pwsh
         run: |
-          $burners = 1..16 | ForEach-Object {
-            Start-Process -PassThru -WindowStyle Hidden pwsh -ArgumentList '-NoProfile','-Command','while($true){ $x=1; for($i=0;$i -lt 3000000;$i++){ $x = ($x*7 + 13) % 1000003 } }'
-          }
-          Start-Sleep -Seconds 5
-          try {
-            go test ./internal/atomicfile/ -run TestWriteFile_ConcurrentWritersSameDestination -count=60 -v -timeout 40m 2>&1 | Tee-Object -FilePath prod-loaded.txt
-          } finally {
-            $burners | ForEach-Object { try { Stop-Process -Id $_.Id -Force } catch {} }
-          }
-          Write-Host "=== PASS/FAIL tally ==="
-          Write-Host ("PASS: " + (Select-String -Path prod-loaded.txt -Pattern '--- PASS: TestWriteFile_Concurrent').Count)
-          $f = Select-String -Path prod-loaded.txt -Pattern '--- FAIL: TestWriteFile_Concurrent'
-          Write-Host ("FAIL: " + $f.Count)
-          Select-String -Path prod-loaded.txt -Pattern 'still failing after' | ForEach-Object { $_.Line }
+          go test ./internal/atomicfile/ -run TestWriteFile_ConcurrentWritersSameDestination -count=400 -v -timeout 45m 2>&1 | Tee-Object -FilePath prod-high.txt
+          Write-Host "=== tally ==="
+          Write-Host ("PASS: " + (Select-String -Path prod-high.txt -Pattern '--- PASS: TestWriteFile_Concurrent').Count)
+          Write-Host ("FAIL: " + (Select-String -Path prod-high.txt -Pattern '--- FAIL: TestWriteFile_Concurrent').Count)
+          Select-String -Path prod-high.txt -Pattern 'still failing after' | ForEach-Object { $_.Line }
           exit 0
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: diag6875-logs
+          name: diag6875-logs-round3
           path: |
-            profile-idle.txt
-            profile-loaded.txt
-            prod-loaded.txt
+            profile-high.txt
+            prod-high.txt
