@@ -25,36 +25,56 @@ package clojure_test
 // terraform's root-by-accident and not shell's three-way split. Clojure names
 // its records after the NAMESPACE ("app.core"), the defn/defmacro, the
 // defrecord/deftype, or — for an import stub — topSegment(module), the module
-// name cut at its FIRST dot. Nothing is named after the file or its basename
+// name cut at its first dot at index > 0 (see the clause-3 note below for what
+// that guard does NOT cut). Nothing is named after the file or its basename
 // under any condition, so there is no depth at which the edge resolved by the
 // #6367 accident.
 //
-// CLAUSE 3 IS REACHABLE AT ROOT DEPTH ONLY, and by exactly one route.
-// FileCarrierFor clause 3 is `records[i].Name == path` (clause 1 is the
-// empty-path guard, clause 2 the anchoring test). The route is fsharp's, not
-// lua's: nsRE captures a DOTTED `[\w\-\.]+`, so a root file core.clj whose
-// header reads `(ns core.clj)` emits a SCOPE.Component named exactly the path.
-// graph.EntityID hashes (repo, kind, name, sourceFile) and NOT Subtype (#6369 /
-// PR #6480), so a carrier there would land a second SCOPE.Component under the
-// namespace record's id.
+// CLAUSE 3 IS REACHABLE BY TWO ROUTES. FileCarrierFor clause 3 is
+// `records[i].Name == path` (clause 1 is the empty-path guard, clause 2 the
+// anchoring test). graph.EntityID hashes (repo, kind, name, sourceFile) and NOT
+// Subtype (#6369 / PR #6480), so a carrier beside a path-named record would land
+// a second SCOPE.Component under that record's id.
 //
-// The three other name producers provably cannot reach clause 3, and the
-// argument is about CHARACTER SETS rather than about what a corpus happens to
-// contain — every path the classifier routes to clojure ends in .clj / .cljs /
-// .cljc / .edn (classifier.go:406-409) and therefore contains a dot, and a
-// nested path additionally contains a '/':
+//   - THE NAMESPACE ROUTE, root depth only. fsharp's route (#6880): nsRE
+//     captures a DOTTED `[\w\-\.]+`, so a root file core.clj whose header reads
+//     `(ns core.clj)` emits a SCOPE.Component named exactly the path. nsRE
+//     admits no '/', so at a nested path this route is closed — DRIVEN below,
+//     not asserted.
+//   - THE IMPORT-STUB ROUTE, any depth, for a path whose FIRST BYTE is a dot.
+//     lua's and shell's route (#6885, #6882), reached here through a narrower
+//     door. buildImportEntities names the stub topSegment(module), and
+//     topSegment (clojure.go:648) guards with `dot > 0` — so when the module
+//     begins with a dot it returns the module VERBATIM, slashes and extension
+//     included. requireVecRE's class is `[\w\-\./]+`, so `.clj-kondo/hooks/foo.clj`
+//     is a capturable module, and a file at that path requiring itself mints a
+//     record named exactly the path. That is not a contrivance:
+//     `.clj-kondo/hooks/*.clj` is a ubiquitous real Clojure repo layout, and
+//     classifier.Classify routes it Skip:false, Tier:1. DRIVEN below at both
+//     depths, with a non-dot-leading control.
+//
+// SO THE CHARACTER-SET CLOSURE IS NARROWER THAN THIS FILE FIRST CLAIMED, and the
+// correction is recorded rather than quietly edited. The shipped text said the
+// stub name "never CONTAINS a dot and can never equal a routed path", and that
+// "this is where clojure differs from lua and shell". Both are false for a
+// dot-leading path — under one, clojure does exactly what lua and shell do. The
+// surviving claim, and it is the one the tests drive:
 //
 //   - defnRE / defmacroRE / deftypeRE capture `[\w\-\?!\*'+]+`, which admits
-//     neither '.' nor '/'. No operation or class record can equal any routed
-//     path, at any depth.
-//   - buildImportEntities names the stub topSegment(module) — the module cut at
-//     its first dot — so the result never CONTAINS a dot and can never equal a
-//     routed path either. This is where clojure differs from lua and shell,
-//     whose self-require/self-source stubs keep the path verbatim and reach
-//     clause 3 at any depth.
-//   - nsRE's `[\w\-\.]+` admits no '/', so at a NESTED path the namespace route
-//     is closed as well. That cell is DRIVEN below rather than asserted, on the
-//     #6852 rule that an unreachability claim needs a demonstration.
+//     neither '.' nor '/'. Every path the classifier routes to clojure ends in
+//     .clj / .cljs / .cljc / .edn (classifier.go:406-409) and therefore contains
+//     a dot, so no operation or class record can equal any routed path, at any
+//     depth. This one holds unconditionally.
+//   - the stub route is closed for every module NOT beginning with '.', because
+//     topSegment then cuts at a dot at index > 0 and the result contains none.
+//
+// There is NO behavioural defect on the dot-leading path — clause 3 declines,
+// the IMPORTS edge resolves onto the path-named stub, and nothing is fabricated.
+// What was wrong was a STATED PROOF OF UNREACHABILITY, the same shape
+// hierarchy.go's `:gen-class` argument got wrong (it now carries a 40k-input
+// panic proof) and the astro arm got wrong about componentNameFromPath. The
+// repair is a driven cell, not a better argument. Do NOT "fix" topSegment to
+// `dot >= 0`: that mints an empty-named stub.
 //
 // GRADED IN BOTH DIRECTIONS. A recall-shaped assertion ("the carrier exists")
 // licenses an UNCONDITIONAL carrier, which would mint one bare orphan node per
@@ -67,11 +87,13 @@ package clojure_test
 //	FileCarrierFor clause 2 (!anchored)  → TestClojure_NoCarrierWithoutAnImport_6852
 //	                                       and TestClojure_NoNsFormGetsNoCarrier_6852
 //	FileCarrierFor clause 3 (path-named) → TestClojure_NamespaceNamedLikeThePathGetsNoSecondCarrier_6852
+//	                                       and TestClojure_SelfRequiringStubUnderADotLeadingPathGetsNoSecondCarrier_6852
 
 import (
 	"context"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/classifier"
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/clojure"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -454,11 +476,15 @@ func TestClojure_OneCarrierPerFileNotPerImport_6852(t *testing.T) {
 //
 // nsRE captures a DOTTED `[\w\-\.]+`, so a root file core.clj whose header
 // reads `(ns core.clj)` emits a SCOPE.Component named exactly the path — the
-// fsharp route (#6880), reached through the namespace name rather than through
-// an import stub, because clojure's stub is cut at its first dot and can never
-// carry an extension. graph.EntityID hashes (repo, kind, name, sourceFile) and
-// NOT Subtype (#6369 / PR #6480), so a carrier there would land a second
-// SCOPE.Component under the namespace record's id.
+// fsharp route (#6880), reached through the namespace NAME. graph.EntityID
+// hashes (repo, kind, name, sourceFile) and NOT Subtype (#6369 / PR #6480), so
+// a carrier there would land a second SCOPE.Component under the namespace
+// record's id.
+//
+// This is ONE of clause 3's two routes for clojure, not the only one. The other
+// is the import stub under a dot-leading path, driven by
+// TestClojure_SelfRequiringStubUnderADotLeadingPathGetsNoSecondCarrier_6852 —
+// see this file's header for the correction that produced it.
 //
 // The NESTED subtest is the contrast that stops this passing on a carrier that
 // is never emitted at all: at a nested path the same spelling is not
@@ -538,6 +564,91 @@ func TestClojure_NamespaceNamedLikeThePathGetsNoSecondCarrier_6852(t *testing.T)
 				"carrier; got subtype %q", path, named[0].Subtype)
 		}
 	})
+}
+
+// TestClojure_SelfRequiringStubUnderADotLeadingPathGetsNoSecondCarrier_6852
+// drives clause 3's SECOND route, which this file originally argued did not
+// exist. The correction, and why it is a driven cell rather than a better
+// argument, are in the header; the mechanism in one line:
+//
+//	topSegment (clojure.go:648) guards with `dot > 0`, so a module whose FIRST
+//	byte is a dot comes back VERBATIM — slashes and extension included.
+//
+// requireVecRE's class is `[\w\-\./]+`, so `.clj-kondo/hooks/foo.clj` is a
+// capturable module and a file at that path requiring itself mints a record
+// named exactly the path — lua's and shell's self-reference route, reached
+// through a narrower door. It is production-reachable rather than merely
+// expressible: `.clj-kondo/hooks/*.clj` is a ubiquitous real Clojure repo
+// layout, and the classifier PREMISE ROW below drives that rather than asserting
+// it, because "the extractor would do X if the file reached it" is not the same
+// claim as "the file reaches it" — that gap is exactly what the astro arm's
+// componentNameFromPath argument got wrong.
+//
+// THE CONTROL IS THE POINT. A non-dot-leading nested path with the identical
+// self-require DOES get a carrier, because topSegment then cuts at a dot at
+// index > 0. Without that row the test would pass on an extractor that never
+// mints a carrier at all, and the surviving half of the character-set claim
+// would be ungraded.
+func TestClojure_SelfRequiringStubUnderADotLeadingPathGetsNoSecondCarrier_6852(t *testing.T) {
+	cases := []struct {
+		name        string
+		path        string
+		wantCarrier bool
+	}{
+		// Dot-leading, root depth.
+		{"dot_leading_root", ".core.clj", false},
+		// Dot-leading, NESTED — the real-world layout, and the cell that
+		// falsifies "root depth only".
+		{"dot_leading_nested_clj_kondo", ".clj-kondo/hooks/foo.clj", false},
+		// Control: same source shape, first byte not a dot. topSegment cuts at
+		// the dot in "src/app/core.clj" and yields "src/app/core", which is not
+		// the path, so clause 3 does not fire and a carrier IS due.
+		{"not_dot_leading_nested_control", "src/app/core.clj", true},
+	}
+	cls := classifier.New(nil)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Premise: the classifier actually routes this path to clojure.
+			// Without this row "production-reachable" would be an assertion
+			// about the extractor standing in for one about the classifier.
+			res := cls.Classify(context.Background(), c.path)
+			if res.Language != "clojure" || res.Skip {
+				t.Fatalf("premise: classifier must route %q to clojure unskipped, got "+
+					"language=%q skip=%v reason=%q", c.path, res.Language, res.Skip, res.SkipReason)
+			}
+			src := "(ns app.core\n  (:require [" + c.path + " :as self]))\n"
+			recs := runClj6852(t, src, c.path)
+			if n := len(cljPathAnchored6852(recs, c.path)); n == 0 {
+				t.Fatal("premise: the fixture must still anchor an IMPORTS on the path, " +
+					"or clause 2 rejects first and clause 3 is not the thing under test")
+			}
+			named := cljNamedExactly6852(recs, c.path)
+			if len(named) != 1 {
+				t.Fatalf("exactly 1 record may be named %q, got %d — two records under one "+
+					"graph.EntityID, which does not hash Subtype (#6369/#6480)", c.path, len(named))
+			}
+			carriers := len(cljCarriers6852(recs, c.path))
+			if c.wantCarrier {
+				if carriers != 1 {
+					t.Errorf("want 1 carrier for %q (topSegment cuts a module whose first byte "+
+						"is not a dot, so the stub is not named the path), got %d", c.path, carriers)
+				}
+				if named[0].Subtype != "file" {
+					t.Errorf("the one record named %q must be the carrier, got subtype %q",
+						c.path, named[0].Subtype)
+				}
+				return
+			}
+			if carriers != 0 {
+				t.Errorf("no file carrier may be minted for %q: topSegment returns a "+
+					"dot-leading module VERBATIM, so the import stub is already named the "+
+					"path and clause 3 must decline; got %d", c.path, carriers)
+			}
+			if named[0].Subtype == "file" {
+				t.Errorf("the one record named %q must be the import stub, not a carrier", c.path)
+			}
+		})
+	}
 }
 
 // TestClojure_CarrierShape_6852 pins what the carrier IS: stamped clojure,
