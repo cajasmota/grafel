@@ -219,6 +219,38 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		}
 	}
 
+	// ── 4. File carrier (#6852) ─────────────────────────────────────────────
+	//
+	// extractImports stamps `FromID: file.Path` on every IMPORTS edge — the
+	// deliberate cross-language convention for import edges (#120) — but
+	// internal/resolve/refs.go has no path→entity index, so that FROM end
+	// resolves only if some emitted record carries the path as its Name. Nothing
+	// this package emits does: componentNameFromPath strips ".astro" from the
+	// basename, props/markers/islands are named after what they describe. So
+	// every astro import edge reached the graph with a raw path at its FROM end,
+	// at BOTH path depths. PrependFileCarrier mints the record that gives it one,
+	// and only when the file actually has a path-anchored edge to carry — an
+	// unconditional carrier would add one bare orphan node per .astro file across
+	// a whole repo (#6815, #6518).
+	//
+	// PLACEMENT: LAST, and the reason is INDEX-0 STATE. Extract writes
+	// `entities[0].Relationships = append(...)` at three sites above — imports
+	// (§2a), RENDERS and IMPLEMENTS (§3) — each meaning "the whole-file
+	// component", which is index 0 only because it was appended first.
+	// PrependFileCarrier inserts AT index 0, so a call placed above §2a finds
+	// nothing anchored yet and emits no carrier at all, while one placed between
+	// §2a and §3 re-homes the template edges onto a record that must own none —
+	// which is #6298's defect arriving from the other end. Both halves are graded
+	// by TestAstro_CarrierPlacementDoesNotRehomeComponentEdges_6852 and scored
+	// separately as mutants; neither is left as prose.
+	//
+	// The token is passed explicitly. This package runs no
+	// extractor.TagEntitiesLanguage — every record above sets Language: "astro"
+	// at its construction site — so an empty or wrong token here survives to the
+	// graph. TestAstro_CarrierShape_6852 is what grades it, and is named for that
+	// in nonTaggingCallers (internal/extractor/carrier_caller_set_6861_test.go).
+	entities = extractor.PrependFileCarrier(file.Path, "astro", entities)
+
 	span.SetAttributes(
 		attribute.Int("file_line_count", lineCount),
 		attribute.Int("entity_count", len(entities)),

@@ -144,6 +144,7 @@ var nonTaggingCallers = []rosterEntry{
 		"TestHCLToken_ImportsFromEndResolves_6852",
 	}},
 	{"internal/extractors/html", []string{"TestHTML_CarrierShape_6852"}},
+	{"internal/extractors/astro", []string{"TestAstro_CarrierShape_6852"}},
 }
 
 // scannedFile is one file the walk read, kept as a name plus the FULL body the
@@ -202,6 +203,7 @@ func TestCarrierCallerSetIsGradedFromSource_6861(t *testing.T) {
 		{"internal/extractors/shell/shell.go", []string{prependFileCarrier}},
 		{"internal/extractors/dockerfile/dockerfile.go", []string{prependFileCarrier}},
 		{"internal/extractors/lua/lua.go", []string{prependFileCarrier}},
+		{"internal/extractors/astro/extractor.go", []string{prependFileCarrier}},
 	}
 
 	nonTest := 0

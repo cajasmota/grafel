@@ -62,16 +62,43 @@ func TestAstro_TemplateRelsAnchoredOnComponent(t *testing.T) {
 		recs[i].ID = graph.EntityID("issue6298", recs[i].Kind, recs[i].Name, recs[i].SourceFile)
 	}
 
-	// The premise of the dangle: nothing in this package's output is named for
-	// the file, so the file path can never resolve to an entity here. If astro
-	// ever starts emitting a FileEntity this assertion is the thing that should
-	// be revisited — but the fix below is correct either way.
+	// REVISITED BY #6852, exactly as the sentence this replaces asked for.
+	//
+	// It used to read "nothing in this package's output is named for the file, so
+	// the file path can never resolve to an entity here", and said that if astro
+	// ever started emitting a FileEntity this was the assertion to revisit. astro
+	// now does: #6852 added a CONDITIONAL extractor.PrependFileCarrier so the
+	// IMPORTS edge's path-valued FromID has something to resolve onto.
+	//
+	// The premise that mattered survives, narrowed rather than deleted, and it is
+	// what stops this test from passing for the wrong reason. The RENDERS and
+	// IMPLEMENTS edges below must be anchored on the COMPONENT. If the carrier
+	// were to own them -- which is exactly what happens if the PrependFileCarrier
+	// call is placed above the template section of Extract, since it inserts at
+	// index 0 and the template edges are appended to entities[0] -- this file's
+	// subject would have silently moved to a different node. So: the ONLY
+	// file-named record is the carrier, and it owns NO relationships.
+	fileNamed := 0
 	for i := range recs {
-		if recs[i].Name == "src/components/Header.astro" {
-			t.Errorf("astro now emits a file-named entity (%s/%s); "+
-				"re-read the dangle rationale in this file's doc comment",
+		if recs[i].Name != "src/components/Header.astro" {
+			continue
+		}
+		fileNamed++
+		if recs[i].Kind != "SCOPE.Component" || recs[i].Subtype != "file" {
+			t.Errorf("the file-named entity is %s/%s, want SCOPE.Component/file - "+
+				"the only record astro may name after the path is the #6852 carrier",
 				recs[i].Kind, recs[i].Subtype)
 		}
+		if n := len(recs[i].Relationships); n != 0 {
+			t.Errorf("the file carrier owns %d relationship(s); RENDERS and IMPLEMENTS "+
+				"belong to the component (#6298), and a carrier that owns them is this "+
+				"defect reintroduced from the other end", n)
+		}
+	}
+	if fileNamed != 1 {
+		t.Errorf("records named after the file = %d, want exactly 1 (the #6852 carrier) - "+
+			"0 means the path-anchored IMPORTS edge dangles again, >1 puts two nodes "+
+			"under one entity id", fileNamed)
 	}
 
 	resolve.ResolveImports(recs, resolve.BuildImportTable(recs))
