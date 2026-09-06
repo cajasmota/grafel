@@ -18,6 +18,25 @@ frameworks:
   # — dependabot.yml, labeler.yml, auto_assign.yml and .pre-commit-config.yaml,
   # which merely live in .github/ — so no workflow in the corpus is declined
   # and no non-workflow is admitted.
+  #
+  # Zero of 402 is a measurement, not a proof, and the set is NOT exhaustive in
+  # either direction. Two shapes outside that corpus, named so the list does not
+  # read as closed (neither is a defect today; both are what the next arm should
+  # re-measure against):
+  #
+  #   * `${{` is not GitHub-only. Azure Pipelines template expressions are
+  #     written `${{ ... }}` too, and an azure-pipelines.yml carries a column-0
+  #     `name:` (the build-number format) and a `- name:` variables list — i.e.
+  #     both gated rules would over-fire on one.
+  #   * a COMPOSITE action.yml whose steps are all `run:` carries none of these
+  #     four: a composite action has no `runs-on:`. Such a file is declined, and
+  #     its `name:` is then extracted by nothing.
+  #
+  # Each marker is load-bearing on its own, which is graded marker by marker
+  # rather than as a set: deleting only `runs-on:` costs a `run:`-only workflow
+  # its Service and every step Task, and the set is over-determined on the
+  # fixture, so the fixture cannot see it
+  # (TestIssue6927_GitHubActions_EachImportMarkerAdmitsAWorkflowAlone).
   detection:
     import_markers:
       - "runs-on:"
@@ -87,6 +106,14 @@ source_patterns:
   # it off deeper keys such as a `strategy.matrix` whose axis is named
   # `runs-on`; widening it to `\s+` mints an Operation called `matrix`, which
   # is a forbidden row in github-actions-workflows-mini.
+  #
+  # That two-key vocabulary IS the ungated verdict, so it is graded as an exact
+  # set and not by membership: adding a third key mints an Operation for the
+  # fixture's `notification:` job, which is forbidden there and pinned by
+  # TestIssue6927_GitHubActions_JobRuleReadsOnlyRunsOnAndUses. The rule only
+  # inspects the IMMEDIATELY-next line, so a job whose first key is `needs:` or
+  # `if:` is missed; that is a recall gap, not a widening, and the fixture
+  # records it through the structured extractor's CONTAINS edge instead.
   - pattern: "(?m)^\\s{2}(\\w[\\w-]*):\\s*\\n\\s+(?:runs-on|uses):"
     entity_type: Operation
     name_group: 1
@@ -152,6 +179,12 @@ source_patterns:
   # anchor is graded by the same `notification:` forbidden row plus a second on
   # a different shape: `node-version: 20` contains the substring `on: 20`, so
   # dropping the anchor mints a Config called `20`.
+  #
+  # Those two rows grade REMOVING `^`. Weakening it to `^\s*on:` keeps the line
+  # anchor and still reads an indented `on:` key — and with no framework gate on
+  # either `on:` rule, that is every nested `on:` in every YAML file the cicd
+  # bucket is offered. Graded separately by
+  # TestIssue6927_GitHubActions_OnRulesAreColumnZeroOnly.
   - pattern: "(?m)^on:\\s+(\\w+)"
     entity_type: Config
     name_group: 1

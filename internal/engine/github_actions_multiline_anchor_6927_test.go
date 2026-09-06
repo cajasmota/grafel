@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -401,29 +402,239 @@ func TestIssue6927_GitHubActions_GatedPatternsAreLoaded(t *testing.T) {
 	}
 }
 
+// TestIssue6927_GitHubActions_EachImportMarkerAdmitsAWorkflowAlone grades the
+// marker set MARKER BY MARKER, in the recall direction.
+//
+// PR #6945 review M2: the only marker mutant originally scored was "replace the
+// set with one that matches nothing", and deleting a SINGLE marker was ALIVE at
+// the engine suite, the fixture gate AND the ratchet ceiling. The fixture's
+// workflows are over-determined — build.yml satisfies three markers at once and
+// nightly.yml satisfies `.github/workflows/` through its `uses:` target — so
+// dropping any one of them changes nothing anywhere, while the input that
+// exercises it is the most ordinary workflow there is: `runs-on:` is the only
+// marker a `run:`-only workflow carries, and under that deletion it loses its
+// Service and every step Task.
+//
+// Each case therefore carries EXACTLY ONE marker, and that premise is asserted
+// rather than eyeballed: a case that quietly grew a second marker would grade
+// the set again instead of the marker, which is the defect this test exists to
+// close.
+func TestIssue6927_GitHubActions_EachImportMarkerAdmitsAWorkflowAlone(t *testing.T) {
+	markers := ghaOnlyRules(t)["cicd"][0].Frameworks.Detection.ImportMarkers
+	if len(markers) != 4 {
+		t.Fatalf("expected 4 import_markers, got %d: %v — this test carries one minimal "+
+			"workflow per marker and a new one would be ungraded", len(markers), markers)
+	}
+
+	cases := []struct {
+		marker string
+		src    string
+		// want is one gated entity the workflow must yield. A gated pattern is
+		// the only thing the marker can affect, so an un-gated one would pass
+		// with the gate wide open.
+		wantKind, wantName string
+	}{
+		{
+			marker: "runs-on:",
+			// The plainest workflow there is: no marketplace action, no
+			// expression, no reusable call. `runs-on:` is its ONLY marker.
+			src: `name: CI
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build it
+        run: make
+`,
+			wantKind: "Service", wantName: "CI",
+		},
+		{
+			marker: "uses: actions/",
+			src: `name: Checkout only
+on: push
+jobs:
+  build:
+    steps:
+      - uses: actions/checkout@v4
+`,
+			wantKind: "Service", wantName: "Checkout only",
+		},
+		{
+			marker: "${{",
+			src: `name: Expression only
+on: push
+jobs:
+  deploy:
+    steps:
+      - name: Print the sha
+        run: echo ${{ github.sha }}
+`,
+			wantKind: "Task", wantName: "Print the sha",
+		},
+		{
+			marker: ".github/workflows/",
+			src: `name: Reusable caller
+on: workflow_dispatch
+jobs:
+  call:
+    uses: ./.github/workflows/build.yml
+`,
+			wantKind: "Service", wantName: "Reusable caller",
+		},
+	}
+
+	if len(cases) != len(markers) {
+		t.Fatalf("%d cases for %d markers", len(cases), len(markers))
+	}
+	for _, tc := range cases {
+		// Premise: exactly one marker, and it is the one this case is for.
+		var present []string
+		for _, m := range markers {
+			if strings.Contains(tc.src, m) {
+				present = append(present, m)
+			}
+		}
+		if len(present) != 1 || present[0] != tc.marker {
+			t.Errorf("case %q carries markers %v, want exactly [%q] — it grades the marker SET, "+
+				"not this marker", tc.marker, present, tc.marker)
+			continue
+		}
+		res := detect6927GHA(t, "ci/workflows/case.yml", tc.src)
+		if !has6927GHA(res, tc.wantKind, tc.wantName) {
+			t.Errorf("marker %q alone did not admit a workflow: %s %q missing. Deleting this one "+
+				"marker silently drops every gated entity from a workflow that carries only it",
+				tc.marker, tc.wantKind, tc.wantName)
+		}
+	}
+}
+
+// TestIssue6927_GitHubActions_JobRuleReadsOnlyRunsOnAndUses grades the
+// `(?:runs-on|uses)` alternation, which is the ENTIRE justification for leaving
+// the job rule ungated: the argument for no requires_framework there is that
+// the regex names GitHub Actions' own job vocabulary itself.
+//
+// PR #6945 review M3: widening it to `(?:runs-on|uses|needs)` was ALIVE at the
+// engine suite AND at the fixture gate, and died only incidentally on the
+// ratchet's generic entity-count ceiling — which fires for any extra entity and
+// would not fire at all for a same-count substitution. An aggregate that
+// somebody will eventually re-baseline must not be the only thing holding a
+// rule's blast radius.
+//
+// Asserted as an EXACT set rather than as "contains build": a membership check
+// is blind to exactly the direction this mutant moves in.
+func TestIssue6927_GitHubActions_JobRuleReadsOnlyRunsOnAndUses(t *testing.T) {
+	got := names6927GHA(detect6927GHA(t, "ci/workflows/build.yml", gha6927Workflow), "Operation")
+	want := []string{"build", "publish"}
+	if !slices.Equal(got, want) {
+		t.Errorf("job rule minted Operations %v, want exactly %v. `notification:` is a job whose "+
+			"first key is `needs:`, so the rule must NOT see it; anything else here means the "+
+			"alternation reads a key that is not `runs-on:` or `uses:`", got, want)
+	}
+
+	got2 := names6927GHA(detect6927GHA(t, "ci/workflows/nightly.yml", gha6927ReusableCaller), "Operation")
+	want2 := []string{"smoke"}
+	if !slices.Equal(got2, want2) {
+		t.Errorf("job rule minted Operations %v in the reusable caller, want exactly %v", got2, want2)
+	}
+}
+
+// gha6927OnRules returns the shipped `on:`-trigger rules, selected by BEHAVIOUR
+// rather than by pattern text.
+//
+// PR #6945 review M4/M5: the previous version of this helper found its rule
+// with strings.Contains(sp.Pattern, `^on:\s+(\w+)`) and t.Fatal'd when that
+// missed. That made its verdict a fact about the pattern's SPELLING. A real
+// anchor weakening (`(?m)^on:` -> `(?m)^\s*on:`) turned the test red with "the
+// pattern is no longer in github_actions.yaml" — it had lost its selector, not
+// observed a behaviour change — and a behaviour-PRESERVING rewrite
+// (`(\w+)` -> `([\w]+)`) produced the identical failure. A test that goes red
+// when you rename something and green-for-the-wrong-reason when you break
+// something is worse than no test, because it reads as coverage.
+//
+// Selecting on what the compiled pattern DOES survives any rewrite that keeps
+// the behaviour and survives none that changes it.
+func gha6927OnRules(t *testing.T) (single, block *regexp.Regexp) {
+	t.Helper()
+	// Deliberately carry NOTHING but the trigger: a `name:` line would be read
+	// by the workflow-name rule and the classification below would pick it up
+	// as an `on:` rule.
+	const singleForm = "on: push\n"
+	const blockForm = "on:\n  push:\n    branches: [main]\n"
+	for _, sp := range ghaSourcePatterns(t) {
+		re, err := regexp.Compile(sp.Pattern)
+		if err != nil {
+			t.Fatalf("shipped pattern does not compile: %q: %v", sp.Pattern, err)
+		}
+		switch {
+		case re.MatchString(singleForm):
+			if single != nil {
+				t.Fatalf("two rules read a single-line `on: push`: %q and %q", single, sp.Pattern)
+			}
+			single = re
+		case re.MatchString(blockForm):
+			if block != nil {
+				t.Fatalf("two rules read ONLY a block-form trigger: %q and %q", block, sp.Pattern)
+			}
+			block = re
+		}
+	}
+	if single == nil || block == nil {
+		t.Fatalf("github_actions.yaml no longer carries two `on:` rules (single=%v block=%v)",
+			single, block)
+	}
+	return single, block
+}
+
 // TestIssue6927_GitHubActions_SingleEventRuleAlsoReadsBlockForm pins a property
 // the old `# on: single event` comment denied: `\s` matches a newline, so
 // `^on:\s+(\w+)` reads the FIRST event of a block-form trigger too. That is why
 // its corpus count (235 matches) is one ABOVE the block-form rule's (234)
-// rather than complementary to it, and it is asserted against the shipped
-// pattern text because at entity level the two rules mint the same Config and
-// the duplicate folds away — leaving the claim unobservable.
+// rather than complementary to it. It is asserted against the compiled pattern
+// because at entity level the two rules mint the same Config for the same file
+// and the duplicate folds away, leaving the claim unobservable.
 func TestIssue6927_GitHubActions_SingleEventRuleAlsoReadsBlockForm(t *testing.T) {
-	var single string
-	for _, sp := range ghaSourcePatterns(t) {
-		if strings.Contains(sp.Pattern, `^on:\s+(\w+)`) {
-			single = sp.Pattern
-		}
-	}
-	if single == "" {
-		t.Fatal("the single-event on: pattern is no longer in github_actions.yaml")
-	}
-	re := regexp.MustCompile(single)
-	m := re.FindStringSubmatch("name: CI\non:\n  push:\n    branches: [main]\n")
+	single, _ := gha6927OnRules(t)
+	m := single.FindStringSubmatch("on:\n  push:\n    branches: [main]\n")
 	if m == nil {
-		t.Fatalf("%q did not match a block-form trigger; the rule's own comment says it does", single)
+		t.Fatal("the single-event on: rule did not match a block-form trigger; its own comment " +
+			"says it does, and the corpus counts (235 vs 234) rest on it")
 	}
 	if m[1] != "push" {
 		t.Errorf("block-form capture = %q, want %q", m[1], "push")
+	}
+}
+
+// TestIssue6927_GitHubActions_OnRulesAreColumnZeroOnly grades the half of the
+// `on:` anchors that the fixture's forbidden rows do not reach.
+//
+// `Config:needs` and `Config:20` grade removing `^` OUTRIGHT. They say nothing
+// about WEAKENING it: `(?m)^on:` -> `(?m)^\s*on:` keeps the line anchor and
+// still reads an indented `on:` key, and both `on:` rules are ungated — so
+// under that weakening they fire on any indented `on:` in any YAML file in any
+// indexed repo, which is the blast radius the column-0 anchor exists to
+// prevent. PR #6945 review M4 found that ALIVE at the fixture gate.
+func TestIssue6927_GitHubActions_OnRulesAreColumnZeroOnly(t *testing.T) {
+	single, block := gha6927OnRules(t)
+	// An indented `on:` in each of the two trigger shapes. Both are ordinary
+	// YAML that any repo can hold under a key of its own.
+	const indentedSingle = "jobs:\n  build:\n    on: push\n"
+	const indentedBlock = "jobs:\n  build:\n    on:\n      push:\n"
+	for _, tc := range []struct {
+		name string
+		re   *regexp.Regexp
+		src  string
+	}{
+		{"single-event rule, indented single form", single, indentedSingle},
+		{"single-event rule, indented block form", single, indentedBlock},
+		{"block-form rule, indented block form", block, indentedBlock},
+		{"block-form rule, indented single form", block, indentedSingle},
+	} {
+		if m := tc.re.FindStringSubmatch(tc.src); m != nil {
+			t.Errorf("%s: matched an INDENTED `on:` and captured %q. Column 0 is the whole fence "+
+				"on these two rules — they carry no requires_framework — so a weakened anchor "+
+				"reads a nested `on:` key in every YAML file the cicd bucket is offered",
+				tc.name, m[len(m)-1])
+		}
 	}
 }

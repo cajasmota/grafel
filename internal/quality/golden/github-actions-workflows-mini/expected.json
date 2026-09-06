@@ -126,6 +126,12 @@
       "note": "#6927 forbidden arm, INDENT direction for the job rule. `\\s{2}` means EXACTLY two, which is what keeps the rule off deeper keys; build.yml carries the idiomatic `strategy.matrix.runs-on` axis list, so `\\s{2}` -> `\\s+` reads `matrix:` as a job name and mints an Operation for it. This is the only forbidden row the job rule has, because across 402 non-workflow YAML files in the corpus the widened rule matched ZERO times — it names `runs-on:`/`uses:` itself and is self-gating, so it takes no requires_framework."
     },
     {
+      "name": "notification",
+      "kind": "Operation",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ALTERNATION direction for the job rule, and the row that grades the reason it is ungated. PR #6945 review M3: widening `(?:runs-on|uses)` to `(?:runs-on|uses|needs)` was ALIVE at the engine suite AND here, and died only incidentally on the ratchet's generic entity-count ceiling — a guard that fires for any extra entity and would not fire at all for a same-count substitution. `notification:` is a job whose first key is `needs:`, so the shipped rule cannot see it; any rule that reads a key outside its own two-key vocabulary mints it. The structured extractor DOES see that job — the CONTAINS edge asserted below is the same job — which is what keeps this row about the regex rule's blast radius rather than about the workflow being parsed at all."
+    },
+    {
       "name": "needs",
       "kind": "Config",
       "must_exist": false,
