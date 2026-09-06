@@ -142,7 +142,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// under this suite: there is nothing for a fixture to notice. The token is
 	// what keeps the carrier off the fill path and out of proto's #6356 trap
 	// (file_carrier_6852_test.go asserts it carries no Properties["language"],
-	// which holds on both sides for the same reason).
+	// which holds on both sides though by DIFFERENT routes: at the placement
+	// shipped here TagEntitiesLanguage is handed the carrier and skips it on
+	// its Language != "" continue, while under the moved placement the carrier
+	// is prepended afterwards and is never handed to the tagger at all).
 	//
 	// The dependency runs the other way from the way it reads. Scored, so the
 	// next reader need not re-run it: moving this call BELOW the tagging pair
