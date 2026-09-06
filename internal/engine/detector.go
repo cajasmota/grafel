@@ -179,13 +179,6 @@ func (d *Detector) compile() {
 					log.Printf("engine: invalid relationship_rule regex in %s: %q: %v", lang, rr.Pattern, err)
 					continue
 				}
-				// #6666 review D2: capture group 0 is the WHOLE match, so a
-				// join window bounded by it is empty by construction and the
-				// terminator guard could never fire. Loading such a rule would
-				// ship a guard that silently does nothing and tests that stay
-				// green — the exact failure mode this feature exists to end.
-				// Reject it loudly instead. (source_group: 0 on its own is a
-				// separate defect, tracked in #6788, and is left alone here.)
 				// #6809: a rule that names the SAME capture group AND the same
 				// entity type for both endpoints cannot express a two-endpoint
 				// relation. extractGroup returns one string for both ends, so
@@ -222,6 +215,13 @@ func (d *Detector) compile() {
 						lang, rr.SourceGroup, rr.SourceType, rr.Pattern)
 					continue
 				}
+				// #6666 review D2: capture group 0 is the WHOLE match, so a
+				// join window bounded by it is empty by construction and the
+				// terminator guard could never fire. Loading such a rule would
+				// ship a guard that silently does nothing and tests that stay
+				// green — the exact failure mode this feature exists to end.
+				// Reject it loudly instead. (source_group: 0 on its own is a
+				// separate defect, tracked in #6788, and is left alone here.)
 				if rr.Terminator != "" && (rr.SourceGroup == 0 || rr.TargetGroup == 0) {
 					log.Printf("engine: relationship_rule in %s declares terminator %q with "+
 						"source_group=%d target_group=%d; group 0 is the whole match, so the "+

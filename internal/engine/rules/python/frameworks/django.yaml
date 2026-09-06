@@ -144,6 +144,16 @@ relationship_rules:
   # `path(<prefix>, include(<urlconf>))` is ONE call expression, so both
   # endpoints come out of one match with no join window and no #6666 exposure.
   # `re_path` and the legacy `url` spell the same construct and are accepted.
+  #
+  # KNOWN GAP, pinned by Test6809_DjangoIncludeEmptyPrefixIsAKnownGap: the ROOT
+  # mount `path("", include("core.urls"))` captures an EMPTY prefix, and the
+  # emission site drops any match with an empty source or target name, so this
+  # rule emits nothing at all there. That is not a regression — the old rule
+  # emitted a self-loop for it — but it does mean "the prefix is the source"
+  # holds for a prefixed mount and not for a root one. A root mount needs an
+  # endpoint that is not the prefix (the including file, say), which is a
+  # different rule rather than a wider regex. Relatedly, `re_path(r"^api/", …)`
+  # keeps its regex anchor in the entity name: `Route:^api/`, not `Route:api/`.
   - pattern: "(?:re_)?(?:path|url)\\s*\\(\\s*r?[\"']([^\"']*)[\"']\\s*,\\s*include\\s*\\(\\s*[\"']([^\"']+)[\"']"
     source_type: Route
     target_type: Route

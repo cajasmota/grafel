@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -226,8 +227,12 @@ func Test6809_GoldenCorpusEmitsNoLiteralSelfLoop(t *testing.T) {
 
 	root := filepath.Join("..", "quality", "golden")
 	var found []string
+	filesWalked, relsSeen := 0, 0
 	walkErr := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
-		if err != nil || fi.IsDir() {
+		if err != nil {
+			return err
+		}
+		if fi.IsDir() {
 			return nil
 		}
 		lang := ""
@@ -242,17 +247,26 @@ func Test6809_GoldenCorpusEmitsNoLiteralSelfLoop(t *testing.T) {
 		if lang == "" {
 			return nil
 		}
+		// Read and Detect errors are FAILURES, not skips. A `return nil` here
+		// is one of the five ways a scan-and-assert-absence guard reports clean
+		// without having looked: the walk runs, the file is selected, and the
+		// assertion then grades an empty set.
 		content, readErr := os.ReadFile(p)
 		if readErr != nil {
-			return nil
+			return readErr
 		}
 		rel, _ := filepath.Rel(root, p)
 		res, detErr := d.Detect(context.Background(), extractor.FileInput{
 			Path: rel, Content: content, Language: lang,
 		})
-		if detErr != nil || res == nil {
-			return nil
+		if detErr != nil {
+			return detErr
 		}
+		if res == nil {
+			return errors.New("Detect returned a nil result for " + rel)
+		}
+		filesWalked++
+		relsSeen += len(res.Relationships)
 		for _, r := range res.Relationships {
 			if r.FromID == r.ToID {
 				found = append(found, rel+": "+r.FromID+" -["+r.Kind+"]-> "+r.ToID)
@@ -263,9 +277,110 @@ func Test6809_GoldenCorpusEmitsNoLiteralSelfLoop(t *testing.T) {
 	if walkErr != nil {
 		t.Fatalf("walk golden: %v", walkErr)
 	}
+
+	// The floor. This test asserts an ABSENCE, so it passes for free the moment
+	// it stops looking — and the ways it can stop looking do not all need a code
+	// edit: the fixtures could move out of internal/quality/golden, or the
+	// extension mapping above could stop matching, and the assertion below would
+	// report a clean corpus having graded nothing. Measured on the corpus this
+	// change landed against: 21 files selected, 30 relationships emitted before
+	// the fix and 18 after. The floors are set well under those so ordinary
+	// fixture churn does not trip them, and far enough over zero that a collapse
+	// to "nothing was walked" or "nothing was extracted" is a failure rather
+	// than a pass.
+	const (
+		minFiles = 12
+		minRels  = 8
+	)
+	t.Logf("walked %d golden file(s), %d relationship(s) emitted", filesWalked, relsSeen)
+	if filesWalked < minFiles {
+		t.Fatalf("only %d golden file(s) were walked (want >= %d) — this test asserts an "+
+			"absence, so a corpus it cannot see reports clean without grading anything",
+			filesWalked, minFiles)
+	}
+	if relsSeen < minRels {
+		t.Fatalf("the %d walked file(s) emitted only %d relationship(s) (want >= %d) — the "+
+			"walk found files but the rule layer extracted nothing, so the self-loop "+
+			"assertion below has no population to grade",
+			filesWalked, relsSeen, minRels)
+	}
+
 	if len(found) != 0 {
 		sort.Strings(found)
-		t.Fatalf("%d literal self-loop(s) emitted over the golden corpus (#6809):\n  %s",
-			len(found), strings.Join(found, "\n  "))
+		t.Fatalf("%d literal self-loop(s) emitted over the golden corpus, out of %d "+
+			"relationship(s) from %d file(s) (#6809):\n  %s",
+			len(found), relsSeen, filesWalked, strings.Join(found, "\n  "))
+	}
+}
+
+// Test6809_DjangoIncludeEmptyPrefixIsAKnownGap pins what the repaired rule does
+// NOT do, so the next reader meets a failure that names the decision instead of
+// discovering the hole.
+//
+// The root-URLconf mount is the commonest form of this construct:
+//
+//	path("", include("core.urls"))
+//
+// Its prefix capture is the EMPTY string, and detector.go's emission site drops
+// any match whose source or target name is empty (`if sourceName == "" ||
+// targetName == "" { continue }`). So the repaired rule emits NOTHING there.
+//
+// That is not a regression — before #6809 this construct emitted
+// `Route:core.urls -> Route:core.urls`, a self-loop — but it does mean the
+// claim "the mounting prefix was in the construct all along" holds for a
+// PREFIXED mount and not for a root mount. Expressing the root mount needs an
+// endpoint that is not the prefix (the including FILE, say), which is a
+// different rule rather than a wider regex.
+//
+// The third leg records a smaller wart on the same rule: `re_path` carries a
+// regex, and the capture keeps its anchor, so the source entity is named
+// `Route:^api/` rather than `Route:api/`.
+func Test6809_DjangoIncludeEmptyPrefixIsAKnownGap(t *testing.T) {
+	rules, err := LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules: %v", err)
+	}
+	d := New(rules)
+
+	detect := func(src string) []types.RelationshipRecord {
+		t.Helper()
+		res, detErr := d.Detect(context.Background(), extractor.FileInput{
+			Path: "myproject/urls.py", Content: []byte(src), Language: "python",
+		})
+		if detErr != nil {
+			t.Fatalf("Detect: %v", detErr)
+		}
+		return res.Relationships
+	}
+
+	// Control: a PREFIXED mount does emit, so the leg below is measuring the
+	// empty prefix and not a rule that has stopped working altogether.
+	prefixed := detect("urlpatterns = [\n    path(\"users/\", include(\"users.urls\")),\n]\n")
+	if !hasEdge(prefixed, "Route:users/", "ROUTES_TO", "Route:users.urls") {
+		t.Fatalf("control: a prefixed include() must still emit; got %+v", prefixed)
+	}
+
+	// The gap. Asserted as a SHAPE (no ROUTES_TO at all), not merely "no
+	// self-loop": if the rule ever learns to express a root mount this fails,
+	// and it is meant to.
+	root := detect("urlpatterns = [\n    path(\"\", include(\"core.urls\")),\n]\n")
+	for _, r := range root {
+		if r.FromID == r.ToID {
+			t.Fatalf("root mount emitted a literal self-loop %s -[%s]-> %s",
+				r.FromID, r.Kind, r.ToID)
+		}
+		if r.Kind == "ROUTES_TO" {
+			t.Fatalf("KNOWN GAP CLOSED: `path(\"\", include(\"core.urls\"))` now emits "+
+				"%s -[ROUTES_TO]-> %s. The empty prefix used to be dropped by the "+
+				"emission site's empty-name guard. If this is the intended fix, update "+
+				"this test and the #6809 note on the rule in django.yaml", r.FromID, r.ToID)
+		}
+	}
+
+	// The anchor wart: re_path keeps `^` in the entity name.
+	re := detect("urlpatterns = [\n    re_path(r\"^api/\", include(\"api.urls\")),\n]\n")
+	if !hasEdge(re, "Route:^api/", "ROUTES_TO", "Route:api.urls") {
+		t.Fatalf("re_path leg: expected the source Route to keep its regex anchor "+
+			"(`Route:^api/`); got %+v", re)
 	}
 }
