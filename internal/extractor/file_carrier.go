@@ -85,6 +85,32 @@ import "github.com/cajasmota/grafel/internal/types"
 //     and it means clause 3 is not a root-depth phenomenon. Pinned by
 //     TestShell_ScriptComponentNamedLikeThePathGetsNoSecondCarrier_6852 and
 //     TestShell_SelfSourcingImportStubGetsNoSecondCarrier_6852.
+//     cobol (#6852) reaches it by a route that is neither a file component nor
+//     an import stub: an OPERAND. Nothing cobol emits is named after the file
+//     under any condition, but cicsQueueRe/cicsMapRe capture their operand from
+//     the class [A-Za-z0-9$#@][A-Za-z0-9$#@_.-]* — which admits '.' — and
+//     extractCICSQueues stores it VERBATIM (only the dedup key is upper-cased).
+//     So `EXEC CICS READQ TS QUEUE('PAYROLL.cbl')` in a ROOT file PAYROLL.cbl
+//     emits a SCOPE.Datastore named exactly the path. Pinned by
+//     TestCobol_PathNamedCICSQueueGetsNoSecondCarrier_6852, whose nested
+//     subtest is the contrast that stops it passing on a carrier that is never
+//     emitted at all.
+//     cobol reaches clause 3 at NESTED depth too, by a SECOND route, and that
+//     is worth stating here because the arm first shipped the opposite claim.
+//     It asserted that no cobol Name can contain '/' and that clause 3 was
+//     therefore root-depth-only. False: buildDLISegmentEntity names its record
+//     `op + " " + segment`, and segmentFromSSA upper-cases, caps at 8 chars and
+//     demands a letter-led first byte without rejecting '/', while the operand
+//     it slices comes from dliUsingArgRe's quoted-literal branch or a traced
+//     WORKING-STORAGE VALUE (wsValueRe group 3 = `[^'"]*`). The claim that
+//     SURVIVES is weaker: such a Name carries a mandatory "<OP> " prefix, so it
+//     equals a path only when the path is spelled with it — `EXEC A/B.CBL`,
+//     which is a legal on-disk path and is DRIVEN by
+//     TestCobol_PathNamedDLISegmentGetsNoSecondCarrier_6852 rather than argued.
+//     The general lesson for the arms still queued: a character-class closure
+//     over "every Name this package emits" is the claim most likely to be
+//     wrong, because one builder concatenating a prefix onto a literal-derived
+//     operand defeats it — clojure's `.clj-kondo` correction, one package over.
 //
 // Clause 3 is checked for EVERY record, before the loop may short-circuit on
 // clause 2 being satisfied — deliberately, and the order is load-bearing.
