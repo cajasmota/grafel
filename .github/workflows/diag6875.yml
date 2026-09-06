@@ -39,11 +39,11 @@ jobs:
         env:
           GRAFEL_DIAG_6875: '1'
         run: |
-          go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=200 -v -timeout 45m 2>&1 | Tee-Object -FilePath profile-high.txt
-          Write-Host "=== renames that EXCEEDED the production budget ==="
+          go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=300 -v -timeout 50m 2>&1 | Tee-Object -FilePath profile-high.txt
+          Write-Host "=== renames past the ordinary contention body ==="
           Select-String -Path profile-high.txt -Pattern 'EXCEEDED the production budget of 41: [1-9]' | ForEach-Object { $_.Line }
           Write-Host "=== live holder probes ==="
-          Select-String -Path profile-high.txt -Pattern 'LIVE PROBE|RestartManager|os.Stat\(dest\)' | ForEach-Object { $_.Line }
+          Select-String -Path profile-high.txt -Context 0,12 -Pattern 'LIVE PROBE' | ForEach-Object { $_ }
           Write-Host "=== worst max-attempts seen ==="
           Select-String -Path profile-high.txt -Pattern 'writes=320' | ForEach-Object { $_.Line } | Sort-Object -Unique
           exit 0
@@ -54,7 +54,7 @@ jobs:
       - name: Production test failure rate at high count
         shell: pwsh
         run: |
-          go test ./internal/atomicfile/ -run TestWriteFile_ConcurrentWritersSameDestination -count=400 -v -timeout 45m 2>&1 | Tee-Object -FilePath prod-high.txt
+          go test ./internal/atomicfile/ -run TestWriteFile_ConcurrentWritersSameDestination -count=250 -v -timeout 40m 2>&1 | Tee-Object -FilePath prod-high.txt
           Write-Host "=== tally ==="
           Write-Host ("PASS: " + (Select-String -Path prod-high.txt -Pattern '--- PASS: TestWriteFile_Concurrent').Count)
           Write-Host ("FAIL: " + (Select-String -Path prod-high.txt -Pattern '--- FAIL: TestWriteFile_Concurrent').Count)

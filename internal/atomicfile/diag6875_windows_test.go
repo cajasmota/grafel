@@ -41,7 +41,11 @@ const (
 	diagBudget    = 2000
 	diagDelay     = 5 * time.Millisecond
 	prodBudget    = 41 // 1 initial + 40 retries, the number CI prints
-	maxLiveProbes = 6  // bound the live Restart Manager probes
+	maxLiveProbes = 12 // bound the live Restart Manager probes
+	// probeAt: round 3 showed ordinary contention tops out at 4-5 attempts and
+	// the failures come from a rare heavier tail (one arm hit 29). Probing at 41
+	// was too late to ever fire. 8 is comfortably outside the ordinary body.
+	probeAt = 8
 )
 
 type diagSample struct {
@@ -151,8 +155,8 @@ func diagWrite(rec *diagRecorder, arm, path string, b []byte, perm os.FileMode) 
 	attempts := 1
 	err = os.Rename(tmp, path)
 	for i := 0; err != nil && renameErrRecoverable(err) && i < diagBudget; i++ {
-		if attempts == prodBudget {
-			// This rename has just exhausted what production would allow.
+		if attempts == probeAt {
+			// This rename is outside the ordinary contention body.
 			s.crossErrno = syscall.Errno(diagErrno(err))
 			rec.probeLive(path, attempts, err)
 		}
