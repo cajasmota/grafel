@@ -347,6 +347,7 @@ func TestSearchPaths_ExcludeElectronIPCChannels(t *testing.T) {
 func TestPathDetail_ElectronIPCChannelIsNotResolvable(t *testing.T) {
 	ipcHash := hashStr(ipcChannelPathLike)
 	realHash := hashStr(realHTTPPath)
+	scopeHash := hashStr(scopeEndpointPath)
 
 	handlers := []struct {
 		name string
@@ -404,6 +405,39 @@ func TestPathDetail_ElectronIPCChannelIsNotResolvable(t *testing.T) {
 			if !h.found(okBody) {
 				t.Fatalf("real path %q did not resolve (body=%s); the IPC assertion below "+
 					"would be vacuous", realHTTPPath, okW.Body.String())
+			}
+
+			// SECOND positive control, and it is not redundant with the first.
+			//
+			// realHTTPPath is an http_endpoint_definition, which
+			// types.IsHTTPEndpointKind already matches. So the control above
+			// stays green even if the SCOPE.Endpoint arm of this site's
+			// predicate is deleted outright: the two conditions only ever fire
+			// together, and a compound condition graded as a whole grades
+			// neither half. These four detail sites are exactly where that
+			// masking bites — unlike the list, search and export sites,
+			// nothing else here observes the arm.
+			//
+			// scopeEndpointPath is carried by a SCOPE.Endpoint entity, which NO
+			// other clause in the predicate matches. It resolves only if this
+			// site keys on SCOPE.Endpoint, so deleting that arm fails here.
+			scopeReq := httptest.NewRequest(http.MethodGet, h.url+scopeHash, nil)
+			setDetailPathValues(scopeReq, scopeHash)
+			scopeW := httptest.NewRecorder()
+			h.fn(srv)(scopeW, scopeReq)
+			if scopeW.Code != http.StatusOK {
+				t.Fatalf("SCOPE.Endpoint path %q: status = %d, want 200; this handler must "+
+					"key on SCOPE.Endpoint, not merely reject the bare Electron kind; body=%s",
+					scopeEndpointPath, scopeW.Code, scopeW.Body.String())
+			}
+			var scopeBody map[string]any
+			if err := json.Unmarshal(scopeW.Body.Bytes(), &scopeBody); err != nil {
+				t.Fatalf("SCOPE.Endpoint path: bad JSON: %v", err)
+			}
+			if !h.found(scopeBody) {
+				t.Errorf("the SCOPE.Endpoint entity at %q did not resolve (body=%s); without "+
+					"this the SCOPE.Endpoint arm of this site is ungraded",
+					scopeEndpointPath, scopeW.Body.String())
 			}
 
 			// The forbidden direction: the IPC channel must not resolve.
