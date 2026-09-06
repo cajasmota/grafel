@@ -161,11 +161,22 @@ func TestPhaseHolderIsRaceFree(t *testing.T) {
 // that does not resolve blows up inside it, or a trace of a failed run is
 // unattributable.
 func TestAssemblingIsStampedOnTheFailurePath(t *testing.T) {
+	// #6831: the resolution outcome used to be read from the AMBIENT registry
+	// (whatever ~/.grafel the run inherited), and a resolving group produced a
+	// t.Skip. Both halves were wrong. Isolate the home first, so the registry
+	// this test consults is empty by construction and resolveGroup's "unknown
+	// group" error is a property of the fixture rather than of the machine.
+	testsupport.IsolateHome(t)
 	restorePhase(t)
 	ResetPhaseHistory()
 
+	// With an empty registry this cannot legitimately succeed, so a success is
+	// a broken premise, not an excuse: skipping here would retire the only
+	// assertion that CurrentPhase() reads "assembling" on the failure path,
+	// while the package still reported PASS.
 	if _, err := RunGroupAlgorithms("grafel-no-such-group-5954"); err == nil {
-		t.Skip("unexpected: a bogus group resolved; cannot exercise the assembly failure path")
+		t.Fatal("a group that was never registered resolved without error: the assembly failure " +
+			"path was not entered, so the assembling-is-stamped-before-failure property is unasserted")
 	}
 	if got := CurrentPhase(); got != PhaseAssembling {
 		t.Fatalf("CurrentPhase() after a failed assembly = %q, want %q", got, PhaseAssembling)

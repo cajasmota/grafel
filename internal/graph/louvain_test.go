@@ -493,8 +493,32 @@ func TestLouvainAggregationPreservesModularity(t *testing.T) {
 			t.Parallel()
 			g, _ := buildCSRFromUndirected(tc.und)
 			comm, nc, moved, _ := g.localMoving(1.0)
+			// #6831: this was `t.Skip("no moves at level 0; nothing to
+			// aggregate")`. A skip here is not excusable by the data, because
+			// there is no run-time data: localMoving sweeps nodes 0..n-1 in
+			// index order, breaks ties on the lowest community index, and reads
+			// no map and no RNG, so `moved` is a pure function of the fixture
+			// checked in above (every builder is seeded). A `moved == false`
+			// here therefore means the ROW has stopped exercising aggregation
+			// — permanently, for everyone, until someone changes the table —
+			// and every assertion below it (Q-preservation across aggregate,
+			// the k == Σw + 2*selfw degree invariant, m2 conservation, and the
+			// selfw-is-non-zero fixture check) would be silently retired while
+			// the package still reported PASS. Fail instead of skipping; a
+			// fixture that genuinely cannot move belongs in a different test,
+			// not in a row of this one.
+			//
+			// Measured, so the value of this line is not overstated: with a
+			// genuinely non-moving fixture the "no self-loops at all" check
+			// below ALSO goes red, so deleting the skip is what restores
+			// detection. What this Fatalf adds is attribution — it names
+			// localMoving and the retired invariants at the line that caused
+			// them, instead of sending the next reader to the fixture builders
+			// with "the fixture is not exercising selfw".
 			if !moved {
-				t.Skip("no moves at level 0; nothing to aggregate")
+				t.Fatalf("localMoving reported no moves at level 0, so nothing was aggregated: "+
+					"Q-preservation, the k==Σw+2*selfw degree invariant and m2 conservation "+
+					"are NOT asserted for fixture %q — this row is a no-op, not a pass", tc.name)
 			}
 			qBefore := csrModularity(g, comm, nc, 1.0)
 
