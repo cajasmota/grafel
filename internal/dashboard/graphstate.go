@@ -1554,8 +1554,13 @@ func groupTopFrameworks(grp *DashGroup, cap int) []string {
 			e := &r.Doc.Entities[i]
 			kind := dashStripScopePrefix(e.Kind)
 			// #1217 backward compat: accept all three http endpoint kind strings.
+			// #6820: key on SCOPE.Endpoint, the HTTP kind. Bare "Endpoint" is the
+			// Electron rule pack's IPC-channel kind (electron.yaml ipcMain /
+			// ipcRenderer / contextBridge); it is not an HTTP route and keeps
+			// its spelling. IPC channels stay on the compound topology and
+			// entity search — see electron_ipc_not_http_6820_test.go.
 			if !types.IsHTTPEndpointKind(kind) && !strings.EqualFold(kind, httpEndpointKind) &&
-				kind != "Endpoint" && kind != "Route" {
+				e.Kind != string(types.EntityKindEndpoint) && kind != "Route" {
 				continue
 			}
 			if fw := e.PropGet("framework"); fw != "" {

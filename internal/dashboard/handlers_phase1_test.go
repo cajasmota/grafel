@@ -20,6 +20,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/mcp"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -94,9 +95,12 @@ func fakeDashGroup() *DashGroup {
 				CommunityID: &cid2,
 			},
 			graph.Entity{
-				ID:         "e3",
-				Name:       "POST /api/auth/login",
-				Kind:       "Endpoint",
+				ID:   "e3",
+				Name: "POST /api/auth/login",
+				// #6820: these are gin HTTP routes. They used the bare
+				// "Endpoint" spelling, which is the Electron rule pack's
+				// IPC-channel kind; the HTTP kind is SCOPE.Endpoint.
+				Kind:       string(types.EntityKindEndpoint),
 				SourceFile: "src/routes.go",
 				StartLine:  5,
 				EndLine:    5,
@@ -108,9 +112,12 @@ func fakeDashGroup() *DashGroup {
 			},
 			),
 			graph.Entity{
-				ID:         "e4",
-				Name:       "GET /api/users",
-				Kind:       "Endpoint",
+				ID:   "e4",
+				Name: "GET /api/users",
+				// #6820: these are gin HTTP routes. They used the bare
+				// "Endpoint" spelling, which is the Electron rule pack's
+				// IPC-channel kind; the HTTP kind is SCOPE.Endpoint.
+				Kind:       string(types.EntityKindEndpoint),
 				SourceFile: "src/routes.go",
 				StartLine:  10,
 				EndLine:    10,

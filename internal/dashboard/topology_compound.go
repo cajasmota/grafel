@@ -153,6 +153,15 @@ func (s *Server) handleV2TopologyCompound(w http.ResponseWriter, r *http.Request
 // nouns of a system) and drop the fine-grained code symbols (locals, params,
 // imports, plain functions) that would turn the canvas into a hairball.
 func renderableKind(stripped string) bool {
+	// #6820: this switch reads the SCOPE-STRIPPED kind, so "Endpoint" here
+	// matches BOTH SCOPE.Endpoint (HTTP) and the bare "Endpoint" kind the
+	// Electron rule pack emits for IPC channels. That is deliberate and is
+	// NOT an oversight left behind by #6820: the HTTP panes and the OpenAPI
+	// export were repointed at SCOPE.Endpoint, and the architecture topology
+	// is where the IPC channels land instead. An Electron IPC boundary is an
+	// architecturally significant noun; dropping it from every surface would
+	// be a recall loss no HTTP-pane assertion could observe.
+	// Pinned by TestElectronIPCChannels_RemainOnTheArchitectureTopology.
 	switch stripped {
 	case "HTTPEndpoint", "Endpoint", "Route", "Controller", "Service",
 		"Component", "Datastore", "Table", "Collection", "Model",
@@ -196,6 +205,9 @@ func nodeTier(stripped string, props map[string]string) compoundTier {
 	}
 
 	switch stripped {
+	// #6820: as in renderableKind, "Endpoint" here is the stripped kind and
+	// deliberately covers the Electron IPC channel kind too — the IPC boundary
+	// belongs on the edge tier. Pinned by the same test.
 	case "HTTPEndpoint", "Endpoint", "Route", "Controller":
 		return tierEdge
 	case "AuthGuard", "Middleware":

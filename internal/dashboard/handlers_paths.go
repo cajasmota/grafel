@@ -129,9 +129,14 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 			// synthetics (consumer side) — they belong in the Orphan Callers tab.
 			kind := dashStripScopePrefix(e.Kind)
 			isDefinition := strings.EqualFold(kind, httpEndpointDefinitionKind)
+			// #6820: key on SCOPE.Endpoint, the HTTP kind. Bare "Endpoint" is the
+			// Electron rule pack's IPC-channel kind (electron.yaml ipcMain /
+			// ipcRenderer / contextBridge); it is not an HTTP route and keeps
+			// its spelling. IPC channels stay on the compound topology and
+			// entity search — see electron_ipc_not_http_6820_test.go.
 			isHTTPEndpoint := types.IsHTTPEndpointKind(kind) ||
 				strings.EqualFold(kind, httpEndpointKind) ||
-				e.Kind == "Endpoint" || e.Kind == "Route"
+				e.Kind == string(types.EntityKindEndpoint) || e.Kind == "Route"
 			if !isHTTPEndpoint {
 				continue
 			}
@@ -431,9 +436,14 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 		for i := range repo.Doc.Entities {
 			e := &repo.Doc.Entities[i]
 			// #1217 backward compat — accept all three http endpoint kinds.
+			// #6820: key on SCOPE.Endpoint, the HTTP kind. Bare "Endpoint" is the
+			// Electron rule pack's IPC-channel kind (electron.yaml ipcMain /
+			// ipcRenderer / contextBridge); it is not an HTTP route and keeps
+			// its spelling. IPC channels stay on the compound topology and
+			// entity search — see electron_ipc_not_http_6820_test.go.
 			isHTTPEndpoint2 := types.IsHTTPEndpointKind(dashStripScopePrefix(e.Kind)) ||
 				strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointKind) ||
-				e.Kind == "Endpoint" || e.Kind == "Route"
+				e.Kind == string(types.EntityKindEndpoint) || e.Kind == "Route"
 			if !isHTTPEndpoint2 {
 				continue
 			}

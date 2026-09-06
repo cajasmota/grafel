@@ -367,9 +367,14 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 		for i := range repo.Doc.Entities {
 			e := &repo.Doc.Entities[i]
 			kind := dashStripScopePrefix(e.Kind)
+			// #6820: key on SCOPE.Endpoint, the HTTP kind. Bare "Endpoint" is the
+			// Electron rule pack's IPC-channel kind (electron.yaml ipcMain /
+			// ipcRenderer / contextBridge); it is not an HTTP route and keeps
+			// its spelling. IPC channels stay on the compound topology and
+			// entity search — see electron_ipc_not_http_6820_test.go.
 			isHTTP := types.IsHTTPEndpointKind(kind) ||
 				strings.EqualFold(kind, httpEndpointKind) ||
-				e.Kind == "Endpoint" || e.Kind == "Route"
+				e.Kind == string(types.EntityKindEndpoint) || e.Kind == "Route"
 			if !isHTTP {
 				continue
 			}
@@ -862,9 +867,14 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		for i := range repo.Doc.Entities {
 			e := &repo.Doc.Entities[i]
 			kind := dashStripScopePrefix(e.Kind)
+			// #6820: key on SCOPE.Endpoint, the HTTP kind. Bare "Endpoint" is the
+			// Electron rule pack's IPC-channel kind (electron.yaml ipcMain /
+			// ipcRenderer / contextBridge); it is not an HTTP route and keeps
+			// its spelling. IPC channels stay on the compound topology and
+			// entity search — see electron_ipc_not_http_6820_test.go.
 			isHTTP := types.IsHTTPEndpointKind(kind) ||
 				strings.EqualFold(kind, httpEndpointKind) ||
-				e.Kind == "Endpoint" || e.Kind == "Route"
+				e.Kind == string(types.EntityKindEndpoint) || e.Kind == "Route"
 			if !isHTTP {
 				continue
 			}
