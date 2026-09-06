@@ -1,4 +1,5 @@
-// Package ocaml implements a regex-based extractor for OCaml source files.
+// Package ocaml implements a mostly regex-based extractor for OCaml source
+// files, with block structure taken from the vendored tree-sitter grammar.
 //
 // Extracted entities:
 //   - Module declarations (`module Foo = struct ... end`, file-level) → SCOPE.Component (subtype="module")
@@ -8,10 +9,16 @@
 //   - Function calls → CALLS edges
 //   - CONTAINS edges (module → top-level declarations)
 //
-// No tree-sitter grammar for OCaml is bundled in smacker/go-tree-sitter, so
-// this extractor uses regular expressions. OCaml uses a layout-insensitive
-// syntax with explicit end/;; markers; for entity-discovery purposes we
-// detect top-level declarations by their starting at column 0.
+// Entity DISCOVERY is regex-based: OCaml uses a layout-insensitive syntax with
+// explicit end/;; markers, and for discovery purposes top-level declarations
+// are detected by their starting at column 0.
+//
+// Block STRUCTURE is not. `struct … end`, `sig … end`, `object … end` and
+// `begin … end` spans come from the vendored tree-sitter grammar (registered
+// at internal/treesitter/adapters.go:69) via blocks.go — see #6812 for the
+// measurement that motivated replacing the hand-rolled depth walker, and note
+// that the old package comment's premise ("no tree-sitter grammar for OCaml is
+// bundled") had been false since the grammar was vendored.
 //
 // Registers itself via init() and is imported by registry_gen.go.
 package ocaml
@@ -404,79 +411,27 @@ func extractLetBody(src string, afterPos int) string {
 	return strings.Join(body, "\n")
 }
 
-// extractModuleBody extracts the text of a module body between struct/sig and end.
-// Falls back to indentation heuristics if struct/sig not found.
+// extractModuleBody extracts the text of a module body between struct/sig and
+// end.
+//
+// #6812: this used to be a hand-rolled depth walker — two regexes re-run at
+// every byte of the remaining file, counting `end` against
+// `struct|sig|object|begin`. Measured against github.com/ocaml/ocaml it put
+// the wrong end on 479 of 633 `object … end` blocks (75.7%) and mis-attributed
+// 230 of the 408 (block, inherit) pairs it produced. It is now answered from
+// the vendored tree-sitter grammar; see blocks.go for the four causes, the
+// parity contract with the measurement harness's reference, and what happens
+// on input the grammar cannot parse.
+//
+// The signature is unchanged on purpose: the #6812 harness drives THIS
+// function, so the before/after figures are taken through the same entry point
+// with the same arguments.
 func extractModuleBody(src string, afterPos int) string {
 	if afterPos >= len(src) {
 		return ""
 	}
-	rest := src[afterPos:]
-
-	// Try to find the matching "end" keyword for struct/sig/object blocks.
-	// We do a simple depth-counting approach.
-	depth := 0
-	found := false
-	endPos := 0
-
-	// Keywords that open a new nesting level:
-	openKW := regexp.MustCompile(`\b(struct|sig|object|begin)\b`)
-	closeKW := regexp.MustCompile(`\bend\b`)
-
-	// Scan character by character to handle nesting, skipping strings/comments.
-	i := 0
-	for i < len(rest) {
-		// Check for block comment (* ... *)
-		if i+1 < len(rest) && rest[i] == '(' && rest[i+1] == '*' {
-			i += 2
-			for i < len(rest) {
-				if i+1 < len(rest) && rest[i] == '*' && rest[i+1] == ')' {
-					i += 2
-					break
-				}
-				i++
-			}
-			continue
-		}
-		// Check for string literal "..."
-		if rest[i] == '"' {
-			i++
-			for i < len(rest) && rest[i] != '"' {
-				if rest[i] == '\\' {
-					i++
-				}
-				i++
-			}
-			i++
-			continue
-		}
-		// Check for char literal '.'
-		if rest[i] == '\'' && i+2 < len(rest) && rest[i+2] == '\'' {
-			i += 3
-			continue
-		}
-
-		// Check for open/close keywords at current position.
-		remaining := rest[i:]
-		if om := openKW.FindStringIndex(remaining); om != nil && om[0] == 0 {
-			depth++
-			i += om[1]
-			continue
-		}
-		if cm := closeKW.FindStringIndex(remaining); cm != nil && cm[0] == 0 {
-			if depth == 0 {
-				endPos = i
-				found = true
-				break
-			}
-			depth--
-			i += cm[1]
-			continue
-		}
-		i++
-	}
-
-	if found {
-		return rest[:endPos]
+	if end, ok := blockIndexFor(src).bodyEnd(afterPos); ok {
+		return src[afterPos:end]
 	}
 	// Fallback: use indentation heuristics (same as extractLetBody).
 	return extractLetBody(src, afterPos)
