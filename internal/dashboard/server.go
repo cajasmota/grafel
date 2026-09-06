@@ -155,6 +155,11 @@ type watcherForceRescan interface {
 	// watcher's descriptor ledger (#6180). limit == 0 means the platform does
 	// not do descriptor accounting.
 	FDBudgetStats() (int, int, int, []string)
+	// OverflowStats returns (overflows, rescans, coalesced, lastOverflow) for
+	// fsnotify queue overflows (#6921). A non-zero overflow count means file
+	// events were dropped and never redelivered; rescans is how many full
+	// reindexes recovered them.
+	OverflowStats() (uint64, uint64, uint64, time.Time)
 }
 
 // webhookDispatcherIface is the subset of notifications.Dispatcher used by the

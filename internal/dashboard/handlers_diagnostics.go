@@ -78,6 +78,16 @@ type DaemonDiagnostics struct {
 	WatcherFDUsed         int      `json:"watcher_fd_used,omitempty"`
 	WatcherFDLimit        int      `json:"watcher_fd_limit,omitempty"`
 	WatcherForceRescanOK  bool     `json:"watcher_force_rescan_available"`
+
+	// fsnotify queue overflows (#6921). A non-zero count means the backend
+	// dropped an unknown set of events; because fsnotify is edge-triggered they
+	// are never redelivered, so WatcherOverflowRescans is the recovery that
+	// re-covered them. Reported here as well as in `grafel status` because the
+	// symptom — a graph that does not match the tree — is otherwise
+	// indistinguishable from a healthy watcher.
+	WatcherOverflows       uint64 `json:"watcher_overflows,omitempty"`
+	WatcherOverflowRescans uint64 `json:"watcher_overflow_rescans,omitempty"`
+	WatcherLastOverflow    string `json:"watcher_last_overflow,omitempty"`
 }
 
 // GroupDiagnostics covers one group's health.
@@ -341,6 +351,14 @@ func (s *Server) buildDaemonDiagnostics() DaemonDiagnostics {
 		d.WatcherUnwatchedRepos = unwatchedRepos
 		d.WatcherFDUsed = fdUsed
 		d.WatcherFDLimit = fdLimit
+		// #6921: queue overflows dropped events permanently. The rescan count
+		// says whether anything recovered them.
+		overflows, overflowRescans, _, lastOverflow := s.watcher.OverflowStats()
+		d.WatcherOverflows = overflows
+		d.WatcherOverflowRescans = overflowRescans
+		if !lastOverflow.IsZero() {
+			d.WatcherLastOverflow = lastOverflow.UTC().Format(time.RFC3339)
+		}
 	}
 
 	return d

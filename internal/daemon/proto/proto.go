@@ -88,15 +88,28 @@ type StatusReply struct {
 	// file-descriptor budget was full, and WatcherFDUsed/WatcherFDLimit are
 	// the ledger behind that decision (#6180). A non-zero WatcherUnwatched
 	// means edits in those repos are not being picked up at all.
-	WatcherUnwatched int                `json:"watcher_unwatched,omitempty"`
-	WatcherFDUsed    int                `json:"watcher_fd_used,omitempty"`
-	WatcherFDLimit   int                `json:"watcher_fd_limit,omitempty"`
-	QueueLen         int                `json:"queue_len,omitempty"`
-	IndexInFlight    []string           `json:"index_in_flight,omitempty"`
-	PendingAlgo      []string           `json:"pending_algo,omitempty"`
-	PendingLinks     []string           `json:"pending_links,omitempty"`
-	IndexedRepos     []IndexedRepoState `json:"indexed_repos,omitempty"`
-	RecentLog        []SchedLogEntry    `json:"recent_log,omitempty"`
+	WatcherUnwatched int `json:"watcher_unwatched,omitempty"`
+	WatcherFDUsed    int `json:"watcher_fd_used,omitempty"`
+	WatcherFDLimit   int `json:"watcher_fd_limit,omitempty"`
+
+	// WatcherOverflows counts fsnotify queue overflows (#6921): the backend
+	// dropped an unknown set of file events, and because fsnotify is
+	// edge-triggered nothing redelivers them. WatcherOverflowRescans is how
+	// many full reindexes of every subscribed repo those overflows triggered —
+	// the recovery — and WatcherLastOverflow (RFC3339) is when the most recent
+	// one arrived, so the user can correlate it with what they were doing.
+	//
+	// A non-zero count is the only way this failure is visible at all: the
+	// watcher keeps running and keeps reporting healthy through an overflow.
+	WatcherOverflows       uint64             `json:"watcher_overflows,omitempty"`
+	WatcherOverflowRescans uint64             `json:"watcher_overflow_rescans,omitempty"`
+	WatcherLastOverflow    string             `json:"watcher_last_overflow,omitempty"`
+	QueueLen               int                `json:"queue_len,omitempty"`
+	IndexInFlight          []string           `json:"index_in_flight,omitempty"`
+	PendingAlgo            []string           `json:"pending_algo,omitempty"`
+	PendingLinks           []string           `json:"pending_links,omitempty"`
+	IndexedRepos           []IndexedRepoState `json:"indexed_repos,omitempty"`
+	RecentLog              []SchedLogEntry    `json:"recent_log,omitempty"`
 
 	// GroupAlgoRunning names the groups whose ANNOTATION (group-algo) pass is
 	// executing right now, and GroupAlgoInFlight counts them. The pass produces

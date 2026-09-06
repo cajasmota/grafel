@@ -386,6 +386,23 @@ type Watcher struct {
 	// unwatched until its repo is re-registered, so it is logged as well as
 	// counted.
 	droppedSubscribes uint64
+	// overflows counts fsnotify ErrEventOverflow reports (#6921);
+	// overflowRescans counts the full rescans they triggered, and
+	// overflowsCoalesced counts those folded into a rescan already in flight
+	// for the same burst. See overflow.go — the three are reported together
+	// because a raw overflow count alone cannot say whether anything RECOVERED
+	// the dropped events.
+	overflows          uint64
+	overflowRescans    uint64
+	overflowsCoalesced uint64
+	// lastOverflowAt and lastOverflowRescanAt are guarded by mu rather than
+	// atomic: they are read once per `grafel status` and written once per
+	// overflow, and lastOverflowRescanAt has to be tested-and-set as one step
+	// or two overflows arriving together would each start a rescan.
+	// Both are stamped from w.clk, the package's time seam, so the cooldown is
+	// asserted against controlled time in tests instead of a sleep.
+	lastOverflowAt       time.Time
+	lastOverflowRescanAt time.Time
 }
 
 // subscribeQueueCap bounds subCh. It is a var so a test can shrink it to
@@ -1369,9 +1386,19 @@ func (w *Watcher) loop() {
 				w.backendClosed()
 				return
 			}
-			if err != nil && !w.stopping() {
-				w.logger.Error("watcher: error", "err", err)
+			if err == nil || w.stopping() {
+				continue
 			}
+			// An overflow is not an error report about one path, it is the
+			// backend saying "your event history is incomplete" — so it gets a
+			// recovery, not a log line (#6921). See overflow.go for the scope
+			// argument and the cooldown that keeps a burst from becoming a
+			// reindex storm. Every other error keeps the old behaviour.
+			if errors.Is(err, fsnotify.ErrEventOverflow) {
+				w.handleOverflow()
+				continue
+			}
+			w.logger.Error("watcher: error", "err", err)
 		}
 	}
 }
