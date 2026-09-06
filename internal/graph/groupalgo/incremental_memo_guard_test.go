@@ -70,7 +70,7 @@ func TestIncremental_MemoGuard_ComputesOncePerVersion(t *testing.T) {
 
 // TestIncremental_MemoGuard_PersistFailureDoesNotRecomputeForever mirrors the
 // per-repo TestSchedulePendingAlgo_PersistFailureDoesNotRecomputeForever at
-// group scope: when the overlay directory is read-only so WriteOverlayFromResult
+// group scope: when the overlay cannot be created so WriteOverlayFromResult
 // genuinely fails, the next incremental run must still be served from the
 // in-memory guard (Skipped=true), never a fresh full sweep.
 func TestIncremental_MemoGuard_PersistFailureDoesNotRecomputeForever(t *testing.T) {
@@ -84,27 +84,53 @@ func TestIncremental_MemoGuard_PersistFailureDoesNotRecomputeForever(t *testing.
 		t.Fatal("first run must NOT skip")
 	}
 
-	// Force the overlay write to fail: make the groups/ directory read-only so
-	// the temp-file create inside WriteOverlayTo returns EPERM (best-effort,
-	// swallowed by the caller in prod).
+	// Force the overlay write to fail. #6831: this used to chmod the groups/
+	// directory to 0o500 and t.Skip when the write succeeded anyway ("running
+	// as root?"). Permission bits are advisory for uid 0, so under any
+	// root-by-default container (the shape most CI images have) that skip would
+	// have become PERMANENTLY true and this test would have reported PASS
+	// forever without once entering the persist-failure path. Put a regular
+	// FILE where the groups/ directory belongs instead: the MkdirAll at the top
+	// of WriteOverlayTo then fails with ENOTDIR, which root cannot override and
+	// which is not a permission decision at all — MkdirAll raises it from its
+	// own Stat/IsDir check, so this also fails on the Windows leg, where the
+	// chmod was a no-op and the skip was the likely outcome. The property is
+	// "the in-memory guard bounds recompute after the overlay could not be
+	// persisted"; it is indifferent to which errno stopped the persist, so this
+	// substitution costs nothing and removes the only environment-dependent
+	// branch in the test.
 	path, perr := OverlayPath(group)
 	if perr != nil {
 		t.Fatalf("overlay path: %v", perr)
 	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir groups: %v", err)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatalf("mkdir grafel home: %v", err)
 	}
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatalf("chmod groups ro: %v", err)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("clear groups dir: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	if err := os.WriteFile(dir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("plant file at groups path: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(dir) })
 
 	if werr := WriteOverlayFromResult(first); werr == nil {
-		t.Skip("overlay write unexpectedly succeeded on a read-only dir (running as root?) — cannot exercise the persist-failure path")
+		t.Fatal("overlay write SUCCEEDED with a regular file at the groups/ path — the persist-failure " +
+			"path was never entered, so this test asserts nothing about the in-memory guard")
 	}
 	// Precondition: no overlay on disk, so the disk-skip path cannot engage.
-	if _, ok := ReadOverlay(path, nil); ok {
+	// ReadOverlayAnyAge, not ReadOverlay(path, nil): with nil currentMtimes every
+	// mtime the overlay records is "missing", so ReadOverlay reports (nil, false)
+	// for an overlay that is very much on disk. As a precondition it could never
+	// fire for an overlay recording AT LEAST ONE source mtime — which is every
+	// overlay reachable here, since setupIncrGroup builds a two-repo group; an
+	// overlay with an empty source_mtimes map would still fire, so the exactness
+	// of the claim is a property of this fixture, not of ReadOverlay. Measured
+	// under #6831 by deleting the guard above and letting the write succeed: the
+	// test stayed green with the overlay written. AnyAge observes presence,
+	// which is what "no overlay on disk" actually means.
+	if _, ok := ReadOverlayAnyAge(path); ok {
 		t.Fatal("test precondition broken: overlay present despite failed write")
 	}
 
