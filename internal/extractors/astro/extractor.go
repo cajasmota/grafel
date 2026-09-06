@@ -224,14 +224,29 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// extractImports stamps `FromID: file.Path` on every IMPORTS edge — the
 	// deliberate cross-language convention for import edges (#120) — but
 	// internal/resolve/refs.go has no path→entity index, so that FROM end
-	// resolves only if some emitted record carries the path as its Name. Nothing
-	// this package emits does: componentNameFromPath strips ".astro" from the
-	// basename, props/markers/islands are named after what they describe. So
-	// every astro import edge reached the graph with a raw path at its FROM end,
-	// at BOTH path depths. PrependFileCarrier mints the record that gives it one,
-	// and only when the file actually has a path-anchored edge to carry — an
-	// unconditional carrier would add one bare orphan node per .astro file across
-	// a whole repo (#6815, #6518).
+	// resolves only if some emitted record carries the path as its Name. For
+	// every WELL-FORMED .astro source, nothing this package emits does:
+	// componentNameFromPath strips ".astro" from the basename, and markers and
+	// islands are named after what they describe. So every astro import edge
+	// reached the graph with a raw path at its FROM end, at BOTH path depths.
+	// PrependFileCarrier mints the record that gives it one, and only when the
+	// file actually has a path-anchored edge to carry — an unconditional carrier
+	// would add one bare orphan node per .astro file across a whole repo (#6815,
+	// #6518).
+	//
+	// "WELL-FORMED" IS THE HONEST QUALIFIER, and it is narrower than it first
+	// looks. astroPropsDestructureRE captures the brace interior VERBATIM and
+	// trims each field only at the first "=" or ":", so "/" and "." survive: a
+	// frontmatter reading `const { src/components/Header.astro } = Astro.props`
+	// at that very path emits a SCOPE.Operation/prop named EXACTLY the path, and
+	// FileCarrierFor's clause 3 then declines to mint a second node under one id.
+	// That input is invalid JavaScript, but it is a .astro file at an ordinary
+	// nested path, so it is routable by classifier.go:497 and reaches this call.
+	// Every VALID destructuring spelling was checked and none of them reach it —
+	// a quoted key keeps its quotes, a computed key keeps its brackets, a rename
+	// names the binding and not the key, and astroPropsBindingRE's identifier
+	// class admits neither "/" nor ".". Driven by
+	// TestAstro_PathNamedComponentGetsNoSecondCarrier_6852.
 	//
 	// PLACEMENT: LAST, and the reason is INDEX-0 STATE. Extract writes
 	// `entities[0].Relationships = append(...)` at three sites above — imports

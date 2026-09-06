@@ -30,13 +30,26 @@ package astro
 // (classifier.go:497), so the stripped form can never equal the path in
 // production. Every other record is named after a prop, a marker or an island.
 //
-// CLAUSE 3 OF FileCarrierFor IS THEREFORE NOT PRODUCTION-REACHABLE HERE, which
-// is a different answer again from hcl (root .tf), fsharp (a dotted `module`
-// declaration) and shell (a self-sourcing stub). It is reachable only through
-// Extract called directly with an EXTENSIONLESS ROOT path, and
-// TestAstro_PathNamedComponentGetsNoSecondCarrier_6852 drives exactly that,
-// labelled as the non-production input it is rather than dressed up as a
-// production case.
+// CLAUSE 3 OF FileCarrierFor IS REACHED BY A ROUTE OF ITS OWN, different again
+// from hcl (root .tf), fsharp (a dotted `module` declaration) and shell (a
+// self-sourcing stub): astroPropsDestructureRE captures the brace interior
+// VERBATIM and trims a field only at its first "=" or ":", so "/" and "."
+// survive into the prop name. A frontmatter reading
+// `const { src/components/Header.astro } = Astro.props` at that path emits a
+// SCOPE.Operation/prop named EXACTLY the path, at ORDINARY NESTED DEPTH, from a
+// file classifier.go:497 routes here. No extensionless path and no direct call
+// are needed.
+//
+// The defensible statement is therefore about WELL-FORMEDNESS, not about the
+// classifier: that input is invalid JavaScript, and no VALID destructuring
+// spelling reaches the clause — a quoted key keeps its quotes, a computed key
+// keeps its brackets, a rename names the binding rather than the key, and
+// astroPropsBindingRE's identifier class admits neither "/" nor ".". All four
+// were driven before this sentence was written; the earlier claim in this file
+// ("reachable only through an EXTENSIONLESS ROOT path") was WRONG, and is
+// recorded as wrong rather than quietly edited, because it is the same shape of
+// defect — a reachability argument nothing observed — that this whole issue
+// keeps turning up.
 //
 // GRADED IN BOTH DIRECTIONS. A recall-shaped assertion ("the carrier exists")
 // licenses an UNCONDITIONAL carrier, which would mint one bare orphan node per
@@ -280,18 +293,53 @@ func TestAstro_EmptyPathGetsNoCarrier_6852(t *testing.T) {
 }
 
 // TestAstro_PathNamedComponentGetsNoSecondCarrier_6852 maps to FileCarrierFor's
-// CLAUSE 3 return path (`records[i].Name == path`).
+// CLAUSE 3 return path (`records[i].Name == path`), driven over the TWO routes
+// that reach it. The clause is what stands between a path-named record and TWO
+// nodes under one id — graph.EntityID hashes Kind, Name and SourceFile but NOT
+// Subtype, the #6369/#6480 hazard.
 //
-// NOT PRODUCTION-REACHABLE, and named as such rather than presented as a
-// production case. componentNameFromPath returns the basename with ".astro"
-// stripped, so it equals the whole path only for an EXTENSIONLESS ROOT path —
-// and classifier.go:497 routes only ".astro" to this extractor, so no file the
-// classifier hands astro can produce it. The input below reaches Extract
-// directly. It is driven because the clause is what stands between such an
-// input and TWO nodes under one id (graph.EntityID hashes Kind, Name and
-// SourceFile — not Subtype, the #6369/#6480 hazard), and because the nested
-// contrast is what stops this passing on a carrier that is never emitted at all.
+//  1. THE PROP ROUTE, at ordinary nested depth, from a path classifier.go:497
+//     routes here. astroPropsDestructureRE captures the brace interior verbatim
+//     and trims only at the first "=" or ":", so a destructuring whose key is
+//     spelled as the file's own path emits a SCOPE.Operation/prop named exactly
+//     that path. The source is invalid JavaScript — that is the honest limit of
+//     the claim, and it is a claim about WELL-FORMEDNESS, not about the
+//     classifier. Every valid spelling was checked and none reaches the clause
+//     (quoted key keeps its quotes, computed key its brackets, a rename names
+//     the binding, and astroPropsBindingRE admits neither "/" nor ".").
+//  2. THE COMPONENT-NAME ROUTE, which needs an EXTENSIONLESS ROOT path and so
+//     reaches Extract only by a direct call. Kept and labelled, because it is
+//     the route that fires on the record Extract emits FIRST — a distinction
+//     clause 3 must handle, since it scans every record rather than stopping at
+//     the first.
+//
+// The nested contrast subtest is what stops the other two passing on a carrier
+// that is never emitted at all.
 func TestAstro_PathNamedComponentGetsNoSecondCarrier_6852(t *testing.T) {
+	t.Run("nested_prop_named_after_the_path", func(t *testing.T) {
+		const path = "src/components/Header.astro"
+		// The prop key is spelled as this file's own path. Invalid JS; a
+		// perfectly ordinary .astro path.
+		src := "---\nimport Nav from './Nav.astro';\n" +
+			"const { " + path + " } = Astro.props;\n---\n<div><Nav /></div>\n"
+		recs := extractAstro6852(t, src, path)
+		if n := len(astroPathAnchored6852(recs, path)); n != 1 {
+			t.Fatalf("premise: the import must still anchor on %q, got %d edges — "+
+				"without an anchored edge clause 2 rejects first and clause 3 is "+
+				"never consulted", path, n)
+		}
+		named := astroNamedExactly6852(recs, path)
+		if len(named) != 1 {
+			t.Fatalf("want exactly 1 record named %q, got %d — a carrier minted "+
+				"beside the path-named prop puts two nodes under one entity id",
+				path, len(named))
+		}
+		if named[0].Subtype != "prop" {
+			t.Errorf("the single record named %q is %s/%s, want SCOPE.Operation/prop — "+
+				"the pre-existing path-named record was replaced rather than deferred to",
+				path, named[0].Kind, named[0].Subtype)
+		}
+	})
 	t.Run("root_extensionless_path_named_component", func(t *testing.T) {
 		const path = "Header" // componentNameFromPath("Header") == "Header"
 		recs := extractAstro6852(t, defaultImportSrc6852, path)
