@@ -179,7 +179,48 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	out := extractCOBOL(string(file.Content), file.Path, file.RepoRoot)
 	extractor.TagRelationshipsLanguage(out, "cobol")
 	extractor.TagEntitiesLanguage(out, "cobol")
-	return out, nil
+	// #6852: buildCopyImportEdge anchors the COPY IMPORTS edge on this file's
+	// own path, and nothing cobol emits is named after the file as a rule — so
+	// the FROM end reached the graph as a raw path. The carrier is CONDITIONAL
+	// (#6815/#6518): a file with no COPY, or a COPY outside a PROGRAM-ID whose
+	// edge addProgramRel drops, anchors nothing and gets nothing.
+	//
+	// PLACEMENT — TWO CONJUNCTS, AND THEY ARE NOT ALIKE. Both were scored;
+	// one is a real, independently-graded constraint and the other is ENTAILED,
+	// which reads identically in prose and is graded by nothing unless it is
+	// named (lua's #6852 finding, reproduced here with the opposite polarity).
+	//
+	//  1. INDEPENDENT — after extractCOBOL has RETURNED. That function keeps six
+	//     live indices into the entity slice: programIdx, currentParagraphIdx and
+	//     the cicsQueueIdx / cicsMapIdx / dialectScreenIdx / fileEntityIdx
+	//     name→index maps. Most are consumed as they are produced, but
+	//     flushExecBlock() and flushSelect() run after the scan loop — the
+	//     tolerance for a trailing EXEC block that never got its END-EXEC — and
+	//     flushExecBlock reads currentParagraphIdx/programIdx to decide which
+	//     record owns the CICS effect edge. An index-0 insertion made before
+	//     those flushes shifts every index by one and re-homes the edge onto the
+	//     PRECEDING record, silently. Scored: prepending just above
+	//     flushExecBlock() was ALIVE and production-reachable on truncated
+	//     source, so it was GRADED rather than recorded —
+	//     TestCobol_CarrierPlacementDoesNotShiftTheTrailingFlush_6852 now fails
+	//     with "owned by \"PROCEDURE DIVISION\", want \"MAIN-PARA\"".
+	//
+	//  2. ENTAILED — after the two tagging calls. The obvious reading is that
+	//     this ordering is what makes the "cobol" literal below observable, since
+	//     TagEntitiesLanguage would otherwise fill an empty token. That reading
+	//     is wrong on its own: TagEntitiesLanguage SKIPS a record whose Language
+	//     is already non-empty and TagRelationshipsLanguage only walks
+	//     Relationships, which the carrier has none of, so with the correct token
+	//     the move above the tagging pair is ALIVE — equivalent in production,
+	//     not merely under the suite. The ordering is load-bearing only in
+	//     COMBINATION with an emptied token, and that COMPOUND is DEAD: it
+	//     survives the Language assertion (the filler restores "cobol") and dies
+	//     on TestCobol_CarrierShape_6852's Properties["language"] row, which
+	//     exists for exactly this compound. lang -> "" ALONE dies on Language
+	//     directly, because at this position the carrier is never offered to the
+	//     filler — dockerfile's call-order escape from file_carrier.go's
+	//     equivalence paragraph, not shell's provenance one.
+	return extractor.PrependFileCarrier(file.Path, "cobol", out), nil
 }
 
 // codeLine is one logical source line after sequence-area stripping and
