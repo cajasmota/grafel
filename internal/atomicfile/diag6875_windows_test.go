@@ -21,6 +21,7 @@ package atomicfile
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -46,6 +47,7 @@ const (
 type diagSample struct {
 	attempts int
 	arm      string
+	elapsed  time.Duration
 	// errno seen on the attempt that crossed the production budget, if any.
 	crossErrno syscall.Errno
 }
@@ -124,6 +126,7 @@ func errorsAs(err error, target *syscall.Errno) bool {
 // retry budget is diagBudget and every attempt is counted. Production code is
 // NOT modified by this file.
 func diagWrite(rec *diagRecorder, arm, path string, b []byte, perm os.FileMode) (int, error) {
+	jitter := strings.HasSuffix(arm, "-jitter")
 	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return 0, err
@@ -144,6 +147,7 @@ func diagWrite(rec *diagRecorder, arm, path string, b []byte, perm os.FileMode) 
 	}
 
 	s := diagSample{arm: arm}
+	t0 := time.Now()
 	attempts := 1
 	err = os.Rename(tmp, path)
 	for i := 0; err != nil && renameErrRecoverable(err) && i < diagBudget; i++ {
@@ -152,11 +156,18 @@ func diagWrite(rec *diagRecorder, arm, path string, b []byte, perm os.FileMode) 
 			s.crossErrno = syscall.Errno(diagErrno(err))
 			rec.probeLive(path, attempts, err)
 		}
-		time.Sleep(diagDelay)
+		d := diagDelay
+		if jitter {
+			// Full jitter: break the lockstep in which N writers denied at the
+			// same instant all re-attempt at the same instant, forever.
+			d = time.Duration(rand.Int63n(int64(2 * diagDelay)))
+		}
+		time.Sleep(d)
 		attempts++
 		err = os.Rename(tmp, path)
 	}
 	s.attempts = attempts
+	s.elapsed = time.Since(t0)
 	rec.add(s)
 	if err != nil {
 		os.Remove(tmp)
@@ -170,29 +181,34 @@ func TestDiag6875_RenameContentionProfile(t *testing.T) {
 	}
 	rec := &diagRecorder{}
 
-	// ---- Arm A: the test's own shape. 8 concurrent writers, one destination.
+	// ---- Arms A and A-jitter: the test's own shape, 8 concurrent writers to
+	// one destination. A uses production's FIXED 5ms backoff; A-jitter uses a
+	// randomised one. Comparing them tests whether N writers denied at the same
+	// instant stay phase-locked across retries.
 	const writersA, iterationsA = 8, 40
 	payloads := diagPayloads(writersA)
-	dirA := t.TempDir()
-	pathA := filepath.Join(dirA, "shared.json")
-	for it := 0; it < iterationsA; it++ {
-		var wg sync.WaitGroup
-		errs := make([]error, writersA)
-		start := make(chan struct{})
-		for i := 0; i < writersA; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				<-start
-				_, errs[i] = diagWrite(rec, "A", pathA, payloads[i], 0o644)
-			}(i)
-		}
-		close(start)
-		wg.Wait()
-		for i, err := range errs {
-			if err != nil {
-				t.Errorf("arm A iteration %d writer %d: even a %d-attempt budget failed: %v",
-					it, i, diagBudget, err)
+	for _, arm := range []string{"A", "A-jitter"} {
+		dirA := t.TempDir()
+		pathA := filepath.Join(dirA, "shared.json")
+		for it := 0; it < iterationsA; it++ {
+			var wg sync.WaitGroup
+			errs := make([]error, writersA)
+			start := make(chan struct{})
+			for i := 0; i < writersA; i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					<-start
+					_, errs[i] = diagWrite(rec, arm, pathA, payloads[i], 0o644)
+				}(i)
+			}
+			close(start)
+			wg.Wait()
+			for i, err := range errs {
+				if err != nil {
+					t.Errorf("arm %s iteration %d writer %d: even a %d-attempt budget failed: %v",
+						arm, it, i, diagBudget, err)
+				}
 			}
 		}
 	}
@@ -214,20 +230,27 @@ func TestDiag6875_RenameContentionProfile(t *testing.T) {
 func report(t *testing.T, rec *diagRecorder) {
 	t.Helper()
 	byArm := map[string][]int{}
+	elapsedMax := map[string]time.Duration{}
 	for _, s := range rec.samples {
 		byArm[s.arm] = append(byArm[s.arm], s.attempts)
+		if s.elapsed > elapsedMax[s.arm] {
+			elapsedMax[s.arm] = s.elapsed
+		}
 	}
 	var out strings.Builder
 	out.WriteString("\n================ #6875 RENAME CONTENTION PROFILE ================\n")
-	for _, arm := range []string{"A", "B"} {
+	for _, arm := range []string{"A", "A-jitter", "B"} {
 		a := byArm[arm]
 		if len(a) == 0 {
 			continue
 		}
 		sort.Ints(a)
-		label := "8 concurrent writers -> one destination"
-		if arm == "B" {
-			label = "1 writer -> one destination (CONTROL)"
+		label := "8 concurrent writers -> one dest, FIXED 5ms backoff (production)"
+		switch arm {
+		case "A-jitter":
+			label = "8 concurrent writers -> one dest, JITTERED backoff"
+		case "B":
+			label = "1 writer -> one dest (CONTROL, zero self-contention)"
 		}
 		var retried, overProd int
 		for _, v := range a {
@@ -246,6 +269,7 @@ func report(t *testing.T, rec *diagRecorder) {
 			retried, 100*float64(retried)/float64(len(a)))
 		fmt.Fprintf(&out, "  would have EXCEEDED the production budget of %d: %d (%.2f%%)\n",
 			prodBudget, overProd, 100*float64(overProd)/float64(len(a)))
+		fmt.Fprintf(&out, "  slowest single write (wall clock incl. retries): %v\n", elapsedMax[arm])
 	}
 	out.WriteString("\n---------------- LIVE HOLDER PROBES ----------------\n")
 	if len(rec.probes) == 0 {

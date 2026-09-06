@@ -12,7 +12,7 @@ permissions:
 jobs:
   diag:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -24,36 +24,62 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "cores=$env:NUMBER_OF_PROCESSORS"
-          Write-Host "TEMP=$env:TEMP"
           Write-Host "--- Defender ---"
           try {
-            Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled,AntivirusEnabled,OnAccessProtectionEnabled,IsTamperProtected | Format-List
-            Get-MpPreference | Select-Object DisableRealtimeMonitoring,ExclusionPath | Format-List
+            Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled,AntivirusEnabled,OnAccessProtectionEnabled | Format-List
+            Get-MpPreference | Select-Object DisableRealtimeMonitoring | Format-List
           } catch { Write-Host "Defender query failed: $_" }
-          Write-Host "--- Search indexer (WSearch) ---"
           try { Get-Service WSearch | Format-List Name,Status,StartType } catch { Write-Host "WSearch query failed: $_" }
-          Write-Host "--- admin? ---"
-          Write-Host ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-      # Experiment 1 — attempts-to-success distribution + live holder probe,
-      # arm A (8 concurrent writers) vs arm B (1 writer, same exposure).
-      - name: Contention profile
+      # ---- IDLE baseline -------------------------------------------------
+      - name: Contention profile (IDLE)
         shell: pwsh
         env:
           GRAFEL_DIAG_6875: '1'
         run: |
-          go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=3 -v -timeout 30m 2>&1 | Tee-Object -FilePath profile.txt
+          go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=2 -v -timeout 30m 2>&1 | Tee-Object -FilePath profile-idle.txt
           exit 0
 
-      # Experiment 2 — the natural failure rate of the UNMODIFIED production
-      # test under the real 41-attempt budget. Never fails the job; the count
-      # of FAIL lines is the measurement.
-      - name: Production test failure rate (unmodified)
+      # ---- LOADED: this is what the real `test` leg looks like. It runs
+      # `go test ./...` with -p = 4 on a 4-core runner, so the atomicfile test's
+      # 8 goroutines are timesliced against dozens of other test processes.
+      # 16 CPU burners on 4 cores is a proxy for that oversubscription.
+      - name: Contention profile (CPU-SATURATED)
+        shell: pwsh
+        env:
+          GRAFEL_DIAG_6875: '1'
+        run: |
+          $burners = 1..16 | ForEach-Object {
+            Start-Process -PassThru -WindowStyle Hidden pwsh -ArgumentList '-NoProfile','-Command','while($true){ $x=1; for($i=0;$i -lt 3000000;$i++){ $x = ($x*7 + 13) % 1000003 } }'
+          }
+          Write-Host "started $($burners.Count) CPU burners on $env:NUMBER_OF_PROCESSORS cores"
+          Start-Sleep -Seconds 5
+          try {
+            go test ./internal/atomicfile/ -run TestDiag6875_RenameContentionProfile -count=3 -v -timeout 40m 2>&1 | Tee-Object -FilePath profile-loaded.txt
+          } finally {
+            $burners | ForEach-Object { try { Stop-Process -Id $_.Id -Force } catch {} }
+          }
+          exit 0
+
+      # ---- The actual reproduction attempt: the UNMODIFIED production test,
+      # real 41-attempt budget, under the same saturation.
+      - name: Production test under CPU saturation (repro attempt)
         shell: pwsh
         run: |
-          go test ./internal/atomicfile/ -run TestWriteFile_ConcurrentWritersSameDestination -count=25 -v -timeout 30m 2>&1 | Tee-Object -FilePath prod.txt
-          Write-Host "=== FAIL lines ==="
-          Select-String -Path prod.txt -Pattern 'still failing after|--- FAIL' | ForEach-Object { $_.Line }
+          $burners = 1..16 | ForEach-Object {
+            Start-Process -PassThru -WindowStyle Hidden pwsh -ArgumentList '-NoProfile','-Command','while($true){ $x=1; for($i=0;$i -lt 3000000;$i++){ $x = ($x*7 + 13) % 1000003 } }'
+          }
+          Start-Sleep -Seconds 5
+          try {
+            go test ./internal/atomicfile/ -run TestWriteFile_ConcurrentWritersSameDestination -count=60 -v -timeout 40m 2>&1 | Tee-Object -FilePath prod-loaded.txt
+          } finally {
+            $burners | ForEach-Object { try { Stop-Process -Id $_.Id -Force } catch {} }
+          }
+          Write-Host "=== PASS/FAIL tally ==="
+          Write-Host ("PASS: " + (Select-String -Path prod-loaded.txt -Pattern '--- PASS: TestWriteFile_Concurrent').Count)
+          $f = Select-String -Path prod-loaded.txt -Pattern '--- FAIL: TestWriteFile_Concurrent'
+          Write-Host ("FAIL: " + $f.Count)
+          Select-String -Path prod-loaded.txt -Pattern 'still failing after' | ForEach-Object { $_.Line }
           exit 0
 
       - uses: actions/upload-artifact@v4
@@ -61,5 +87,6 @@ jobs:
         with:
           name: diag6875-logs
           path: |
-            profile.txt
-            prod.txt
+            profile-idle.txt
+            profile-loaded.txt
+            prod-loaded.txt
