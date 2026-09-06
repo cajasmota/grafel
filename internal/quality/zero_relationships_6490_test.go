@@ -177,8 +177,8 @@ func TestNoGoldenFixtureClaimsTheOptIn_6490(t *testing.T) {
 			optedOut = append(optedOut, e.Name())
 		}
 	}
-	if inspected != 34 {
-		t.Fatalf("inspected %d golden fixtures, want 34 — the corpus size changed, so "+
+	if inspected != 35 {
+		t.Fatalf("inspected %d golden fixtures, want 35 — the corpus size changed, so "+
 			"this test's coverage claim needs re-deriving", inspected)
 	}
 	if len(optedOut) != 0 {
