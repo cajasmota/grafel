@@ -4766,6 +4766,14 @@ func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
 	if !recordsHaveTwinOf(records) {
 		for k := range records {
 			r := &records[k]
+			// INVARIANT, PINNED BY TestStampEntityIDs_BothPathsSkipTheSameRecords:
+			// this skip and the identical `r.Name == ""` skip in the slow path
+			// below must stay in lockstep. The two paths differ ONLY in whether
+			// they build the twin_of remap; they must stamp exactly the same SET
+			// of records. Drop this guard from one path alone and a record's
+			// identity starts depending on whether some UNRELATED record in the
+			// same batch happens to carry a grafel.twin_of — action at a
+			// distance, and a heisenbug when it bites. Edit one, edit both.
 			if r.Name == "" {
 				continue
 			}
@@ -4798,9 +4806,23 @@ func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
 	// problem is broader than this function and is filed as #6968; do not "fix"
 	// it here by changing ComputeID, which is an identity many other call sites
 	// already depend on.)
+	//
+	// ONE DETECTION GAP EXISTS AND IS UNREACHABLE BY CONSTRUCTION, so do not
+	// spend time rediscovering it: a colliding pair goes unnoticed if the FIRST
+	// record's preStampID happens to equal its own finalID, because the
+	// `preStampID != finalID` store below never runs and `seen` stays false for
+	// the second. That requires two DIFFERENT preimages under two DIFFERENT
+	// constructions — sha256(OrgID+ProjectID+SourceFile+Kind+Name) versus
+	// sha256(repo \0 kind \0 name \0 sourceFile), both truncated to 16 hex — to
+	// agree in the same 64 bits: a 2^-64 coincidence, not an input anyone can
+	// supply. There is no test here because there is no input to write.
+	// remapTwinOfAnchors has the identical gap for the identical reason; the two
+	// stay mirrored.
 	var ambiguous map[string]bool
 	for k := range records {
 		r := &records[k]
+		// Lockstep with the fast path's identical skip — see the INVARIANT note
+		// there.
 		if r.Name == "" {
 			continue
 		}

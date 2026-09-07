@@ -139,3 +139,79 @@ func TestStampEntityIDs_AmbiguousPreStampKeyIsSkippedNotResolved(t *testing.T) {
 		})
 	}
 }
+
+// TestStampEntityIDs_BothPathsSkipTheSameRecords pins the invariant that
+// stampEntityIDs' two loops — the fast path taken when no record in the batch
+// carries a grafel.twin_of, and the slow remap-building path taken when one
+// does — stamp exactly the SAME SET of records. They differ only in whether
+// they build the remap.
+//
+// Nothing held this before. Coordinator mutant MS-2 on #6971 removed the
+// `r.Name == ""` skip from the SLOW path only and survived the whole
+// ./cmd/grafel/ suite. Under it an empty-name record acquires an ID only when
+// some OTHER, entirely unrelated record in the same batch happens to carry a
+// twin_of — a record's identity depending on a stranger's properties, which is
+// action at a distance and reads as a heisenbug when it bites.
+//
+// So the assertion is deliberately a COMPARISON between the two paths, not a
+// restatement of either one's rule: the same empty-name record is stamped in
+// two batches identical but for a twin_of carrier, and the results must agree.
+func TestStampEntityIDs_BothPathsSkipTheSameRecords(t *testing.T) {
+	const (
+		repo         = "test_repo"
+		file         = "app/models/order.py"
+		carrierFile  = "app/models/carrier.py"
+		carrierName  = "Carrier"
+		carrierKind  = "SCOPE.Schema"
+		namedRecName = "Order"
+	)
+
+	// The record under test: Name == "", which BOTH paths must skip.
+	emptyName := func() types.EntityRecord {
+		return types.EntityRecord{Kind: "SCOPE.Component", Name: "", SourceFile: file, StartLine: 3}
+	}
+	// A normally-named record, present in both batches, so the batches differ
+	// in exactly one thing: the twin_of that selects the path.
+	named := func() types.EntityRecord {
+		return types.EntityRecord{Kind: "SCOPE.Component", Name: namedRecName, SourceFile: file, StartLine: 9}
+	}
+	// The path selector. Its twin_of names an anchor that is not in the batch,
+	// so it only flips recordsHaveTwinOf — it changes nothing else.
+	carrier := func() types.EntityRecord {
+		return types.EntityRecord{
+			Kind: carrierKind, Name: carrierName, SourceFile: carrierFile,
+			Properties: map[string]string{types.EntityTwinOfProperty: "not-an-anchor-in-this-batch"},
+		}
+	}
+
+	idx := &Indexer{repoTag: repo}
+
+	fastBatch := []types.EntityRecord{emptyName(), named()}
+	if recordsHaveTwinOf(fastBatch) {
+		t.Fatalf("premise gone: the twin_of-free batch takes the SLOW path — this test would compare the slow path with itself")
+	}
+	idx.stampEntityIDs(fastBatch)
+
+	slowBatch := []types.EntityRecord{emptyName(), named(), carrier()}
+	if !recordsHaveTwinOf(slowBatch) {
+		t.Fatalf("premise gone: the twin_of-carrying batch takes the FAST path — this test would compare the fast path with itself")
+	}
+	idx.stampEntityIDs(slowBatch)
+
+	if fastBatch[0].ID != slowBatch[0].ID {
+		t.Errorf("the SAME empty-name record was stamped differently by the two paths: fast=%q slow=%q — "+
+			"both loops must stamp the same SET of records; they differ only in whether they build the twin_of remap, "+
+			"so a record's identity must never depend on whether an unrelated record in the batch carries a grafel.twin_of",
+			fastBatch[0].ID, slowBatch[0].ID)
+	}
+
+	// Positive control: the paths agree because both SKIP, not because both are
+	// inert. A normally-named record must be stamped, identically, by each.
+	wantNamed := graph.EntityID(repo, "SCOPE.Component", namedRecName, file)
+	if fastBatch[1].ID != wantNamed {
+		t.Errorf("fast path did not stamp the named record: got %q want %q", fastBatch[1].ID, wantNamed)
+	}
+	if slowBatch[1].ID != wantNamed {
+		t.Errorf("slow path did not stamp the named record: got %q want %q", slowBatch[1].ID, wantNamed)
+	}
+}
