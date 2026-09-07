@@ -49,10 +49,31 @@ import (
 // IN THE SAME FILE — the single condition under which a pass-1 per-file
 // extractor can know an entity exists at all. That one check is what drops
 // primitives (`int`, `string`), framework and BCL types (`HttpClient`), generic
-// wrappers (`List`), open type parameters (`T`) and every unmodelled name: none
-// of them is declared in the file, so none of them gets an edge. It is
-// deliberately the ONLY guard — a redundant primitive blocklist in front of it
-// would fire only where this check already fires, leaving both ungraded.
+// wrappers (`List`) and every unmodelled name: none of them is declared in the
+// file, so none of them gets an edge. It is deliberately the ONLY guard — a
+// redundant primitive blocklist in front of it would fire only where this check
+// already fires, leaving both ungraded.
+//
+// WHAT THE CHECK IS NOT. It is FILE scope and nothing else: it consults neither
+// the C# namespace nor type-parameter scope, so it over-fires twice, and both
+// over-fires produce an edge that BINDS — which makes them worse than a
+// dangling edge, because `bug-extractor` never sees a bound edge and no
+// disposition figure will surface them.
+//
+//	namespace A { class Customer … }
+//	namespace B { class Order { Customer Buyer … } }   ← one file: WRONG edge
+//	class Box<Customer> { Customer Item … }            ← beside a same-file
+//	                                                     class Customer: WRONG
+//
+// So an open type parameter `T` is dropped only because nothing in the file
+// happens to be named `T`, NOT because the guard understands type parameters.
+// Measured incidence is zero — aspnetcore-mvc has 12 .cs files declaring two or
+// more namespaces and emits no field-type edge inside any of them, and
+// aspnetcore-realworld and WakeOnLAN have no multi-namespace file at all — which
+// is why this arm records the limitation instead of fixing it. Both cases are
+// PINNED as known-wrong behaviour by the two
+// TestCsharpFieldTypeRefs_KnownOverFire_* cases, which a fix is expected to
+// break.
 //
 // THE COST OF THAT RULE, stated plainly: a field whose type is declared in
 // ANOTHER file gets no edge, which on a one-type-per-file C# codebase is most

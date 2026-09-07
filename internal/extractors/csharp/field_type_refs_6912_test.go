@@ -45,6 +45,8 @@ public class Order
     public Dictionary<string, Customer> ByName { get; set; }
     public Customer[] History { get; set; }
     public Order Parent { get; set; }
+    public (Customer, Customer) Pair { get; set; }
+    public global::Customer Aliased { get; set; }
     public int Quantity { get; set; }
     public string Label { get; set; }
     public System.Net.Http.HttpClient Client { get; set; }
@@ -134,6 +136,10 @@ func TestCsharpFieldTypeRefs_EmittedEdges(t *testing.T) {
 		"Order.ByName -> scope:component:class:csharp:Models/Order.cs:Customer",
 		"Order.Buyer -> scope:component:class:csharp:Models/Order.cs:Customer",
 		"Order.History -> scope:component:class:csharp:Models/Order.cs:Customer",
+		// ONE row, not two: `(Customer, Customer)` names the same target twice
+		// and the per-field dedup collapses it. A second identical row here is
+		// what a dropped dedup looks like.
+		"Order.Pair -> scope:component:class:csharp:Models/Order.cs:Customer",
 		"Order.Parent -> scope:component:class:csharp:Models/Order.cs:Order",
 		"Order.ShipTo -> scope:component:class:csharp:Models/Order.cs:Address",
 		"Order.Shipper -> scope:component:class:csharp:Models/Order.cs:IShipper",
@@ -162,6 +168,7 @@ func TestCsharpFieldTypeRefs_ForbiddenTargets(t *testing.T) {
 		"Order.Quantity", // int
 		"Order.Label",    // string
 		"Order.Client",   // System.Net.Http.HttpClient — qualified AND external
+		"Order.Aliased",  // global::Customer — alias-qualified, NOT descended into
 		"Customer.Name",  // string
 		"Money.Cents",    // int
 		"Address.City",   // string
@@ -263,15 +270,20 @@ func TestCsharpFieldTypeRefs_SameNameInTwoFiles(t *testing.T) {
 // TestCsharpFieldTypeRefs_SameNameDeclaredTwiceInOneFile — a name declared twice
 // in the SAME file is removed from the target index rather than resolved to
 // either declaration, so the pass never guesses.
+//
+// The fixture uses PARTIAL CLASSES on purpose. An earlier cut wrote the two
+// declarations into two different namespaces in one file, which made the
+// fixture's SHAPE imply that namespace scope is part of what the collide branch
+// considers. It is not — see
+// TestCsharpFieldTypeRefs_KnownOverFire_NamespaceScopeIsNotConsulted, which
+// pins the opposite. A fixture that implies coverage it does not assert is how
+// two defects got past review this cycle; partial classes exercise the same
+// branch and imply nothing about namespaces.
 func TestCsharpFieldTypeRefs_SameNameDeclaredTwiceInOneFile(t *testing.T) {
 	const src = `namespace App.Models;
 
-public class Widget { public string A { get; set; } }
-
-namespace App.Other
-{
-    public class Widget { public string B { get; set; } }
-}
+public partial class Widget { public string A { get; set; } }
+public partial class Widget { public string B { get; set; } }
 
 public class Holder { public Widget W { get; set; } }
 `
@@ -297,6 +309,58 @@ public class Holder { public Widget W { get; set; } }
 		if strings.HasPrefix(e, "Holder.W -> ") {
 			t.Fatalf("Widget is declared twice in this file; Holder.W must get no edge, got %q", e)
 		}
+	}
+}
+
+// TestCsharpFieldTypeRefs_KnownOverFire_NamespaceScopeIsNotConsulted and
+// TestCsharpFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType PIN A
+// KNOWN DEFECT, and they are the only assertions in this file that describe
+// behaviour that is WRONG.
+//
+// "Declared in this same file" is a FILE-scoped check with no namespace and no
+// type-parameter scope behind it. Two consequences, both found in review of
+// #6912 and both reproduced here:
+//
+//  1. `namespace A { class Customer }` + `namespace B { class Order { Customer
+//     Buyer } }` in one file emits an edge, though App.B.Order cannot see
+//     App.A.Customer without a `using`.
+//  2. A type PARAMETER named after a same-file class (`class Box<Customer>`)
+//     binds the parameter to the class.
+//
+// Both are WORSE than a dangling edge by the same logic that chose this pass's
+// address: the edge BINDS, so it never reaches `bug-extractor` and no
+// disposition figure will ever surface it. Measured incidence on the corpora is
+// ZERO — aspnetcore-mvc has 12 multi-namespace .cs files and emits no field-type
+// edge inside any of them; aspnetcore-realworld and WakeOnLAN have none at all
+// — which is why the behaviour is recorded here rather than fixed in this arm.
+//
+// These two tests are expected to FAIL when the follow-up fixes them. That is
+// the point: they make the limitation observable at the code, and a fix has to
+// come here and say so rather than changing behaviour silently.
+func TestCsharpFieldTypeRefs_KnownOverFire_NamespaceScopeIsNotConsulted(t *testing.T) {
+	const src = `namespace App.A { public class Customer { public string N { get; set; } } }
+namespace App.B { public class Order { public Customer Buyer { get; set; } } }
+`
+	recs := extractCSFiles(t, map[string]string{"F.cs": src})
+	want := []string{"Order.Buyer -> scope:component:class:csharp:F.cs:Customer"}
+	if got := fieldTypeRefEdges(t, recs); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("KNOWN over-fire changed shape — if namespace scope is now consulted, "+
+			"delete this test and say so\n got: %v\nwant: %v", got, want)
+	}
+}
+
+func TestCsharpFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType(t *testing.T) {
+	const src = `namespace App.Models;
+
+public class Customer { public string N { get; set; } }
+
+public class Box<Customer> { public Customer Item { get; set; } }
+`
+	recs := extractCSFiles(t, map[string]string{"F.cs": src})
+	want := []string{"Box.Item -> scope:component:class:csharp:F.cs:Customer"}
+	if got := fieldTypeRefEdges(t, recs); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("KNOWN over-fire changed shape — if type-parameter scope is now "+
+			"consulted, delete this test and say so\n got: %v\nwant: %v", got, want)
 	}
 }
 
@@ -369,6 +433,7 @@ func TestCsharpFieldTypeRefs_ResolverBindsEveryEdge(t *testing.T) {
 		"Models/Order.cs:Order.ByName => Models/Order.cs:SCOPE.Component:Customer",
 		"Models/Order.cs:Order.Buyer => Models/Order.cs:SCOPE.Component:Customer",
 		"Models/Order.cs:Order.History => Models/Order.cs:SCOPE.Component:Customer",
+		"Models/Order.cs:Order.Pair => Models/Order.cs:SCOPE.Component:Customer",
 		"Models/Order.cs:Order.Parent => Models/Order.cs:SCOPE.Component:Order",
 		"Models/Order.cs:Order.ShipTo => Models/Order.cs:SCOPE.Component:Address",
 		"Models/Order.cs:Order.Shipper => Models/Order.cs:SCOPE.Component:IShipper",
