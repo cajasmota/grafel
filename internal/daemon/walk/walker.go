@@ -543,10 +543,22 @@ var hardcodedSkipDirs = map[string]struct{}{
 
 	// Tool / agent dirs (issue #1629) — checked-in tool-config noise that
 	// is not source and should never enter the graph. Cover the popular
-	// AI / pair-programming and CI metadata dirs.
-	".github":          {},
-	".gitlab":          {},
-	".circleci":        {},
+	// AI / pair-programming dirs.
+	//
+	// #6946: ".github", ".gitlab" and ".circleci" were on this list and are
+	// NOT any more. They are not tool-config noise: they are where CI
+	// pipeline definitions live, and a pipeline is architecture the graph
+	// claims to model (the GitHub Actions rule set scopes a workflow as a
+	// Service and a job as an Operation). Because this check runs BEFORE the
+	// ignore stack, the skip made every GitHub Actions rule — and the three
+	// `.github/...` file_conventions globs in
+	// internal/engine/rules/cicd/frameworks/github_actions.yaml —
+	// unreachable on any repo that stores its workflows where GitHub
+	// requires them. Measured blast radius of the un-skip over 58 corpus
+	// repos + this one: +189 walked files (+0.60%), +0.5% entities on the
+	// largest repo measured (django), whose .github is 0.16% of its source
+	// bytes. The corpus holds no .gitlab dir, so that one is graded by the
+	// synthetic walker test only.
 	".husky":           {},
 	".devcontainer":    {},
 	".claude":          {},
