@@ -342,26 +342,54 @@ func TestRazorHierarchy_EmittedWithoutCodeBlock(t *testing.T) {
 	}
 }
 
-// The directive's line is stamped, so the edge points at a place in the file.
+// The directive's line is stamped, so the edge points at a place in the file —
+// and it is stamped THROUGH a multi-line Razor comment, which is the half of
+// scrubRazorComments nothing else observes.
+//
+// The scrubber blanks a comment's bytes but deliberately leaves its NEWLINES in
+// place, because lineOf counts newlines in the SCRUBBED string: collapse them
+// and every directive after the comment is stamped short. Its doc comment says
+// exactly that ("keeping every byte offset (and every newline) where it was"),
+// and until this case the sentence was observed by nothing — the two halves of
+// the scrubber were covered by tests that could not see each other. This test
+// asserted a line over a source with NO comment in it, and the comment tests
+// exercise a multi-line `@* … *@` but assert only the ABSENCE of edges, never a
+// line. Removing the `if out[i] != '\n'` guard therefore passed the whole
+// package while moving this edge from line 6 to line 4.
+//
+// A two-line comment header above a directive is ordinary Blazor, so the input
+// is not contrived: it is what the shipped files look like.
 func TestRazorHierarchy_LineStamped(t *testing.T) {
-	ents := extract(t, "Lines.razor", "@page \"/x\"\n@using System\n@inherits BasePage\n")
+	const src = "@*\n" + // 1
+		"   a two-line comment header\n" + // 2
+		"*@\n" + // 3
+		"@page \"/x\"\n" + // 4
+		"@using System\n" + // 5
+		"@inherits BasePage\n" // 6
+	ents := extract(t, "Lines.razor", src)
 	e := componentEntity(ents, "Lines")
 	if e == nil {
 		t.Fatal("no component entity")
 	}
+	seen := 0
 	for _, r := range e.Relationships {
 		if r.Kind != "EXTENDS" {
 			continue
 		}
+		seen++
 		var line string
 		for _, p := range r.Properties {
 			if p.K == "line" {
 				line = p.V
 			}
 		}
-		if line != "3" {
-			t.Errorf("EXTENDS -> %s line = %q, want \"3\"", r.ToID, line)
+		if line != "6" {
+			t.Errorf("EXTENDS -> %s line = %q, want \"6\" — a scrubbed comment must "+
+				"keep its newlines or every later directive is stamped short", r.ToID, line)
 		}
+	}
+	if seen != 1 {
+		t.Fatalf("saw %d EXTENDS edges, want exactly 1 (an unstamped edge cannot fail the line check)", seen)
 	}
 }
 
