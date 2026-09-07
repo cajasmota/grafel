@@ -152,20 +152,32 @@ source_patterns:
   # a later change to the capture is known to be ungraded rather than assumed
   # to be covered by the rows above.
   #
-  # UNREACHABLE IN PRODUCTION TODAY, and this fix does not change that.
-  # `conf/routes` has no extension and no entry in classifier.go's
-  # basenameLanguageMap, so classifyInner returns
-  # Skip{unsupported_extension} and the file never reaches the extraction
-  # pipeline at all — the same shape as #6946's `.github` finding for the
-  # GitHub Actions rules. TestIssue6927_Play_ConfRoutesIsNotClassified pins
-  # that, so the day it is fixed this comment is read rather than trusted.
-  # Two things wait behind it, both recorded on the reachability issue:
-  # internal/custom/scala/frameworks.go already carries its own `rePlayRoute`
-  # (with `(?m)`) emitting a RICHER `SCOPE.Operation` "GET:/path" carrying
-  # method, path and controller, so this rule would become a second producer
-  # of the same fact — the shape #6370 removed the `implements` rule for; and
-  # what this rule adds that the extractor does not is the ROUTES_TO edge
-  # below, which is the reason it is fixed here rather than deleted.
+  # REACHABLE SINCE #6952, which is the day this comment was written to be
+  # read. `conf/routes` had no extension and no entry in classifier.go's
+  # basenameLanguageMap, so classifyInner returned Skip{unsupported_extension}
+  # and the file never reached the extraction pipeline at all — the same shape
+  # as #6946's `.github` finding for the GitHub Actions rules. #6952 added
+  # basenameLanguageMap["routes"] and extensionLanguageMap[".routes"], and
+  # TestIssue6927_Play_ConfRoutesIsClassified_6952 (the inverted tripwire) now
+  # pins the reachability instead.
+  #
+  # BOTH THINGS THAT WERE WAITING BEHIND IT HAVE ARRIVED, measured on
+  # lichess-org/lila's five real routes files:
+  #
+  #   * SECOND PRODUCER. internal/custom/scala/frameworks.go's `rePlayRoute`
+  #     emits a RICHER `SCOPE.Operation` "GET:/path" carrying method, path and
+  #     controller. This rule mints 833 `Route` against its 900 — ~93% overlap,
+  #     the shape #6370 removed the `implements` rule for. Before #6953 gave
+  #     this pattern its `(?m)` the same measurement was 4 vs 900, which is why
+  #     the collision was originally judged negligible; it is not any more.
+  #   * ROUTES_TO IS WHAT THIS RULE UNIQUELY ADDS, and it is largely unlanded:
+  #     905 of the 907 edges emitted from those files have an UNRESOLVED
+  #     to-side (dangling `Operation:controllers.X.y` bare names). The reason
+  #     this rule was fixed rather than deleted is therefore weaker than it
+  #     looked, and is not a reason to keep it as-is.
+  #
+  # The ownership merge — which producer owns the Route entity, and where
+  # ROUTES_TO lives — is #6959. Do not resolve it by widening this rule.
   - pattern: "(?m)^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)\\s+controllers\\.(\\w+\\.\\w+)"
     entity_type: Route
     name_group: 1

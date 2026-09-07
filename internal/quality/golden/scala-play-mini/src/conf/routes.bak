@@ -1,0 +1,7 @@
+# An editor/deploy backup of a routes file. Byte-for-byte a valid Play routes
+# DSL, so it clears every content sniff downstream — the ONLY thing keeping it
+# out of the graph is that the classifier does not route `routes.<anything>`.
+# Its route is a forbidden_entities row: widening the rule to a `routes.` PREFIX
+# (which internal/custom/java's isPlayRoutesFile already does) mints a duplicate
+# of every route in conf/routes from a file nobody serves.
+GET     /backup-only                controllers.UserController.health

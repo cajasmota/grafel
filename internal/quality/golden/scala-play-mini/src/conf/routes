@@ -1,0 +1,12 @@
+# Play routes file (#6952). Extensionless by convention — before the
+# classifier's `routes` basename entry this file was never handed to any
+# extractor, so every producer keyed on it was unreachable in production.
+GET     /health                     controllers.UserController.health
+GET     /users                      controllers.UserController.listUsers
+GET     /users/:id                  controllers.UserController.getUser(id: Int)
+POST    /users                      controllers.UserController.createUser
+DELETE  /users/:id                  controllers.UserController.deleteUser(id: Int)
+
+# Sub-router include — the `conf/<name>.routes` form. 60 of the 139 routes
+# files measured across the Play upstreams use it.
+->      /admin                      admin.Routes

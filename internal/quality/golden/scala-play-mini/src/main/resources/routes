@@ -1,0 +1,14 @@
+# Play's MAVEN-LAYOUT router location, `src/main/resources/routes`. Play's own
+# sbt-plugin tests use it (basic-service-with-routes-file, http-backend-netty,
+# maven-layout-twirl-reload, java-test-helpers, shutdown-*): 9 of the 139 routes
+# files measured for #6952 live here and NONE of them is under a `conf/`
+# directory. Without this file the fixture cannot distinguish the shipped
+# basename rule from a `conf/` directory anchor — the M6/M6' mutant scored 29/29
+# against the fixture and died only on the unit test.
+#
+# NOTE ON THE PATH. The fixture root IS the indexer's repo root, so this file's
+# repo-relative path is `main/resources/routes`, not `src/main/resources/routes`
+# — golden fixtures put their tree directly under `src/`. The rule under test is
+# the bare basename, which does not read the parent, so the shortened path
+# exercises exactly the same lookup; what matters is that no ancestor is `conf`.
+GET     /legacy/health              controllers.UserController.health

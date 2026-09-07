@@ -195,9 +195,21 @@ var commentPrefixes6949 = map[string][]string{
 	".mm": {"//"}, ".f90": {"!"}, ".pas": {"//"}, ".ada": {"--"},
 	".adb": {"--"}, ".ads": {"--"}, ".cob": {"*"}, ".asm": {";"},
 	".ru": {"#"},
+	// Play / Revel routes DSL (#6952). `conf/routes` is extensionless and
+	// `conf/<module>.routes` carries the `.routes` suffix; both comment with
+	// `#`, and a commented-out route is the most ordinary line in one — which
+	// is exactly the hazard this scan exists for. Listed in BOTH tables because
+	// the two spellings are routed by two different classifier entries.
+	".routes": {"#"},
 	// Keyed by basename, for sources with no extension.
 	"gemfile": {"#"}, "rakefile": {"#"}, "makefile": {"#"}, "dockerfile": {"#"},
 	"procfile": {"#"},
+	"routes":   {"#"},
+	// scala-play-mini's negative fixture: a backup of a routes file, byte-for-
+	// byte the same DSL. Keyed by basename rather than by a `.bak` EXTENSION
+	// entry, because `.bak` names no language and a global entry for it would
+	// claim every backup in the corpus comments the same way.
+	"routes.bak": {"#"},
 }
 
 // allowedCommentOnlyMarkers6949 records "<repo-relative path>|<marker>" pairs

@@ -432,40 +432,59 @@ func TestIssue6927_Play_RouteRuleIsNotFrameworkGated(t *testing.T) {
 // Reachability — the finding this arm could not fix
 // ---------------------------------------------------------------------------
 
-// TestIssue6927_Play_ConfRoutesIsNotClassified pins a DEFECT, deliberately, the
-// way #6949's TestIssue6927_Compose_EnvironmentFirstServiceIsMissed does.
+// TestIssue6927_Play_ConfRoutesIsClassified_6952 is the INVERSE of the tripwire
+// this used to be. Until #6952 it was TestIssue6927_Play_ConfRoutesIsNot-
+// Classified, pinning the defect deliberately the way #6949's
+// TestIssue6927_Compose_EnvironmentFirstServiceIsMissed does: `conf/routes`
+// carried no extension and no entry in classifier.go's basename tables, so
+// classifyInner returned Skip{unsupported_extension} and every assertion above
+// described what the rule WOULD do, driven through Detect directly.
 //
-// `conf/routes` carries no extension and no entry in classifier.go's
-// exactBasenameLanguageMap or basenameLanguageMap, so classifyInner returns
-// Skip{unsupported_extension} and the file never reaches the extraction
-// pipeline at all. Every assertion above therefore describes what the rule
-// WOULD do, driven through Detect directly — it is not reached in production
-// today. Same shape as #6946's `.github` finding for the GitHub Actions rules.
+// #6952 added basenameLanguageMap["routes"] and extensionLanguageMap[".routes"],
+// which turned this test red — the point of writing it that way. Its own
+// instruction was to read the two consequences recorded on the Route rule in
+// play_framework.yaml before deleting it, so they are recorded HERE, measured,
+// rather than deleted with it:
 //
-// When this is fixed the test goes red, which is the point: whoever fixes it
-// must read the two consequences recorded in the rule comment — that
-// internal/custom/scala/frameworks.go's rePlayRoute becomes a second producer
-// of the same route, and that the ROUTES_TO edge is what this rule uniquely
-// adds.
-func TestIssue6927_Play_ConfRoutesIsNotClassified(t *testing.T) {
+//  1. A SECOND PRODUCER OF THE SAME ROUTE IS NOW LIVE, and it is no longer a
+//     rounding error. On lichess-org/lila's five real routes files, this rule
+//     mints 833 `Route` entities against internal/custom/scala's 900
+//     `SCOPE.Operation` from the same lines — ~93% overlap, not the ~0.4% that
+//     held before #6953's `(?m)` fix landed (4 vs 900). The custom extractor's
+//     entity carries http_method, http_path and controller; this rule's carries
+//     the path alone.
+//  2. THE `ROUTES_TO` EDGE IS WHAT THIS RULE UNIQUELY ADDS, and on the same
+//     five files 905 of its 907 ROUTES_TO edges have an UNRESOLVED to-side —
+//     dangling `Operation:controllers.X.y` bare names that never bind to the
+//     controller method. So the rule's sole advantage over the custom extractor
+//     is, today, almost entirely unlanded.
+//
+// Both figures are why the ownership merge is filed as #6959 rather than
+// asserted here: this test grades reachability, not the resolution.
+func TestIssue6927_Play_ConfRoutesIsClassified_6952(t *testing.T) {
 	c := classifier.New(nil)
 	for _, p := range []string{"conf/routes", "modules/admin/conf/routes"} {
 		got := c.Classify(context.Background(), p)
-		if !got.Skip {
-			t.Errorf("%s now classifies as %q — the Play routes rules have become REACHABLE. "+
-				"Read the comment on the Route rule in "+
-				"internal/engine/rules/scala/frameworks/play_framework.yaml before deleting "+
-				"this test: a second producer of the same route entity is waiting behind it",
-				p, got.Language)
+		if got.Skip || got.Language != "scala" {
+			t.Errorf("%s classified as {lang=%q skip=%v reason=%s}, want scala/not-skipped — "+
+				"the Play routes rules are UNREACHABLE again, and every assertion above this "+
+				"line describes a rule that production never runs (#6952)",
+				p, got.Language, got.Skip, got.SkipReason)
 		}
 	}
-	// Positive control: the pipeline does classify Play's Scala sources, so the
-	// skip above is a fact about this filename and not about the classifier
-	// being broken or the paths being malformed.
+	// Positive control, carried over unchanged: the pipeline classifies Play's
+	// Scala sources, so the rows above are a fact about the routes filename and
+	// not about the classifier being broken or the paths being malformed.
 	if got := c.Classify(context.Background(), "app/controllers/HomeController.scala"); got.Skip ||
 		got.Language != "scala" {
-		t.Fatalf("a Play controller classified as %+v — the control failed, so the skip "+
-			"assertions above measure nothing", got)
+		t.Fatalf("a Play controller classified as %+v — the control failed, so the assertions "+
+			"above measure nothing", got)
+	}
+	// Negative control: the routes rules must not have become reachable by the
+	// classifier having stopped skipping ANYTHING.
+	if got := c.Classify(context.Background(), "conf/routes.bak"); !got.Skip {
+		t.Errorf("conf/routes.bak classified as %q — the rows above would pass under a "+
+			"classifier that skips nothing, so this is what makes them mean something", got.Language)
 	}
 }
 

@@ -616,6 +616,16 @@ var extensionLanguageMap = map[string]string{
 	// unexamined accept.
 	".dockerfile":    "dockerfile",
 	".containerfile": "dockerfile",
+	// Play / Revel routes DSL (#6952). Play splits a router across
+	// `conf/routes` plus per-module `conf/<name>.routes` includes
+	// (`-> /admin admin.Routes`); 60 of the 139 routes files measured across
+	// the Play upstreams use this suffix form, so routing the bare basename
+	// alone would reach fewer than half of them. Routed to "scala" — the
+	// language of the only registered producer that gates on a routes DSL
+	// (internal/custom/scala's `play` framework arm, selected by a content
+	// sniff for a column-0 HTTP verb) — see the basenameLanguageMap entry
+	// below for why "scala" and not a routes-specific token.
+	".routes": "scala",
 	// Markdown / Documentation
 	".md":       "markdown",
 	".mdx":      "markdown",
@@ -674,6 +684,61 @@ var basenameLanguageMap = map[string]string{
 	// reaches the _cross_manifest extractor (which exact-name-matches it and
 	// parses the resolved dependency tree as kind=locked deps).
 	"luarocks.lock": "lua",
+	// Play / Revel routes file (#6952). `conf/routes` carries no extension, so
+	// before this entry detectLanguage returned "" and the classifier answered
+	// Skip{unsupported_extension} — which made FOUR producers unreachable in
+	// production: the two rules in engine/rules/scala/frameworks/play_framework.yaml,
+	// internal/custom/scala's `rePlayRoute`, internal/custom/java/play_routes.go
+	// and internal/custom/golang's Revel arm. Every one of them had passing unit
+	// tests, because those tests construct the file record directly.
+	//
+	// WHY THE BARE BASENAME AND NOT A `conf/` PATH ANCHOR. `conf/routes` is the
+	// narrower rule and it is the one the Play docs describe, but it is not the
+	// one the corpus supports: of 139 routes files measured across
+	// playframework/playframework, playframework/play-samples, lichess-org/lila,
+	// revel/examples and the 60-repo corpus, only 70 sit at `conf/routes`. Nine
+	// more are Play's own `src/main/resources/routes` (the maven-layout and
+	// sbt-plugin form), and 60 are `*.routes` module includes that a `conf/`
+	// anchor also misses. The over-fire the anchor would buy protection against
+	// was measured at ZERO: every one of the 139 is a genuine routes DSL, and
+	// the corpus contains exactly one file named `routes` outside the Play
+	// upstreams (play-scala-starter's, which is one).
+	//
+	// WHY "scala" AND NOT A ROUTES-SPECIFIC LANGUAGE TOKEN. All three custom
+	// producers hard-gate on their own base language — `file.Language != "scala"`
+	// (custom/scala/frameworks.go), `ctx.Language != "java"`
+	// (custom/java/play_routes.go), `language != "go"` (custom/golang/revel.go)
+	// — so ONE token cannot reach all three; a routes-specific token reaches
+	// none of them without also widening all three gates and teaching the scala
+	// rule-pack loader a second language. "scala" is chosen because it is the
+	// only one of the three whose producer already content-sniffs the file it is
+	// handed (detectScalaFramework returns "play" on a column-0 HTTP verb line),
+	// so a non-Play file that happens to be named `routes` yields no route
+	// entities rather than wrong ones. Reaching the Java and Revel producers is
+	// a second change to those gates, filed separately (#6957).
+	//
+	// WHAT THE LANGUAGE GATES DO NOT COVER, AND WHY IT IS STILL FINE. Those
+	// gates scope the routes token away from OTHER languages. They do nothing
+	// same-language: `file.Language == "scala"` is now true for every routes
+	// file, so ALL of internal/custom/scala's gated passes receive a routes DSL
+	// as if it were Scala source — anorm looking for SQL, caliban for GraphQL
+	// schemas, akka for actors, di for injection. Measured rather than argued:
+	// on lichess-org/lila's five real routes files (923 column-0 verb lines),
+	// this classification yields 1741 entities of which 1738 come from a routes
+	// file and every one is a Route, a SCOPE.Operation or a per-file carrier.
+	// Those passes produce ZERO spurious entities on real routes content. A
+	// future Scala custom pass should know routes files are in its input.
+	//
+	// THE COST OF A WRONG GUESS IS SMALL BUT NOT ZERO, so do not read the
+	// measured-zero over-fire as "harmless if it ever fires".
+	// detectScalaFramework's default arm returns "scala", not nothing, so a
+	// misclassified file still mints one SCOPE.Component carrier and its
+	// CONTAINS edge, and reGenericAuth (`\b(?:JWT|BearerToken|ApiKey|
+	// Authorization)\b`) fires for that arm — a stray `routes` file containing
+	// the word Authorization would mint a SCOPE.Security auth_check. "Yields no
+	// route entities rather than wrong ones" is true about ROUTES; it is not
+	// true about entities in general.
+	"routes": "scala",
 }
 
 // detectLanguage returns the language token for the given normalised path, or
