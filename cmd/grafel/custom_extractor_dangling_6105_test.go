@@ -204,6 +204,30 @@ public class Address {
     private String id;
 }
 `,
+		// #6975 — THE COLLISION TARGET, AND WHY IT LIVES IN ITS OWN FILE NOW.
+		// TestCustomExtractorDependsOnServiceDoesNotMisbind6123's non-vacuity
+		// guard needs an UNQUALIFIED SCOPE.Operation named
+		// `PostgreSqlContainer` to exist, or a mis-bind through the
+		// operation-family byName hint would be undetectable. That entity used
+		// to appear by accident: internal/custom/csharp/blazor.go had no file
+		// gate and its code-method pattern had no line anchor, so the
+		// `new PostgreSqlContainer()` call site below minted one. #6975 closed
+		// both holes, so the fixture now DECLARES the colliding name, in a
+		// `.razor.cs` code-behind file — the one extension that legitimately
+		// reaches that extractor. The base C# extractor cannot supply it: it
+		// qualifies method names (`OrderTests.Setup`), so a method of this name
+		// in an ordinary class would be `Fixtures.PostgreSqlContainer` and
+		// would not collide.
+		"cs/Fixtures.razor.cs": `namespace Shop.Tests
+{
+    public partial class Fixtures
+    {
+        void PostgreSqlContainer()
+        {
+        }
+    }
+}
+`,
 		"cs/OrderTests.cs": `using Testcontainers.PostgreSql;
 
 namespace Shop.Tests
@@ -688,9 +712,17 @@ func TestCustomExtractorSchemaFieldRefsStayInTheirOwnFile6105(t *testing.T) {
 // ExternalServiceTargetID at external_service.go:102), not by Name. So
 // `service:X` could never bind to a service node even where one existed, and
 // on a leaf-name collision it binds to whatever else is called X — here the
-// SCOPE.Operation the base C# extractor made for the `new PostgreSqlContainer()`
-// call site, reached through the DEPENDS_ON_SERVICE operation-family hint
-// (refs.go:1782).
+// SCOPE.Operation named `PostgreSqlContainer`, reached through the
+// DEPENDS_ON_SERVICE operation-family hint (refs.go:1782).
+//
+// #6975 CORRECTED THIS COMMENT'S ATTRIBUTION. That collider was never made by
+// the base C# extractor, which qualifies method names (`OrderTests.Setup`).
+// It was made by internal/custom/csharp/blazor.go, which had no file gate and
+// an unanchored code-method pattern, so `new PostgreSqlContainer()` in
+// ordinary C# minted an unqualified SCOPE.Operation of that name. That is the
+// defect #6975 fixed, so the fixture now declares the colliding name
+// explicitly in cs/Fixtures.razor.cs rather than relying on the bug to
+// supply it. See the note there.
 //
 // THE FIX. test_doubles.go now mints the canonical target ref rather than the
 // unaddressable Name. Where a matching service node exists the edge binds to it
