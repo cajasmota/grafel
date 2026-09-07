@@ -1996,10 +1996,32 @@ func (idx *Index) indexByName(name, id, srcFile string, isFacet bool, facetAncho
 				}
 				idx.nameAmbigImport[name] = true
 			}
-			if isRef && idx.nameHolderRef[name] {
-				// #6976 — both sides are references; no declaration of this
-				// name has been seen. Recoverable by one arriving later,
-				// exactly as placeholder-only ambiguity is.
+			if isRef && idx.nameHolderRef[name] &&
+				idx.nameHolderFile[name] != srcFile {
+				// #6976 — both sides are references, IN DIFFERENT FILES; no
+				// declaration of this name has been seen. Recoverable by one
+				// arriving later, exactly as placeholder-only ambiguity is.
+				//
+				// SCOPED TO CROSS-FILE, and this is where the scoping has to
+				// live. The reclaim branch at the top of indexByName reads
+				// nameAmbigRef, but by the time it runs nameHolderFile has
+				// already been deleted (three lines below), so it cannot
+				// re-derive which files raised the ambiguity — a cross-file
+				// guard added THERE would compare against an empty string and
+				// always fire. Raising the flag only for a cross-file
+				// reference pair is what makes the reclaim cross-file.
+				//
+				// Without it, three claimants in ONE file — two references and
+				// one unmarked record — bind in claimant order `ref, ref,
+				// decl` and stay ambiguous in the other two orders, so a
+				// same-file outcome that is order-INDEPENDENT before #6976
+				// becomes order-DEPENDENT, and the record that wins is the
+				// unmarked one: the exact IUserService mechanism that regressed
+				// csharp-aspnet-core-mini and that the cross-file scoping on
+				// the two arms above exists to prevent. That fixture escapes
+				// only because it has two claimants rather than three.
+				// TestSameFileThreeClaimantsStayAmbiguous_6976 enumerates all
+				// six orders.
 				if idx.nameAmbigRef == nil {
 					idx.nameAmbigRef = make(map[string]bool)
 				}

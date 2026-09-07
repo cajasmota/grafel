@@ -457,3 +457,138 @@ func TestHolderFileFollowsTheSlotAfterPlaceholderDisplacement_6976(t *testing.T)
 			"declaration is evicted", got, declID6976, ctrlFile6976, declFile6976, ctrlFile6976)
 	}
 }
+
+// allOrders6976 runs one case in EVERY claimant order. bothOrders6976 covers
+// the two orders of a pair; this covers the whole permutation space of a set of
+// any size, because the hole this file shipped with was a THREE-claimant one
+// that neither order of any pair can reach. Hand-picking a representative order
+// is what let it through: the same-file three-claimant set binds in `ref, ref,
+// decl` and stays ambiguous in the other two rotations, so a test that sampled
+// one order would have reported either "unchanged" or "broken" depending on
+// which one it happened to sample.
+func allOrders6976(t *testing.T, claimants []types.EntityRecord, check func(t *testing.T, order string, got string)) {
+	t.Helper()
+	var perm func(prefix, rest []types.EntityRecord)
+	seen := 0
+	perm = func(prefix, rest []types.EntityRecord) {
+		if len(rest) == 0 {
+			tag := ""
+			for _, r := range prefix {
+				if tag != "" {
+					tag += ","
+				}
+				tag += r.ID
+			}
+			seen++
+			t.Run(tag, func(t *testing.T) {
+				recs := append(append([]types.EntityRecord(nil), prefix...), testerRecord6976())
+				check(t, tag, resolveTESTS6976(t, recs))
+			})
+			return
+		}
+		for i := range rest {
+			next := append(append([]types.EntityRecord(nil), rest[:i]...), rest[i+1:]...)
+			perm(append(append([]types.EntityRecord(nil), prefix...), rest[i]), next)
+		}
+	}
+	perm(nil, claimants)
+
+	want := 1
+	for i := 2; i <= len(claimants); i++ {
+		want *= i
+	}
+	if seen != want {
+		t.Fatalf("enumeration is incomplete: ran %d order(s), want %d (%d! for %d claimants)",
+			seen, want, len(claimants), len(claimants))
+	}
+}
+
+// sameFileUnmarked6976 is the unmarked same-file claimant from the golden
+// fixture's shape: internal/engine/detector.go's YAML rule-pack `Dependency`.
+// It is a mention too, but its producer is deliberately out of scope, so it
+// carries no marker — which is exactly why it must not be handed the slot.
+func sameFileUnmarked6976(id string) types.EntityRecord {
+	return types.EntityRecord{
+		ID: id, Kind: "Dependency", Name: sharedName6976,
+		SourceFile: ctrlFile6976, Language: "csharp",
+		Properties: map[string]string{"framework": "csharp", "pattern_type": "yaml_driven"},
+	}
+}
+
+// TestSameFileThreeClaimantsStayAmbiguous_6976 closes the hole the pairing test
+// above could not see, and it is enumerated rather than sampled.
+//
+// THE DEFECT, as an independent review exhibited it. The two arms that decide a
+// same-file pairing are scoped to cross-file claimants; the RECLAIM path out of
+// `ambigName` was not. So three claimants in ONE file — two reference-shaped,
+// one unmarked — bound to the unmarked record in claimant order `ref, ref,
+// decl` and stayed ambiguous in the other two rotations, against a parent that
+// is ambiguous in all three. Two things wrong with that, and the second is
+// worse than the first:
+//
+//   - the winner is the UNMARKED record — the IUserService mechanism that
+//     regressed csharp-aspnet-core-mini 13 -> 12, reappearing in the one shape
+//     the cross-file scoping was added to prevent. The fixture escapes only
+//     because it has two claimants rather than three;
+//   - a same-file outcome that is order-INDEPENDENT on the parent becomes
+//     order-DEPENDENT here, in a file whose own comments say "extraction order
+//     is not stable, so both directions are needed". A tier that is right in
+//     one order out of six does not report itself as a bug, it reports itself
+//     as a flake.
+//
+// Fixed by raising nameAmbigRef only for a CROSS-FILE reference pair, so the
+// reclaim it authorises is cross-file too. See indexByName.
+func TestSameFileThreeClaimantsStayAmbiguous_6976(t *testing.T) {
+	// Distinct kinds => distinct ids => three real claimants, not re-indexes
+	// of one entity. All three in Controllers/HomeController.cs.
+	refA := refRecord6976(ctrlRefID6976, ctrlFile6976, "INFERRED_FROM_DOTNET_DI_PROVIDER")
+	refB := refRecord6976(apiRefID6976, ctrlFile6976, "INFERRED_FROM_ASPNET_RETURN_TYPE")
+	refB.Kind = "SCOPE.Schema"
+	unmarked := sameFileUnmarked6976(otherDecl6976)
+
+	allOrders6976(t, []types.EntityRecord{refA, refB, unmarked},
+		func(t *testing.T, order, got string) {
+			if got != sharedName6976 {
+				t.Errorf("order %s: TESTS -> %q, want the edge LEFT UNRESOLVED as %q. Three "+
+					"claimants in ONE file are the #6104 shape; resolving them hands the "+
+					"repo-wide slot to whichever record happens to be unmarked, and makes "+
+					"a same-file outcome depend on extraction order",
+					order, got, sharedName6976)
+			}
+		})
+}
+
+// TestSameFilePairingIsEnumerated_6976 re-states the pairing case above over
+// the full permutation space rather than a hand-picked order, so the same-file
+// claim this file makes is observed at both sizes it can have: 2! + 3! = 8
+// orders, none of which may resolve.
+func TestSameFilePairingIsEnumerated_6976(t *testing.T) {
+	allOrders6976(t, []types.EntityRecord{
+		refRecord6976(ctrlRefID6976, ctrlFile6976, "INFERRED_FROM_DOTNET_DI_PROVIDER"),
+		sameFileUnmarked6976(apiRefID6976),
+	}, func(t *testing.T, order, got string) {
+		if got != sharedName6976 {
+			t.Errorf("order %s: TESTS -> %q, want %q (unresolved)", order, got, sharedName6976)
+		}
+	})
+}
+
+// TestCrossFileThreeClaimantsStillReclaim_6976 is the control: scoping
+// nameAmbigRef to cross-file pairs must not cost the fix. The SAME three-record
+// shape with the claimants in three different files must land on the
+// declaration in ALL SIX orders — including `ref, ref, decl`, which is the one
+// order that goes through the nameAmbigRef reclaim path the guard narrows.
+func TestCrossFileThreeClaimantsStillReclaim_6976(t *testing.T) {
+	refA := refRecord6976(ctrlRefID6976, ctrlFile6976, "INFERRED_FROM_DOTNET_DI_PROVIDER")
+	refB := refRecord6976(apiRefID6976, apiFile6976, "INFERRED_FROM_ASPNET_RETURN_TYPE")
+	decl := declRecord6976(declID6976, declFile6976)
+
+	allOrders6976(t, []types.EntityRecord{refA, refB, decl},
+		func(t *testing.T, order, got string) {
+			if got != declID6976 {
+				t.Errorf("order %s: TESTS -> %q, want the declaration %q: narrowing the "+
+					"reference-only-ambiguity flag to cross-file pairs must not disarm the "+
+					"reclaim for the shape the tier exists to fix", order, got, declID6976)
+			}
+		})
+}
