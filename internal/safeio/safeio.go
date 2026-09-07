@@ -72,6 +72,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -253,16 +254,60 @@ func openWithDeadline(path string, open func(string) (*os.File, error), timeout 
 // ReadFile is the os.ReadFile replacement. maxBytes caps how much is read
 // (0 = unlimited); it exists because a character device never reaches EOF, so
 // "it will hit EOF eventually" is not a bound.
+//
+// A file over the cap comes back TRUNCATED with a nil error. That is the
+// documented contract and it is unchanged, because most callers of this
+// package are reading a config or manifest and a short read costs them a
+// field, not correctness. A caller for whom a truncated read is a DIFFERENT
+// answer rather than a smaller one must call ReadFileLimited instead — see
+// #6969, where a truncated git sparse-checkout pattern file silently narrowed
+// the index.
 func ReadFile(path string, policy SymlinkPolicy, maxBytes int64) ([]byte, error) {
+	b, _, err := ReadFileLimited(path, policy, maxBytes)
+	return b, err
+}
+
+// ReadFileLimited is ReadFile plus the one bit ReadFile throws away: whether
+// the cap was hit and bytes were dropped.
+//
+// WHY A SEPARATE RETURN AND NOT A LENGTH COMPARISON. The obvious test at a
+// call site — len(b) == maxBytes — is WRONG in the one direction that matters:
+// a file whose size is exactly the cap is complete, and reporting it truncated
+// makes the cap itself a behaviour boundary that no caller can see. So the
+// read asks for maxBytes+1 and truncation is the observation that a
+// (maxBytes+1)'th byte existed. Exactly-at-the-cap is therefore reported
+// COMPLETE, and the returned slice is capped at maxBytes either way, so the
+// extra byte is never handed to a caller.
+//
+// truncated is false whenever err is non-nil or maxBytes <= 0 (unlimited): an
+// unlimited read has no cap to hit, and a failed read has no claim to make
+// about how much of the file it saw.
+func ReadFileLimited(path string, policy SymlinkPolicy, maxBytes int64) (data []byte, truncated bool, err error) {
 	f, err := Open(path, policy)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer f.Close()
 
-	var r io.Reader = f
-	if maxBytes > 0 {
-		r = io.LimitReader(f, maxBytes)
+	if maxBytes <= 0 {
+		b, err := io.ReadAll(f)
+		return b, false, err
 	}
-	return io.ReadAll(r)
+
+	// maxBytes+1, guarded: math.MaxInt64+1 wraps NEGATIVE, and
+	// io.LimitReader with a negative n reads zero bytes — an overflow here
+	// would turn "unbounded cap" into "empty file", which is the silent
+	// under-read this function exists to make impossible.
+	probe := maxBytes
+	if probe < math.MaxInt64 {
+		probe++
+	}
+	b, err := io.ReadAll(io.LimitReader(f, probe))
+	if err != nil {
+		return b, false, err
+	}
+	if int64(len(b)) > maxBytes {
+		return b[:maxBytes], true, nil
+	}
+	return b, false, nil
 }

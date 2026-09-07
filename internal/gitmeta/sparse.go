@@ -149,7 +149,9 @@ func ProbeRepo(repoPath string) SparseInfo {
 	//
 	// An existing-but-unreadable file lands on "not sparse" too, which is the
 	// over-inclusive direction — a superset, the same direction every other
-	// failure in this file chooses.
+	// failure in this file chooses. So does an OVERSIZED one, whose read is
+	// truncated: before #6969 that was the single input class landing the
+	// other way, staying sparse with a partial pattern set.
 	patterns, haveFile := parseSparsePatternFile(filepath.Join(gitDir, "info", "sparse-checkout"))
 	if !haveFile {
 		return SparseInfo{}
@@ -169,13 +171,40 @@ func ProbeRepo(repoPath string) SparseInfo {
 // states in git and must not be collapsed: an empty pattern file checks out
 // nothing, an absent one checks out everything (#6967 review). Callers that
 // only want the lines can ignore it; ProbeRepo cannot.
+//
+// It reports false for an ABSENT file, an UNREADABLE one, and an OVERSIZED one
+// whose read was truncated (#6969) — three inputs, one verdict, chosen so that
+// every way of failing to obtain the complete pattern set indexes the repo in
+// FULL rather than in part.
 func parseSparsePatternFile(path string) ([]string, bool) {
 	// readGitMetaFile, not os.Open: open(2) is what blocks on a FIFO, so
 	// scanning rather than slurping made no difference to #6416. The pattern
 	// file is name-chosen ("info/sparse-checkout" under the git dir) and is
 	// read before any walk, so no entry-type gate sits in front of it.
-	data, err := readGitMetaFile(path, maxSparsePatternBytes)
+	data, truncated, err := readGitMetaFileLimited(path, maxSparsePatternBytes)
 	if err != nil {
+		return nil, false
+	}
+	// A TRUNCATED pattern file is rejected WHOLESALE, not trimmed to its last
+	// intact line (#6969).
+	//
+	// Two distinct hazards live in a truncated read and only one of them is
+	// fixed by dropping the cut line:
+	//
+	//  1. Every pattern PAST the cut is gone — arbitrarily many, not one. The
+	//     surviving prefix is a valid-looking shorter list, so the repo stays
+	//     sparse with fewer includes and files vanish from the index with no
+	//     error and no SkipEntry. Dropping the cut line leaves this untouched.
+	//  2. The cut line itself is a pattern git never wrote. "!/src/deep/"
+	//     severed at the cap is "!/src", which does not fail to match — it
+	//     matches something WIDER than intended.
+	//
+	// So trimming addresses hazard 2 and leaves hazard 1, which is the one
+	// that silently shrinks the graph. Rejecting the file lands both on "not
+	// sparse", i.e. a FULL index — a superset, the same over-inclusive
+	// direction the absent and unreadable cases already choose above.
+	if truncated {
+		reportGitMetaTruncation(path, maxSparsePatternBytes)
 		return nil, false
 	}
 
