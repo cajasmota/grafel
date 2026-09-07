@@ -168,8 +168,13 @@ func (c *Classifier) classifyWithSizeInner(filePath string, sizeBytes int64) Cla
 		return ClassifyResult{Skip: true, SkipReason: "empty_path"}
 	}
 
-	// Size check first — cheapest guard.
+	// Size check first — cheapest guard. The skip is announced (#6985): an
+	// oversized file mints no entity and appears nowhere in graph.json, and
+	// before the report the only trace of it was the aggregate `skipped=N`.
+	// See oversized_report.go for why the report lives here and why the
+	// UnsupportedTally is not the surface for it.
 	if sizeBytes > maxIndexableBytes {
+		reportOversizedSkip(filePath, sizeBytes)
 		return ClassifyResult{Skip: true, SkipReason: "too_large"}
 	}
 
