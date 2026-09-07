@@ -1,0 +1,39 @@
+# Storefront runtime topology.
+#
+# Stored under deploy/ rather than at the repo root on purpose. The engine
+# resolves rule sets by file.Language (yaml), never by path, so the location is
+# not what admits this file to the compose rules - the top-level key below is.
+services:
+  api:
+    image: ghcr.io/storefront/api:1.4.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+  db:
+    # postgres:16 ships both amd64 and arm64 images
+    image: postgres:16
+    environment:
+      POSTGRES_DB: storefront
+  worker:
+    build: ./worker
+    networks:
+      - backend
+
+volumes:
+  db-data:
+    labels:
+      com.example.description: "primary database volume"
+  cache-data:
+
+secrets:
+  db-password:
+    file: ./secrets/db.txt
+
+networks:
+  backend:
+    driver: bridge

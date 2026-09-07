@@ -13,6 +13,14 @@
       "entity_extracted_total": 83,
       "relationship_extracted_total": 239
     },
+    "ansible-playbook-modules-mini": {
+      "entity_found": 7,
+      "entity_expected": 7,
+      "relationship_found": 2,
+      "relationship_expected": 2,
+      "entity_extracted_total": 35,
+      "relationship_extracted_total": 33
+    },
     "clojure-protocols-mini": {
       "entity_found": 12,
       "entity_expected": 12,
@@ -45,6 +53,14 @@
       "entity_extracted_total": 23,
       "relationship_extracted_total": 45
     },
+    "docker-compose-services-mini": {
+      "entity_found": 7,
+      "entity_expected": 7,
+      "relationship_found": 2,
+      "relationship_expected": 2,
+      "entity_extracted_total": 48,
+      "relationship_extracted_total": 68
+    },
     "elixir-phoenix-mini": {
       "entity_found": 22,
       "entity_expected": 22,
@@ -74,7 +90,7 @@
       "entity_expected": 12,
       "relationship_found": 3,
       "relationship_expected": 3,
-      "entity_extracted_total": 55,
+      "entity_extracted_total": 57,
       "relationship_extracted_total": 72
     },
     "go-chi-mini": {

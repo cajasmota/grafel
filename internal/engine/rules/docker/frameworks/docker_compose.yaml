@@ -11,6 +11,40 @@ frameworks:
     content_patterns:
       - "services:"
       - "version:"
+    # Presence signal for the requires_framework gate on the service rule
+    # below (#6927). A literal substring, matched against whole file content
+    # by compiledRuleSet.frameworkPresent.
+    #
+    # Measured over 992 real .yml/.yaml files (59 upstream repos in
+    # archigraph-corpora plus 4 upstream ansible repos): 51 are compose-shaped
+    # (a column-0 `services:` block, or one of the four config_files names)
+    # and 941 are not. `services:` admits 50 of the 51 and 10 of the 941 —
+    # django's and phoenix's CI workflows, which declare service CONTAINERS
+    # under a job, and three prometheus helm values files. Those ten are
+    # admitted by the gate and then declined by the pattern, which is the
+    # point: the two fences are independent and each is separately
+    # load-bearing. The product is ZERO matches in all 941.
+    #
+    # One marker, not a set, and deliberately: on this corpus `depends_on:`
+    # and `container_name:` are strictly redundant — every compose file
+    # carrying either also carries `services:` — so shipping them would add
+    # two markers that no input can grade, which is the shape #6945 called
+    # out. If a later arm finds a compose file with no `services:` key it
+    # should add a marker AND the case that grades it.
+    #
+    # Blind spots, named rather than implied. Zero-of-941 is a measurement,
+    # not a proof:
+    #
+    #   * `services:` is not compose-only. A GitHub Actions job's service
+    #     containers, a Kubernetes `spec.template` naming services and a helm
+    #     values file all write it. Every such file in the corpus is held by
+    #     the PATTERN, not by this marker.
+    #   * a compose v1 file (services at the top level, no `services:` key)
+    #     carries no marker at all. It also cannot match the service rule,
+    #     whose `^\s{2}` requires an indented key, so nothing is lost — but
+    #     the file is invisible to this rule set either way.
+    import_markers:
+      - "services:"
   notes: >-
     Docker Compose extraction. Detects service definitions, networks, volumes,
     and inter-service dependencies from compose files.
@@ -34,11 +68,103 @@ file_conventions:
     name_from: filename
 
 source_patterns:
-  # Service definition (top-level key under services:)
-  - pattern: "^\\s{2}(\\w[\\w-]*):\\s*$"
+  # Service definition (a key under `services:`).
+  #
+  # REWRITTEN, not just given `(?m)` (#6927). The old pattern was
+  # `^\s{2}(\w[\w-]*):\s*$`, compiled by detector.go:156 with plain
+  # regexp.Compile — so `^` meant start of TEXT and `$` end of TEXT, both at
+  # once. It matched only a file whose ENTIRE content is one indented key.
+  # Measured across 992 real YAML files: ZERO matches, in compose files and
+  # everywhere else.
+  #
+  # `(?m)` alone is what #6927 predicted would over-fire, and the measurement
+  # is why this pattern was rewritten instead. `(?m)` turns `$` into
+  # end-of-LINE, so `^\s{2}(\w[\w-]*):\s*$` reads "every two-space-indented
+  # key alone on its line" — which is not what a service is. Same corpus:
+  #
+  #   * 1867 matches in 611 of the 941 NON-compose files — `push`,
+  #     `pull_request` and `schedule` from workflow triggers, `tasks`/`roles`
+  #     from ansible plays, `labels`/`selector` from k8s manifests.
+  #   * and 40 false Services INSIDE real compose files, because a named
+  #     volume, network or secret is also a two-space key alone on its line:
+  #     `db-data`, `db-password`, `pgdata`, `default`. A framework gate cannot
+  #     fix that one — the file IS compose.
+  #
+  # Measured after the rewrite: 109 matches in 47 files, ZERO in-compose false
+  # positives and 5 matches in 3 non-compose files ungated (0 gated).
+  #
+  # So the rule now says what a service is structurally, the same shape as
+  # github_actions.yaml's job rule (#6945): a two-space key whose block opens
+  # with a compose SERVICE-level key. Every character class in it is
+  # load-bearing, and three of them were wrong in the first version of this
+  # rewrite (PR #6949 review):
+  #
+  #   * `$` is gone entirely. `[ \t]*\r?\n` carries the "nothing else on
+  #     this line" half without `$`'s end-of-text / end-of-line ambiguity.
+  #     `[ \t]` and not `\s`, because `\s` is `[\t\n\f\r ]` and so
+  #     crosses LINE boundaries: `\s*` there would quietly turn "nothing else
+  #     on this line" into "nothing but whitespace for some number of lines",
+  #     duplicating the blank/comment arm below and then over-reaching it.
+  #     Graded by TestIssue6927_Compose_HeadWhitespaceCannotCrossALine, whose
+  #     distinguishing input was found by enumerating 39690 generated
+  #     key/separator/body combinations rather than by picking one.
+  #   * `\r?` is NOT optional decoration. The `\s*$` this replaced could
+  #     match a CRLF file (`\s` eats the `\r`) and the sibling
+  #     `^volumes:\s*\n` rules still can, so a bare `[ \t]*\n` here made
+  #     this the ONLY compose rule blind to CRLF: converting
+  #     docker-compose-services-mini's own compose.yaml to CRLF took it from
+  #     7/7 to 4/7, losing every Service and both `depends_on` edges. Graded
+  #     by TestIssue6927_Compose_ServiceRuleReadsCRLF.
+  #   * `[ ]{3,}` — literal spaces, at least three — requires the next key to
+  #     be deeper indented. `\s+` there would match a NEWLINE, so
+  #     `volumes:\n  db-data:\n\nsecrets:` would read the column-0
+  #     `secrets:` as the block body and mint `db-data`. `{3,}` rather than
+  #     `{2,}` is what keeps it off a SIBLING of the key, which is a separate
+  #     count and is graded separately.
+  #   * `^[ ]{2}` — literal spaces again, and for the same reason one position
+  #     to the left. `^\s{2}` under `(?m)` matches at a blank line and then
+  #     eats newlines, so a column-0 key preceded by two blank lines, or a
+  #     one-space key preceded by one, satisfied it.
+  #
+  # The `(?:#[^\r\n]*)?\r?\n` arm lets comment and blank lines sit between
+  # the service key and its first key, which 7 of the corpus's compose files do.
+  #
+  # The next-line vocabulary is compose's SERVICE-level key set MINUS `labels`
+  # and `environment`, and that subtraction is the point rather than an
+  # oversight. Per the Compose Spec, an entry under top-level `volumes:`,
+  # `networks:`, `secrets:` or `configs:` may carry `driver`, `driver_opts`,
+  # `external`, `name`, `file`, `content`, `attachable`, `internal`, `ipam`,
+  # `enable_ipv6` — and `labels` (volumes, networks) and `environment`
+  # (secrets, configs). Those last two are the ONLY overlap with the
+  # service-level set, so excluding them makes the in-compose false-positive
+  # class empty by the FORMAT's own schema rather than merely zero on one
+  # corpus. A spec-legal `labels:` under a named volume is carried by
+  # docker-compose-services-mini and is what `db-data` (forbidden Service)
+  # grades; adding `labels` back mints it.
+  #
+  # The price is stated rather than rounded away: a service whose FIRST
+  # non-comment key is `environment:` or `labels:` is now missed, because the
+  # rule only inspects that one key. Measured over the corpus's 50 compose
+  # files: 109 of 111 real services (98.2%), down from 111 with the wider
+  # vocabulary and up from 0 before the fix, with ZERO in-compose false
+  # positives either way on that corpus. The two missed are `db` (an
+  # `environment:`-first service) and `postgres` (`labels:`-first), and the
+  # gap is pinned by TestIssue6927_Compose_EnvironmentFirstServiceIsMissed so
+  # it is observed rather than asserted here.
+  #
+  # `requires_framework: true` closes what is left: 5 matches in 3 non-compose
+  # files ungated (an ansible `docker_container:` task, a helm values block, a
+  # workflow's `workflow_call`), 0 of 941 under the gate. The vocabulary is
+  # compose's, but it is not compose's ALONE.
+  #
+  # The two fences are independent and each has its own forbidden rows —
+  # deleting `requires_framework` mints a Service for a workflow job, and
+  # weakening the vocabulary or either indent mints one for a named volume.
+  - pattern: "(?m)^[ ]{2}(\\w[\\w-]*):[ \\t]*\\r?\\n(?:[ \\t]*(?:#[^\\r\\n]*)?\\r?\\n)*[ ]{3,}(?:image|build|container_name|command|entrypoint|ports|expose|env_file|depends_on|volumes|volumes_from|networks|network_mode|restart|healthcheck|deploy|profiles|extends|logging|working_dir|user|hostname|platform|privileged|tty|stdin_open|init|secrets|configs|cap_add|devices|dns|links|pull_policy|scale|shm_size|sysctls|tmpfs|ulimits):"
     entity_type: Service
     name_group: 1
     scope: file
+    requires_framework: true
   # image: directive
   - pattern: "image:\\s+(\\S+)"
     entity_type: Dependency
@@ -59,13 +185,41 @@ source_patterns:
     entity_type: Dependency
     name_group: 1
     scope: file
-  # volumes definition (named volume)
-  - pattern: "^volumes:\\s*\\n\\s{2}(\\w[\\w-]*):"
+  # volumes definition (named volume).
+  #
+  # `(?m)` (#6927): compiled with plain regexp.Compile, so `^` meant start of
+  # TEXT — this fired only on a file whose very first bytes are `volumes:`,
+  # and no compose file opens that way. Measured: 0 matches in 992 real YAML
+  # files before, 18 in 18 compose files after.
+  #
+  # Carries no `$`, so `(?m)`'s other half cannot reach it.
+  #
+  # NOT gated, and that is measured rather than assumed: a column-0 `volumes:`
+  # whose next line is a two-space key is compose's top-level named-volume
+  # block and nothing else writes it. k8s puts `volumes:` under `spec`, i.e.
+  # indented; helm values write it at column 0 but as a LIST. Across all 941
+  # non-compose files the widened pattern matched ZERO times, so the column-0
+  # anchor is the whole fence and it is graded by a forbidden row instead
+  # (`app-data`, declared under an INDENTED `volumes:` in a k8s manifest).
+  #
+  # Known recall limit, unchanged by this fix: `^volumes:\s*\n\s{2}(...)`
+  # names only the FIRST volume of the block, because the regex has no way to
+  # repeat the group. That is why the corpus count is 18 in 18 files rather
+  # than one per named volume.
+  - pattern: "(?m)^volumes:\\s*\\n\\s{2}(\\w[\\w-]*):"
     entity_type: Config
     name_group: 1
     scope: file
-  # networks definition (named network)
-  - pattern: "^networks:\\s*\\n\\s{2}(\\w[\\w-]*):"
+  # networks definition (named network).
+  #
+  # `(?m)` (#6927), for the same reason and with the same measurement shape as
+  # the volumes rule above: 0 matches in 992 files before, 9 in 9 compose
+  # files after, ZERO in all 941 non-compose files, no `$`.
+  #
+  # Also ungated, also column-0-anchored, and also graded by a forbidden row
+  # rather than by a gate (`pod-network`, under an indented `networks:`).
+  # Same first-entry-only recall limit as the volumes rule.
+  - pattern: "(?m)^networks:\\s*\\n\\s{2}(\\w[\\w-]*):"
     entity_type: Config
     name_group: 1
     scope: file

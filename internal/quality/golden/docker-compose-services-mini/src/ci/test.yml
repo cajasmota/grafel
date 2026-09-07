@@ -1,0 +1,16 @@
+# A GitHub Actions test workflow that DOES carry a job's service-container
+# block, so the compose framework gate ADMITS this file and only the service
+# rule's own shape declines it. That is the point: the two fences are
+# independent, and this file grades the second one alone.
+name: Test
+on: pull_request
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: make test

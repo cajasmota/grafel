@@ -1,0 +1,9 @@
+# Helm values for the storefront chart. Declares no compose service block, so
+# the compose service rule's framework gate declines this file. As in
+# ci/release.yml, this header avoids spelling the marker out.
+replicaCount: 2
+serverSide:
+  volumes:
+  extraArgs: {}
+  networks:
+  hostAliases: []

@@ -1,0 +1,21 @@
+# A GitHub Actions release workflow. Stored at ci/ rather than .github/ because
+# the walker skips .github outright (#6946).
+#
+# It declares no compose service block anywhere, so the compose service rule's
+# framework gate declines this file. The gate is a literal SUBSTRING match over
+# the whole file, comments included, so this header deliberately does not spell
+# the marker out - a comment saying "no such key here" would itself be the key.
+#
+# The `deploy` job's first key is `secrets:` on purpose: that is real
+# reusable-workflow syntax AND a compose service-level key, so the rule's SHAPE
+# matches this job and only the gate declines it. Without such a job the gate
+# would have nothing to hold and the `deploy` forbidden row would be unfireable.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  deploy:
+    secrets:
+      registry-token: ${{ secrets.RELEASE_TOKEN }}
+    uses: ./ci/workflows/publish.yml

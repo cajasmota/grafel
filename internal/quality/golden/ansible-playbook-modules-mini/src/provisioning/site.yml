@@ -1,0 +1,6 @@
+# Storefront provisioning playbook.
+- hosts: web
+  become: true
+  gather_facts: true
+  roles:
+    - storefront
