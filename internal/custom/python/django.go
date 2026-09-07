@@ -148,6 +148,21 @@ var (
 	// target model — string form ('app.Model' / 'self') or symbol form (Model).
 	// Group 1 = relation kind, group 2 = quoted target (if string form),
 	// group 3 = identifier target (if symbol form).
+	// NOTE (#6988): this alternation has NO left word boundary, and that is
+	// deliberate — it is what lets a third-party `*ForeignKey` SUBCLASS
+	// (django-mptt's `TreeForeignKey`, and the `ForeignKey` subclasses apps
+	// define) reach its target argument. A leading `\b` would also have closed
+	// #6988, by refusing to match the `ForeignKey(` inside `GenericForeignKey(`,
+	// but it drops `TreeForeignKey(Category, ...)` with it — measured, not
+	// assumed: see TestIssue6988_RegexBoundaryRejected_WouldDropSubclasses.
+	// This regex extracts a target; it is NOT the constructor filter.
+	// `isDjangoRelationalField` decides which constructors are PROCESSED — but it
+	// does not bound what this regex READS. The caller hands it a 400-char
+	// forward window (`fullRHS` below) that can span later lines, so a
+	// legitimate `ForeignKey` whose own argument this regex cannot parse
+	// (`models.ForeignKey(settings.AUTH_USER_MODEL, ...)`) can still match a
+	// string belonging to a constructor the gate REJECTED. That residue survives
+	// #6988 and is zero-incidence on the measured corpus; it is filed separately.
 	djangoModelRelTargetRe = regexp.MustCompile(
 		`(?:ForeignKey|OneToOneField|ManyToManyField)\s*\(\s*(?:to\s*=\s*)?(?:["']([^"']+)["']|([A-Z][A-Za-z0-9_]*))`)
 
@@ -898,12 +913,43 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	return out, nil
 }
 
+// djangoNonTargetRelCtors names field constructors that carry a relational
+// SUFFIX but whose first argument is NOT a model (issue #6988).
+// `GenericForeignKey(ct_field, fk_field)` takes the names of two sibling fields
+// on the same model, so treating argument 1 as a target model produced a wrong
+// edge — dangling when the sibling name matched no entity, and worse,
+// confidently BOUND to the sibling ForeignKey's Constraint node when it did
+// (#6369's wrong-node hazard).
+//
+// Keyed on the FINAL dotted segment, so `GenericForeignKey`,
+// `fields.GenericForeignKey` and `contenttypes.fields.GenericForeignKey` are all
+// covered. It is a deny-list rather than an exact-match allow-list on purpose:
+// third-party `*ForeignKey` SUBCLASSES (django-mptt's `TreeForeignKey`, and the
+// `ForeignKey` subclasses apps define) do take a model as argument 1, and an
+// allow-list would silently drop them. `GenericForeignKey` is the one such
+// constructor this list currently carries — the corpus surfaced no other, and a
+// new name goes here rather than into a re-broadened suffix rule.
+// `GenericRelation` is the adjacent case and is NOT listed: its argument IS a
+// model, but it wears neither suffix, so it has never been admitted here at all
+// (pinned by TestIssue6988_GenericRelationEmitsNoTargetEdge — admitting it is a
+// recall change, not this fix).
+var djangoNonTargetRelCtors = map[string]bool{
+	"GenericForeignKey": true,
+}
+
 // isDjangoRelationalField reports whether a field constructor RHS (the matched
 // `models.XField` head) is a relational field carrying a target-model argument.
 func isDjangoRelationalField(rhs string) bool {
-	return strings.HasSuffix(rhs, "ForeignKey") ||
-		strings.HasSuffix(rhs, "OneToOneField") ||
-		strings.HasSuffix(rhs, "ManyToManyField")
+	ctor := rhs
+	if dot := strings.LastIndexByte(ctor, '.'); dot >= 0 {
+		ctor = ctor[dot+1:]
+	}
+	if djangoNonTargetRelCtors[ctor] {
+		return false
+	}
+	return strings.HasSuffix(ctor, "ForeignKey") ||
+		strings.HasSuffix(ctor, "OneToOneField") ||
+		strings.HasSuffix(ctor, "ManyToManyField")
 }
 
 // djangoRelTarget extracts the bare target-model class name from a relational
