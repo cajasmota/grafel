@@ -36,6 +36,17 @@ import (
 //	     include `.razor.cs`)
 //	     => TestBlazorGateAdmitsRazorCodeBehind6975 fails: the generic
 //	     argument in `new Wrapper<Order>()` becomes a SCOPE.UIComponent.
+//
+// Added after review, each of which was ALIVE against the first revision:
+//
+//	m6 — drop the blazorNonTypeKeywords rejection (R5 residual). The anchor
+//	     only excludes a MID-EXPRESSION `new X(`; a line-leading one survives,
+//	     and `.razor.cs` is ordinary C# so the gate does not cover it
+//	     => TestBlazorCodeMethodIgnoresConstructorCalls6975 fails.
+//	m7 — delete the `file.Language != "csharp"` guard (R3)
+//	     => TestBlazorLanguageGuardRejectsNonCSharp6975 fails.
+//	m8 — widen the generic class `[^;\n]*` to `[^;]*` (MB-1)
+//	     => TestBlazorCodeMethodGenericDoesNotSpanLines6975 fails.
 
 // TestBlazorGateRejectsOrdinaryCSharp6975 pins the gate. `OrderService.cs` is
 // ordinary ASP.NET Core C# with no Blazor whatsoever; before the gate it
@@ -139,6 +150,13 @@ public partial class Counter : ComponentBase
 // pass and tightening the gate cannot make it pass vacuously. Every name below
 // appears only as a constructor call or a mid-expression call.
 func TestBlazorCodeMethodIgnoresConstructorCalls6975(t *testing.T) {
+	// MID-EXPRESSION and LINE-LEADING forms are both present on purpose. The
+	// anchor alone handles only the first: an earlier revision of this test
+	// used exclusively mid-expression calls, and simply moving
+	// `new PriceCalculator(_rates)` onto its own continuation line — which is
+	// how a long assignment is formatted — made the fixture pass while the
+	// defect was fully intact. `.razor.cs` is ordinary C#, so the gate does
+	// not cover this shape; blazorNonTypeKeywords does.
 	src := `
 public partial class Cart : ComponentBase
 {
@@ -146,21 +164,50 @@ public partial class Cart : ComponentBase
     {
         var a = new PriceCalculator(_rates);
         Total = new MoneyFormatter().Format(a.Sum());
-        return new CartSnapshot(Items);
+        var snapshot =
+            new CartSnapshot(Items);
+        new AuditEntry(Items).Write();
+        return Publish(snapshot);
+    }
+
+    private void Refresh()
+    {
+        if (Items.Count == 0)
+            Clear();
+        else if (Items.Count > 100)
+            Trim();
     }
 }
 `
 	ents := extract(t, "custom_csharp_blazor", fi("Pages/Cart.razor.cs", "csharp", src))
 
-	for _, name := range []string{"PriceCalculator", "MoneyFormatter", "CartSnapshot"} {
+	// Mid-expression `new X(` — killed by the anchor.
+	for _, name := range []string{"PriceCalculator", "MoneyFormatter"} {
 		if containsEntity(ents, "SCOPE.Operation", name) {
-			t.Errorf("constructor call `new %s(` minted a SCOPE.Operation; the code-method pattern must be line-anchored", name)
+			t.Errorf("mid-expression `new %s(` minted a SCOPE.Operation; the code-method pattern must be line-anchored", name)
 		}
 	}
-	// Positive control: the real declaration on its own line IS still found,
-	// so the test cannot pass by the pattern matching nothing at all.
-	if !containsEntity(ents, "SCOPE.Operation", "Recalculate") {
-		t.Error("the real method declaration Recalculate was not found — pattern is now too narrow")
+	// LINE-LEADING `new X(` — survives the anchor, killed by the type-token
+	// keyword rejection. 2,503 such sites in the corpus C#.
+	for _, name := range []string{"CartSnapshot", "AuditEntry"} {
+		if containsEntity(ents, "SCOPE.Operation", name) {
+			t.Errorf("line-leading `new %s(` minted a SCOPE.Operation; the anchor does not exclude this shape, blazorNonTypeKeywords must", name)
+		}
+	}
+	// `return F(` — type slot holds `return`. 1,666 sites.
+	if containsEntity(ents, "SCOPE.Operation", "Publish") {
+		t.Error("`return Publish(` minted a SCOPE.Operation named Publish; the type slot holds `return`, not a type")
+	}
+	// `else if (` — type slot `else`, name slot `if`. 293 sites.
+	if containsEntity(ents, "SCOPE.Operation", "if") {
+		t.Error("`else if (` minted a SCOPE.Operation named `if`")
+	}
+	// Positive controls: the real declarations ARE still found, so the test
+	// cannot pass by the pattern (or the keyword filter) matching nothing.
+	for _, name := range []string{"Recalculate", "Refresh"} {
+		if !containsEntity(ents, "SCOPE.Operation", name) {
+			t.Errorf("the real method declaration %s was not found — pattern is now too narrow", name)
+		}
 	}
 }
 
@@ -201,5 +248,70 @@ func TestBlazorMarkupStillExtractedFromRazor6975(t *testing.T) {
 	// The tightened code-method pattern must not re-open the defect here either.
 	if containsEntity(ents, "SCOPE.Operation", "MoneyFormatter") {
 		t.Error("razor markup: `new MoneyFormatter()` minted a SCOPE.Operation")
+	}
+}
+
+// TestBlazorLanguageGuardRejectsNonCSharp6975 grades the `file.Language !=
+// "csharp"` guard, which a review mutant showed was ungraded: deleting it
+// passed both this package and all of cmd/grafel.
+//
+// The guard is what makes `.razor` unreachable. Both inputs below have a path
+// the SUFFIX gate admits, so only the language check can reject them, and both
+// carry content every rule matches — a vacuous pass is not available.
+func TestBlazorLanguageGuardRejectsNonCSharp6975(t *testing.T) {
+	src := `@page "/counter"
+@inject IOrderService Orders
+<MyCustomCard title="Hello" />
+
+@code {
+    void IncrementCount()
+    {
+    }
+}
+`
+	// "razor" is the language a real `.razor` file actually classifies as
+	// (classifier.go:345), which is why the extractor never sees one.
+	for _, lang := range []string{"razor", "vbnet", "java"} {
+		ents := extract(t, "custom_csharp_blazor", fi("Pages/Counter.razor", lang, src))
+		if len(ents) != 0 {
+			t.Errorf("language %q produced %d entities, want 0: %+v", lang, len(ents), ents)
+		}
+	}
+	// Control: the identical content under "csharp" DOES produce entities, so
+	// the loop above is rejecting on language and not on content.
+	if ents := extract(t, "custom_csharp_blazor", fi("Pages/Counter.razor", "csharp", src)); len(ents) == 0 {
+		t.Error("control: the same content under language \"csharp\" produced nothing")
+	}
+}
+
+// TestBlazorCodeMethodGenericDoesNotSpanLines6975 grades the `\n` in the
+// generic class `(?:<[^;\n]*>)?`, which a review mutant showed was ungraded:
+// widening it to `[^;]*` left this package and cmd/grafel green.
+//
+// Without the `\n` the class is greedy ACROSS LINES, so the `<` opening the
+// multi-line parameter list below reaches the `>` of the `=>` several lines
+// later and the pattern then reads ` Sum(` as a declaration — inventing a
+// method out of two unrelated constructs. `Sum` is declared nowhere.
+func TestBlazorCodeMethodGenericDoesNotSpanLines6975(t *testing.T) {
+	src := `
+public partial class Report : ComponentBase
+{
+    void Render(
+        Dictionary<string, int> counts)
+    {
+    }
+
+    int Total => Sum();
+}
+`
+	ents := extract(t, "custom_csharp_blazor", fi("Pages/Report.razor.cs", "csharp", src))
+
+	if containsEntity(ents, "SCOPE.Operation", "Sum") {
+		t.Error("a generic opened on one line reached a `>` several lines later and minted a SCOPE.Operation named Sum, which is declared nowhere")
+	}
+	// Positive control: the real declaration between them is still found, so
+	// the assertion above cannot pass by the rule producing nothing at all.
+	if !containsEntity(ents, "SCOPE.Operation", "Render") {
+		t.Error("the real method declaration Render was not found — pattern is now too narrow")
 	}
 }
