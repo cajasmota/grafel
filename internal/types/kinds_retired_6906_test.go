@@ -1,6 +1,10 @@
 package types
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 // Issue #6906 — TYPED_AS and HAS_TYPE are RETIRED. This guard fails if either
 // name comes back.
@@ -67,6 +71,57 @@ func TestRetiredRelationshipKindsStayRetired(t *testing.T) {
 		if IsValidRelationshipKind(retired) {
 			t.Errorf("IsValidRelationshipKind(%q) = true; the retired kind is back in the "+
 				"vocabulary (#6906/#5828)", retired)
+		}
+	}
+}
+
+// coverageJSPath is the public coverage page's hand-maintained kind roster.
+// Relative to this package directory, which is where `go test` runs.
+const coverageJSPath = "../../site/src/scripts/coverage.js"
+
+// TestRetiredRelationshipKindsAreGoneFromTheCoveragePage extends the retirement
+// to the one surface a Go-only enumeration cannot see.
+//
+// The first version of this PR grepped the UPPERCASE literals and the Go
+// constant names, and concluded "no dashboard or webui reference". It was
+// wrong: site/src/scripts/coverage.js listed "has_type" and "typed_as" in its
+// LOWERCASE display form, so the public page would have advertised two kinds
+// that no longer exist. A name has more than one spelling — constant,
+// string literal, lowercase display form — and an enumeration that covers one
+// spelling has not covered the name.
+//
+// This is deliberately a plain substring scan rather than a JS parse: the
+// spelling to catch IS the raw token, and a parser would add a way to be
+// silently wrong about a file that has no Go meaning.
+func TestRetiredRelationshipKindsAreGoneFromTheCoveragePage(t *testing.T) {
+	raw, err := os.ReadFile(coverageJSPath)
+	if err != nil {
+		t.Fatalf("read %s: %v (the coverage page is checked in; if it moved, "+
+			"repoint this guard rather than deleting it)", coverageJSPath, err)
+	}
+	page := string(raw)
+
+	// Non-vacuity: the scan must be looking at a file that really carries the
+	// lowercase roster, in the spelling the retired names would have used.
+	// Without this a moved, emptied or restructured file reads as "absent".
+	for _, control := range []string{`"references"`, `"inherits"`, `"contains"`} {
+		if !strings.Contains(page, control) {
+			t.Fatalf("control %s is absent from %s (%d bytes read); this scan is not looking at "+
+				"the relationship-kind roster and its absence checks are vacuous",
+				control, coverageJSPath, len(page))
+		}
+	}
+
+	for _, retired := range retired6906Kinds {
+		// The display form: lowercased, quoted as a roster item. The prose
+		// comment in that file names the retired kinds in UPPERCASE to explain
+		// why they are missing, which is why this matches the quoted lowercase
+		// token and not the bare name.
+		item := `"` + strings.ToLower(retired) + `"`
+		if strings.Contains(page, item) {
+			t.Errorf("%s still lists %s; %s was retired by #6906/#5828 and the public coverage "+
+				"page would advertise a kind grafel cannot emit",
+				coverageJSPath, item, retired)
 		}
 	}
 }

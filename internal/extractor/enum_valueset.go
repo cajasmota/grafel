@@ -22,11 +22,15 @@ import (
 //     value-for-value by a NestJS `enum Status { ACTIVE = 1, ARCHIVED = 2 }`.
 //   - "which fields are constrained to enum X?" — inbound REFERENCES edges
 //     carrying the property ref_kind="field_target_type", emitted from a field
-//     record to this node's QualifiedName. C# is the only language that emits
-//     them (internal/extractors/csharp/field_type_refs.go, #6984); in every
-//     other language a SCOPE.Enum node still has no inbound edge. No TYPED_AS
-//     edge exists: that kind was declared, never produced, and deleted by
-//     #6906 — see the RETIRED KINDS note in internal/types/kinds.go.
+//     record to this node's QualifiedName. Of the six
+//     ref_kind="field_target_type" producers, only C#'s
+//     (internal/extractors/csharp/field_type_refs.go, #6984) addresses its
+//     target by QualifiedName; the five in internal/custom/{python,golang,
+//     java,javascript,ruby} emit a `Class:<target>` stub instead, so C# is the
+//     only one that names a value-set node the way this helper spells it.
+//     No TYPED_AS edge exists: that kind was
+//     declared, never produced, and deleted by #6906 — see the RETIRED KINDS
+//     note in internal/types/kinds.go.
 //
 // Each language extractor detects the enum shape (Python Enum subclass, TS
 // `enum` / string-literal union, Java enum, Go iota const block, Ruby
