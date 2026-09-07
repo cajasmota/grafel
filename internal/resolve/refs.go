@@ -469,6 +469,23 @@ type Index struct {
 	// by indexByName, excluded from index parity.
 	nameHolderLocal map[string]bool
 
+	// nameHolderRef[name] = true when the entity currently occupying
+	// byName[name] was minted from a MENTION of the name rather than from a
+	// declaration of it (#6976) — see isReferenceShaped. nameAmbigRef[name] =
+	// true when ambigName[name] was raised by a reference-vs-reference
+	// collision ALONE, so a declaration arriving later can still reclaim the
+	// slot, exactly as nameAmbigImport does for placeholder-only ambiguity.
+	// Same build-time bookkeeping category as the maps above — lazily
+	// created, read only by indexByName, excluded from index parity.
+	nameHolderRef map[string]bool
+	nameAmbigRef  map[string]bool
+
+	// nameHolderFile[name] = the normalised SourceFile of the entity
+	// currently occupying byName[name]. Read only by the #6976 tier, which
+	// is scoped to CROSS-FILE pairings — see indexByName. Same build-time
+	// bookkeeping category as the maps above.
+	nameHolderFile map[string]string
+
 	// byQualifiedName[qualified_name] = entity_id. Direct lookup for
 	// stubs whose ToID is an entity QualifiedName verbatim (e.g. markdown
 	// CONTAINS edges where ToID = "<file>::<heading-slug>"). Issue #100.
@@ -1590,9 +1607,10 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// (even across kinds) flips the name to ambiguous. Shared with the
 		// module-partitioned index writer (insertModuleEntry) so the two
 		// production paths cannot drift.
-		idx.indexByName(e.Name, e.ID, isFacet, facetAnchor,
+		idx.indexByName(e.Name, e.ID, sourceFile, isFacet, facetAnchor,
 			isImportPlaceholderKind(e.Kind, e.Subtype),
-			isLocalBindingKind(e.Subtype, e.Properties))
+			isLocalBindingKind(e.Subtype, e.Properties),
+			isReferenceShaped(e.Properties))
 	}
 	return idx
 }
@@ -1738,6 +1756,48 @@ func isLocalBindingKind(_ string, props map[string]string) bool {
 	return props["local_scope"] == "true"
 }
 
+// ReferenceShapedProp is the producer-stamped marker that an entity record was
+// minted from a MENTION of a name — a constructor parameter type, a return
+// type annotation, a `<Foo>` component tag — rather than from the declaration
+// of that name. The declaration lives in another file and is extracted
+// separately; this record is a second, weaker claimant on the same name.
+//
+// #6976 — WHY THE MARKER IS PRODUCER-SIDE. `indexByName` sees the whole
+// types.EntityRecord and still cannot derive this. Measured on the 6,274
+// records that evict a sole real declaration on `aspnetcore-mvc`: no field
+// means declaration-vs-reference; `provenance` is a producer id, not a
+// semantic class (three of the twelve evicting producers are
+// declaration-shaped, and 58 evicting claimants carry no provenance at all);
+// the span signal is useless because internal/custom/csharp/helpers.go's
+// makeEntity stamps StartLine == EndLine for the ENTIRE C# custom lane,
+// genuine declarations included; and the same makeEntity stamps
+// QualityScore 1.0 uniformly. The emit site is the only place that knows
+// whether it just read a declaration or a call site, so that is where the
+// marker is stamped.
+//
+// SCOPE. This is deliberately NOT a repo-wide taxonomy of the ~340 custom
+// producers. It is stamped on six producers that mint an entity from a
+// mention: FIVE measured in the `aspnetcore-mvc` eviction population, plus
+// BLAZOR_INJECT, which is classified by SHAPE (`@inject IFoo Foo` names a
+// service declared elsewhere — the same shape as DOTNET_DI_PROVIDER, in the
+// same lane) and appears nowhere in that population. Every other producer
+// stays unmarked and behaves exactly as before. An unmarked reference is the
+// pre-#6976 status quo, not a regression.
+//
+// The property convention mirrors #6467's `local_scope`: an extractor-stamped
+// Properties key with a single named predicate in this package, rather than a
+// new EntityRecord field or a Subtype convention. A Subtype is load-bearing
+// for denoise, docs and the #6104 facet rule, so overloading it would move
+// consumers that have nothing to do with resolution.
+const ReferenceShapedProp = "reference_shaped"
+
+// isReferenceShaped reports whether a record carries the #6976 producer-side
+// marker. Deliberately a property read and nothing else: the point of the
+// marker is that no heuristic over the record can stand in for it.
+func isReferenceShaped(props map[string]string) bool {
+	return props[ReferenceShapedProp] == "true"
+}
+
 // indexByName is the sole writer of byName / ambigName. Both production index
 // builders (flat BuildIndex and the module-partitioned insertModuleEntry) go
 // through it, so the two paths stay edge-set-identical by construction.
@@ -1791,7 +1851,36 @@ func isLocalBindingKind(_ string, props map[string]string) bool {
 // keeps a single-record name resolvable at all. The claim this tier supports
 // is therefore the narrow one: a local binding neither TAKES the repo-wide
 // slot from an import placeholder nor KEEPS it against one.
-func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string, isImport, isLocal bool) {
+// #6976 — "NOT A PLACEHOLDER AND NOT A LOCAL" IS STILL NOT "A DECLARATION".
+// The two tiers above rank on placeholder-ness and on addressability. A record
+// minted from a MENTION of a name — a constructor parameter type, an
+// `ActionResult<T>` return annotation, a `<Foo>` markup tag — is neither a
+// placeholder nor a local, so it landed in the declaration bucket and
+// annihilated the sole real declaration of the name: `delete(byName)` +
+// ambiguous, for the whole repository. Measured on `aspnetcore-mvc` with the
+// custom-extractor gate ON: of 3,236 gate-introduced evictions, 1,222 destroy
+// a sole base-path declaration, 2,014 are reference-vs-reference (nothing real
+// is lost), and ZERO are declaration-vs-declaration — so the regression is
+// entirely a ranking problem and no legitimate ambiguity is at stake.
+//
+// The tier has the same shape as the two above, and the same three clauses:
+//
+//   - a reference neither displaces an unmarked incumbent nor blanks it;
+//   - an unmarked record RECLAIMS the slot from a reference that was extracted
+//     first (extraction order is not stable, so both directions are needed);
+//   - two references still collide into ambiguity exactly as before, so no
+//     arbitrary winner is invented for a name no declaration claims.
+//     nameAmbigRef remembers that such ambiguity is reference-only so a
+//     declaration arriving later can still reclaim, mirroring nameAmbigImport.
+//
+// A reference is also barred from RECLAIMING placeholder-only ambiguity and
+// from displacing a placeholder incumbent, for the reason #6467 barred a local
+// from both: it is not a declaration of the name in any scope, so the pairing
+// must fall through to ambiguity and let lookupBareWithLocality and then
+// external.Synthesize run. Ambiguity is load-bearing here and is not traded
+// away — this tier narrows WHICH records compete, it does not soften the
+// default arm.
+func (idx *Index) indexByName(name, id, srcFile string, isFacet bool, facetAnchor string, isImport, isLocal, isRef bool) {
 	if name == "" {
 		return
 	}
@@ -1800,13 +1889,19 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 		// #6369 — placeholder-only ambiguity yields to a real declaration.
 		// #6467 — a function-local binding is not one: it must not reclaim a
 		// name that only placeholders contested.
-		if isImport || isLocal || !idx.nameAmbigImport[name] {
+		// #6976 — nor is a reference-shaped record; and reference-only
+		// ambiguity yields to a declaration on the same terms.
+		if isImport || isLocal || isRef ||
+			!(idx.nameAmbigImport[name] || idx.nameAmbigRef[name]) {
 			return
 		}
 		delete(idx.ambigName, name)
 		delete(idx.nameAmbigImport, name)
+		delete(idx.nameAmbigRef, name)
 		delete(idx.nameHolderImport, name)
 		delete(idx.nameHolderLocal, name)
+		delete(idx.nameHolderRef, name)
+		delete(idx.nameHolderFile, name)
 		delete(idx.aliasAnchor, nk)
 	}
 	existing, held := idx.byName[name]
@@ -1819,7 +1914,8 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 		// ORPHANED facet must NOT suppress ambiguity against an unrelated
 		// same-named definition.
 		switch {
-		case isImport && !idx.nameHolderImport[name] && !idx.nameHolderLocal[name]:
+		case isImport && !idx.nameHolderImport[name] && !idx.nameHolderLocal[name] &&
+			!idx.nameHolderRef[name]:
 			// #6369 — a real declaration already owns the name: the
 			// placeholder neither displaces it nor blanks it.
 			//
@@ -1828,7 +1924,12 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 			// binding, this pairing falls to the default arm and collides,
 			// so the name goes ambiguous and the import can still reach the
 			// external-library binder.
-		case !isImport && !isLocal && idx.nameHolderImport[name]:
+			//
+			// #6976 — nor does a reference-shaped incumbent count. A
+			// placeholder and a mention are both non-declarations; letting
+			// the placeholder yield to a mention would hand the repo-wide
+			// slot to a record neither of them declares.
+		case !isImport && !isLocal && !isRef && idx.nameHolderImport[name]:
 			// #6369 — the real declaration displaces the placeholder that
 			// happened to be extracted first.
 			//
@@ -1836,8 +1937,10 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 			// declaration of the name in any scope but its own, so it
 			// collides instead.
 			idx.byName[name] = id
+			idx.setNameHolderFile(name, srcFile)
 			delete(idx.nameHolderImport, name)
 			delete(idx.nameHolderLocal, name)
+			delete(idx.nameHolderRef, name)
 			delete(idx.aliasAnchor, nk)
 			if isFacet {
 				idx.setAliasAnchor(nk, facetAnchor)
@@ -1847,7 +1950,42 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 		case !isFacet && idx.aliasAnchor[nk] == id:
 			// the anchor itself, arriving after its facet: take over
 			idx.byName[name] = id
+			idx.setNameHolderFile(name, srcFile)
 			delete(idx.aliasAnchor, nk)
+		case isRef && idx.nameHolderFile[name] != srcFile &&
+			!idx.nameHolderRef[name] && !idx.nameHolderImport[name] &&
+			!idx.nameHolderLocal[name]:
+			// #6976 — the incumbent is a declaration of the name, in ANOTHER
+			// file: the reference neither displaces it nor blanks it. Ordered
+			// AFTER the #6104 facet arms so the facet/anchor pairing is
+			// decided first and this tier cannot change which record anchors
+			// an alias.
+			//
+			// SCOPED TO CROSS-FILE PAIRINGS. Two claimants in ONE file are
+			// #6104's shape — two views of one construct — and #6976's own
+			// body says so. Measured cost of not scoping it: golden fixture
+			// csharp-aspnet-core-mini has `IUserService` with no declaration
+			// anywhere and two same-file claimants, the .NET DI pass's
+			// SCOPE.Class (marked) and internal/engine/detector.go's YAML
+			// rule-pack `Dependency` (unmarked, and also a mention — that
+			// producer is deliberately out of scope). Unscoped, the pair
+			// stopped colliding, the unmarked record took the slot outright,
+			// and the fixture's must-have
+			// `UserService -IMPLEMENTS-> IUserService` moved off the
+			// SCOPE.Class node: relationship_found 13 -> 12.
+		case !isRef && !isImport && !isLocal && idx.nameHolderRef[name] &&
+			idx.nameHolderFile[name] != srcFile:
+			// #6976 — the declaration reclaims the slot from a cross-file
+			// reference that happened to be extracted first.
+			idx.byName[name] = id
+			idx.setNameHolderFile(name, srcFile)
+			delete(idx.nameHolderRef, name)
+			delete(idx.nameHolderImport, name)
+			delete(idx.nameHolderLocal, name)
+			delete(idx.aliasAnchor, nk)
+			if isFacet {
+				idx.setAliasAnchor(nk, facetAnchor)
+			}
 		default:
 			// any other pairing is a real collision
 			delete(idx.byName, name)
@@ -1861,12 +1999,46 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 				}
 				idx.nameAmbigImport[name] = true
 			}
+			if isRef && idx.nameHolderRef[name] &&
+				idx.nameHolderFile[name] != srcFile {
+				// #6976 — both sides are references, IN DIFFERENT FILES; no
+				// declaration of this name has been seen. Recoverable by one
+				// arriving later, exactly as placeholder-only ambiguity is.
+				//
+				// SCOPED TO CROSS-FILE, and this is where the scoping has to
+				// live. The reclaim branch at the top of indexByName reads
+				// nameAmbigRef, but by the time it runs nameHolderFile has
+				// already been deleted (three lines below), so it cannot
+				// re-derive which files raised the ambiguity — a cross-file
+				// guard added THERE would compare against an empty string and
+				// always fire. Raising the flag only for a cross-file
+				// reference pair is what makes the reclaim cross-file.
+				//
+				// Without it, three claimants in ONE file — two references and
+				// one unmarked record — bind in claimant order `ref, ref,
+				// decl` and stay ambiguous in the other two orders, so a
+				// same-file outcome that is order-INDEPENDENT before #6976
+				// becomes order-DEPENDENT, and the record that wins is the
+				// unmarked one: the exact IUserService mechanism that regressed
+				// csharp-aspnet-core-mini and that the cross-file scoping on
+				// the two arms above exists to prevent. That fixture escapes
+				// only because it has two claimants rather than three.
+				// TestSameFileThreeClaimantsStayAmbiguous_6976 enumerates all
+				// six orders.
+				if idx.nameAmbigRef == nil {
+					idx.nameAmbigRef = make(map[string]bool)
+				}
+				idx.nameAmbigRef[name] = true
+			}
 			delete(idx.nameHolderImport, name)
 			delete(idx.nameHolderLocal, name)
+			delete(idx.nameHolderRef, name)
+			delete(idx.nameHolderFile, name)
 		}
 		return
 	}
 	idx.byName[name] = id
+	idx.setNameHolderFile(name, srcFile)
 	switch {
 	case !isImport:
 		delete(idx.nameHolderImport, name)
@@ -1919,9 +2091,40 @@ func (idx *Index) indexByName(name, id string, isFacet bool, facetAnchor string,
 		}
 		idx.nameHolderLocal[name] = true
 	}
+	// #6976 — reference status is AND-ed, never re-raised, for the same reason
+	// the two flags above are. EntityID is sha256(repo, kind, name,
+	// sourceFile) and hashes neither Subtype nor Properties, so a
+	// reference-shaped record and a declaration for the same name in the same
+	// file share ONE id by construction and arrive here as re-indexes of one
+	// entity. An id known under any declaration is a declaration; letting a
+	// trailing reference record flip the flag back would make the flag
+	// describe the last record that mentioned the name rather than the entity
+	// sitting in byName — the exact bookkeeping bug #6369's follow-up fixed.
+	switch {
+	case !isRef:
+		delete(idx.nameHolderRef, name)
+	case held && !idx.nameHolderRef[name]:
+		// same id, already claimed by a declaration-shaped record — leave it.
+	default:
+		if idx.nameHolderRef == nil {
+			idx.nameHolderRef = make(map[string]bool)
+		}
+		idx.nameHolderRef[name] = true
+	}
 	if isFacet {
 		idx.setAliasAnchor(nk, facetAnchor)
 	}
+}
+
+// setNameHolderFile records the SourceFile of the entity now occupying
+// byName[name] (#6976), creating the map on first use. Every byName write in
+// indexByName goes through it so the #6976 cross-file test cannot read a stale
+// file for a slot that has since changed hands.
+func (idx *Index) setNameHolderFile(name, srcFile string) {
+	if idx.nameHolderFile == nil {
+		idx.nameHolderFile = make(map[string]string)
+	}
+	idx.nameHolderFile[name] = srcFile
 }
 
 // setAliasAnchor records the #6104 facet anchor owning a byName /

@@ -116,6 +116,12 @@ type moduleEntry struct {
 	// byName slot.
 	localBinding bool
 
+	// referenceShaped is isReferenceShaped's verdict (#6976), precomputed for
+	// the same reason the two above are. A record minted from a MENTION of a
+	// name may not evict the declaration of that name from the repository-wide
+	// byName slot.
+	referenceShaped bool
+
 	// globalPos is the entity's position in the caller's ORIGINAL (flat)
 	// entity slice — the order BuildIndex consumes. M5 builds its symbol
 	// table per-module (so the merge visits entities grouped by module, not
@@ -208,6 +214,7 @@ func BuildModuleSymbols(key ModuleKey, entities []types.EntityRecord) *ModuleSym
 			properties:        e.Properties,
 			importPlaceholder: isImportPlaceholderKind(e.Kind, e.Subtype),
 			localBinding:      isLocalBindingKind(e.Subtype, e.Properties),
+			referenceShaped:   isReferenceShaped(e.Properties),
 		}
 		ms.entries = append(ms.entries, me)
 	}
@@ -447,6 +454,7 @@ func buildModuleSymbolsOrderedPos(key ModuleKey, entities []types.EntityRecord, 
 			properties:        e.Properties,
 			importPlaceholder: isImportPlaceholderKind(e.Kind, e.Subtype),
 			localBinding:      isLocalBindingKind(e.Subtype, e.Properties),
+			referenceShaped:   isReferenceShaped(e.Properties),
 			globalPos:         pos,
 		}
 		ms.entries = append(ms.entries, me)
@@ -943,7 +951,8 @@ func insertModuleEntry(
 	// (indexByName) so this path and flat BuildIndex cannot drift — including
 	// the #6104 facet rule and the #6369 import-placeholder precedence.
 	nameAnchor, nameIsFacet := me.mergeFacetAnchor()
-	idx.indexByName(me.name, me.id, nameIsFacet, nameAnchor, me.importPlaceholder, me.localBinding)
+	idx.indexByName(me.name, me.id, me.sourceFile, nameIsFacet, nameAnchor, me.importPlaceholder,
+		me.localBinding, me.referenceShaped)
 }
 
 // mergeFacetAnchor reports whether this module entry is a #6104 merge facet —

@@ -186,6 +186,10 @@ func (e *dotnetDIExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			ent := makeEntity(provider, "SCOPE.Class", "", file.Path, "csharp", c.line)
 			setProps(&ent, "framework", "dotnet_di", "provenance", "INFERRED_FROM_DOTNET_DI_PROVIDER",
 				"di_role", "provider")
+			// #6976 — the carrier is a CONSTRUCTOR PARAMETER TYPE; the class
+			// it names is declared in its own file. Largest single producer
+			// in the measured eviction residual (403 claimants).
+			markReferenceShaped(&ent)
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 				ToID: "consumer:" + c.name,
 				Kind: string(types.RelationshipKindInjectedInto),

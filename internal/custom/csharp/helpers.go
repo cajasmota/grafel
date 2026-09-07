@@ -197,3 +197,36 @@ func csSharedDispatchVerbOwner(src string) string {
 	}
 	return ""
 }
+
+// referenceShapedProp is the #6976 producer-side marker: this record was
+// minted from a MENTION of a name — a constructor parameter type, an
+// `ActionResult<T>` return annotation, an `@inject` service type, a `<Foo>`
+// markup tag — and NOT from the declaration of that name, which lives in
+// another file and is extracted separately.
+//
+// WHY IT IS STAMPED HERE AND NOT DERIVED DOWNSTREAM. internal/resolve's
+// byName index has the whole types.EntityRecord and still cannot tell the two
+// apart: no field means it, `provenance` is a producer id rather than a
+// semantic class, makeEntity above stamps StartLine == EndLine for the ENTIRE
+// C# custom lane (genuine declarations included) so span is a lane signal, and
+// the same makeEntity stamps QualityScore 1.0 uniformly. The emit site is the
+// only place that knows. Without the marker, a mention of `JsonResult` in one
+// controller evicted the sole real declaration of `JsonResult` from the
+// repository-wide name index and took every bare-name edge to it down with it.
+//
+// The spelling is shared with resolve.ReferenceShapedProp, which is the only
+// reader. The two are literal strings on both sides — the same arrangement
+// `local_scope` (#6467) uses between the JS extractor and the same reader —
+// and reference_shaped_marker_6976_test.go pins them equal so they cannot
+// drift.
+//
+// SCOPE (#6976). Stamped on the six measured reference-shaped producers in the
+// `aspnetcore-mvc` eviction population, NOT across the ~340-producer custom
+// lane. An unmarked producer keeps its pre-#6976 behaviour exactly.
+const referenceShapedProp = "reference_shaped"
+
+// markReferenceShaped stamps referenceShapedProp on a record. One helper so
+// every stamped emit site is greppable through a single symbol.
+func markReferenceShaped(e *types.EntityRecord) {
+	setProps(e, referenceShapedProp, "true")
+}

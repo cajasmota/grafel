@@ -296,6 +296,8 @@ func (e *blazorExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			ent := makeEntity(serviceType, "SCOPE.Component", "", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "blazor", "provenance", "INFERRED_FROM_BLAZOR_INJECT",
 				"service_type", serviceType)
+			// #6976 — `@inject IFoo Foo` names a service DECLARED elsewhere.
+			markReferenceShaped(&ent)
 			add(ent)
 		}
 	}
@@ -327,6 +329,9 @@ func (e *blazorExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			}
 			ent := makeEntity(name, "SCOPE.UIComponent", "component", file.Path, file.Language, lineOf(src, m[0]))
 			setProps(&ent, "framework", "blazor", "provenance", "INFERRED_FROM_BLAZOR_COMPONENT_REF")
+			// #6976 — a `<Foo>` markup tag is a USE of the component declared
+			// in Foo.razor, not a second declaration of the name `Foo`.
+			markReferenceShaped(&ent)
 			add(ent)
 		}
 	}
