@@ -69,9 +69,14 @@ var (
 	// when something precedes it on the line. A LINE-LEADING one — the second
 	// line of `var svc =\n    new OrderService(db);`, or a bare statement — is
 	// still parsed as "type `new`, method `OrderService`" and mints exactly
-	// #6973's collider. Measured over the same corpus C#: 2,503 line-leading
-	// `new X(` sites, plus 1,661 `return F(` (type `return`, method `F`) and
-	// 293 `else if (` (type `else`, method `if`). The file gate keeps those out
+	// #6973's collider. Measured over the corpus C# — POPULATION: every `.cs`
+	// file under the whole archigraph-corpora tree, 3,726 files — 2,503
+	// line-leading `new X(` sites, plus 1,666 `return F(` (type `return`,
+	// method `F`) and 293 `else if (` (type `else`, method `if`). Restricting
+	// the walk to the 7 C#-bearing repos by name gives 3,721 files and 1,661
+	// `return F(`; the other two counts are identical either way. Two numbers
+	// for one thing in a review record is worse than either, so: the figures
+	// here are the whole-tree ones. The file gate keeps those out
 	// of `.cs`, but `.razor.cs` IS ordinary C#, so inside the gate the shape
 	// survives untouched.
 	//
@@ -97,9 +102,9 @@ var (
 	// declarations. Greediness plus the `\s+(\w+)\s*\(` tail then makes it
 	// settle on the last `>` that still leaves a name and an open paren.
 	//
-	// WHAT EACH TIGHTENING IS WORTH, over the 3,721 `.cs` files in the corpora:
-	// the old pattern found 38,983 sites, the anchor alone 23,474, and the
-	// anchor plus the keyword rejection 18,842. The regex alone does NOT solve
+	// WHAT EACH TIGHTENING IS WORTH, over the same 3,726 `.cs` files:
+	// the old pattern found 39,009 sites, the anchor alone 23,490, and the
+	// anchor plus the keyword rejection 18,853. The regex alone does NOT solve
 	// the false-positive problem — the file gate in Extract does. What these
 	// buy is that the collider shape does not survive INSIDE the gate, and does
 	// not return the moment another dialect widens it.
@@ -132,7 +137,12 @@ var (
 // shape survives inside the gate, so it has to be rejected on its own terms.
 //
 // WHY A MAP AND NOT A PATTERN: Go's RE2 has no lookahead, so "an identifier
-// that is not one of these" cannot be written in the regex.
+// that is not one of these" cannot be written in the regex. That makes this map
+// the MECHANISM, not a convenience list beside it, so every one of its 40
+// entries is graded individually and by name —
+// TestBlazorNonTypeKeywordsIsGradedAsAnExactSet6975 requires each key to be
+// both REACHABLE by the pattern and SUPPRESSED by Extract. Deleting any single
+// entry turns that test red. Do not add a key without letting that test see it.
 //
 // Only the TYPE slot is filtered. The NAME slot needs no companion filter and
 // deliberately does not have one — two guards that only ever fire together
@@ -208,17 +218,17 @@ func (e *blazorExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	//
 	//  1. Which extensions carry the constructs. Scanning every `.cs`,
 	//     `.razor`, `.razor.cs` and `.cshtml` file in archigraph-corpora
-	//     (7 C#-bearing repos) with these exact patterns: the five DIRECTIVE
+	//     (whole tree) with these exact patterns: the five DIRECTIVE
 	//     rules (@page, @inject, [Parameter], @layout, @inherits) score
-	//     **zero** across all 3,721 `.cs` files. They fire in the 105 `.razor`
+	//     **zero** across all 3,726 `.cs` files. They fire in the 105 `.razor`
 	//     files (25/119/10/4/0 = 158 sites) and, to a much smaller extent, in
-	//     the 1,119 `.cshtml` files (9/39/0/0/1 = 49 sites) — an earlier
+	//     the 1,129 `.cshtml` files (9/39/0/0/1 = 49 sites) — an earlier
 	//     revision of this comment said "only in `.razor`", which was false
 	//     over its own stated population. `.cshtml` is classified UNSUPPORTED
 	//     (classifier/unsupported.go:132, #6343) so it never reaches an
 	//     extractor either way, but the sentence is the evidence for this
 	//     gate and it should be true. Only the code-method and component-tag
-	//     rules fire in `.cs` — 38,983 and 12,991 sites, all of them false
+	//     rules fire in `.cs` — 39,009 and 12,994 sites, all of them false
 	//     positives. So no rule here loses a real construct by being denied
 	//     plain `.cs`.
 	//
@@ -306,7 +316,7 @@ func (e *blazorExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	}
 
 	// Markup-only rule (#6975): in `.razor.cs` code-behind `<Foo>` is a
-	// generic type argument, not a component reference — 12,991 such sites
+	// generic type argument, not a component reference — 12,994 such sites
 	// across the corpus's `.cs` files.
 	if isRazorMarkup {
 		// 4. PascalCase component tags -> SCOPE.UIComponent
