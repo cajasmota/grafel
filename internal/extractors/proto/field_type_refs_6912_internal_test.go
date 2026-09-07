@@ -26,10 +26,16 @@ import (
 // It is used twice: here, to pin the production set namedTypeRefs consults, and
 // in TestProtoFieldTypeRefs_EveryScalarProducesNoEdge below, to GENERATE one
 // field per scalar so the claim "scalars produce no edge" is asserted per
-// member instead of on a hand-picked representative. The #6912 arm B path has
-// no scalar blocklist of its own — see field_type_refs.go — so the generated
-// test grades the OBSERVABLE claim through Extract, which is the only place the
-// claim is true.
+// member instead of on a hand-picked representative. Adding a scalar to
+// protoScalars without adding it here fails TestProtoScalars_MatchesTheSpecList;
+// adding it here without adding it to protoScalars fails that test AND the
+// generated end-to-end case.
+//
+// Note what the generated fixture does NOT cover: it declares no message or
+// enum SHADOWING a scalar name, so it grades the scalar rule only where the
+// in-file gate would have covered for it anyway. The shadowed case is
+// TestProtoFieldTypeRefs_ScalarShadowedByASameFileMessage; the enumeration here
+// is over the scalar SET, not over the fixture space around it.
 var protoScalarLiteral = []string{
 	"bool",
 	"bytes",
@@ -70,9 +76,17 @@ func TestProtoScalars_MatchesTheSpecList(t *testing.T) {
 //
 // The map<> row set is the explicit answer to "what happens to map<K, V>":
 // the wrapper is NEVER a candidate and each of K and V is one, subject to the
-// same qualified-name rule. Note these are CANDIDATES, not edges — the in-file
-// gate runs afterwards, which is why a scalar component appears here and no
-// scalar field ever carries an edge (TestProtoFieldTypeRefs_EveryScalarProducesNoEdge).
+// same scalar and qualified-name rules.
+//
+// These rows are necessary and not sufficient. Two of the rules they cover are
+// masked end to end by the in-file gate on ordinary input — the qualified-name
+// pass-through and the empty-name guard — so this table is their only grader,
+// which is correct. The SCALAR rows are different: they are ALSO reachable
+// through Extract, and are graded there by
+// TestProtoFieldTypeRefs_ScalarShadowedByASameFileMessage. That distinction is
+// the review lesson from #6991 — "killed only by the unit table" is consistent
+// with a redundant guard AND with a fixture space that simply lacks the case,
+// and only constructing the case tells them apart.
 func TestProtoFieldTypeCandidates_Rules(t *testing.T) {
 	cases := []struct {
 		ftype string
@@ -82,14 +96,17 @@ func TestProtoFieldTypeCandidates_Rules(t *testing.T) {
 		{"Order", []string{"Order"}, "bare named type"},
 		{"", nil, "empty type string"},
 		{"  Order  ", []string{"Order"}, "surrounding whitespace"},
-		{"map<string, Order>", []string{"string", "Order"}, "the map WRAPPER is never a candidate; each component is one"},
-		{"map<int32, string>", []string{"int32", "string"}, "a map of scalars still yields its components HERE — the in-file gate is what drops them, not this function"},
+		{"map<string, Order>", []string{"Order"}, "the map WRAPPER is never a candidate; the scalar key is dropped by the scalar rule"},
+		{"map<int32, string>", nil, "a map of two scalars yields nothing"},
+		{"map<Key, Order>", []string{"Key", "Order"}, "a non-scalar key is considered by the same rule as the value"},
 		{"map<, >", nil, "degenerate map text yields nothing, not an empty-named target"},
 		{"demo.Profile", nil, "qualified name is NOT stripped to its trailing segment"},
 		{".demo.Profile", nil, "fully-qualified leading-dot form"},
 		{"Outer.Inner", nil, "nested message reference is a qualified name"},
-		{"map<string, demo.Profile>", []string{"string"}, "a qualified map value is rejected, the scalar key still surfaces"},
-		{"string", []string{"string"}, "NO scalar blocklist lives here: `string` is a candidate that the in-file gate then drops, because no .proto declares `message string`. See the header block."},
+		{"map<string, demo.Profile>", nil, "a qualified map value is rejected and the scalar key with it"},
+		{"string", nil, "scalar. NOT redundant with the in-file gate — see TestProtoFieldTypeRefs_ScalarShadowedByASameFileMessage, which reaches this branch through Extract on a file declaring `message string`"},
+		{"bool", nil, "scalar, and the enum-shadowing half of the same case"},
+		{"bytes", nil, "scalar"},
 		{"repeated", []string{"repeated"}, "the label is not filtered HERE — it never reaches here; see TestProtoFieldTypeRefs_LabelIsNeverTheTarget"},
 	}
 	for _, c := range cases {

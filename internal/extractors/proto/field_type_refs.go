@@ -119,28 +119,57 @@ const protoFieldTargetRefKind = "field_target_type"
 // integral or string scalar, so in practice only V ever yields a candidate — but
 // both are walked rather than assuming the spec, exactly as namedTypeRefs does.
 // `map<string, Order>` therefore yields [Order]: one candidate, not two, and not
-// a `map` target. All three branches are graded by
-// TestProtoFieldTypeRefs_MapValueIsTheTarget.
+// a `map` target — the `string` key is dropped by the scalar rule below, which
+// is load-bearing here and not decorative (see it). All branches are graded by
+// TestProtoFieldTypeRefs_MapValueIsTheTarget and, for the shadowed-scalar key,
+// by TestProtoFieldTypeRefs_ScalarShadowedByASameFileMessage.
 //
-// THERE IS NO SCALAR BLOCKLIST HERE, and its absence is the design, not an
-// omission. `string`, `int32` and the rest are the largest field population in
-// any .proto file and they must produce zero edges — but they already do,
-// because no .proto declares `message string`, so the in-file gate drops every
-// one of them. A protoScalars check in front of that gate would fire only where
-// the gate already fires, leaving BOTH ungraded (arm A refused the identical
-// blocklist for the identical reason). It was written and then removed after
-// mutation scoring made the masking explicit: deleting the check changed no
-// end-to-end behaviour on any fixture, which is what "redundant" means.
-// TestProtoFieldTypeRefs_EveryScalarProducesNoEdge enumerates the whole
-// production scalar set through Extract and asserts the observable consequence
-// rather than the mechanism.
+// Two rejections:
 //
-// (namedTypeRefs, the older message-anchored path, does keep a protoScalars
-// check. It is left alone: re-deciding it is not this arm's business, and
-// TestProtoScalars_MatchesTheSpecList pins that set against an independent
-// literal either way.)
+//   - A SCALAR (the full protoScalars set: double float int32 int64 uint32
+//     uint64 sint32 sint64 fixed32 fixed64 sfixed32 sfixed64 bool string bytes)
+//     yields nothing. This is the largest field population in any .proto file
+//     and the one that must produce zero edges.
 //
-// One rejection:
+//     THIS CHECK IS NOT REDUNDANT WITH THE IN-FILE GATE, and the first cut of
+//     this arm deleted it on the argument that it was. The argument was that no
+//     .proto declares `message string`, so the gate drops every scalar anyway
+//     and a blocklist in front of it would fire only where the gate already
+//     fires. **That is a corpus-relative zero, not a property of the pass**, and
+//     it is FALSE IN FACT — review of #6991 constructed the case:
+//
+//     message string { int32 v = 1; }
+//     enum bool { B_ZERO = 0; }
+//     message Holder { string name = 1; bool flag = 2; }
+//
+//     `message string` is in the file, so it IS in the gate's local set: without
+//     this check `Holder.name` gets an edge to it and the edge BINDS, so it
+//     never reaches `bug-extractor` and nothing surfaces it — the exact failure
+//     the qualified-name rule below exists to prevent. The file compiles under
+//     protoc at RC 0, and protoc's own descriptor binds `Holder.name` to
+//     TYPE_STRING with an EMPTY type_name: the grammar matches `string` in
+//     field-type position as a scalar before it ever considers a message type,
+//     so the shadowing message can never be the referent and the edge asserts
+//     something protoc says does not exist. `map<string, Order>` under that
+//     declaration gains a bogus second key edge on top of the right one.
+//
+//     Graded end to end, not at the unit, by
+//     TestProtoFieldTypeRefs_ScalarShadowedByASameFileMessage — because "an
+//     edge case that compiles under protoc" is what separates a live guard from
+//     a redundant one, and only a fixture containing the case can tell them
+//     apart. TestProtoFieldTypeRefs_EveryScalarProducesNoEdge enumerates the
+//     whole production scalar set separately, against an independent literal
+//     (#6975).
+//
+//     THE GENERAL LESSON, recorded here because it cost a review round: a
+//     mutant killed ONLY by its own unit test does not establish that a guard is
+//     redundant. It is equally consistent with the end-to-end population simply
+//     lacking the case — and telling those two apart requires CONSTRUCTING the
+//     case, which is the step that was skipped. (`namedTypeRefs`, the older
+//     message-anchored path, keeps its own protoScalars check; had this one
+//     stayed deleted the two anchors would have disagreed in the wrong
+//     direction, the field edge over-firing exactly where the message edge
+//     correctly stays silent.)
 //
 //   - A QUALIFIED name — anything containing a `.`, including the
 //     fully-qualified leading-dot form `.foo.bar.Order` — yields nothing, and is
@@ -162,7 +191,7 @@ func protoFieldTypeCandidates(ftype string) []string {
 	}
 	var out []string
 	for _, p := range parts {
-		if p == "" || strings.Contains(p, ".") {
+		if p == "" || protoScalars[p] || strings.Contains(p, ".") {
 			continue
 		}
 		out = append(out, p)

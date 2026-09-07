@@ -126,6 +126,27 @@ func ftrEdges(t *testing.T, recs []types.EntityRecord) []string {
 				t.Errorf("field-type edge escaped onto %s/%s %q; it must be carried by the FIELD",
 					recs[i].Kind, recs[i].Subtype, recs[i].Name)
 			}
+			// The two payload properties are checked on EVERY edge produced by
+			// EVERY test in this file, as invariants, because a value nothing
+			// reads is a value nothing grades: review of #6991 replaced each of
+			// them with a constant and the whole suite stayed green.
+			//
+			// `field_name` is the simple field name — the part of the record's
+			// dotted "<message>.<field>" Name after the dot — and `target_type`
+			// is the bare type the ToID addresses, i.e. the last ":"-separated
+			// segment of the structural ref. Both are cross-checks between the
+			// edge and its endpoints rather than restatements of one source,
+			// which is what makes a constant fail them. The exact literal
+			// spelling of a full property set is asserted separately by
+			// TestProtoFieldTypeRefs_EdgePropertiesAreSpelledOut.
+			if want := recs[i].Name[strings.LastIndex(recs[i].Name, ".")+1:]; ftrProp(r.Properties, "field_name") != want {
+				t.Errorf("%s -> %s: field_name = %q, want %q",
+					recs[i].Name, r.ToID, ftrProp(r.Properties, "field_name"), want)
+			}
+			if want := r.ToID[strings.LastIndex(r.ToID, ":")+1:]; ftrProp(r.Properties, "target_type") != want {
+				t.Errorf("%s -> %s: target_type = %q, want %q",
+					recs[i].Name, r.ToID, ftrProp(r.Properties, "target_type"), want)
+			}
 			out = append(out, recs[i].Name+" -> "+r.ToID)
 		}
 	}
@@ -497,5 +518,109 @@ func TestProtoFieldTypeRefs_ResolverBindsEveryEdge(t *testing.T) {
 	if strings.Join(bound, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("resolved endpoints mismatch\n got:\n%s\nwant:\n%s",
 			strings.Join(bound, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestProtoFieldTypeRefs_EdgePropertiesAreSpelledOut asserts the FULL property
+// list of two named edges against an independent literal, so the payload the PR
+// claims is graded by spelling and not only by the invariants in ftrEdges.
+//
+// `User.by_id` is here because it is the one case where target_type is NOT the
+// field's declared type string: the declared type is "map<string, Order>" and
+// the target is `Order`.
+func TestProtoFieldTypeRefs_EdgePropertiesAreSpelledOut(t *testing.T) {
+	recs := ftrExtract(t, map[string]string{ftrOwnerPath: ftrOwnerSrc})
+	want := map[string][]string{
+		"User.profile": {"field_name=profile", "ref_kind=field_target_type", "target_type=Profile"},
+		"User.by_id":   {"field_name=by_id", "ref_kind=field_target_type", "target_type=Order"},
+	}
+	seen := map[string]bool{}
+	for i := range recs {
+		w, ok := want[recs[i].Name]
+		if !ok {
+			continue
+		}
+		for _, r := range recs[i].Relationships {
+			if r.Kind != "REFERENCES" {
+				continue
+			}
+			var got []string
+			for _, kv := range r.Properties {
+				got = append(got, kv.K+"="+kv.V)
+			}
+			if strings.Join(got, ",") != strings.Join(w, ",") {
+				t.Errorf("%s edge properties = %v, want %v", recs[i].Name, got, w)
+			}
+			seen[recs[i].Name] = true
+		}
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("no field-type edge found on %s; the fixture does not exercise it", name)
+		}
+	}
+}
+
+// TestProtoFieldTypeRefs_ScalarShadowedByASameFileMessage is the case that
+// proves the protoScalars check in protoFieldTypeCandidates is LIVE rather than
+// redundant with the in-file gate, and it exists because the first cut of this
+// arm deleted that check on the argument that it was redundant.
+//
+// The argument was "no .proto declares `message string`, so the gate drops
+// every scalar anyway". That is a corpus-relative zero. This file is legal
+// proto3 and compiles under protoc at RC 0, and protoc's descriptor binds
+// Holder.name to TYPE_STRING with an EMPTY type_name — the grammar matches
+// `string` in field-type position as a scalar before it ever considers a
+// message type, so the shadowing message can NEVER be the referent.
+//
+// Without the scalar check `message string` is in the gate's local set, so
+// Holder.name -> …:string survives AND BINDS: it never reaches `bug-extractor`
+// and no disposition figure surfaces it. The map row is the aggravation — the
+// key would mint a second, bogus edge beside the correct value edge.
+//
+// Deleting protoScalars from protoFieldTypeCandidates must turn this test red.
+func TestProtoFieldTypeRefs_ScalarShadowedByASameFileMessage(t *testing.T) {
+	const src = `syntax = "proto3";
+
+message string { int32 v = 1; }
+
+enum bool { B_ZERO = 0; }
+
+message Order { int32 id = 1; }
+
+message Holder {
+  string name = 1;
+  bool flag = 2;
+  map<string, Order> by_key = 3;
+  Order real = 4;
+}
+`
+	recs := ftrExtract(t, map[string]string{"shadow.proto": src})
+
+	// Positive control on the fixture: the shadowing declarations must actually
+	// have produced entities, or the gate's local set does not contain them and
+	// this test is green for a reason that has nothing to do with the check.
+	shadow := map[string]bool{}
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Schema" && (recs[i].Subtype == "message" || recs[i].Subtype == "enum") {
+			shadow[recs[i].Name] = true
+		}
+	}
+	if !shadow["string"] || !shadow["bool"] {
+		t.Fatalf("fixture produced no `message string` / `enum bool` entities (%v); "+
+			"the shadowing case is not exercised", shadow)
+	}
+
+	// Only the genuinely-named types are targets. The two scalar-typed fields
+	// and the map KEY produce nothing, though a same-file declaration of their
+	// name exists and the in-file gate alone would keep them.
+	want := []string{
+		"Holder.by_key -> scope:schema:message:proto:shadow.proto:Order",
+		"Holder.real -> scope:schema:message:proto:shadow.proto:Order",
+	}
+	got := ftrEdges(t, recs)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("a scalar shadowed by a same-file declaration must still get NO edge\n got:\n%s\nwant:\n%s",
+			strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }

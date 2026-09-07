@@ -652,7 +652,11 @@ func buildMessage(node ts.Node, file extractor.FileInput, fileRels *[]types.Rela
 			// below — different anchor, different ref_kind, both kept. See
 			// field_type_refs.go; dropUnresolvableTypeRefs enforces the
 			// same-file rule on both.
-			fieldEnt.Relationships = protoFieldTypeRefs(file.Path, fname, ftype)
+			// APPEND, not assign: buildField sets no Relationships today, so
+			// either is correct now — but an assignment silently clobbers
+			// whatever a future buildField adds, and append costs nothing.
+			fieldEnt.Relationships = append(fieldEnt.Relationships,
+				protoFieldTypeRefs(file.Path, fname, ftype)...)
 			fieldEnts = append(fieldEnts, fieldEnt)
 			rels = append(rels, types.RelationshipRecord{
 				ToID: fieldMemberRef(file.Path, name, fname),
