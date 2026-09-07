@@ -1,8 +1,7 @@
 package main
 
 import (
-	"os"
-	"strings"
+	"github.com/cajasmota/grafel/internal/extractors"
 )
 
 // inProcCustomExtractors reports whether the DEFAULT in-process indexing path
@@ -30,7 +29,10 @@ import (
 // silently disables ~12 framework post-passes, and on a Django fixture it is a
 // NET LOSS (entities 201→186, http_endpoint_definition 18→4). That hole is
 // tracked separately as #6102 and is out of scope here.
+// #6960 — the env read itself now lives in internal/extractors
+// (InProcCustomExtractorsEnabled) so the daemon's incremental re-extract path
+// can consult the SAME gate. It cannot import cmd/grafel, and a second literal
+// reading of the variable here would be free to drift from that one.
 func inProcCustomExtractors() bool {
-	v := strings.TrimSpace(os.Getenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS"))
-	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+	return extractors.InProcCustomExtractorsEnabled()
 }

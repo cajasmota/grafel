@@ -1077,6 +1077,47 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// daemon runs this on a watcher tick, and a panic here would take down a
 		// path whose whole job is to not lose the user's graph.
 		records, extErr := safeExtract(ctx, ext, input)
+
+		// #6960 — Pass 2: the custom/framework extractors under internal/custom/**.
+		//
+		// THIS PATH HAD NO CUSTOM DISPATCH AT ALL. The ~340 framework extractors
+		// register under PREFIXED registry keys ("python_django", "custom_scala_di"),
+		// and the exact-key `Get(cr.Language)` above can never match one, so
+		// RunCustomExtractors is the only thing that selects them —
+		// custom_dispatch.go:192. It had two non-test call sites and neither was
+		// on this path, so a re-extraction emitted the base records only.
+		//
+		// THE GATE IS THE FIX, NOT THE CALL. By DEFAULT the full in-process path
+		// does not dispatch these either (cmd/grafel/inproc_custom.go), so the
+		// default-config graph was never wrong — the initial index emitted no
+		// custom entities to lose. Under GRAFEL_INPROC_CUSTOM_EXTRACTORS=1 it
+		// WAS: the full index emitted them, Step 5 above evicted them on the next
+		// edit, and this loop re-added nothing, so a changed file silently lost
+		// every custom entity while every unchanged file kept its own. Reading
+		// the same gate makes the two paths agree in BOTH directions — including
+		// the one an "entities survive" assertion cannot see, where incremental
+		// would ADD entities a default full reindex never produced.
+		//
+		// SEAM PLACEMENT IS LOAD-BEARING, exactly as at cmd/grafel/index.go:4138:
+		// after safeExtract (so base records exist to merge into) and BEFORE the
+		// Close() below, because custom extractors walk the same parse tree.
+		// Moving it after the Close is a use-after-free, not merely a no-op. The
+		// `input.TSTree != nil` guard is carried for the same reason it is there:
+		// a subset of custom extractors work on CONTENT and emit entities with no
+		// tree at all, so without it a file that FAILED to parse would still
+		// produce custom entities the full path would not.
+		if InProcCustomExtractorsEnabled() && input.TSTree != nil {
+			customEnts, customErrs := RunCustomExtractors(ctx, input)
+			for _, ce := range customErrs {
+				logger.Printf("incremental: custom extractor on %s: %v", rel, ce)
+			}
+			if len(customEnts) > 0 {
+				// MergeWithCustom, not append — the same #6104 non-destructive
+				// (SourceFile, Kind, Name) merge the full path applies.
+				records = MergeWithCustom(records, customEnts)
+			}
+		}
+
 		if input.TSTree != nil {
 			// Release the CGo allocation now rather than deferring to the end of
 			// the loop: peak RSS must stay at one live tree, not len(reallyChanged).
