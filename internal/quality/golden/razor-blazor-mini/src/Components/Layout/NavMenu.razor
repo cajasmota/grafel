@@ -1,0 +1,13 @@
+@implements IAppDisposable
+@implements IAppTrackable
+
+<nav class="nav">
+    <a href="">Home</a>
+</nav>
+
+@code {
+    private void Dispose()
+    {
+        Track();
+    }
+}
