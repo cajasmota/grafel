@@ -93,7 +93,80 @@ source_patterns:
 
   # Play routes file pattern: GET /path controllers.HomeController.index
   # Covers GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
-  - pattern: "^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)\\s+controllers\\.(\\w+\\.\\w+)"
+  #
+  # `(?m)` (#6927). detector.go compiles rule patterns with plain
+  # regexp.Compile at :156 and :177, so `^` meant START OF TEXT: the rule found
+  # a route only in a routes file whose very first byte is an HTTP verb.
+  # Measured over 33 real `conf/routes` files (32 from playframework's own
+  # play-samples plus archigraph-corpora's play-scala-starter): those files
+  # carry 135 verb-at-column-0 lines between them, of which start-of-text
+  # matched 4 (3.0%) — the four whose file opens with a route rather than the
+  # usual `# Routes` header. Under `(?m)` it matches 135 of 135.
+  #
+  # Carries no `$`, so `(?m)`'s other half cannot reach it.
+  #
+  # NOT gated with requires_framework, and that is measured rather than
+  # assumed. Detect resolves rule sets by file.Language, so this pattern is
+  # offered only files the classifier calls `scala`; over the 1052 real
+  # `.scala`/`.sc` files in that same corpus (http4s, scalatra, play-samples)
+  # it matches ZERO times both before and after the change. The specificity is
+  # in the rule text, not in the anchor: a column-0 HTTP verb followed by a
+  # literal `controllers.` is Play's routes grammar and is not Scala syntax at
+  # all. The `^` is still load-bearing for a different reason — see the
+  # forbidden rows below — and stays.
+  #
+  # Named hazard, stated rather than implied: a `.scala` file that embeds a
+  # routes table in a triple-quoted string (a router test fixture) WOULD now
+  # mint Routes from it. Zero instances in the 1052 files measured, and no
+  # framework marker can separate that case from a real routes file, since the
+  # embedded text is a real routes table. It is a blind spot, not a defence.
+  #
+  # Every character before the capture is graded by a forbidden row in
+  # internal/engine/play_graphql_multiline_anchor_6927_test.go, and each row
+  # names the mutant that mints it:
+  #
+  #   * `^` — weakening it to `(?m)^[ \t]*` mints a Route for an INDENTED
+  #     verb line, which Play's routes parser rejects outright.
+  #   * `^` again — deleting it entirely mints a Route for a verb appearing
+  #     mid-line, e.g. inside a `#` comment describing a removed route. Play
+  #     routes files comment with `#`, and a commented-out route is the most
+  #     ordinary thing in one.
+  #   * the seven-verb alternation — this is where the rule's specificity
+  #     lives, so it is asserted as an EXACT SET, not by membership: adding
+  #     `TRACE` mints a Route that no growth ceiling and no membership check
+  #     would see, because `TRACE` is a same-shape addition.
+  #   * the literal `controllers.` — relaxing it to `\w+\.` mints a Route for
+  #     `GET /health services.HealthCheck.ping`, which is a valid routes line
+  #     but not a controller route, and the ROUTES_TO edge below would then
+  #     point at a target this rule set never emits.
+  #
+  # Named as UNGRADED rather than left to be discovered: the CAPTURE axis. The
+  # rows above pin where the match may START (the anchor axis) and which words
+  # may open and close it (the name axis); nothing pins the SHAPE of
+  # `(\w+\.\w+)`. PR #6953 review MU2 widened it to `(\w+(?:\.\w+)?)` at
+  # both sites and it was ALIVE at every level, because over the 32 real
+  # conf/routes files that carry a controller route the two produce IDENTICAL
+  # match sets — every real line names `Controller.method`, so the optional
+  # second segment is never exercised. It is equivalent on measured input and
+  # therefore not a defect anyone can demonstrate today; it is recorded here so
+  # a later change to the capture is known to be ungraded rather than assumed
+  # to be covered by the rows above.
+  #
+  # UNREACHABLE IN PRODUCTION TODAY, and this fix does not change that.
+  # `conf/routes` has no extension and no entry in classifier.go's
+  # basenameLanguageMap, so classifyInner returns
+  # Skip{unsupported_extension} and the file never reaches the extraction
+  # pipeline at all — the same shape as #6946's `.github` finding for the
+  # GitHub Actions rules. TestIssue6927_Play_ConfRoutesIsNotClassified pins
+  # that, so the day it is fixed this comment is read rather than trusted.
+  # Two things wait behind it, both recorded on the reachability issue:
+  # internal/custom/scala/frameworks.go already carries its own `rePlayRoute`
+  # (with `(?m)`) emitting a RICHER `SCOPE.Operation` "GET:/path" carrying
+  # method, path and controller, so this rule would become a second producer
+  # of the same fact — the shape #6370 removed the `implements` rule for; and
+  # what this rule adds that the extractor does not is the ROUTES_TO edge
+  # below, which is the reason it is fixed here rather than deleted.
+  - pattern: "(?m)^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)\\s+controllers\\.(\\w+\\.\\w+)"
     entity_type: Route
     name_group: 1
     scope: file
@@ -119,7 +192,16 @@ source_patterns:
 
 relationship_rules:
   # Routes file: HTTP verb + path -> controller action (ROUTES_TO)
-  - pattern: "^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)\\s+controllers\\.(\\w+\\.\\w+)"
+  #
+  # `(?m)` (#6927), for the same reason and with the same measurement as the
+  # Route source_pattern above: 4 of 135 real routes lines before, 135 of 135
+  # after. Compiled at detector.go:177, the relationship-rule site, which is a
+  # SEPARATE regexp.Compile call from the source-pattern site — so the two
+  # halves of this rule had to be fixed independently and are graded
+  # independently. This is the edge the entity rule cannot supply on its own,
+  # and the reason neither is deleted in favour of
+  # internal/custom/scala/frameworks.go's richer route entity.
+  - pattern: "(?m)^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)\\s+controllers\\.(\\w+\\.\\w+)"
     source_type: Route
     target_type: Operation
     relationship: ROUTES_TO
