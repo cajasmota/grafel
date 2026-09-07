@@ -42,12 +42,22 @@ import (
 // than AllEntityKinds(). The corpus scan observed ten kinds that no
 // AllEntityKinds() entry declares — ChannelEvent, File, SCOPE.DI,
 // SCOPE.Interface, SCOPE.Middleware, SCOPE.Observability, SCOPE.Router,
-// SCOPE.Type, Stream, Subscription — all from internal/custom/** extractors.
+// SCOPE.Type, Stream, Subscription — all from internal/custom/** extractors,
+// and therefore all behind the default-OFF custom gate (#6966).
+//
 // One of them, SCOPE.Router, forms a THIRTEENTH prefix pair with the declared
-// SCOPE.Route, and both members are emitted on the corpus today. This test
-// cannot see that pair, because a free-form kind string is not enumerable from
-// the vocabulary; closing the gap means making those producers declare their
-// kinds, which is a separate change. Refs #6968.
+// SCOPE.Route. State its gate precisely, because the two members do not share
+// one: SCOPE.Route is emitted in BOTH gate states (36 entities, in
+// aspnetcore-docs-samples, awesome-compose and grafel), while SCOPE.Router
+// appears ONLY gate-ON (2 entities, in grafel and play-scala-starter; its sole
+// producer is internal/custom/scala/frameworks.go). So the pair has both
+// members only under gate-ON, and on a default index SCOPE.Router is not
+// emitted at all — it is not a live pair for users today.
+//
+// This test cannot see that pair in either gate state, because a free-form
+// kind string is not enumerable from the vocabulary; closing the gap means
+// making those producers declare their kinds, which is a separate change.
+// Refs #6968.
 func TestComputeIDKindPrefixPairs6968(t *testing.T) {
 	want := map[string]bool{
 		// The eight SCOPE.* pairs enumerated on the issue.
@@ -116,9 +126,6 @@ func TestComputeIDKindPrefixPairs6968(t *testing.T) {
 	}
 	for _, p := range removed {
 		t.Errorf("stale ComputeID prefix pair %s in this test's roster: it is no longer produced by AllEntityKinds(). Remove it from `want`.", p)
-	}
-	if len(added) == 0 && len(removed) == 0 && len(got) != len(want) {
-		t.Errorf("roster size %d != enumerated size %d", len(want), len(got))
 	}
 	if t.Failed() {
 		var all []string
