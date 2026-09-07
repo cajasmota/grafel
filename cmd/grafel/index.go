@@ -527,8 +527,10 @@ func WithExportJSON(export bool) IndexOption {
 // tests running in the same binary.
 //
 // The default stays OFF. inProcCustomExtractors in inproc_custom.go gives the
-// qualitative rationale; the cost figures are at the gate itself, index.go:3944-3945
-// (+17.5% wall, +18.2% TotalAlloc, never measured at corpus scale). The one
+// qualitative rationale; the cost figures and their provenance are at the gate
+// itself, in classifyAndReadWithProgress — search for "The gate stays
+// default-OFF" rather than trusting a line number (this reference said
+// index.go:3944-3945 long after the gate had moved past line 4100). The one
 // caller that opts in is `grafel quality` over a golden fixture — see
 // qualityIndexOptions in quality.go.
 func WithCustomExtractors(enabled bool) IndexOption {
@@ -4137,11 +4139,31 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				//   go, ruby — genuinely inert; identical content tuples.
 				//
 				// Pinned by TestInProcCustomExtractorsSupersedeIsNonDestructive and
-				// TestInProcCustomExtractorsJavaEnrichment. The gate stays
-				// default-OFF: its wall/alloc cost (+17.5% wall, +18.2%
-				// TotalAlloc) has never been measured at corpus scale, and #6105
-				// (synthetic Class:<Name> endpoints resolving to nothing) is still
-				// open. Flipping the default is a separate decision.
+				// TestInProcCustomExtractorsJavaEnrichment.
+				//
+				// COST, WITH ITS PROVENANCE (#6966). The figures long quoted
+				// here — +17.5% wall, +18.2% TotalAlloc — come from the #6106
+				// harness: one arm per process, alternated externally, 10 reps
+				// each, over the #5989 Go/Python/Java/JS/Ruby FIXTURES, not a
+				// corpus. Denominator: 1.82s -> 2.14s wall, 805.5MB -> 952.3MB
+				// TotalAlloc, 15360 -> 18583 entities (+21.0%). Peak HeapAlloc
+				// moved +4.6% (162.3 -> 169.7MB); every fixture peaked under
+				// ~170MB, so nothing in those numbers reaches the GB-scale
+				// regime epic #5954 targets. Quote them WITH the fixture scale
+				// or not at all.
+				//
+				// #6105 (synthetic Class:<Name> endpoints resolving to nothing)
+				// was the second stated blocker. It is CLOSED — fixed in #6127,
+				// which gave internal/custom/java structural refs the language
+				// segment the resolver parses. This comment asserted it was
+				// "still open" for a month afterwards; do not reintroduce a
+				// blocker claim without re-reading the issue's state.
+				//
+				// The gate nevertheless stays default-OFF, and that remains a
+				// deliberate decision rather than a blocked one: the cost/yield
+				// trade at corpus scale is measured and discussed on #6966, and
+				// flipping the default is the owner's call, not a side effect of
+				// touching this file.
 				//
 				// The `file.TSTree != nil` guard is load-bearing beyond avoiding
 				// a use-after-free: a subset of custom extractors work on file
