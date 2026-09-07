@@ -25,8 +25,15 @@ const (
 
 	// maxSparsePatternBytes covers info/sparse-checkout, which is a pattern
 	// list and legitimately large in a big monorepo. 8 MiB truncates only a
-	// file that is already pathological, and truncation degrades to the same
-	// "some patterns not applied" outcome an unreadable file already produces.
+	// file that is already pathological.
+	//
+	// A truncated pattern file is NOT the same outcome as an unreadable one and
+	// the two must not be conflated (#6969): unreadable lands on "not sparse"
+	// and indexes the repo in FULL, while a silently-truncated read used to
+	// leave the repo sparse with a partial pattern set, so files were dropped
+	// from the index with no error, no SkipEntry and no missing-entity signal.
+	// parseSparsePatternFile now reads the truncation signal and lands
+	// truncated on "not sparse" too.
 	maxSparsePatternBytes = 8 << 20
 )
 
@@ -78,11 +85,57 @@ func setGitMetaSkipOutput(w io.Writer) func() {
 // read failure as unknown" behaviour; the skip is reported here so that
 // behaviour stops being silent.
 func readGitMetaFile(path string, maxBytes int64) ([]byte, error) {
-	b, err := safeio.ReadFile(path, safeio.FollowSymlinks, maxBytes)
+	b, _, err := readGitMetaFileLimited(path, maxBytes)
+	return b, err
+}
+
+// readGitMetaFileLimited is readGitMetaFile plus the truncation signal.
+//
+// The two exist side by side on purpose. For this package's POINTER files —
+// HEAD, commondir, the .git gitdir-file, a loose ref — a truncated read is
+// already loud: each is one short line, every parser here demands a shape
+// ("ref: ", "gitdir: ", 40 hex bytes), and a 64 KiB prefix of something else
+// fails that shape and falls through to the same "unknown" the callers already
+// handle. Those callers keep readGitMetaFile and are deliberately unchanged.
+//
+// The sparse pattern file is the one LIST-shaped reader here, and a prefix of
+// a list is a valid-looking shorter list. That is the whole of #6969: it fails
+// silently and it fails toward EXCLUSION, the one direction nothing downstream
+// can notice.
+func readGitMetaFileLimited(path string, maxBytes int64) ([]byte, bool, error) {
+	b, truncated, err := safeio.ReadFileLimited(path, safeio.FollowSymlinks, maxBytes)
 	if err != nil {
 		reportGitMetaSkip(path, err)
 	}
-	return b, err
+	return b, truncated, err
+}
+
+// reportGitMetaTruncation announces a git metadata file that was read only in
+// part because it exceeded its byte cap.
+//
+// It is a SEPARATE report from reportGitMetaSkip and not a new branch inside
+// it, because the two carry different facts: a skip says the file was not read
+// at all and names the entry kind; this says the file was read and the tail is
+// missing. It shares the dedup map and the cap, so the combined output is
+// still bounded the way a report nobody scrolls past has to be.
+func reportGitMetaTruncation(path string, maxBytes int64) {
+	gitMetaSkipMu.Lock()
+	if gitMetaSkipSeen == nil {
+		gitMetaSkipSeen = map[string]bool{}
+	}
+	if gitMetaSkipSeen[path] || len(gitMetaSkipSeen) >= maxGitMetaSkipReports {
+		gitMetaSkipMu.Unlock()
+		return
+	}
+	gitMetaSkipSeen[path] = true
+	last := len(gitMetaSkipSeen) == maxGitMetaSkipReports
+	w := gitMetaSkipOut
+	gitMetaSkipMu.Unlock()
+
+	fmt.Fprintf(w, "grafel: %s exceeds %d bytes and was read only in part; treating this repo as NOT sparse so no file is silently excluded (#6969)\n", path, maxBytes)
+	if last {
+		fmt.Fprintf(w, "grafel: further git-metadata skips suppressed after %d\n", maxGitMetaSkipReports)
+	}
 }
 
 // reportGitMetaSkip says out loud that a git metadata file was refused for
