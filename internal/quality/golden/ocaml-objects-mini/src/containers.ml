@@ -39,6 +39,33 @@ class type verbose_printer = object
   method verbose : bool
 end
 
+(* A class constrained by a class TYPE. That annotation is OCaml's
+   interface-conformance shape and the only IMPLEMENTS #6370's OCaml arm
+   emits. *)
+class basic_printer : printer = object
+  method print s = print_string s
+end
+
+(* The parent is MODULE-QUALIFIED, and its last segment is the name of a class
+   type declared in THIS file. Taking that last segment would bind the edge to
+   the local `printer` — the wrong node, which is #6369's failure mode. *)
+class relay_printer = object
+  inherit Remote.printer
+end
+
+(* The parent is UNQUALIFIED and is declared nowhere in this file, so there is
+   no entity for the edge to land on. Separated from the case above because a
+   producer can reject one and accept the other. *)
+class remote_relay = object
+  inherit external_base
+end
+
+(* `inherit` inside an object nested in a METHOD belongs to that object, not to
+   the enclosing class. *)
+class spawning_printer = object
+  method spawn = object inherit basic_printer end
+end
+
 let render_with (p : printer) msg = p#print msg
 
 let compare_lengths a b = Stdlib.compare (List.length a) (List.length b)
