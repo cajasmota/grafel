@@ -50,10 +50,12 @@ import (
 //
 // classifier.maxIndexableBytes (internal/classifier/classifier.go:27) is the
 // SAME 1 MiB, and classifyWithSizeInner (:172) skips any file over it with
-// SkipReason="too_large" before any language is detected. All three extraction
-// entry points gate on that result — cmd/grafel/index.go:3987,
-// internal/daemon/extract/coordinator.go:673 and subproc.go:277 each
-// ClassifyWithSize then `if cr.Skip || cr.Language == "" { continue }` — so an
+// SkipReason="too_large" before any language is detected. All FOUR
+// ClassifyWithSize consumers gate on that result — cmd/grafel/index.go:3987,
+// internal/daemon/extract/coordinator.go:673, subproc.go:277 and
+// internal/extractors/incremental.go:1003 (the daemon's watcher-driven
+// incremental path) each ClassifyWithSize then
+// `if cr.Skip || cr.Language == "" { continue }` — so on the NORMAL path an
 // oversized file mints no entity, and every pass in this package iterates a
 // file set built from entity SourceFile. The classifier is the gate that
 // actually decides; maxSourceFileBytes is defence in depth behind it, kept at
@@ -62,17 +64,30 @@ import (
 // So THE LOSS IS EXCLUSION, NOT TRUNCATION: a file over 1 MiB is absent from
 // the graph whole, not parsed short. That is a real capability loss (#6450
 // recorded it on the engine path) and it is now reported by name — see
-// reportOversizedSkip in internal/classifier/oversized_report.go. The trade is
+// oversizedReporter.report in internal/classifier/oversized_report.go. The trade is
 // accepted because a bound is not optional — safeio needs one, a character
 // device never reaches EOF — and because base-URL constants, import lines and
 // handler bodies live in small modules; a source file over 1 MiB is generated
 // or minified, not hand-written.
 //
-// THE ONE RESIDUAL IS TOCTOU, and it is uncharacterised. The classifier
-// decides on a size taken at index time; group-link re-opens the file later by
-// path. A file that grows past 1 MiB in that window was admitted by the gate
-// and IS truncated here, silently. Nobody has measured how often that happens
-// and nothing above covers it.
+// TWO RESIDUALS SURVIVE THAT ARGUMENT, and "normal path" above is doing real
+// work. Neither is covered by the exclusion reasoning, and a comment claiming
+// ONE residual was itself a #6983-class error:
+//
+//   - A STAT FAILURE. All three index sites initialise size = int64(-1) and
+//     leave it there when os.Stat fails (cmd/grafel/index.go:3980,
+//     internal/daemon/extract/coordinator.go:669, subproc.go:273). -1 is not
+//     greater than maxIndexableBytes, so an oversized file whose stat failed
+//     PASSES the gate, mints an entity, reaches readSourceFile and is
+//     genuinely truncated here — silently, with no oversized-file report,
+//     and with no concurrency required. Deterministic and in-tree.
+//   - TOCTOU. The classifier decides on a size taken at index time; group-link
+//     re-opens the file later by path. A file that grows past 1 MiB in that
+//     window was admitted by the gate and IS truncated here.
+//
+// Neither has been characterised: nobody has measured how often a stat fails
+// on a file that is also oversized, nor how often a file grows across the
+// bound mid-index.
 const maxSourceFileBytes int64 = 1 << 20
 
 // stringScanMaxFileBytes bounds the string-literal scan instead. That pass
