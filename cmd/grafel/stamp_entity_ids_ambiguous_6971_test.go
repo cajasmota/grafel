@@ -156,6 +156,13 @@ func TestStampEntityIDs_AmbiguousPreStampKeyIsSkippedNotResolved(t *testing.T) {
 // So the assertion is deliberately a COMPARISON between the two paths, not a
 // restatement of either one's rule: the same empty-name record is stamped in
 // two batches identical but for a twin_of carrier, and the results must agree.
+//
+// KNOWN LIMIT OF THE Fatalf PINS BELOW: they call recordsHaveTwinOf on each
+// batch, i.e. they pin the PREDICATE, not the DISPATCH — they do not observe
+// which loop stampEntityIDs actually entered. Reviewer mutant R4 (force the
+// gate always-fast) therefore passes THIS test in isolation; it dies at suite
+// level on the #6275 twin_of tests, which can only pass if the slow path runs.
+// The coverage exists, just not where a reader of this test would look.
 func TestStampEntityIDs_BothPathsSkipTheSameRecords(t *testing.T) {
 	const (
 		repo         = "test_repo"
@@ -205,8 +212,18 @@ func TestStampEntityIDs_BothPathsSkipTheSameRecords(t *testing.T) {
 			fastBatch[0].ID, slowBatch[0].ID)
 	}
 
-	// Positive control: the paths agree because both SKIP, not because both are
-	// inert. A normally-named record must be stamped, identically, by each.
+	// The paths must agree by SKIPPING the record, not by both stamping it.
+	// Reviewer mutant R6 — delete the `Name == ""` skip from BOTH loops — kept
+	// the parity assertion above satisfied (both stamped 58e1ead07da096b0) and
+	// left the ENTIRE ./cmd/grafel/ package green. The lockstep was pinned; the
+	// rule the two loops are in lockstep ABOUT was not. This observes it.
+	if fastBatch[0].ID != "" || slowBatch[0].ID != "" {
+		t.Errorf("the empty-name record was STAMPED by both paths (fast=%q slow=%q); the paths must agree by SKIPPING it, not by both stamping it", fastBatch[0].ID, slowBatch[0].ID)
+	}
+
+	// Positive control for the other direction: agreement must not come from the
+	// loops being globally inert. A normally-named record must be stamped,
+	// identically, by each.
 	wantNamed := graph.EntityID(repo, "SCOPE.Component", namedRecName, file)
 	if fastBatch[1].ID != wantNamed {
 		t.Errorf("fast path did not stamp the named record: got %q want %q", fastBatch[1].ID, wantNamed)
