@@ -172,11 +172,18 @@ func TestParseSparsePatternFileFIFODoesNotHang(t *testing.T) {
 	p := mkfifoInGitTemp(t, dir, "info", "sparse-checkout")
 
 	var got []string
+	var haveFile bool
 	mustReturnGit(t, "parseSparsePatternFile with a FIFO sparse-checkout", func() {
-		got = parseSparsePatternFile(p)
+		got, haveFile = parseSparsePatternFile(p)
 	})
 	if len(got) != 0 {
 		t.Errorf("parseSparsePatternFile = %v, want none for a refused pattern file", got)
+	}
+	// A refused pattern file must read as NO FILE, not as an empty pattern
+	// set: ProbeRepo turns "no file" into "not sparse" (full index, a
+	// superset) and an empty pattern set into "exclude everything" (#6967).
+	if haveFile {
+		t.Error("parseSparsePatternFile reported the FIFO as a readable pattern file — that would index the repo to zero files")
 	}
 }
 
@@ -205,9 +212,12 @@ func TestGitMetaReadersStillReadRegularFiles(t *testing.T) {
 	}
 
 	sp := writeGitFile(t, dir, "# comment\nsrc/\n\napps/web/\n", "info", "sparse-checkout")
-	pats := parseSparsePatternFile(sp)
+	pats, haveFile := parseSparsePatternFile(sp)
 	if len(pats) != 2 || pats[0] != "src/" || pats[1] != "apps/web/" {
 		t.Errorf("parseSparsePatternFile = %v, want [src/ apps/web/]", pats)
+	}
+	if !haveFile {
+		t.Error("parseSparsePatternFile: a readable pattern file must report haveFile=true")
 	}
 }
 
@@ -221,7 +231,7 @@ func TestGitMetaSkipIsReported(t *testing.T) {
 
 	dir := t.TempDir()
 	p := mkfifoInGitTemp(t, dir, "info", "sparse-checkout")
-	mustReturnGit(t, "parseSparsePatternFile with a FIFO", func() { _ = parseSparsePatternFile(p) })
+	mustReturnGit(t, "parseSparsePatternFile with a FIFO", func() { _, _ = parseSparsePatternFile(p) })
 
 	out := buf.String()
 	if !strings.Contains(out, p) {
@@ -281,7 +291,7 @@ func TestGitMetaSkipNotReportedForAbsentFile(t *testing.T) {
 
 	dir := t.TempDir()
 	_ = readGitdirFile(filepath.Join(dir, ".git"))
-	_ = parseSparsePatternFile(filepath.Join(dir, "info", "sparse-checkout"))
+	_, _ = parseSparsePatternFile(filepath.Join(dir, "info", "sparse-checkout"))
 	_ = contentToken(filepath.Join(dir, "refs", "heads", "main"))
 	if buf.Len() != 0 {
 		t.Errorf("absent files reported %q, want silence", buf.String())
