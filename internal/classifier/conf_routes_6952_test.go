@@ -114,7 +114,18 @@ func TestRoutesNameDoesNotOverFire6952(t *testing.T) {
 	c := New(nil)
 
 	// Rows that must keep the language the EXTENSION router already gave them.
-	// These are the ones a `Contains`-style rule would steal.
+	//
+	// WHAT ACTUALLY PROTECTS THESE, corrected after review. It is tempting to
+	// say "extensionLanguageMap is consulted before basenameLanguageMap, so
+	// routes.rb is ruby before the routes entry is ever reached". That ordering
+	// is INERT: swapping the two lookups is equivalent under the current tables
+	// (probed on nginx.conf, luarocks.lock, .justfile, conf/routes and
+	// config/routes.rb — identical output both ways, because `.conf` and
+	// `.lock` are not in extensionLanguageMap and `.justfile` is in both with
+	// the same value). The thing that actually holds is that
+	// basenameLanguageMap is keyed on the FULL basename, exactly: `routes.rb`
+	// is simply not the string `routes`. A reader tightening the rule should
+	// preserve exact-full-basename keying, not the lookup order.
 	keepsLanguage := []struct{ path, lang, corpus string }{
 		{"config/routes.rb", "ruby", "rails-realworld/config/routes.rb"},
 		{"config/routes.yaml", "yaml", "symfony-demo/config/routes.yaml"},
@@ -157,6 +168,57 @@ func TestRoutesNameDoesNotOverFire6952(t *testing.T) {
 			if !got.Skip || got.Language != "" {
 				t.Errorf("Classify(%q) = {lang=%q skip=%v}, want an unclassified skip — %s",
 					tc.path, got.Language, got.Skip, tc.why)
+			}
+		})
+	}
+
+	// THE `.routes` EXTENSION HALF, graded on its own. Every row above keys on
+	// the BASENAME entry; before review this direction had zero forbidden rows,
+	// and adding `".route": "scala"` (singular) to extensionLanguageMap was
+	// ALIVE against the whole suite and the golden fixture. Two populations were
+	// measured (79 basename / 60 suffix) and only one was graded.
+	extensionHalfStaysSkipped := []struct{ path, why string }{
+		{"conf/admin.route", "SINGULAR. Zero instances in 139 measured files; Play's include suffix is plural, and a `.route` entry is invisible to every basename row"},
+		{"conf/admin.routez", "a one-character-off suffix — the lookup is exact, not a prefix or fuzzy match"},
+		{"conf/admin.routes.bak", "filepath.Ext takes the LAST segment, so this is `.bak` and must stay skipped even though `.routes` appears in the name"},
+		{"conf/admin.routes~", "the editor backup marker; `.routes~` is not `.routes`"},
+	}
+	for _, tc := range extensionHalfStaysSkipped {
+		t.Run("ext/"+tc.path, func(t *testing.T) {
+			if got := c.Classify(context.Background(), tc.path); !got.Skip || got.Language != "" {
+				t.Errorf("Classify(%q) = {lang=%q skip=%v}, want an unclassified skip — %s",
+					tc.path, got.Language, got.Skip, tc.why)
+			}
+		})
+	}
+
+	// A `routes/` DIRECTORY must not pull its contents in. The two rows in
+	// keepsLanguage that advertise this (express-realworld, nextjs) CANNOT
+	// grade it — review's N2 proved it: they carry extensions, so the extension
+	// lookup answers first and a `strings.Contains(norm, "/routes/")` widening
+	// at the natural edit site never reaches them. Killing that shape needs an
+	// EXTENSIONLESS file under a routes/ directory, which is what these are.
+	// The corpus has six `routes` directories (symfony-demo, nextjs x2,
+	// rails-actionpack, express-realworld, awesome-compose) and zero
+	// extensionless files in any of them, so these rows are synthetic by
+	// necessity — the widening is not production-reachable on the measured
+	// corpus, but it is the cheapest wrong turn a future editor can take.
+	routesDirStaysSkipped := []string{
+		"routes/health",
+		"app/routes/index",
+		"src/routes/admin/handler",
+		// NOT a row: a bare `routes/` with a trailing slash. path.Base strips it
+		// and the file classifies — but the classifier is only ever handed FILE
+		// paths (the walker decides directories, and does so before this), so a
+		// row for it would assert a contract that does not exist. Recorded
+		// rather than silently omitted: it was tried and rejected, not missed.
+	}
+	for _, p := range routesDirStaysSkipped {
+		t.Run("dir/"+p, func(t *testing.T) {
+			if got := c.Classify(context.Background(), p); !got.Skip || got.Language != "" {
+				t.Errorf("Classify(%q) = {lang=%q skip=%v}, want an unclassified skip — a "+
+					"segment match on `routes/` would fire here; the rule is a basename "+
+					"lookup and must not read the parent directory", p, got.Language, got.Skip)
 			}
 		})
 	}

@@ -715,7 +715,29 @@ var basenameLanguageMap = map[string]string{
 	// handed (detectScalaFramework returns "play" on a column-0 HTTP verb line),
 	// so a non-Play file that happens to be named `routes` yields no route
 	// entities rather than wrong ones. Reaching the Java and Revel producers is
-	// a second change to those gates, filed separately.
+	// a second change to those gates, filed separately (#6957).
+	//
+	// WHAT THE LANGUAGE GATES DO NOT COVER, AND WHY IT IS STILL FINE. Those
+	// gates scope the routes token away from OTHER languages. They do nothing
+	// same-language: `file.Language == "scala"` is now true for every routes
+	// file, so ALL of internal/custom/scala's gated passes receive a routes DSL
+	// as if it were Scala source — anorm looking for SQL, caliban for GraphQL
+	// schemas, akka for actors, di for injection. Measured rather than argued:
+	// on lichess-org/lila's five real routes files (923 column-0 verb lines),
+	// this classification yields 1741 entities of which 1738 come from a routes
+	// file and every one is a Route, a SCOPE.Operation or a per-file carrier.
+	// Those passes produce ZERO spurious entities on real routes content. A
+	// future Scala custom pass should know routes files are in its input.
+	//
+	// THE COST OF A WRONG GUESS IS SMALL BUT NOT ZERO, so do not read the
+	// measured-zero over-fire as "harmless if it ever fires".
+	// detectScalaFramework's default arm returns "scala", not nothing, so a
+	// misclassified file still mints one SCOPE.Component carrier and its
+	// CONTAINS edge, and reGenericAuth (`\b(?:JWT|BearerToken|ApiKey|
+	// Authorization)\b`) fires for that arm — a stray `routes` file containing
+	// the word Authorization would mint a SCOPE.Security auth_check. "Yields no
+	// route entities rather than wrong ones" is true about ROUTES; it is not
+	// true about entities in general.
 	"routes": "scala",
 }
 

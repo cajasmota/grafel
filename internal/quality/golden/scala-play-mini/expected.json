@@ -31,6 +31,8 @@
     { "name": "DELETE:/users/{id}", "kind": "SCOPE.Operation", "source_file": "conf/routes", "must_exist": true },
     { "name": "GET:/admin/users", "kind": "SCOPE.Operation", "source_file": "conf/admin.routes", "must_exist": true,
       "note": "Routed by a DIFFERENT rule from the five rows above: `.routes` in extensionLanguageMap, not `routes` in basenameLanguageMap. 60 of the 139 routes files measured across the Play upstreams are this sub-router include form, so deleting either entry alone must fail." },
+    { "name": "GET:/legacy/health", "kind": "SCOPE.Operation", "source_file": "main/resources/routes", "must_exist": true,
+      "note": "Play's MAVEN-LAYOUT router location — 9 of the 139 measured routes files live at src/main/resources/routes and NONE is under a `conf/` directory. This row is what stops the fixture from being satisfiable by a `conf/` directory anchor: the review's M6' mutant (both entries gated on `conf/`) scored a byte-identical 29/29 against the fixture without it, and died only on the unit test." },
     { "name": "findAll", "kind": "SCOPE.Operation", "source_file": "UserService.scala", "must_exist": true },
     { "name": "findById", "kind": "SCOPE.Operation", "source_file": "UserService.scala", "must_exist": true },
     { "name": "create", "kind": "SCOPE.Operation", "source_file": "UserService.scala", "must_exist": true },

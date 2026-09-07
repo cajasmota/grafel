@@ -6,12 +6,23 @@
 // reading a file the watcher still drops, so the graph is correct exactly once
 // — at the initial index — and never updates again.
 //
-// The classifier is consulted at ONE boundary (cmd/grafel/index.go:3973,
-// internal/daemon/extract/{coordinator,subproc}.go), and the watcher does not
-// consult it at all: ShouldSkipPath is a DENYLIST over SkipDirs / SkipExts /
-// SkipBaseGlobs. So #6952 needed no watcher change, and these rows are what
-// makes that a checked fact rather than a claim — they fail the moment anyone
-// adds `conf` to SkipDirs or `.routes` to SkipExts.
+// The classifier has FOUR consumers, enumerated after review corrected an
+// earlier claim of one: cmd/grafel/index.go:3973,
+// internal/daemon/extract/coordinator.go:662, internal/daemon/extract/
+// subproc.go:105, and internal/extractors/incremental.go:885/1002. All four
+// call the same classifier, so none of them can disagree about a routes file —
+// but "there is one consumer" was wrong as written, and the fourth is the
+// UPDATE path, which is precisely where the #6934 class lives.
+//
+// The watcher consults none of them: ShouldSkipPath is a DENYLIST over SkipDirs
+// / SkipExts / SkipBaseGlobs. So #6952 needed no watcher change, and these rows
+// are what makes that a checked fact rather than a claim — they fail the moment
+// anyone adds `conf` to SkipDirs or `.routes` to SkipExts.
+//
+// THIS FILE GRADES THE EVENT, NOT THE RE-EXTRACT. A change event that survives
+// here and then hits a `continue` in incremental.go's re-extract loop is the
+// same user-visible failure. That second half is graded separately, in
+// internal/extractors/routes_incremental_reextract_6952_test.go.
 //
 // The `.bak` rows are the deliberate negative control, and they are the reason
 // this test is not vacuous: `.bak` IS on SkipExts, so the watcher already drops
