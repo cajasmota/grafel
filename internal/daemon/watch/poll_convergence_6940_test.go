@@ -185,28 +185,22 @@ func TestChangePoller_SparseFilteredPathConverges(t *testing.T) {
 	cpWriteFile(t, repo, "src/keep.go", "package src\n")
 	cpGitRun(t, repo, "add", "-A")
 	cpGitRun(t, repo, "commit", "-q", "-m", "src")
-	// --no-cone deliberately: git's CONE patterns are `/*` + `!/*/` + `/src/`,
-	// and gitmeta.IsPathIncluded treats a bare `*` as match-all, so a cone
-	// checkout makes its own filter include everything. That is a real gap in
-	// the sparse implementation and it is not #6940; a non-cone pattern set is
-	// the shape grafel's filter actually applies, so it is the one that puts
-	// the SPARSE GATE under test here rather than a no-op.
+	// --no-cone deliberately, but no longer for the reason first recorded here.
+	// #6964 fixed both gaps this fixture used to work around, and the two
+	// `config --local` mirror lines that came with them are GONE (#6967): the
+	// probe now reads the scope git writes, so nothing needs mirroring, and
+	// cone patterns are matched properly, so a cone checkout no longer makes
+	// grafel's own filter include everything. --no-cone is kept because a
+	// verbatim pattern is the simplest shape for THIS test's subject, which is
+	// poll convergence, not sparse semantics — those are graded against real
+	// git in internal/gitmeta/sparse_realgit_6964_test.go.
 	if out, err := cpGitTry(repo, "sparse-checkout", "set", "--no-cone", "src"); err != nil {
 		t.Skipf("git sparse-checkout unavailable here: %v\n%s", err, out)
 	}
-	// git >= 2.32 writes core.sparseCheckout into the WORKTREE-scoped config
-	// (.git/config.worktree, via extensions.worktreeConfig), and
-	// gitmeta.ProbeRepo reads `config --local` only — so the probe does not see
-	// a sparse checkout this git just created. That gap is real and is not
-	// #6940; mirroring the flag into --local here keeps the SPARSE GATE, which
-	// is what this test is about, reachable rather than silently untested.
-	cpGitRun(t, repo, "config", "--local", "core.sparseCheckout", "true")
-	cpGitRun(t, repo, "config", "--local", "core.sparseCheckoutCone", "true")
 	if si := gitmeta.ProbeRepo(repo); !si.IsSparse {
-		// NOT a skip (#6961 review): the two config lines above make this
-		// outcome deterministic, and CI runs without -v, so a skip here would
-		// delete the only sparse leg in silence — removing just those two
-		// lines turned the whole test into "SKIP ... PASS, exit 0".
+		// NOT a skip (#6961 review): with the probe reading git's own scope
+		// resolution this outcome is deterministic, and CI runs without -v, so
+		// a skip here would delete the only sparse leg in silence.
 		t.Fatal("the probe does not see the sparse checkout this fixture just created — the sparse gate is UNTESTED, not unreachable")
 	}
 

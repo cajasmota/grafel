@@ -55,8 +55,16 @@ func rgTry(dir string, args ...string) (string, error) {
 	// A path that does not exist, not /dev/null: git reads a missing config
 	// file as empty on every platform, while /dev/null has no Windows spelling.
 	absent := filepath.Join(dir, ".absent-gitconfig-6964")
+	globalCfg := absent
+	if v := os.Getenv("GIT_CONFIG_GLOBAL"); v != "" {
+		// A test that is deliberately measuring the GLOBAL scope sets this
+		// (via t.Setenv, so ProbeRepo's own git child sees it too). Overriding
+		// it here would hide from `git ls-files -v` the very config whose
+		// effect the test is comparing against.
+		globalCfg = v
+	}
 	cmd.Env = append(cmd.Environ(),
-		"GIT_CONFIG_GLOBAL="+absent,
+		"GIT_CONFIG_GLOBAL="+globalCfg,
 		"GIT_CONFIG_SYSTEM="+absent,
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
@@ -107,6 +115,11 @@ var rgFixtureFiles = []string{
 	"root.txt",
 	"src/a.go",
 	"src/sub/b.go",
+	// Root-level `deep/`, so a `/**/deep/` pattern asks "**" to match ZERO
+	// components. Without it "**" is only ever handed >= 1 component, where
+	// path.Match("**", "src") answers true on its own and a matcher with no
+	// "**" support looks correct (review mutant RX2).
+	"deep/e.go",
 	"services/payments/h.go",
 	"services/payments/deep/d.go",
 	"services/orders/h.go",
@@ -290,13 +303,32 @@ func TestSparse_NonConeMatchesGit(t *testing.T) {
 	assertMatchesGit(t, dir, si)
 }
 
-// TestSparse_NonConeUnanchoredMatchesGit — a non-cone pattern with no leading
-// slash. gitignore anchors any pattern containing an inner slash, so
-// "services/payments" is root-anchored while a bare name would float; git's
-// own verdict decides.
-func TestSparse_NonConeUnanchoredMatchesGit(t *testing.T) {
+// TestSparse_NonConeInnerSlashIsAnchoredMatchesGit — a non-cone pattern with
+// no LEADING slash but an INNER one. gitignore anchors on either, so
+// "services/payments" is root-anchored despite the missing leading slash.
+//
+// Renamed from ...UnanchoredMatchesGit, which is what it was called while
+// reaching only the anchored branch: both its patterns contain an inner slash.
+// The axis is real, the old name promised a different one.
+func TestSparse_NonConeInnerSlashIsAnchoredMatchesGit(t *testing.T) {
 	dir := rgFixture(t)
 	si := probeAfterSparseSet(t, dir, "--no-cone", "services/payments", "src/sub")
+	assertMatchesGit(t, dir, si)
+}
+
+// TestSparse_NonConeTrulyUnanchoredMatchesGit — a bare name, the only shape
+// that reaches the UNANCHORED branch of sparsePattern.matches: it must float
+// and match a directory called "payments" at ANY depth.
+//
+// This branch had no fixture anywhere in the tree (review mutant RX1), and
+// forcing anchored=true disagrees with git in the EXCLUSION direction — files
+// git checks out, silently dropped.
+func TestSparse_NonConeTrulyUnanchoredMatchesGit(t *testing.T) {
+	dir := rgFixture(t)
+	si := probeAfterSparseSet(t, dir, "--no-cone", "payments")
+	if !gitmeta.IsPathIncluded(si, "services/payments/h.go") {
+		t.Errorf("a bare %q must float and match services/payments (patterns=%v)", "payments", si.Patterns)
+	}
 	assertMatchesGit(t, dir, si)
 }
 
@@ -306,12 +338,18 @@ func TestSparse_NonConeUnanchoredMatchesGit(t *testing.T) {
 // a cone-mode directory argument.
 func TestSparse_NonConeDoubleStarMatchesGit(t *testing.T) {
 	dir := rgFixture(t)
-	// The matched directory is THREE levels down, so "**" has to swallow two
-	// components. With a one-level target, path.Match("**", "src") answers
-	// true on its own and a matcher with no "**" support looks correct.
+	// The fixture has `deep/` at the ROOT and again three levels down, so one
+	// pattern asks "**" to match ZERO components and MORE THAN ONE. Either
+	// alone leaves a hole: with only the deep target, a "**" that means
+	// one-or-more still passes; with only a one-level target,
+	// path.Match("**", "src") answers true on its own and no "**" support at
+	// all looks correct.
 	si := probeAfterSparseSet(t, dir, "--no-cone", "/**/deep/")
 	if !gitmeta.IsPathIncluded(si, "services/payments/deep/d.go") {
 		t.Errorf("services/payments/deep/d.go must be INCLUDED by %v", si.Patterns)
+	}
+	if !gitmeta.IsPathIncluded(si, "deep/e.go") {
+		t.Errorf(`deep/e.go must be INCLUDED by %v — "**" has to match ZERO components here`, si.Patterns)
 	}
 	if gitmeta.IsPathIncluded(si, "services/payments/h.go") {
 		t.Errorf("services/payments/h.go must be EXCLUDED by %v", si.Patterns)
@@ -425,4 +463,114 @@ func rgAnySparseOnDisk(t *testing.T, dir string) bool {
 	t.Helper()
 	out, err := rgTry(dir, "config", "--bool", "--get", "core.sparseCheckout")
 	return err == nil && out == "true"
+}
+
+// --- the flag without a pattern file (#6967 review blocker) -----------------
+//
+// Reading the config with git's own scope resolution is what makes the
+// GLOBAL/SYSTEM scope reachable at all, and `git config --global
+// core.sparseCheckout true` is the pre-2.25 manual sparse workflow — still in
+// real dotfiles. In a repo with no <git-dir>/info/sparse-checkout, git
+// populates the FULL tree; a probe that answered "sparse, no patterns" would
+// make the walker drop every file, and drop it SILENTLY (the sparse layer
+// emits no SkipEntry). The two tests below hold the two halves apart: no file
+// means not sparse, an EMPTY file means sparse-and-nothing.
+
+// TestProbeRepo_GlobalFlagWithoutAPatternFileIsNotSparse is the blocker case.
+func TestProbeRepo_GlobalFlagWithoutAPatternFileIsNotSparse(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "gitconfig")
+	// t.Setenv, not the per-command env: ProbeRepo shells out to git itself,
+	// and it must see the same global config `git ls-files` sees.
+	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	dir := rgFixture(t)
+	// Written BY git into the global scope — nothing here hand-writes config.
+	rgRun(t, dir, "config", "--global", "core.sparseCheckout", "true")
+	if got := rgRun(t, dir, "config", "--get", "core.sparseCheckout"); got != "true" {
+		t.Fatalf("fixture premise broken: git resolves core.sparseCheckout=%q, want true", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git", "info", "sparse-checkout")); !os.IsNotExist(err) {
+		t.Fatalf("fixture premise broken: a pattern file exists (%v); this case is about its ABSENCE", err)
+	}
+
+	// git's own verdict: everything is checked out.
+	verdicts := rgGitVerdicts(t, dir)
+	if len(verdicts) == 0 {
+		t.Fatal("fixture premise broken: no tracked paths")
+	}
+	for p, in := range verdicts {
+		if !in {
+			t.Fatalf("fixture premise broken: git did NOT check out %q, so the flag alone is not a full checkout on %s", p, rgVersion(t, dir))
+		}
+	}
+
+	si := gitmeta.ProbeRepo(dir)
+	if si.IsSparse {
+		t.Fatalf("ProbeRepo reports sparse for core.sparseCheckout=true with NO pattern file — every path would be dropped silently (patterns=%v, scopes: %s)",
+			si.Patterns, rgSparseScopes(t, dir))
+	}
+	if got := si.CoverageStatus(); got != gitmeta.CoverageStatusFull {
+		t.Errorf("CoverageStatus = %q, want %q", got, gitmeta.CoverageStatusFull)
+	}
+	// The consequence, asserted separately from the flag that causes it.
+	for p := range verdicts {
+		if !gitmeta.IsPathIncluded(si, p) {
+			t.Errorf("IsPathIncluded(%q) = false, but git checks it out — this is the whole-repo wipeout", p)
+		}
+	}
+}
+
+// TestProbeRepo_EmptyPatternFileStaysSparse is the other half, and it is what
+// stops the blocker fix from being written as "no PATTERNS means not sparse".
+// git writes an empty pattern file for `sparse-checkout set --stdin` with
+// empty input, and then checks out NOTHING — so grafel must stay sparse and
+// exclude everything, exactly the constructed-value contract that
+// sparse_test.go and sparse_walker_test.go already pin.
+func TestProbeRepo_EmptyPatternFileStaysSparse(t *testing.T) {
+	dir := rgFixture(t)
+	if out, err := rgTryStdin(dir, "", "sparse-checkout", "set", "--no-cone", "--stdin"); err != nil {
+		t.Skipf("this git cannot write an empty pattern set: %v\n%s", err, out)
+	}
+
+	pf := filepath.Join(dir, ".git", "info", "sparse-checkout")
+	data, err := os.ReadFile(pf)
+	if err != nil {
+		t.Fatalf("fixture premise broken: git wrote no pattern file at all (%v) — that is the ABSENT case, not the empty one", err)
+	}
+	if len(strings.TrimSpace(string(data))) != 0 {
+		t.Fatalf("fixture premise broken: pattern file is not empty: %q", data)
+	}
+
+	verdicts := rgGitVerdicts(t, dir)
+	for p, in := range verdicts {
+		if in {
+			t.Fatalf("fixture premise broken: git still checks out %q for an empty pattern set", p)
+		}
+	}
+
+	si := gitmeta.ProbeRepo(dir)
+	if !si.IsSparse {
+		t.Fatalf("ProbeRepo reports NOT sparse for an empty pattern file — git checks out nothing here, so grafel would index a superset of the whole repo (scopes: %s)", rgSparseScopes(t, dir))
+	}
+	for p := range verdicts {
+		if gitmeta.IsPathIncluded(si, p) {
+			t.Errorf("IsPathIncluded(%q) = true, but git checks nothing out for an empty pattern set", p)
+		}
+	}
+}
+
+// rgTryStdin is rgTry with stdin, for `sparse-checkout set --stdin`.
+func rgTryStdin(dir, stdin string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(stdin)
+	absent := filepath.Join(dir, ".absent-gitconfig-6964")
+	cmd.Env = append(cmd.Environ(),
+		"GIT_CONFIG_GLOBAL="+absent,
+		"GIT_CONFIG_SYSTEM="+absent,
+		"GIT_CONFIG_NOSYSTEM=1",
+	)
+	b, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(b)), err
 }

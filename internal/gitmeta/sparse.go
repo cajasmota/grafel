@@ -64,9 +64,11 @@ type SparseInfo struct {
 	// It does NOT select a matching algorithm. Cone mode is a restriction on
 	// what git WRITES — directory prefixes expressed as `/*`, `!/*/`, `/dir/`
 	// — and those lines are ordinary gitignore-syntax patterns, so
-	// IsPathIncluded answers both modes with one matcher (#6964). The flag is
-	// reported because callers surface it, and because it is the only way to
-	// tell a cone repo from a non-cone one after the fact.
+	// IsPathIncluded answers both modes with one matcher (#6964).
+	//
+	// It is reported for callers, and consumed by none: there is no non-test
+	// reader of this field anywhere in the tree today. Said plainly so nobody
+	// re-derives behaviour from it.
 	ConeMode bool
 }
 
@@ -128,7 +130,30 @@ func ProbeRepo(repoPath string) SparseInfo {
 	coneMode := cone == "true"
 
 	// Parse the sparse-checkout pattern file.
-	patterns := parseSparsePatternFile(filepath.Join(gitDir, "info", "sparse-checkout"))
+	//
+	// NO PATTERN FILE MEANS NOT SPARSE, whatever the flag says (#6967 review).
+	// The flag alone is reachable — `git config --global core.sparseCheckout
+	// true` is the pre-2.25 manual workflow and still sits in real dotfiles —
+	// and in that state git populates the FULL tree: measured on git 2.50.1,
+	// `ls-files -v` tags every path 'H' and the working tree is complete.
+	// Reporting IsSparse=true with no patterns would hand the walker a
+	// SparseInfo that excludes every path (that is the deliberate contract for
+	// a constructed value), so the repo would index to ZERO files — silently,
+	// because the sparse layer is the one walk layer that skips without
+	// emitting a SkipEntry. This gate is here rather than in IsPathIncluded
+	// precisely so that contract is left alone.
+	//
+	// A file that EXISTS but yields no patterns is a different state and stays
+	// sparse: git checks out NOTHING for an empty (or comment-only) pattern
+	// file, also measured. So the test is the file, not the pattern count.
+	//
+	// An existing-but-unreadable file lands on "not sparse" too, which is the
+	// over-inclusive direction — a superset, the same direction every other
+	// failure in this file chooses.
+	patterns, haveFile := parseSparsePatternFile(filepath.Join(gitDir, "info", "sparse-checkout"))
+	if !haveFile {
+		return SparseInfo{}
+	}
 
 	return SparseInfo{
 		IsSparse: true,
@@ -138,16 +163,20 @@ func ProbeRepo(repoPath string) SparseInfo {
 }
 
 // parseSparsePatternFile reads the sparse-checkout pattern file and returns
-// non-empty, non-comment lines. Returns nil when the file is absent or
-// unreadable (a missing file is not an error — it just means no patterns).
-func parseSparsePatternFile(path string) []string {
+// its non-empty, non-comment lines plus whether the file was read at all.
+//
+// The second return exists because "no patterns" and "no file" are different
+// states in git and must not be collapsed: an empty pattern file checks out
+// nothing, an absent one checks out everything (#6967 review). Callers that
+// only want the lines can ignore it; ProbeRepo cannot.
+func parseSparsePatternFile(path string) ([]string, bool) {
 	// readGitMetaFile, not os.Open: open(2) is what blocks on a FIFO, so
 	// scanning rather than slurping made no difference to #6416. The pattern
 	// file is name-chosen ("info/sparse-checkout" under the git dir) and is
 	// read before any walk, so no entry-type gate sits in front of it.
 	data, err := readGitMetaFile(path, maxSparsePatternBytes)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 
 	var patterns []string
@@ -159,7 +188,7 @@ func parseSparsePatternFile(path string) []string {
 		}
 		patterns = append(patterns, line)
 	}
-	return patterns
+	return patterns, true
 }
 
 // IsPathIncluded reports whether relPath (a repo-relative, forward-slash path
@@ -202,6 +231,11 @@ func parseSparsePatternFile(path string) []string {
 // ConeMode is informational only. Cone patterns are a subset of the general
 // syntax, so one matcher answers both; the flag is still reported for the
 // coverage badge and for callers that want to know how the repo was made.
+//
+// Known divergence, pre-existing and in the over-inclusive direction: a
+// pattern with a trailing space (`/src/ `) is stripped by
+// parseSparsePatternFile's TrimSpace and read as `/src/`, while git keeps the
+// space and matches nothing. grafel indexes a superset there.
 //
 // Cost: the pattern list is parsed on each call rather than cached, because
 // SparseInfo is a plain value that callers construct and mutate directly. The
@@ -274,10 +308,11 @@ func parseSparsePattern(raw string) (sparsePattern, bool) {
 	if strings.HasPrefix(line, "!") {
 		p.negate = true
 		line = line[1:]
-	} else if strings.HasPrefix(line, `\!`) || strings.HasPrefix(line, `\#`) {
-		// gitignore escape for a literal leading '!' or '#'.
-		line = line[1:]
 	}
+	// gitignore's `\!` / `\#` escapes need no handling here: path.Match reads
+	// a backslash as an escape too, so `\!foo` matches the literal "!foo"
+	// either way. Stripping the backslash would be a branch that cannot change
+	// an answer, and so could never be graded.
 	if strings.HasSuffix(line, "/") {
 		p.dirOnly = true
 	}
