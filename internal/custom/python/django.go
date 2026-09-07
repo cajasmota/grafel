@@ -156,7 +156,13 @@ var (
 	// but it drops `TreeForeignKey(Category, ...)` with it — measured, not
 	// assumed: see TestIssue6988_RegexBoundaryRejected_WouldDropSubclasses.
 	// This regex extracts a target; it is NOT the constructor filter.
-	// `isDjangoRelationalField` is the sole guard on WHICH constructors get here.
+	// `isDjangoRelationalField` decides which constructors are PROCESSED — but it
+	// does not bound what this regex READS. The caller hands it a 400-char
+	// forward window (`fullRHS` below) that can span later lines, so a
+	// legitimate `ForeignKey` whose own argument this regex cannot parse
+	// (`models.ForeignKey(settings.AUTH_USER_MODEL, ...)`) can still match a
+	// string belonging to a constructor the gate REJECTED. That residue survives
+	// #6988 and is zero-incidence on the measured corpus; it is filed separately.
 	djangoModelRelTargetRe = regexp.MustCompile(
 		`(?:ForeignKey|OneToOneField|ManyToManyField)\s*\(\s*(?:to\s*=\s*)?(?:["']([^"']+)["']|([A-Z][A-Za-z0-9_]*))`)
 

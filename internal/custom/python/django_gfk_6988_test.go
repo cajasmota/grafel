@@ -134,6 +134,26 @@ func TestIssue6988_RegexKeepsEveryTargetForm(t *testing.T) {
 	}
 }
 
+// TestIssue6988_RegexRejectsLowercaseInitialSymbol grades the symbol group's
+// UPPERCASE-INITIAL anchor — `([A-Z][A-Za-z0-9_]*)`. Nothing else observes it,
+// and widening it to `[A-Za-z]` is production-reachable: on the django corpus it
+// mints `LogEntry.user -> Class:settings` (from
+// `models.ForeignKey(settings.AUTH_USER_MODEL, ...)`, django/contrib/admin/models.py)
+// and `User.friends -> Class:auth`. A lowercase-initial identifier is a module or
+// package path, never a Django model name, so it must yield no target.
+func TestIssue6988_RegexRejectsLowercaseInitialSymbol(t *testing.T) {
+	cases := []string{
+		`    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)`,
+		`    friends = models.ManyToManyField(auth.User, blank=True)`,
+	}
+	for _, rhs := range cases {
+		if got := djangoRelTarget(rhs, "LogEntry"); got != "" {
+			t.Errorf("djangoRelTarget(%q) = %q, want \"\" — a lowercase-initial identifier is a "+
+				"module path, not a model; the symbol group must stay anchored to [A-Z] (#6988)", rhs, got)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // End-to-end, through the real Django extractor.
 // ---------------------------------------------------------------------------
@@ -235,6 +255,11 @@ func TestIssue6988_NamedGFKFieldEmitsNoTargetEdge(t *testing.T) {
 // `created_by_ct` — so they read as valid and a cardinality assertion is blind
 // to their removal by construction (#6973). This asserts the exact substitution
 // shape instead.
+//
+// Layer note: this is a PRE-RESOLUTION emission test, so what it pins is the
+// emitted edge shape. The "5 of 21 BIND to a sibling Constraint node" figure is
+// corpus-measured (gate ON), NOT observed here — this test does not run the
+// resolver and makes no claim about binding.
 func TestIssue6988_WrongButBoundEdgeShapeIsGone(t *testing.T) {
 	rels := djangoEdges6988(t, gfkSrc6988)
 
