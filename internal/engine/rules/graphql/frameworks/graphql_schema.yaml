@@ -75,11 +75,63 @@ source_patterns:
     entity_type: Decorator
     name_group: 1
     scope: file
-  # Query/Mutation field: fieldName(...): ReturnType
-  - pattern: "^\\s+(\\w+)\\s*\\([^)]*\\)\\s*:"
-    entity_type: Operation
-    name_group: 1
-    scope: file
+  # NO `Operation` RULE HERE. #6927 came to widen it and measured it away
+  # instead — the second rule this file has lost to a duplicate producer, and
+  # for the same reason as the `implements` rule below.
+  #
+  # It read:
+  #
+  #     - pattern: "^\\s+(\\w+)\\s*\\([^)]*\\)\\s*:"
+  #       entity_type: Operation
+  #       name_group: 1
+  #       scope: file
+  #
+  # Compiled by detector.go:156 with plain regexp.Compile, so `^` meant start
+  # of TEXT: it fired only on a file whose very first bytes are whitespace
+  # followed by a field declaration. Measured over 1907 real `.graphql`/`.gql`
+  # files (relay, gqlgen, graphiql, graphql-js, apollo-client): ZERO matches.
+  # The rule has never produced anything.
+  #
+  # Under `(?m)` it matches 1429 times in 160 of those files, and all 160 are
+  # SDL documents — classified by whether the file carries a `type`/`input`/
+  # `interface`/`enum`/`union`/`scalar`/`extend`/`schema`/`directive`
+  # definition at all — with ZERO matches in a pure operation document. So the
+  # widening is not an over-fire across file kinds, which is what #6927 sent
+  # this arm to look for. The reason it is still wrong is narrower and worse.
+  #
+  # internal/extractors/graphql already emits EVERY field of every
+  # `type`/`interface`/`input` as its own `SCOPE.Component` (subtype `field`)
+  # named `Owner.field`, with a CONTAINS edge from its owner
+  # (graphql.go:236-270). This rule captured a strict SUBSET of those — only
+  # fields carrying an argument list — under a different kind and a BARE name,
+  # which drops the owner and collapses two same-named fields on different
+  # types into one entity per file.
+  #
+  # It is not merely redundant, it is actively harmful, and the harm is
+  # invisible to recall. Measured on internal/quality/golden/graphql-schema-mini
+  # by running the pipeline with `(?m)` added: entity_recall stayed 100%,
+  # relationship_recall stayed 100%, forbidden hits stayed 0 — and TWO SERVES
+  # edges silently moved. The http_endpoint synthesis emits
+  # `SCOPE.Operation "QUERY /node"` with `handler_ref: node`, a BARE name that
+  # the resolver binds to the field. With this rule widened, the new bare
+  # `Operation|node` outranked `SCOPE.Component|Query.node` and
+  # `QUERY /node --SERVES-->` repointed onto it, losing the owner
+  # qualification; `QUERY /user` did the same. `QUERY /posts` and
+  # `QUERY /settings` were untouched, because their fields take no arguments —
+  # which is what makes the two moved edges attributable to this rule and not
+  # to the schema.
+  #
+  # Removal is behaviour-preserving TODAY on every input measured (0 matches
+  # in 1907 files), so nothing is lost by it and the `(?m)` landmine is gone.
+  #
+  # The graded consequence lives in graphql-schema-mini's expected.json:
+  # `QUERY /node --SERVES--> Query.node` and `QUERY /user --SERVES--> Query.user`
+  # are must_exist rows and `Operation|node` / `Operation|user` are forbidden
+  # entities. Re-adding this rule in any form fails all four; `QUERY /posts
+  # --SERVES--> Query.posts` is carried alongside as a control that passes in
+  # both worlds, so a failure there means something other than this rule moved.
+  # TestIssue6927_GraphQL_NoOperationSourcePattern (internal/engine) fails if a
+  # source_pattern emitting `Operation` returns to this file at all.
 
 relationship_rules:
   # NO `implements` RULE HERE. #6370 gave internal/extractors/graphql its own

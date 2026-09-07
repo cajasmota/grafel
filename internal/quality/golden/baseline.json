@@ -104,8 +104,8 @@
     "graphql-schema-mini": {
       "entity_found": 8,
       "entity_expected": 8,
-      "relationship_found": 6,
-      "relationship_expected": 6,
+      "relationship_found": 9,
+      "relationship_expected": 9,
       "entity_extracted_total": 34,
       "relationship_extracted_total": 82
     },
