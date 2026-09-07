@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -408,5 +409,226 @@ func TestWatcherInotifyBudget_CacheIsBounded(t *testing.T) {
 	if third.Dirs != 2*first.Dirs {
 		t.Fatalf("after the TTL the report says %d dirs for two identical repos, want %d — "+
 			"the cache never expires, so the announcement is permanently stale", third.Dirs, 2*first.Dirs)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The demand is what was ATTEMPTED, not what survived (review blocker)
+// ---------------------------------------------------------------------------
+//
+// The measured figure comes from the watcher's directory map, which holds the
+// watches the kernel GRANTED. So every way a subscription fails makes the
+// report CHEAPER, and the announcement reads "fits" in exactly the case the
+// arm exists to catch: a repo that is registered and receiving nothing.
+
+// A repo the descriptor budget refused is registered, unwatched, and absent
+// from the measured set. Its cost must be projected back in, and the line must
+// say NOT WATCHED.
+func TestWatcherInotifyBudget_RefusedRepoIsInTheDemandAndAnnounced(t *testing.T) {
+	t.Setenv(inotifyLimitEnv, "8192")
+	repo := budgetRepo(t)
+	// A private ledger of 1 descriptor: the walk cannot get through the
+	// fixture, so AddRepo refuses the repo outright and unwinds.
+	w, err := NewWatcherConfig(Config{Debounce: time.Hour, FDBudget: 1}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer w.Stop()
+
+	if _, err := w.AddRepo(repo); err == nil {
+		t.Fatal("premise broken: a 1-descriptor budget subscribed the whole fixture")
+	}
+	if n := backendWatchList(w); n != 0 {
+		t.Fatalf("premise broken: %d paths survived the refusal", n)
+	}
+
+	b := w.InotifyBudget()
+	if b.UnwatchedRepos != 1 {
+		t.Fatalf("UnwatchedRepos = %d, want 1 — the refused repo vanished from the report", b.UnwatchedRepos)
+	}
+	if b.Dirs != 4 {
+		t.Fatalf("demand = %d dirs, want 4 — a refused subscription made the budget report CHEAPER, "+
+			"which is the silent degradation this probe exists to expose", b.Dirs)
+	}
+	sum := b.Summary()
+	if !strings.Contains(sum, "NOT WATCHED") {
+		t.Errorf("a repo that receives no events at all is announced as healthy: %q", sum)
+	}
+	if !notesMention(b.Notes, "DEGRADED") {
+		t.Errorf("no note explains the degradation: %v", b.Notes)
+	}
+}
+
+// The Linux ENOSPC shape: the pool is full, fsnotify's Add fails, subscribeRepo
+// logs a WARN and carries on. Driven through the fsAdd seam so the property is
+// deterministic on any host.
+func TestWatcherInotifyBudget_BackendRejectedDirsAreInTheDemand(t *testing.T) {
+	t.Setenv(inotifyLimitEnv, "8192")
+	repo := budgetRepo(t)
+	w, err := NewWatcherConfig(Config{Debounce: time.Hour}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer w.Stop()
+
+	// ENOSPC is what a full max_user_watches returns.
+	w.mu.Lock()
+	w.fsAdd = func(string) error { return syscall.ENOSPC }
+	w.mu.Unlock()
+
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if _, dirs, _, _, _ := w.Stats(); dirs != 0 {
+		t.Fatalf("premise broken: %d dirs subscribed while every Add failed", dirs)
+	}
+
+	b := w.InotifyBudget()
+	if b.FailedDirs != 4 {
+		t.Fatalf("FailedDirs = %d, want 4 — watches the kernel refused are not counted, so the "+
+			"report gets cheaper the worse the failure is", b.FailedDirs)
+	}
+	if b.Dirs != 4 {
+		t.Fatalf("demand = %d dirs, want 4", b.Dirs)
+	}
+	sum := b.Summary()
+	if !strings.Contains(sum, "NOT WATCHED") {
+		t.Errorf("every directory was rejected and the line still reads healthy: %q", sum)
+	}
+	if strings.Contains(sum, "0 of ") {
+		t.Errorf("the demand collapsed to zero when the kernel refused it: %q", sum)
+	}
+}
+
+// The negative half: a healthy watcher must not print the NOT WATCHED clause,
+// or a reader learns to ignore it.
+func TestWatcherInotifyBudget_HealthyWatcherIsNotAnnouncedAsDegraded(t *testing.T) {
+	t.Setenv(inotifyLimitEnv, "8192")
+	repo := budgetRepo(t)
+	w, err := NewWatcherConfig(Config{Debounce: time.Hour}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer w.Stop()
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	b := w.InotifyBudget()
+	if b.UnwatchedRepos != 0 || b.FailedDirs != 0 {
+		t.Fatalf("a healthy subscription reports %d refused repos and %d rejected dirs",
+			b.UnwatchedRepos, b.FailedDirs)
+	}
+	if sum := b.Summary(); strings.Contains(sum, "NOT WATCHED") {
+		t.Errorf("healthy watcher announced as degraded: %q", sum)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The RENDERED line is the claim (review M5, M6)
+// ---------------------------------------------------------------------------
+
+// M6: the measured/projected distinction is a claim the summary makes, so it is
+// asserted on the string, not on the struct field behind it. Poll mode printing
+// "(measured, 9760 dirs)" for a walk that subscribed nothing is the failure.
+func TestInotifyBudget_SummaryNamesHowTheDemandWasObtained(t *testing.T) {
+	t.Setenv(inotifyLimitEnv, "8192")
+	repo := budgetRepo(t)
+
+	polling, err := NewWatcherConfig(Config{Debounce: time.Hour, Delegate: &recordingDelegate{}}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer polling.Stop()
+	if _, err := polling.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	projected := polling.InotifyBudget().Summary()
+	if !strings.Contains(projected, "(projected,") {
+		t.Errorf("poll mode's line does not say the demand is projected: %q", projected)
+	}
+	if strings.Contains(projected, "(measured,") {
+		t.Errorf("poll mode prints a walk as a measurement of a subscription it does not hold: %q", projected)
+	}
+
+	subscribing, err := NewWatcherConfig(Config{Debounce: time.Hour}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer subscribing.Stop()
+	if _, err := subscribing.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	measured := subscribing.InotifyBudget().Summary()
+	if !strings.Contains(measured, "(measured,") {
+		t.Errorf("fsnotify mode's line does not say the demand is measured: %q", measured)
+	}
+	if strings.Contains(measured, "(projected,") {
+		t.Errorf("a live subscription is printed as a projection: %q", measured)
+	}
+}
+
+// M5: the env override on a platform with NO inotify pool. This combination was
+// ungraded, and on it the summary rendered a Linux-shaped "N of 8192 — fits"
+// verdict about a host that cannot produce such a ceiling. Both legs asserted,
+// so neither platform's CI run is vacuous.
+func TestInotifyBudget_WhatIfCeilingIsNeverPrintedAsAMeasuredOne(t *testing.T) {
+	t.Setenv(inotifyLimitEnv, "8192")
+	b := MeasuredInotifyBudget(1, 4)
+	sum := b.Summary()
+
+	if !b.WhatIf {
+		t.Fatal("an operator-supplied ceiling is not marked as a what-if")
+	}
+	if !strings.Contains(sum, "4 of 8192") {
+		t.Fatalf("premise broken, the comparison is missing: %q", sum)
+	}
+	if !notesMention(b.Notes, inotifyLimitEnv) {
+		t.Errorf("notes do not name the env var as the source: %v", b.Notes)
+	}
+
+	if inotifyPoolApplies {
+		// On Linux the what-if is a real ceiling shape for a real pool; it
+		// must still be labelled in the notes, which the assertion above
+		// covers, and must not be dressed up as this host's own number.
+		if !notesMention(b.Notes, "NOT read from this host's kernel") {
+			t.Errorf("an operator-supplied ceiling is not distinguished from a kernel read: %v", b.Notes)
+		}
+		return
+	}
+	for _, want := range []string{"not applicable on " + runtime.GOOS, "no inotify watch pool", "WHAT-IF", inotifyLimitEnv} {
+		if !strings.Contains(sum, want) {
+			t.Errorf("the printed line is missing %q — on %s it reads as a measured verdict about a "+
+				"pool this host does not have.\ngot: %q", want, runtime.GOOS, sum)
+		}
+	}
+	if !notesMention(b.Notes, "what-if against a Linux ceiling") {
+		t.Errorf("notes do not say this platform has no pool of its own: %v", b.Notes)
+	}
+}
+
+// M2: the projection honours the watch-dir cap, which truncates the
+// subscription. Unreachable at the 100,000 default, reachable — and now graded
+// — through GRAFEL_WATCH_DIR_CAP, which WatchDirCap reads per call.
+func TestProjectInotifyBudget_HonoursTheWatchDirCap(t *testing.T) {
+	t.Setenv("GRAFEL_WATCH_DIR_CAP", "2")
+	repo := budgetRepo(t)
+
+	proj := ProjectInotifyBudget([]string{repo}, nil)
+	w, err := NewWatcherConfig(Config{Debounce: time.Hour}, func(string, bool) {}, nil)
+	if err != nil {
+		t.Fatalf("NewWatcherConfig: %v", err)
+	}
+	defer w.Stop()
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	actual := backendWatchList(w)
+
+	if actual != 2 {
+		t.Fatalf("premise broken: the cap of 2 let %d paths through", actual)
+	}
+	if proj.Dirs != actual {
+		t.Fatalf("under a dir cap of 2 the probe projects %d dirs and the subscription takes %d — "+
+			"the projection over-reports by the truncated tail", proj.Dirs, actual)
 	}
 }

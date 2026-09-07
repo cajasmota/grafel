@@ -37,6 +37,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/walk"
@@ -89,6 +90,28 @@ type InotifyBudget struct {
 	// one they are looking at.
 	Measured bool
 
+	// UnwatchedRepos and FailedDirs are the DEGRADED half of the demand, and
+	// they exist because a measured figure alone is a LOWER BOUND on demand,
+	// not the demand.
+	//
+	// The watcher's own directory map counts watches the kernel GRANTED. A
+	// repo the descriptor budget refused, or a directory whose fsnotify Add
+	// failed — on Linux, ENOSPC, which is exactly the inotify pool running
+	// out — leaves that map smaller, so the naive measured report gets
+	// CHEAPER the worse the failure is, and a repo receiving no events at all
+	// renders as "fits". That is the silent degradation this arm exists to
+	// expose (#6921, #6923, #6928) reproduced inside the instrument built to
+	// expose it, so the refused demand is counted back into Dirs and named
+	// here, and Summary says NOT WATCHED out loud.
+	UnwatchedRepos int
+	FailedDirs     int
+
+	// WhatIf records that Limit came from the operator rather than from this
+	// host's kernel. It is carried into the rendered line, not just into the
+	// notes: on a platform with no inotify pool at all a bare "N of 8192 —
+	// fits" is a Linux-shaped verdict about a host that has no such ceiling.
+	WhatIf bool
+
 	// Notes carries the caveats in the report's own words. Every consumer
 	// prints them; none of them summarise them away.
 	Notes []string
@@ -119,27 +142,64 @@ func (b InotifyBudget) Headroom() (int, bool) {
 	return b.Limit - b.Projected, true
 }
 
+// demandLabel says how the demand figure was obtained, in the rendered line
+// rather than only in a struct field. "measured" for a live subscription,
+// "projected" for a walk, and the honest hybrid when a refused repo's cost had
+// to be projected back into a measured report.
+func (b InotifyBudget) demandLabel() string {
+	if !b.Measured {
+		return "projected"
+	}
+	if b.UnwatchedRepos > 0 {
+		return fmt.Sprintf("measured, plus a projection of %d refused repo(s)", b.UnwatchedRepos)
+	}
+	return "measured"
+}
+
+// degradedClause is the NOT WATCHED announcement. Empty in the healthy case,
+// because a line that always prints trains the reader to ignore it.
+func (b InotifyBudget) degradedClause() string {
+	if b.UnwatchedRepos == 0 && b.FailedDirs == 0 {
+		return ""
+	}
+	return fmt.Sprintf("; NOT WATCHED: %d repo(s) refused, %d director(ies) the backend rejected — "+
+		"their cost IS included above and those trees receive no file events at all, so this is not an all-clear",
+		b.UnwatchedRepos, b.FailedDirs)
+}
+
 // Summary is the one-line announcement, in the form `grafel status` prints it.
 // The caveats live in Notes and are printed with it, never instead of it.
 func (b InotifyBudget) Summary() string {
-	demand := "projected"
-	if b.Measured {
-		demand = "measured"
-	}
+	shape := fmt.Sprintf("(%s, %d dirs across %d repos)", b.demandLabel(), b.Dirs, b.Repos)
+	tail := b.degradedClause()
+
 	if !b.PoolApplies {
-		return fmt.Sprintf("inotify budget: not applicable on %s — %d dirs across %d repos (%s)",
-			b.Platform, b.Dirs, b.Repos, demand)
+		return fmt.Sprintf("inotify budget: not applicable on %s — %d dirs across %d repos (%s)%s",
+			b.Platform, b.Dirs, b.Repos, b.demandLabel(), tail)
 	}
 	if !b.LimitKnown() {
-		return fmt.Sprintf("inotify budget: %d watch descriptors (%s, %d dirs across %d repos), host limit unknown",
-			b.Projected, demand, b.Dirs, b.Repos)
+		return fmt.Sprintf("inotify budget: %d watch descriptors %s, host limit unknown%s",
+			b.Projected, shape, tail)
 	}
-	verdict := "fits"
+
+	verdict := "fits (grafel's demand alone)"
+	if free, ok := b.Headroom(); ok && !b.WouldExceed() {
+		verdict = fmt.Sprintf("fits (grafel's demand alone), %d left under the ceiling — an UPPER BOUND, the pool is shared", free)
+	}
 	if b.WouldExceed() {
 		verdict = "WOULD EXCEED"
 	}
-	return fmt.Sprintf("inotify budget: %d of %d watch descriptors (%s, %d dirs across %d repos) — %s",
-		b.Projected, b.Limit, demand, b.Dirs, b.Repos, verdict)
+
+	// A ceiling this host does not have is rendered as the what-if it is. A
+	// bare "N of 8192 — fits" on a platform with no inotify pool is a
+	// Linux-shaped verdict about a machine that cannot produce one.
+	if b.WhatIf && !inotifyPoolApplies {
+		return fmt.Sprintf("inotify budget: not applicable on %s (no inotify watch pool on this platform) — "+
+			"WHAT-IF against the ceiling supplied in %s: %d of %d watch descriptors %s — %s%s",
+			b.Platform, inotifyLimitEnv, b.Projected, b.Limit, shape, verdict, tail)
+	}
+	return fmt.Sprintf("inotify budget: %d of %d watch descriptors %s — %s%s",
+		b.Projected, b.Limit, shape, verdict, tail)
 }
 
 // inotifySharedPoolNote is the caveat that must survive every refactor: the
@@ -170,7 +230,9 @@ func MeasuredInotifyBudget(repos, dirs int) InotifyBudget {
 	b.Dirs = dirs
 	b.Measured = true
 	b.Projected = inotifyCostModel.cost(dirs, 0)
-	b.Notes = append(b.Notes, "demand is the LIVE subscribed directory set, counted from the watcher's own map.")
+	b.Notes = append(b.Notes, "demand is the LIVE subscribed directory set — the watches the kernel GRANTED. "+
+		"A measured figure ALONE is a lower bound on demand, because a refused repo or a rejected directory makes "+
+		"it smaller rather than larger; anything refused is counted back in and called out as NOT WATCHED.")
 	return b
 }
 
@@ -183,6 +245,7 @@ func newInotifyBudget() InotifyBudget {
 		// where the kernel has no such pool — as a what-if. It is labelled as
 		// such so it cannot be mistaken for a reading of this host.
 		b.PoolApplies = true
+		b.WhatIf = true
 		b.Limit = n
 		b.LimitSource = inotifyLimitEnv
 		b.Notes = append(b.Notes, fmt.Sprintf("limit was supplied by %s, NOT read from this host's kernel.", inotifyLimitEnv))
@@ -297,6 +360,36 @@ func (w *Watcher) InotifyBudget() InotifyBudget {
 	} else {
 		repos, dirs, _, _, _ := w.Stats()
 		b = MeasuredInotifyBudget(repos, dirs)
+		// The demand is what was ATTEMPTED, not what survived. Two ways a
+		// watch is attempted and not granted, and both make the measured set
+		// SMALLER — which is why reporting the measured set alone announces
+		// "fits" exactly when the watcher has been refused:
+		//
+		//  1. A repo the descriptor budget refused outright. It is registered
+		//     with the daemon, receives no events, and is absent from
+		//     w.dirToRepo. Its cost is projected back in.
+		//  2. A directory whose fsnotify Add failed — on Linux, ENOSPC from a
+		//     max_user_watches pool that is already full. subscribeRepo logs
+		//     WARN and carries on, so the shortfall is exactly the number of
+		//     watches the kernel would not give us.
+		if _, _, _, refused := w.FDBudgetStats(); len(refused) > 0 {
+			p := ProjectInotifyBudget(refused, w.extraSkip)
+			b.Repos += p.Repos
+			b.Dirs += p.Dirs
+			b.UnwatchedRepos = len(refused)
+		}
+		if n := atomic.LoadUint64(&w.fsAddFailed); n > 0 {
+			b.FailedDirs = int(n)
+			b.Dirs += int(n)
+		}
+		b.Projected = inotifyCostModel.cost(b.Dirs, 0)
+		if b.UnwatchedRepos > 0 || b.FailedDirs > 0 {
+			b.Notes = append(b.Notes, fmt.Sprintf(
+				"DEGRADED: %d repo(s) were refused and %d director(ies) were rejected by the backend. "+
+					"Their cost is included in the demand above, but those trees are receiving no file "+
+					"events — a re-index will not be triggered by edits there.",
+				b.UnwatchedRepos, b.FailedDirs))
+		}
 	}
 	w.inotifyProbeVal = b
 	w.inotifyProbeAt = now

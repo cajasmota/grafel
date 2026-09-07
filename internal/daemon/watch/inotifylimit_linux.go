@@ -20,7 +20,12 @@ const inotifyPoolApplies = true
 // it (the sysctl is read-only from an unprivileged user namespace). That is
 // exactly why the probe exists — grafel can see its own demand against this
 // number, and cannot see anyone else's.
-const inotifyMaxUserWatchesPath = "/proc/sys/fs/inotify/max_user_watches"
+//
+// A var, not a const, for exactly one reason: the Linux leg of CI can then
+// point it at a fixture and grade the unreadable and unparseable branches,
+// which no host with a working /proc can produce on demand. Never reassigned
+// in production.
+var inotifyMaxUserWatchesPath = "/proc/sys/fs/inotify/max_user_watches"
 
 // readInotifyLimit reports the per-UID watch ceiling and where it came from.
 func readInotifyLimit() (int, string, error) {

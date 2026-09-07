@@ -222,6 +222,11 @@ type Watcher struct {
 	// and /diagnostics is polled, so a status surface must not re-walk the
 	// fleet on every request. Guarded by its own mutex, never w.mu: the walk
 	// runs outside the watcher's lock.
+	// fsAddFailed counts directories the backend REFUSED to watch (fsnotify
+	// Add returned an error; ENOSPC on a full inotify pool is the case that
+	// matters). Atomic: written from the subscribe walk, read by the budget
+	// probe.
+	fsAddFailed     uint64
 	inotifyProbeMu  sync.Mutex
 	inotifyProbeAt  time.Time
 	inotifyProbeVal InotifyBudget
@@ -831,6 +836,12 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		}
 		if err := w.fsAdd(p); err != nil {
 			w.fdb.release(n)
+			// Counted, not just logged (#6932 arm B). On Linux this is
+			// ENOSPC — the per-UID inotify pool is full — and the walk
+			// carries on, so without a counter the shortfall shows up ONLY
+			// as a smaller watch set, i.e. as a CHEAPER budget report. The
+			// probe adds it back so the demand is what was attempted.
+			atomic.AddUint64(&w.fsAddFailed, 1)
 			w.logger.Warn("watcher: add failed", "path", p, "err", err)
 			return nil
 		}
