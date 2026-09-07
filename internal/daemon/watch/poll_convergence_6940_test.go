@@ -1,12 +1,15 @@
 package watch
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/walk"
 	"github.com/cajasmota/grafel/internal/gitmeta"
@@ -428,5 +431,48 @@ func TestChangePoller_RemoveRepoDropsTheDeclineSet(t *testing.T) {
 	}
 	if got := cpCycle(t, p, repo); !cpContains(got, "photo.png") {
 		t.Fatalf("a re-registered repo inherited a stale refusal: %v", got)
+	}
+}
+
+// --- the boundary condition (2) rests on -------------------------------------
+
+// MP-1, from the #6961 review: `!m.IndexedAt.After(submittedAt)` is what makes
+// condition (2) PROOF that an index pass ran rather than a coincidence, and
+// nothing observed the strictness — relaxing it to `Before` (i.e. ">=") left
+// the whole package green. Two independent nanosecond clock reads do not
+// collide in practice, so this is not a live defect; it is an ungraded claim,
+// and a "simplification" of the comparison would ship green.
+//
+// Both halves are asserted, because an equality case that declines nothing is
+// also what a tracker that declines NOTHING AT ALL looks like: the positive
+// control drives the very same tracker one nanosecond further and requires the
+// decline to appear.
+func TestDeclineTracker_EqualTimestampIsNotProofOfACompletedPass(t *testing.T) {
+	tr := &declineTracker{
+		pending: make(map[string]time.Time),
+		refused: make(map[string]struct{}),
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	at := time.Now().UTC()
+	tr.noteSubmitted([]string{"photo.png"}, at)
+
+	// EXACTLY equal: a manifest stamped at the same instant we submitted is not
+	// evidence that a pass has since completed.
+	tr.reconcile(&diff.Manifest{
+		IndexedAt: at,
+		Files:     map[string]diff.FileEntry{"alpha.go": {}},
+	}, logger, "/repo")
+	if tr.declined("photo.png") {
+		t.Fatal("a manifest stamped at the SAME instant as the submission was taken as proof a pass completed")
+	}
+
+	// Positive control: one nanosecond later is proof, and must decline — else
+	// the assertion above passes for the wrong reason.
+	tr.reconcile(&diff.Manifest{
+		IndexedAt: at.Add(time.Nanosecond),
+		Files:     map[string]diff.FileEntry{"alpha.go": {}},
+	}, logger, "/repo")
+	if !tr.declined("photo.png") {
+		t.Fatal("a manifest stamped strictly AFTER the submission did not decline the unstamped path — the equality assertion above is vacuous")
 	}
 }
