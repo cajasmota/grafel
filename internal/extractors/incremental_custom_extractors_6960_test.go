@@ -232,7 +232,9 @@ func TestIncrementalDispatchesCustomExtractorsWhenTheGateIsOn6960(t *testing.T) 
 // reindex", and with the gate off a full reindex emits no custom entities — so
 // an incremental pass that dispatched them unconditionally would be just as
 // divergent as one that never dispatched them, only in the opposite direction
-// (and would silently pay the +17.5% wall cost the gate exists to withhold).
+// (and would silently pay the extraction cost the gate exists to withhold —
+// +17.5% wall on the #6106 FIXTURES; see the gate comment in cmd/grafel for
+// that figure's denominator and #6966 for the corpus-scale number).
 func TestIncrementalSkipsCustomExtractorsWhenTheGateIsOff6960(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 
