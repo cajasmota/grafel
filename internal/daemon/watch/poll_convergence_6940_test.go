@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -202,7 +203,11 @@ func TestChangePoller_SparseFilteredPathConverges(t *testing.T) {
 	cpGitRun(t, repo, "config", "--local", "core.sparseCheckout", "true")
 	cpGitRun(t, repo, "config", "--local", "core.sparseCheckoutCone", "true")
 	if si := gitmeta.ProbeRepo(repo); !si.IsSparse {
-		t.Skip("fixture did not become sparse; the sparse gate is unreachable here")
+		// NOT a skip (#6961 review): the two config lines above make this
+		// outcome deterministic, and CI runs without -v, so a skip here would
+		// delete the only sparse leg in silence — removing just those two
+		// lines turned the whole test into "SKIP ... PASS, exit 0".
+		t.Fatal("the probe does not see the sparse checkout this fixture just created — the sparse gate is UNTESTED, not unreachable")
 	}
 
 	cpWriteFile(t, repo, "outside/gen.go", "package outside\n")
@@ -474,5 +479,185 @@ func TestDeclineTracker_EqualTimestampIsNotProofOfACompletedPass(t *testing.T) {
 	}, logger, "/repo")
 	if !tr.declined("photo.png") {
 		t.Fatal("a manifest stamped strictly AFTER the submission did not decline the unstamped path — the equality assertion above is vacuous")
+	}
+}
+
+// --- condition (1): only DISCOVERED paths, only after the request went out ---
+
+// M1b, from the #6961 review. The tracker must record only paths that arrived
+// through DISCOVERY, never a manifest key that half 1 swept. Recording manifest
+// keys is a silent missed change, and it is reachable in three ordinary steps:
+//
+//  1. delete a manifest key — the poller reports it (correctly),
+//  2. the pass prunes it and advances IndexedAt, so under the mutant the path
+//     is now refused,
+//  3. RECREATE it. It is no longer a manifest key, so it can only arrive
+//     through discovery — and discovery skips refused paths. The recreated
+//     file is then never indexed until some unrelated change triggers a
+//     stamping pass, or the daemon restarts.
+//
+// The shipped code is right because `discovered` excludes anything already in
+// `cand`; this is what fails when that stops being true.
+func TestChangePoller_RecreatedManifestKeyIsNeverRefused(t *testing.T) {
+	repo, state := cpNewRepo(t)
+	cpIndexPass(t, repo, state)
+	p, _ := cpNewTestPoller(t, repo, state)
+
+	if err := os.Remove(filepath.Join(repo, "alpha.go")); err != nil {
+		t.Fatal(err)
+	}
+	if got := cpCycle(t, p, repo); !cpContains(got, "alpha.go") {
+		t.Fatalf("the deletion of a manifest key was not reported: %v", got)
+	}
+	cpIndexPass(t, repo, state)
+	if keys := cpManifestKeys(t, state); cpContains(keys, "alpha.go") {
+		t.Fatalf("fixture premise broken: the pass did not prune the deleted key: %v", keys)
+	}
+	if n := cpConverges(t, p, repo, 6); n != 0 {
+		t.Fatalf("the pruned deletion still reported for %d cycles", n)
+	}
+	// Nothing about a deletion is a REFUSAL: the indexer did not decline the
+	// path, it agreed the path is gone.
+	if n := cpDeclineCount(t, p, repo); n != 0 {
+		t.Fatalf("a swept manifest key was recorded as declined (%d entries) — its recreation would be invisible", n)
+	}
+
+	cpWriteFile(t, repo, "alpha.go", "package a\n\nfunc Alpha() { _ = 7 }\n")
+	if got := cpCycle(t, p, repo); !cpContains(got, "alpha.go") {
+		t.Fatalf("the RECREATED file was never reported (%v) — it would stay unindexed until an unrelated change or a daemon restart", got)
+	}
+}
+
+// M7, from the same review: pending is recorded only AFTER the sink call, so a
+// cycle that submits nothing records nothing.
+//
+// The guard is currently UNREACHABLE, and this test says why by pinning the
+// premise rather than asserting the guard directly: every discovered path is by
+// construction absent from the manifest, and diff.isChanged returns true
+// unconditionally for a path the manifest lacks (diff.go, "new file"), so
+// discovered is always a SUBSET of changed and a cycle with a non-empty
+// discovered set always submits. If that ever stops holding — a Filter that can
+// drop a discovered path — this assertion fails first, and that is exactly the
+// moment the guard starts carrying weight.
+func TestChangePoller_EveryDiscoveredPathIsSubmitted(t *testing.T) {
+	repo, state := cpNewRepo(t)
+	cpIndexPass(t, repo, state)
+	p, submits := cpNewTestPoller(t, repo, state)
+
+	// A quiescent cycle submits nothing and must record nothing.
+	if got := cpCycle(t, p, repo); len(got) != 0 {
+		t.Fatalf("fixture premise broken: the repo is not quiescent: %v", got)
+	}
+	abs, err := filepath.Abs(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := p.trackerFor(abs)
+	tr.mu.Lock()
+	pend := len(tr.pending)
+	tr.mu.Unlock()
+	if pend != 0 {
+		t.Fatalf("a cycle that submitted nothing recorded %d pending path(s)", pend)
+	}
+	if len(*submits) != 0 {
+		t.Fatalf("a quiescent cycle submitted %d reindex requests", len(*submits))
+	}
+
+	// The premise: discovered is a subset of changed, so "discovered but not
+	// submitted" cannot arise. Driven with both discovery shapes at once — an
+	// untracked file and an untracked subtree — plus a modified manifest key.
+	cpWriteFile(t, repo, "new.go", "package a\n\nfunc New() {}\n")
+	cpWriteFile(t, repo, "sub/deep.go", "package sub\n")
+	cpWriteFile(t, repo, "beta.go", "package a\n\nfunc Beta() { _ = 1 }\n")
+	changed, discovered := p.pollRepo(abs)
+	if len(discovered) == 0 {
+		t.Fatal("fixture premise broken: nothing was discovered, so the subset claim is vacuous")
+	}
+	for _, d := range discovered {
+		if !cpContains(changed, d) {
+			t.Fatalf("discovered path %q is NOT in the changed set %v — a cycle can now discover a path it does not submit, and the pending guard is load-bearing", d, changed)
+		}
+	}
+}
+
+// The cap's DIRECTION is the claim: past it the poller over-fires rather than
+// dropping a path. Both maps are capped, and both caps are asserted here —
+// pending because it drains only on a completed pass, refused because it is
+// what suppresses reporting. Driven against the tracker directly: 4096 is far
+// too many paths to route through a git fixture.
+func TestDeclineTracker_CapOverflowOverFires(t *testing.T) {
+	tr := &declineTracker{
+		pending: make(map[string]time.Time),
+		refused: make(map[string]struct{}),
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	at := time.Now().UTC()
+
+	paths := make([]string, 0, maxDeclinedPaths+10)
+	for i := 0; i < maxDeclinedPaths+10; i++ {
+		paths = append(paths, "junk/"+strconv.Itoa(i)+".png")
+	}
+	tr.noteSubmitted(paths, at)
+	tr.mu.Lock()
+	pend := len(tr.pending)
+	tr.mu.Unlock()
+	if pend > maxDeclinedPaths {
+		t.Fatalf("pending grew to %d, past the cap of %d — it drains only on a completed pass, so this is the unbounded case", pend, maxDeclinedPaths)
+	}
+
+	tr.reconcile(&diff.Manifest{
+		IndexedAt: at.Add(time.Second),
+		Files:     map[string]diff.FileEntry{"alpha.go": {}},
+	}, logger, "/repo")
+
+	tr.mu.Lock()
+	ref := len(tr.refused)
+	tr.mu.Unlock()
+	if ref == 0 {
+		t.Fatal("nothing was refused at all — the cap assertions here would pass for the wrong reason")
+	}
+	if ref > maxDeclinedPaths {
+		t.Fatalf("refused grew to %d, past the cap of %d", ref, maxDeclinedPaths)
+	}
+	// The overflow must still be REPORTED. A cap that silently suppressed the
+	// paths it could not record would be the mirror defect at scale.
+	var suppressed, overflowing int
+	for _, rel := range paths {
+		if tr.declined(rel) {
+			suppressed++
+		} else {
+			overflowing++
+		}
+	}
+	if suppressed != maxDeclinedPaths {
+		t.Fatalf("expected exactly %d suppressed paths, got %d", maxDeclinedPaths, suppressed)
+	}
+	if overflowing != 10 {
+		t.Fatalf("expected the 10 over-cap paths to keep re-reporting (over-firing), got %d", overflowing)
+	}
+
+	// The two caps must be graded SEPARATELY, or they mask each other: with
+	// pending capped, a promotion loop that ignored its own cap would still
+	// never see more than maxDeclinedPaths candidates in one pass. pending is
+	// drained now, so this second round reaches the promotion cap directly.
+	extra := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		extra = append(extra, "second-round/"+strconv.Itoa(i)+".png")
+	}
+	tr.noteSubmitted(extra, at)
+	tr.reconcile(&diff.Manifest{
+		IndexedAt: at.Add(2 * time.Second),
+		Files:     map[string]diff.FileEntry{"alpha.go": {}},
+	}, logger, "/repo")
+	tr.mu.Lock()
+	ref2 := len(tr.refused)
+	tr.mu.Unlock()
+	if ref2 != maxDeclinedPaths {
+		t.Fatalf("refused is %d after a second round, cap is %d — the promotion cap is not enforced", ref2, maxDeclinedPaths)
+	}
+	for _, rel := range extra {
+		if tr.declined(rel) {
+			t.Fatalf("%q was suppressed past the cap — over the cap the poller must OVER-fire, not drop a path", rel)
+		}
 	}
 }

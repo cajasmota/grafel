@@ -447,13 +447,21 @@ func (p *ChangePoller) pollRepo(abs string) (changedOut, discoveredOut []string)
 	return changed, discovered
 }
 
-// maxDeclinedPaths caps the per-repo decline set. The set is bounded in
-// practice by what `git status -unormal` reports as FILES (an untracked subtree
-// arrives as one collapsed `dir/` line), but a cap keeps a pathological repo
-// from turning a convergence fix into unbounded daemon memory. Past the cap the
-// poller stops recording and reverts to the pre-#6940 behaviour for the
-// overflow — it OVER-fires rather than dropping a path, which is the direction
-// this file chooses everywhere else.
+// maxDeclinedPaths caps BOTH per-repo maps a decline passes through — pending
+// and refused. Both sets are bounded in practice by what `git status -unormal`
+// reports as FILES (an untracked subtree arrives as one collapsed `dir/` line),
+// but a cap keeps a pathological repo from turning a convergence fix into
+// unbounded daemon memory.
+//
+// pending is capped for a specific reason (#6961 review): it drains ONLY on a
+// completed index pass, so it is exactly the debounced / circuit-broken repo —
+// the scenario condition (2) is built around — where it would otherwise grow
+// without limit while nothing ever removed an entry.
+//
+// Past the cap the poller stops recording and reverts to the pre-#6940
+// behaviour for the overflow — it OVER-fires rather than dropping a path, which
+// is the direction this file chooses everywhere else. That direction is
+// asserted, not asserted-about: see TestDeclineTracker_CapOverflowOverFires.
 const maxDeclinedPaths = 4096
 
 // declineTracker is the #6940 convergence state for one repo.
@@ -519,6 +527,9 @@ func (t *declineTracker) noteSubmitted(discovered []string, at time.Time) {
 		if _, ok := t.pending[rel]; ok {
 			continue // keep the FIRST submission time
 		}
+		if len(t.pending) >= maxDeclinedPaths {
+			continue // overflow: this path keeps re-reporting, as it did before #6940
+		}
 		t.pending[rel] = at
 	}
 }
@@ -532,9 +543,25 @@ func (t *declineTracker) reconcile(m *diff.Manifest, logger *slog.Logger, abs st
 
 	// Forgiveness FIRST. A refusal is an observation about one past index
 	// pass, not a permanent verdict: once the manifest holds the path the
-	// indexer has plainly changed its mind (the .gitignore rule was dropped,
-	// the sparse cone widened, the extension list grew), and half 1 sweeps it
-	// from here on anyway.
+	// indexer has plainly changed its mind, and half 1 sweeps it from here on
+	// anyway.
+	//
+	// Only ONE of the ways the indexer can change its mind SELF-TRIGGERS, and
+	// it is the one driven end to end by
+	// TestChangePoller_DeclineIsForgivenWhenTheIndexerChangesItsMind: dropping
+	// a .gitignore rule, because the .gitignore is itself a manifest key, so
+	// half 1 reports the edit and the reindex it asks for re-walks the repo.
+	// The other two do NOT (#6961 review):
+	//
+	//   - Widening a sparse cone edits .git/info/sparse-checkout, which is no
+	//     manifest key, and the newly included path is suppressed — so it
+	//     cannot request the pass that would forgive it. It stays invisible
+	//     until an unrelated change triggers a stamping pass, or the daemon
+	//     restarts. That is bounded and self-healing, but it IS a behaviour
+	//     change against pre-#6940, where the next cycle picked it up.
+	//   - Growing the indexed-extension list means upgrading grafel, which
+	//     restarts the daemon — and nothing here is persisted, so the whole
+	//     decline set is gone. That one heals by construction.
 	//
 	// The order is deliberate and it is what makes the two "is it stamped?"
 	// tests in this function INDEPENDENTLY graded. Promote-then-forgive would
