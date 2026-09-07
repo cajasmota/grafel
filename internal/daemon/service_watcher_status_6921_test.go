@@ -33,6 +33,10 @@ func (s stubWatcherStatus) OverflowStats() (uint64, uint64, uint64, time.Time) {
 	return s.overflows, s.rescans, s.coalesced, s.last
 }
 
+func (stubWatcherStatus) InotifyBudgetReport() (string, []string, bool) {
+	return "", nil, false
+}
+
 func TestFillWatcherStatusReportsQueueOverflows6921(t *testing.T) {
 	last := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	var reply proto.StatusReply

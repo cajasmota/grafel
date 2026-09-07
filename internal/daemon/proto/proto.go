@@ -101,15 +101,32 @@ type StatusReply struct {
 	//
 	// A non-zero count is the only way this failure is visible at all: the
 	// watcher keeps running and keeps reporting healthy through an overflow.
-	WatcherOverflows       uint64             `json:"watcher_overflows,omitempty"`
-	WatcherOverflowRescans uint64             `json:"watcher_overflow_rescans,omitempty"`
-	WatcherLastOverflow    string             `json:"watcher_last_overflow,omitempty"`
-	QueueLen               int                `json:"queue_len,omitempty"`
-	IndexInFlight          []string           `json:"index_in_flight,omitempty"`
-	PendingAlgo            []string           `json:"pending_algo,omitempty"`
-	PendingLinks           []string           `json:"pending_links,omitempty"`
-	IndexedRepos           []IndexedRepoState `json:"indexed_repos,omitempty"`
-	RecentLog              []SchedLogEntry    `json:"recent_log,omitempty"`
+	WatcherOverflows       uint64 `json:"watcher_overflows,omitempty"`
+	WatcherOverflowRescans uint64 `json:"watcher_overflow_rescans,omitempty"`
+	WatcherLastOverflow    string `json:"watcher_last_overflow,omitempty"`
+
+	// InotifyBudget* is the #6932 arm B probe: what this configuration costs
+	// the host's per-UID inotify watch pool, and what that pool allows.
+	// Reported rather than acted on — nothing switches mode on these numbers.
+	//
+	// InotifyBudgetSummary is the one-line announcement and
+	// InotifyBudgetNotes are the caveats that go with it. The caveats are
+	// carried across the wire rather than reconstructed by the client,
+	// because the most important one — the pool is per-UID and host-level, so
+	// grafel can see its own demand and NOT anyone else's — is a property of
+	// how the number was obtained, and the client has no way to know it.
+	InotifyBudgetSummary string   `json:"inotify_budget_summary,omitempty"`
+	InotifyBudgetNotes   []string `json:"inotify_budget_notes,omitempty"`
+	// InotifyBudgetExceeds is true only when grafel's OWN projected demand is
+	// larger than the host ceiling. False when no ceiling could be read: not
+	// knowing the limit is not evidence of exceeding it.
+	InotifyBudgetExceeds bool               `json:"inotify_budget_exceeds,omitempty"`
+	QueueLen             int                `json:"queue_len,omitempty"`
+	IndexInFlight        []string           `json:"index_in_flight,omitempty"`
+	PendingAlgo          []string           `json:"pending_algo,omitempty"`
+	PendingLinks         []string           `json:"pending_links,omitempty"`
+	IndexedRepos         []IndexedRepoState `json:"indexed_repos,omitempty"`
+	RecentLog            []SchedLogEntry    `json:"recent_log,omitempty"`
 
 	// GroupAlgoRunning names the groups whose ANNOTATION (group-algo) pass is
 	// executing right now, and GroupAlgoInFlight counts them. The pass produces

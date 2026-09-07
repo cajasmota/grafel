@@ -160,6 +160,11 @@ type watcherForceRescan interface {
 	// events were dropped and never redelivered; rescans is how many full
 	// reindexes recovered them.
 	OverflowStats() (uint64, uint64, uint64, time.Time)
+	// InotifyBudgetReport returns (summary, notes, exceeds) for the inotify
+	// budget probe (#6932 arm B): what this configuration costs the host's
+	// per-UID watch pool, the caveats that keep that number honest, and
+	// whether grafel's own demand alone exceeds the ceiling.
+	InotifyBudgetReport() (string, []string, bool)
 }
 
 // webhookDispatcherIface is the subset of notifications.Dispatcher used by the

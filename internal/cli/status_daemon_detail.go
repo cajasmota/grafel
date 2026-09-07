@@ -54,6 +54,18 @@ func printDaemonDetail(w io.Writer, st proto.StatusReply) {
 		}
 		fmt.Fprintln(w)
 	}
+	// #6932 arm B: the inotify budget probe. Announced with the reason and the
+	// numbers rather than as a boolean, and NOT gated on anything above — the
+	// case worth seeing is precisely the one where the watcher looks healthy.
+	// The caveats print with the number, never instead of it: the pool is
+	// per-UID and host-level, so this is grafel's own demand against a ceiling
+	// other processes are also drawing on, and grafel cannot see their share.
+	if st.InotifyBudgetSummary != "" {
+		fmt.Fprintf(w, "  %s\n", st.InotifyBudgetSummary)
+		for _, n := range st.InotifyBudgetNotes {
+			fmt.Fprintf(w, "    note: %s\n", n)
+		}
+	}
 	if st.QueueLen > 0 || len(st.IndexInFlight) > 0 ||
 		len(st.PendingAlgo) > 0 || len(st.PendingLinks) > 0 {
 		fmt.Fprintf(w, "  scheduler: queue=%d in_flight=%d pending_algo=%d pending_links=%d\n",

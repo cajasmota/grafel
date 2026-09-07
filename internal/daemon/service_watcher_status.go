@@ -30,6 +30,10 @@ type watcherStatusSource interface {
 	FDBudgetStats() (int, int, int, []string)
 	// OverflowStats returns (overflows, rescans, coalesced, last) (#6921).
 	OverflowStats() (uint64, uint64, uint64, time.Time)
+	// InotifyBudgetReport returns (summary, notes, exceeds) for the probe
+	// that projects this configuration's cost against the host's per-UID
+	// inotify watch pool (#6932 arm B).
+	InotifyBudgetReport() (string, []string, bool)
 }
 
 // fillWatcherStatus copies the watcher's counters into the status reply.
@@ -56,4 +60,12 @@ func fillWatcherStatus(reply *proto.StatusReply, w watcherStatusSource) {
 	if !lastOverflow.IsZero() {
 		reply.WatcherLastOverflow = lastOverflow.UTC().Format(time.RFC3339)
 	}
+	// #6932 arm B: say what the watch set costs the host's per-UID inotify
+	// pool, and what that pool allows. The summary and its caveats travel
+	// together — the caveats are the part that keeps the number honest, and a
+	// client cannot reconstruct them.
+	summary, notes, exceeds := w.InotifyBudgetReport()
+	reply.InotifyBudgetSummary = summary
+	reply.InotifyBudgetNotes = notes
+	reply.InotifyBudgetExceeds = exceeds
 }

@@ -217,6 +217,19 @@ type Watcher struct {
 	// deterministic instead of racing the CI scheduler. Production behaviour
 	// is identical to using time.Now/time.AfterFunc directly.
 	clk clock
+	// inotifyProbe caches the last inotify budget report (#6932 arm B). In
+	// poll mode the report costs a directory walk of every registered repo,
+	// and /diagnostics is polled, so a status surface must not re-walk the
+	// fleet on every request. Guarded by its own mutex, never w.mu: the walk
+	// runs outside the watcher's lock.
+	// fsAddFailed counts directories the backend REFUSED to watch (fsnotify
+	// Add returned an error; ENOSPC on a full inotify pool is the case that
+	// matters). Atomic: written from the subscribe walk, read by the budget
+	// probe.
+	fsAddFailed     uint64
+	inotifyProbeMu  sync.Mutex
+	inotifyProbeAt  time.Time
+	inotifyProbeVal InotifyBudget
 	// quarantine is the adaptive trash detector (#5394). When non-nil, it
 	// observes per-directory churn at the event boundary and drops events
 	// under directories it has quarantined. nil disables the feature.
@@ -805,21 +818,16 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 			}
 			return prune(p)
 		}
-		if p != abs {
-			base := filepath.Base(p)
-			// Layer 1 + 2: hard-coded + per-instance excludes.
-			if w.shouldSkipDir(base) {
-				return prune(p)
-			}
-			// Layer 3: .gitignore + per-repo watch.json.
-			relPath, relErr := filepath.Rel(abs, p)
-			if relErr == nil {
-				relPath = filepath.ToSlash(relPath)
-				if skip, reason := ShouldSkipDirGitignore(abs, p, relPath); skip {
-					w.logger.Info("watcher: skip", "path", p, "reason", reason)
-					return prune(p)
-				}
-			}
+		// Layers 1-3, from the single definition the budget probe also calls
+		// (#6932 arm B): hard-coded skips, this Watcher's excludes, then the
+		// .gitignore / watch.json layer. watchDirSkip leaves the repo root
+		// alone, exactly as the `p != abs` guard it replaces did.
+		switch kind, reason := watchDirSkip(abs, p, w.extraSkip); kind {
+		case watchSkipExcluded:
+			return prune(p)
+		case watchSkipIgnored:
+			w.logger.Info("watcher: skip", "path", p, "reason", reason)
+			return prune(p)
 		}
 		n, entries := chargeDir(p, cost)
 		if !w.fdb.reserve(n) {
@@ -828,6 +836,12 @@ func (w *Watcher) subscribeRepo(abs string) (int, error) {
 		}
 		if err := w.fsAdd(p); err != nil {
 			w.fdb.release(n)
+			// Counted, not just logged (#6932 arm B). On Linux this is
+			// ENOSPC — the per-UID inotify pool is full — and the walk
+			// carries on, so without a counter the shortfall shows up ONLY
+			// as a smaller watch set, i.e. as a CHEAPER budget report. The
+			// probe adds it back so the demand is what was attempted.
+			atomic.AddUint64(&w.fsAddFailed, 1)
 			w.logger.Warn("watcher: add failed", "path", p, "err", err)
 			return nil
 		}

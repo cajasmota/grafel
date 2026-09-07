@@ -258,3 +258,62 @@ func ShouldSkipPathForRepo(repoPath, p string) bool {
 	}
 	return false
 }
+
+// ---------------------------------------------------------------------------
+// The per-directory verdict, in ONE place (#6932 arm B)
+// ---------------------------------------------------------------------------
+//
+// subscribeRepo decides, directory by directory, what the watch set is. The
+// inotify budget probe has to project the cost of exactly that set without
+// subscribing it. Two walks asking the question two ways is how a projection
+// drifts from the thing it claims to project, so the layers below are defined
+// once and both walks call them.
+//
+// What is NOT in here, and why: the TCC protected-path guard and the watch-dir
+// cap. The first applies to the repo root as well as to its subdirectories and
+// the second is stateful (it depends on how many directories the walk has
+// already taken), so both stay at their call sites, applied in the same order
+// by both walks. The equality of the two answers is not asserted by
+// construction — it is measured, by
+// TestProjectInotifyBudget_MatchesWhatSubscriptionActuallyTakes.
+
+// watchSkipKind names which layer refused a directory. The distinction exists
+// because the subscription walk logs the three cases differently.
+type watchSkipKind int
+
+const (
+	// watchSkipNone: the walk takes a watch on this directory.
+	watchSkipNone watchSkipKind = iota
+	// watchSkipExcluded: hard-coded SkipDirs / walk.IsHardcodedSkip, or the
+	// per-instance ExcludeDirs set.
+	watchSkipExcluded
+	// watchSkipIgnored: .gitignore plus the per-repo .grafel/watch.json.
+	watchSkipIgnored
+)
+
+// watchDirSkip applies the subscription walk's per-directory skip layers to one
+// directory p under repo root abs. The repo root itself is never skipped by
+// these layers, matching the walk it is extracted from.
+func watchDirSkip(abs, p string, extraSkip map[string]struct{}) (watchSkipKind, string) {
+	if p == abs {
+		return watchSkipNone, ""
+	}
+	base := filepath.Base(p)
+	// Layer 1 + 2: hard-coded + per-instance excludes.
+	if ShouldSkipDir(base) {
+		return watchSkipExcluded, "skip list"
+	}
+	if _, ok := extraSkip[base]; ok {
+		return watchSkipExcluded, "instance exclude"
+	}
+	// Layer 3: .gitignore + per-repo watch.json.
+	relPath, relErr := filepath.Rel(abs, p)
+	if relErr != nil {
+		return watchSkipNone, ""
+	}
+	relPath = filepath.ToSlash(relPath)
+	if skip, reason := ShouldSkipDirGitignore(abs, p, relPath); skip {
+		return watchSkipIgnored, reason
+	}
+	return watchSkipNone, ""
+}
