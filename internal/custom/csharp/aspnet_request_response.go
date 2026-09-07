@@ -78,6 +78,9 @@ func (e *aspnetReqRespExtractor) Extract(ctx context.Context, file extractor.Fil
 		ent := makeEntity(dtoType, "SCOPE.Component", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "aspnet_core", "provenance", "INFERRED_FROM_ASPNET_FROM_BODY",
 			"dto_kind", "request")
+		// #6976 — a `[FromBody] Foo foo` parameter annotation mentions the DTO
+		// type; the DTO class is declared in its own file.
+		markReferenceShaped(&ent)
 		add(ent)
 	}
 
@@ -102,6 +105,9 @@ func (e *aspnetReqRespExtractor) Extract(ctx context.Context, file extractor.Fil
 		ent := makeEntity(typeName, "SCOPE.Component", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "aspnet_core", "provenance", "INFERRED_FROM_ASPNET_RETURN_TYPE",
 			"dto_kind", "response")
+		// #6976 — an `ActionResult<Foo>` return annotation mentions `Foo`; the
+		// declaration is elsewhere.
+		markReferenceShaped(&ent)
 		add(ent)
 	}
 

@@ -288,6 +288,9 @@ func (e *csharpValidationExtractor) Extract(ctx context.Context, file extractor.
 			"validation_framework", "FromBody",
 			"provenance", "INFERRED_FROM_FROM_BODY",
 		)
+		// #6976 — same shape as the aspnet [FromBody] rule: a parameter type
+		// annotation naming a DTO declared in another file.
+		markReferenceShaped(&dtoEnt)
 		add(dtoEnt)
 	}
 
