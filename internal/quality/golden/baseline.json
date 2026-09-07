@@ -192,10 +192,10 @@
     "proto-mini": {
       "entity_found": 19,
       "entity_expected": 19,
-      "relationship_found": 17,
-      "relationship_expected": 17,
+      "relationship_found": 18,
+      "relationship_expected": 18,
       "entity_extracted_total": 31,
-      "relationship_extracted_total": 55
+      "relationship_extracted_total": 56
     },
     "python-django-mini": {
       "entity_found": 29,

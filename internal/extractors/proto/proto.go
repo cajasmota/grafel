@@ -138,9 +138,17 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	return entities, nil
 }
 
-// dropUnresolvableTypeRefs removes every message→type REFERENCES edge whose
-// target message/enum is not defined in this same file, mutating entities in
-// place.
+// dropUnresolvableTypeRefs removes every type REFERENCES edge whose target
+// message/enum is not defined in this same file, mutating entities in place.
+//
+// It walks EVERY entity, not only messages, and that is now load-bearing rather
+// than incidental: since #6912 arm B it is the single implementation of the
+// same-file rule for BOTH type-edge anchors — the message→type edge this
+// function was written for, and the field→declared-type edge carried by each
+// SCOPE.Schema/field record (field_type_refs.go). Both address their target
+// through messageTypeRef, so one `local` set gates both. Do not add a second
+// copy of this check at either emit site: a redundant guard fires only where
+// this one already fires, which leaves both ungraded.
 //
 // #6357. namedTypeRefs strips the package qualifier from a field type, and
 // buildMessage then builds the structural ref against file.Path. For a field
@@ -638,7 +646,14 @@ func buildMessage(node ts.Node, file extractor.FileInput, fileRels *[]types.Rela
 			} else {
 				ftype, label = fieldTypeAndLabel(ch, file.Content)
 			}
-			fieldEnts = append(fieldEnts, buildField(file, name, fname, ftype, label, ch))
+			fieldEnt := buildField(file, name, fname, ftype, label, ch)
+			// #6912 arm B: the field→declared-type edge, anchored on the FIELD
+			// rather than on the message. Separate from the message→type edge
+			// below — different anchor, different ref_kind, both kept. See
+			// field_type_refs.go; dropUnresolvableTypeRefs enforces the
+			// same-file rule on both.
+			fieldEnt.Relationships = protoFieldTypeRefs(file.Path, fname, ftype)
+			fieldEnts = append(fieldEnts, fieldEnt)
 			rels = append(rels, types.RelationshipRecord{
 				ToID: fieldMemberRef(file.Path, name, fname),
 				Kind: "CONTAINS",

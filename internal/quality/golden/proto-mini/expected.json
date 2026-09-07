@@ -63,6 +63,11 @@
       "must_exist": true,
       "note": "message field type reference, same file, so it survives dropUnresolvableTypeRefs. Paired with forbidden row F1, which pins the cross-file field of the SAME message as producing NO edge." },
 
+    { "from_name": "User.profile", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "REFERENCES", "to_name": "Profile", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
+      "must_exist": true,
+      "note": "#6912 arm B — the field\u2192declared-type edge, anchored on the FIELD. It is NOT a duplicate of the row above: that edge is anchored on `message User` and names its field only in a `via_field` property, so \"which FIELDS point at Profile?\" was unanswerable for protobuf. The two are distinguished by ref_kind: this one carries ref_kind=field_target_type (the custom lane's and arm A's spelling), the message-level one carries type/via_field and no ref_kind. This row is the ONLY relationship this fixture gained from arm B \u2014 relationship_extracted_total moved 55 \u2192 56 and this edge is the whole of that delta, enumerated rather than absorbed into a bumped constant. Paired with forbidden row F5, which pins the cross-file field of the SAME message as producing no field-type edge." },
+
     { "from_name": "User", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
       "kind": "CONTAINS", "to_name": "User.email", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
       "must_exist": true, "note": "message -> field, addressed through fieldMemberRef (SQL Format B style)." },
@@ -126,6 +131,11 @@
       "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Schema", "to_file": "user.proto",
       "must_exist": false,
       "note": "F2. The mirror image of #6422, and the reason the fixture needs the collision even though the file-anchored half is ungradeable (NOTICE.md). buildService addresses its rpc children through BuildOperationStructuralRef; the guard is that it does NOT use messageTypeRef. Switch that one call to messageTypeRef — the plausible over-correction of #6422, i.e. 'move everything into the schema address space' — and the service -> rpc edge binds to `message User` instead, this row hits, and the expected UserService -> User(SCOPE.Operation) row above goes red at the same time. Verified by mutation. Both halves of that pair fire only because message User and rpc User collide." },
+
+    { "from_name": "User.address", "from_kind": "SCOPE.Schema", "from_file": "user.proto",
+      "kind": "REFERENCES", "to_bare_name": "scope:schema:message:proto:user.proto:Address",
+      "must_exist": false,
+      "note": "F5, the FIELD-anchored twin of F1 and the negative direction of #6912 arm B. `Address address = 3;` names a message declared in common.proto, so the field entity User.address must carry NO field\u2192declared-type edge: the only address arm B can mint for it is user.proto:Address, a file with no Address, which resolve/refs.go would materialise as a phantom grey node and disposition as bug-extractor \u2014 a non-binding edge, which is worse than no edge. The guard is dropUnresolvableTypeRefs, which arm B REUSES rather than reimplementing (it walks every entity, not only messages); deleting that call from Extract fires F1 and F5 together. Recall cannot see over-firing, so this row is what grades the direction that hurts. As with F1, this does NOT bless the cross-file gap: when a proto package index makes the target resolve, delete this row and add an expected row with to_name/to_file. Do not suppress the edge to keep the fixture green." },
 
     { "from_name": "user.proto", "from_kind": "SCOPE.Component", "from_file": "user.proto",
       "kind": "CONTAINS", "to_name": "User", "to_kind": "SCOPE.Operation", "to_file": "user.proto",
