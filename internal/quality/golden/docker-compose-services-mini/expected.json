@@ -1,15 +1,14 @@
 {
   "fixture_name": "docker-compose-services-mini",
   "language": "docker",
-  "description": "Docker Compose rule patterns (#6927, the `$`-side arm). Three `^`-anchored patterns in rules/docker/frameworks/docker_compose.yaml were compiled without `(?m)` (detector.go:156 uses plain regexp.Compile), so `^` meant start of TEXT — and the service rule carries a `$` too, which in Go means end of TEXT with no trailing-newline allowance. It therefore needed both at once and matched a file whose ENTIRE content is one indented key: ZERO matches across 992 real YAML files. `(?m)` ALONE is the case this issue predicted would over-fire, and it does: `^\\s{2}(\\w[\\w-]*):\\s*$` then reads 'every two-space key alone on its line' — 1867 matches in 611 of 941 non-compose files, PLUS 40 junk Services inside real compose files (named volumes, networks and secrets), which no framework gate can fix. So the service rule was REWRITTEN to name compose's own service-level vocabulary on the next line, and gated. The fixture varies two axes independently: the ANCHOR/shape axis (indent depth, the vocabulary, the indent CLASS, a column-0 sibling) inside files that satisfy the framework gate, and the GATE axis in files that declare no compose service block at all. ci/test.yml exists to separate them: it satisfies the gate and is declined by the shape alone."
-  ,
+  "description": "Docker Compose rule patterns (#6927, the `$`-side arm). Three `^`-anchored patterns in rules/docker/frameworks/docker_compose.yaml were compiled without `(?m)` (detector.go:156 uses plain regexp.Compile), so `^` meant start of TEXT \u2014 and the service rule carries a `$` too, which in Go means end of TEXT with no trailing-newline allowance. It therefore needed both at once and matched a file whose ENTIRE content is one indented key: ZERO matches across 992 real YAML files. `(?m)` ALONE is the case this issue predicted would over-fire, and it does: `^\\s{2}(\\w[\\w-]*):\\s*$` then reads 'every two-space key alone on its line' \u2014 1867 matches in 611 of 941 non-compose files, PLUS 40 junk Services inside real compose files (named volumes, networks and secrets), which no framework gate can fix. So the service rule was REWRITTEN to name compose's own service-level vocabulary on the next line, and gated. The vocabulary deliberately EXCLUDES `labels` and `environment`, which the Compose Spec says are the only service-level keys a top-level `volumes`/`networks`/`secrets`/`configs` entry may also carry \u2014 so the in-compose false-positive class is empty by the format's schema rather than merely zero on one corpus, at a measured cost of 2 of 111 corpus services whose first key is one of those two. The rule also requires `\\r?\\n` rather than `\\n`: `[ \\t]*\\n` cannot match a CRLF file, and this was the only compose rule with that blindness. The fixture varies two axes independently: the ANCHOR/shape axis (indent depth, the vocabulary, the indent CLASS, a column-0 sibling) inside files that satisfy the framework gate, and the GATE axis in files that declare no compose service block at all. ci/test.yml exists to separate them: it satisfies the gate and is declined by the shape alone.",
   "expected_entities": [
     {
       "name": "api",
       "kind": "Service",
       "source_file": "deploy/compose.yaml",
       "must_exist": true,
-      "note": "#6927 recall arm for the rewritten service rule. First service in the file. Under the shipped pre-fix pattern this could not fire at all — `^` was start of text AND `$` end of text."
+      "note": "#6927 recall arm for the rewritten service rule. First service in the file. Under the shipped pre-fix pattern this could not fire at all \u2014 `^` was start of text AND `$` end of text."
     },
     {
       "name": "db",
@@ -23,14 +22,14 @@
       "kind": "Service",
       "source_file": "deploy/compose.yaml",
       "must_exist": true,
-      "note": "Same rule, LAST service in the block — the vertical-position axis, which is the defect itself — and through a different vocabulary word (`build:`, not `image:`), so one alternation entry cannot be what carries every service row."
+      "note": "Same rule, LAST service in the block \u2014 the vertical-position axis, which is the defect itself \u2014 and through a different vocabulary word (`build:`, not `image:`), so one alternation entry cannot be what carries every service row."
     },
     {
       "name": "db-data",
       "kind": "Config",
       "source_file": "deploy/compose.yaml",
       "must_exist": true,
-      "note": "#6927 recall arm for `(?m)^volumes:\\s*\\n\\s{2}(\\w[\\w-]*):`. Under start-of-text this fired only on a file whose first bytes are `volumes:`, and no compose file opens that way: 0 matches in 992 corpus files before, 18 in 18 after. Note the SAME name is a forbidden Service below — the kinds are what separate the two rules, and that is deliberate: the volume block is exactly what the widened service rule would have swallowed."
+      "note": "#6927 recall arm for `(?m)^volumes:\\s*\\n\\s{2}(\\w[\\w-]*):`. Under start-of-text this fired only on a file whose first bytes are `volumes:`, and no compose file opens that way: 0 matches in 992 corpus files before, 18 in 18 after. Note the SAME name is a forbidden Service below \u2014 the kinds are what separate the two rules, and that is deliberate: the volume block is exactly what the widened service rule would have swallowed."
     },
     {
       "name": "backend",
@@ -59,49 +58,43 @@
       "name": "db-data",
       "kind": "Service",
       "must_exist": false,
-      "note": "#6927 forbidden arm, and THE row this whole change exists for. Reverting the service rule to `(?m)^\\s{2}(\\w[\\w-]*):\\s*$` — i.e. applying `(?m)` and nothing else, which is what the issue proposed — mints a Service for every named volume, network and secret in a real compose file. Measured: 40 such junk Services across the corpus's 50 compose files (`db-data`, `db-password`, `pgdata`, `default`). The file IS compose, so `requires_framework` says nothing about this row; only the rewrite holds it. It is the only forbidden row here that dies to that mutant alone."
+      "note": "#6927 forbidden arm, and THE row this whole change exists for. Reverting the service rule to `(?m)^\\s{2}(\\w[\\w-]*):\\s*$` \u2014 i.e. applying `(?m)` and nothing else, which is what the issue proposed \u2014 mints a Service for every named volume, network and secret in a real compose file: 40 such junk Services across the corpus's 50 compose files. The file IS compose, so `requires_framework` says nothing about this row; only the rewrite holds it.\nIt also grades the VOCABULARY as a SPEC question rather than a corpus one (PR #6949 review F2). `db-data` here carries a `labels:` block, which the Compose Spec explicitly allows on a named volume \u2014 and `labels` is a service-level key too. Per the spec the ONLY keys a top-level `volumes`/`networks`/`secrets`/`configs` entry shares with a service are `labels` and `environment`, so the rule's next-line vocabulary excludes both and this row goes red the moment either is added back. A measured zero over one corpus was not a property of the format; this is."
     },
     {
       "name": "cache-data",
       "kind": "Service",
       "must_exist": false,
-      "note": "#6927 forbidden arm, INDENT-CLASS direction. The next-line requirement is `[ ]{3,}` — literal spaces — not `\\s+`, because `\\s` matches a NEWLINE: `cache-data:` is the last entry of the volumes block and is followed by a blank line and then a column-0 `secrets:`, so under `\\s+` the rule reaches past the blank line, reads that top-level key as the service body and mints `cache-data`. `db-data` above does NOT die to this mutant (its next line is a two-space sibling that is not in the vocabulary), which is what keeps the two rows about different things."
-    },
-    {
-      "name": "options",
-      "kind": "Service",
-      "must_exist": false,
-      "note": "#6927 forbidden arm, INDENT-COUNT direction. `^\\s{2}` means EXACTLY two leading spaces — a third character that is whitespace fails the `\\w`. `api.logging.options` is six-space indented and its first key is `labels:`, which IS in the vocabulary, so `\\s{2}` -> `\\s+` mints an Operation-shaped Service for it. Inside the compose file, i.e. held by the anchor and not by the gate."
+      "note": "#6927 forbidden arm, INDENT-CLASS direction. The next-line requirement is `[ ]{3,}` \u2014 literal spaces \u2014 not `\\s+`, because `\\s` matches a NEWLINE: `cache-data:` is the last entry of the volumes block and is followed by a blank line and then a column-0 `secrets:`, so under `\\s+` the rule reaches past the blank line, reads that top-level key as the service body and mints `cache-data`. `db-data` above does NOT die to this mutant (its next line is a two-space sibling that is not in the vocabulary), which is what keeps the two rows about different things."
     },
     {
       "name": "db-password",
       "kind": "Service",
       "must_exist": false,
-      "note": "#6927 forbidden arm, VOCABULARY direction. The next-line alternation is compose's service-level key set; `secrets:` entries take `file:`, which is deliberately NOT in it. Replacing `(?:image|build|...)` with `\\w+` — the obvious 'simplification' — mints `db-password`. Also inside the compose file, so the gate is not what holds it."
+      "note": "#6927 forbidden arm, VOCABULARY direction. The next-line alternation is compose's service-level key set; `secrets:` entries take `file:`, which is deliberately NOT in it. Replacing `(?:image|build|...)` with `\\w+` \u2014 the obvious 'simplification' \u2014 mints `db-password`. Also inside the compose file, so the gate is not what holds it."
     },
     {
       "name": "deploy",
       "kind": "Service",
       "must_exist": false,
-      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction, and the reason the rewrite alone is not enough. `environment:`, `labels:`, `command:` and `user:` are compose's vocabulary but not compose's alone: a GitHub Actions job whose first key is `environment:` has the exact shape, and GitHub's own starter-workflows carries `deploy:\\n  environment:` in eleven files. ci/release.yml declares no compose service block, so `requires_framework: true` declines it; deleting that key mints this row. Measured: 14 such matches in 12 non-compose files ungated, 0 gated."
+      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction, and the reason the rewrite alone is not enough. The next-line vocabulary is compose's, but it is not compose's ALONE: `secrets:` is a compose service-level key and also real GitHub Actions reusable-workflow syntax, so ci/release.yml's `deploy:` job has exactly the shape this rule looks for. It declares no compose service block, so `requires_framework: true` declines it; deleting that key mints this row. Measured: 5 such matches in 3 non-compose corpus files ungated, 0 gated.\nThe job's first key was changed from `environment:` to `secrets:` in the PR #6949 review round, because narrowing the vocabulary (F2) removed `environment` and left this row unfireable \u2014 a forbidden row that no mutant can reach is the #6938 shape, so it was re-scored rather than assumed to still hold."
     },
     {
       "name": "unit",
       "kind": "Service",
       "must_exist": false,
-      "note": "#6927 forbidden arm, VOCABULARY direction inside a file the GATE ADMITS. ci/test.yml carries a job's service-container block, so it satisfies the compose marker and the gate says nothing about it; only the vocabulary declines `unit:\\n  runs-on:`. Two fences, graded separately — this is the row that proves the second one is not riding on the first."
+      "note": "#6927 forbidden arm, VOCABULARY direction inside a file the GATE ADMITS. ci/test.yml carries a job's service-container block, so it satisfies the compose marker and the gate says nothing about it; only the vocabulary declines `unit:\\n  runs-on:`. Two fences, graded separately \u2014 this is the row that proves the second one is not riding on the first."
     },
     {
       "name": "postgres",
       "kind": "Service",
       "must_exist": false,
-      "note": "Second INDENT-COUNT row, in a gate-ADMITTED non-compose file: ci/test.yml's service container is six-space indented under `services:` and its first key is `image:`. `\\s{2}` -> `\\s+` mints it. One row could be an accident of one file's layout; two of different shapes in different files cannot."
+      "note": "#6927 forbidden arm, INDENT-COUNT direction, in a gate-ADMITTED non-compose file. `^[ ]{2}` means EXACTLY two leading spaces; ci/test.yml's service container is six-space indented under a job's `services:` key and its first key is `image:`, so `[ ]{2}` -> `\\s+` mints it. The child-indent count (`[ ]{3,}` vs `[ ]{2,}`) and the leading-indent CHARACTER CLASS (`[ ]{2}` vs `\\s{2}`, which eats newlines under `(?m)`) are two further counts this fixture cannot shape an input for; both are graded in internal/engine/docker_ansible_multiline_anchor_6927_test.go."
     },
     {
       "name": "extraArgs",
       "kind": "Config",
       "must_exist": false,
-      "note": "#6927 forbidden arm, ANCHOR direction for the volumes rule — which takes no framework gate at all, so the column-0 `^` is its entire fence. A helm values file writes an empty `volumes:` key indented under `serverSide`, with a sibling on the next line; dropping `^` makes `volumes:\\s*\\n\\s{2}(\\w[\\w-]*):` read that sibling and mint a Config. Ungated is a measured call: across 941 non-compose corpus files the widened rule matched ZERO times."
+      "note": "#6927 forbidden arm, ANCHOR direction for the volumes rule \u2014 which takes no framework gate at all, so the column-0 `^` is its entire fence. A helm values file writes an empty `volumes:` key indented under `serverSide`, with a sibling on the next line; dropping `^` makes `volumes:\\s*\\n\\s{2}(\\w[\\w-]*):` read that sibling and mint a Config. Ungated is a measured call: across 941 non-compose corpus files the widened rule matched ZERO times."
     },
     {
       "name": "hostAliases",
@@ -120,7 +113,7 @@
       "to_kind": "Service",
       "to_file": "deploy/compose.yaml",
       "must_exist": true,
-      "note": "The compose `depends_on` edge. BOTH endpoints are Services minted by the rewritten rule, so this row goes red if either the recall or the naming of that rule moves — it is the one assertion here that is about the rule's output being usable rather than merely present."
+      "note": "The compose `depends_on` edge. BOTH endpoints are Services minted by the rewritten rule, so this row goes red if either the recall or the naming of that rule moves \u2014 it is the one assertion here that is about the rule's output being usable rather than merely present."
     },
     {
       "from_name": "compose.yaml",

@@ -793,3 +793,206 @@ func expandWordClass6927(pattern string) string {
 	}
 	return b.String()
 }
+
+// TestIssue6927_Compose_ServiceRuleReadsCRLF grades the `\r?` in
+// `[ \t]*\r?\n`, which PR #6949's review found missing.
+//
+// The `\s*$` this rewrite replaced could match a CRLF file — `\s` eats the
+// `\r` — and the sibling `^volumes:\s*\n` / `^networks:\s*\n` rules still can,
+// so a bare `[ \t]*\n` here made the service rule the ONLY compose rule blind
+// to CRLF, and blind in a way no other rule in the same file shared.
+// Demonstrated end-to-end at the time: converting docker-compose-services-mini's
+// own compose.yaml to CRLF took it from 7/7 to 4/7, losing every Service and
+// both `depends_on` edges. This repo runs a Windows CI leg.
+//
+// The CRLF is written into the Go source rather than into a fixture file on
+// purpose: a checked-in CRLF file is at the mercy of git's autocrlf and of
+// every editor that touches it, so it would stop grading this silently.
+func TestIssue6927_Compose_ServiceRuleReadsCRLF(t *testing.T) {
+	rules := composeRules6927(t)
+	lf := composeFixtureSrc6927
+	crlf := strings.ReplaceAll(lf, "\n", "\r\n")
+	if !strings.Contains(crlf, "\r\n") || strings.Contains(lf, "\r") {
+		t.Fatal("the CRLF premise is not what it claims to be")
+	}
+	want := names6927(detect6927(t, rules, "deploy/compose.yaml", lf), "Service")
+	got := names6927(detect6927(t, rules, "deploy/compose.yaml", crlf), "Service")
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("CRLF compose file yields Services %v, LF yields %v — the service rule is "+
+			"blind to CRLF. `[ \\t]*` cannot match a `\\r`, so the head of the rule must be "+
+			"`[ \\t]*\\r?\\n` and the comment/blank arm `(?:[ \\t]*(?:#[^\\r\\n]*)?\\r?\\n)*`",
+			got, want)
+	}
+	if len(got) == 0 {
+		t.Error("both line endings yielded nothing, so this test is vacuous")
+	}
+}
+
+// TestIssue6927_Compose_ServiceRuleIndentCountsAreExact grades the two indent
+// COUNTS, which are separate assertions from the indent CLASS that
+// TestIssue6927_Compose_ServiceRuleNeedsBothFences and the fixture's
+// `cache-data` row cover. PR #6949's review scored both of these ALIVE at the
+// engine suite AND at the fixture gate.
+//
+// The fixture cannot shape an input for either: a real compose file has no
+// two-space key whose SIBLING is a service-level word, and no column-0 key
+// preceded by two blank lines whose child is one. These inputs are therefore
+// constructed, and that is said rather than implied.
+func TestIssue6927_Compose_ServiceRuleIndentCountsAreExact(t *testing.T) {
+	rules := composeRules6927(t)
+
+	t.Run("child indent is at least THREE, not two", func(t *testing.T) {
+		// `[ ]{3,}` -> `[ ]{2,}` would read a SIBLING of the key as its block
+		// body. Two-space siblings are exactly what a top-level `volumes:` or
+		// `secrets:` block is made of.
+		src := `services:
+  api:
+    image: nginx
+
+volumes:
+  cache-data:
+  ports:
+`
+		res := detect6927(t, rules, "deploy/compose.yaml", src)
+		if has6927(res, "Service", "cache-data") {
+			t.Errorf("Service \"cache-data\" minted from a SIBLING key two spaces in — the "+
+				"child-indent count must be `[ ]{3,}`, not `[ ]{2,}`. Got %v",
+				names6927(res, "Service"))
+		}
+		if !has6927(res, "Service", "api") {
+			t.Error("control: the real service was not minted, so this case grades nothing")
+		}
+	})
+
+	t.Run("leading indent is TWO LITERAL SPACES, not two whitespace characters", func(t *testing.T) {
+		// `^[ ]{2}` -> `^\s{2}`: under `(?m)` `^` matches at a blank line and
+		// `\s{2}` then consumes newlines, so a COLUMN-0 key preceded by two
+		// blank lines satisfies it. That is the same `\s`-matches-a-newline
+		// trap the rule's own comment names for the child indent, one position
+		// to the left (PR #6949 review F3).
+		src := "services:\n  api:\n    image: nginx\n\n\nextras:\n   image: busybox\n"
+		res := detect6927(t, rules, "deploy/compose.yaml", src)
+		if has6927(res, "Service", "extras") {
+			t.Errorf("Service \"extras\" minted from a COLUMN-0 key preceded by two blank "+
+				"lines — the leading indent must be `^[ ]{2}`, not `^\\s{2}`. Got %v",
+				names6927(res, "Service"))
+		}
+		if !has6927(res, "Service", "api") {
+			t.Error("control: the real service was not minted, so this case grades nothing")
+		}
+	})
+}
+
+// TestIssue6927_Compose_EnvironmentFirstServiceIsMissed pins the PRICE of the
+// vocabulary narrowing, so the trade is observed rather than asserted in prose
+// (#6949 review F2).
+//
+// `labels` and `environment` are, per the Compose Spec, the only service-level
+// keys a top-level `volumes`/`networks`/`secrets`/`configs` entry may also
+// carry, so excluding them makes the in-compose false-positive class empty by
+// the format's schema instead of merely zero on one corpus. The cost is that a
+// service whose FIRST non-comment key is one of those two is missed, because
+// the rule inspects only that one key: 2 of the corpus's 111 services.
+//
+// This test asserts the CURRENT, deliberately imperfect behaviour. If a later
+// arm teaches the rule to look past the first key, it goes red — and the right
+// response is to delete it and update the rule comment's 109/111, not to work
+// around it.
+func TestIssue6927_Compose_EnvironmentFirstServiceIsMissed(t *testing.T) {
+	rules := composeRules6927(t)
+	src := `services:
+  cache:
+    image: redis:7
+  db:
+    environment:
+      POSTGRES_DB: storefront
+    image: postgres:16
+  edge:
+    labels:
+      com.example.role: proxy
+    image: nginx
+`
+	res := detect6927(t, rules, "deploy/compose.yaml", src)
+	got := names6927(res, "Service")
+	if strings.Join(got, ",") != "cache" {
+		t.Errorf("compose Services = %v, want exactly [cache].\n"+
+			"  `db` or `edge` present -> `environment`/`labels` are back in the next-line "+
+			"vocabulary, which re-opens the spec-legal in-compose over-fire the `db-data` "+
+			"forbidden row grades; if that was intended, update the rule comment's 109/111 "+
+			"and delete this test.\n"+
+			"  `cache` missing -> the rule stopped working entirely.", got)
+	}
+}
+
+// TestIssue6927_Compose_TopLevelSectionEntriesAreNotServices grades the
+// vocabulary against the Compose Spec rather than against the corpus, which is
+// the substance of #6949 review F2: "ZERO in-compose false positives" was a
+// corpus measurement being read as a property of the format.
+//
+// Each case is a spec-legal top-level section entry carrying the key that
+// section is allowed to share with a service.
+func TestIssue6927_Compose_TopLevelSectionEntriesAreNotServices(t *testing.T) {
+	rules := composeRules6927(t)
+	head := "services:\n  api:\n    image: nginx\n\n"
+	for _, tc := range []struct{ name, section, entry, key string }{
+		{"named volume with labels", "volumes", "db-data", "labels"},
+		{"named network with labels", "networks", "backend", "labels"},
+		{"secret with environment", "secrets", "db-password", "environment"},
+		{"config with environment", "configs", "app-config", "environment"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := head + tc.section + ":\n  " + tc.entry + ":\n    " + tc.key + ":\n      x: y\n"
+			res := detect6927(t, rules, "deploy/compose.yaml", src)
+			if has6927(res, "Service", tc.entry) {
+				t.Errorf("Service %q minted from a spec-legal `%s:` entry whose first key is "+
+					"`%s:` — that key is back in the next-line vocabulary. Got %v",
+					tc.entry, tc.section, tc.key, names6927(res, "Service"))
+			}
+			if !has6927(res, "Service", "api") {
+				t.Error("control: the real service was not minted, so this case grades nothing")
+			}
+		})
+	}
+}
+
+// TestIssue6927_Compose_HeadWhitespaceCannotCrossALine grades the `[ \t]` in
+// the rule's head, `):[ \t]*\r?\n`. PR #6949's review scored `[ \t]*` -> `\s*`
+// ALIVE at both levels and observed, correctly, that nothing preferred either
+// spelling.
+//
+// `\s` in RE2 is `[\t\n\f\r ]`, so it crosses LINE BOUNDARIES. `[ \t]*` cannot,
+// and that is the whole difference: the head's job is to say "nothing else on
+// THIS line", and `\s*` silently turns it into "nothing but whitespace for some
+// number of lines" — duplicating the blank/comment arm that follows it and then
+// over-reaching it, because the arm deliberately only skips lines that are
+// blank or comments.
+//
+// The distinguishing input is a line that is whitespace to `\s` but is NOT
+// blank to the arm — a lone form feed. Found by enumerating 39690 generated
+// key/separator/body combinations rather than by picking one: 7812 of them
+// separate the two spellings, and every one has this shape (a form feed, or a
+// stray `\r` in a half-converted CRLF file). Both controls below are lines the
+// arm DOES skip, so a failure cannot be "the arm stopped working".
+func TestIssue6927_Compose_HeadWhitespaceCannotCrossALine(t *testing.T) {
+	rules := composeRules6927(t)
+	for _, tc := range []struct {
+		name, sep string
+		want      bool
+	}{
+		{"a form feed is whitespace to \\s but is not a blank line", "\n\f\n", false},
+		{"control: a genuinely blank line IS skipped, by the arm", "\n \n", true},
+		{"control: a comment line IS skipped, by the arm", "\n#c\n", true},
+		{"control: a stray CR in a half-converted file is not a line the arm skips", "\r\r\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "services:\n  api:" + tc.sep + "    image: nginx\n"
+			got := has6927(detect6927(t, rules, "deploy/compose.yaml", src), "Service", "api")
+			if got != tc.want {
+				t.Errorf("Service \"api\" minted = %v, want %v for separator %q. The rule's head "+
+					"must be `[ \\t]*\\r?\\n`: `\\s*` there crosses line boundaries, so the "+
+					"\"nothing else on this line\" claim stops being about one line",
+					got, tc.want, tc.sep)
+			}
+		})
+	}
+}

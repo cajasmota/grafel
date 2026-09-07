@@ -13,7 +13,7 @@ services:
     logging:
       driver: json-file
       options:
-        labels: "app,env"
+        max-size: "10m"
   db:
     # postgres:16 ships both amd64 and arm64 images
     image: postgres:16
@@ -26,6 +26,8 @@ services:
 
 volumes:
   db-data:
+    labels:
+      com.example.description: "primary database volume"
   cache-data:
 
 secrets:

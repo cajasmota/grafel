@@ -90,35 +90,77 @@ source_patterns:
   #     `db-data`, `db-password`, `pgdata`, `default`. A framework gate cannot
   #     fix that one — the file IS compose.
   #
+  # Measured after the rewrite: 109 matches in 47 files, ZERO in-compose false
+  # positives and 5 matches in 3 non-compose files ungated (0 gated).
+  #
   # So the rule now says what a service is structurally, the same shape as
   # github_actions.yaml's job rule (#6945): a two-space key whose block opens
-  # with a compose SERVICE-level key. `$` is gone entirely; `[ \t]*\n`
-  # carries the "nothing else on this line" half without `$`'s end-of-text /
-  # end-of-line ambiguity, and `[ ]{3,}` requires the next key to be deeper
-  # indented. Both matter: `\s+` there would match a NEWLINE, so
-  # `volumes:\n  db-data:\n\nsecrets:` would read the column-0 `secrets:`
-  # as the block body and mint `db-data` — which is exactly the mutant this
-  # comment names, and `db-data` is a forbidden row in
-  # docker-compose-services-mini. The `(?:#[^\n]*)?\n` arm lets a comment
-  # line sit between the service key and its first key, which 7 of the
-  # corpus's compose files do.
+  # with a compose SERVICE-level key. Every character class in it is
+  # load-bearing, and three of them were wrong in the first version of this
+  # rewrite (PR #6949 review):
   #
-  # Measured after the rewrite: 111 matches in 48 files, which is 111 of the
-  # 111 real services in the corpus's compose files with ZERO in-compose false
-  # positives — full recall of the raw `(?m)` form with none of its 40 junk
-  # Services — and 14 matches in 12 non-compose files.
+  #   * `$` is gone entirely. `[ \t]*\r?\n` carries the "nothing else on
+  #     this line" half without `$`'s end-of-text / end-of-line ambiguity.
+  #     `[ \t]` and not `\s`, because `\s` is `[\t\n\f\r ]` and so
+  #     crosses LINE boundaries: `\s*` there would quietly turn "nothing else
+  #     on this line" into "nothing but whitespace for some number of lines",
+  #     duplicating the blank/comment arm below and then over-reaching it.
+  #     Graded by TestIssue6927_Compose_HeadWhitespaceCannotCrossALine, whose
+  #     distinguishing input was found by enumerating 39690 generated
+  #     key/separator/body combinations rather than by picking one.
+  #   * `\r?` is NOT optional decoration. The `\s*$` this replaced could
+  #     match a CRLF file (`\s` eats the `\r`) and the sibling
+  #     `^volumes:\s*\n` rules still can, so a bare `[ \t]*\n` here made
+  #     this the ONLY compose rule blind to CRLF: converting
+  #     docker-compose-services-mini's own compose.yaml to CRLF took it from
+  #     7/7 to 4/7, losing every Service and both `depends_on` edges. Graded
+  #     by TestIssue6927_Compose_ServiceRuleReadsCRLF.
+  #   * `[ ]{3,}` — literal spaces, at least three — requires the next key to
+  #     be deeper indented. `\s+` there would match a NEWLINE, so
+  #     `volumes:\n  db-data:\n\nsecrets:` would read the column-0
+  #     `secrets:` as the block body and mint `db-data`. `{3,}` rather than
+  #     `{2,}` is what keeps it off a SIBLING of the key, which is a separate
+  #     count and is graded separately.
+  #   * `^[ ]{2}` — literal spaces again, and for the same reason one position
+  #     to the left. `^\s{2}` under `(?m)` matches at a blank line and then
+  #     eats newlines, so a column-0 key preceded by two blank lines, or a
+  #     one-space key preceded by one, satisfied it.
   #
-  # `requires_framework: true` closes those 14. They are GitHub Actions jobs
-  # whose first key is `environment:` (starter-workflows/pages/*.yml all
-  # declare `deploy:\n  environment:`), an ansible `docker_container:` task
-  # and a helm values block. The vocabulary is compose's, but it is not
-  # compose's ALONE, and `environment`/`labels`/`command`/`user` are exactly
-  # the words other YAML dialects reuse. Under the gate: 0 of 941.
+  # The `(?:#[^\r\n]*)?\r?\n` arm lets comment and blank lines sit between
+  # the service key and its first key, which 7 of the corpus's compose files do.
+  #
+  # The next-line vocabulary is compose's SERVICE-level key set MINUS `labels`
+  # and `environment`, and that subtraction is the point rather than an
+  # oversight. Per the Compose Spec, an entry under top-level `volumes:`,
+  # `networks:`, `secrets:` or `configs:` may carry `driver`, `driver_opts`,
+  # `external`, `name`, `file`, `content`, `attachable`, `internal`, `ipam`,
+  # `enable_ipv6` — and `labels` (volumes, networks) and `environment`
+  # (secrets, configs). Those last two are the ONLY overlap with the
+  # service-level set, so excluding them makes the in-compose false-positive
+  # class empty by the FORMAT's own schema rather than merely zero on one
+  # corpus. A spec-legal `labels:` under a named volume is carried by
+  # docker-compose-services-mini and is what `db-data` (forbidden Service)
+  # grades; adding `labels` back mints it.
+  #
+  # The price is stated rather than rounded away: a service whose FIRST
+  # non-comment key is `environment:` or `labels:` is now missed, because the
+  # rule only inspects that one key. Measured over the corpus's 50 compose
+  # files: 109 of 111 real services (98.2%), down from 111 with the wider
+  # vocabulary and up from 0 before the fix, with ZERO in-compose false
+  # positives either way on that corpus. The two missed are `db` (an
+  # `environment:`-first service) and `postgres` (`labels:`-first), and the
+  # gap is pinned by TestIssue6927_Compose_EnvironmentFirstServiceIsMissed so
+  # it is observed rather than asserted here.
+  #
+  # `requires_framework: true` closes what is left: 5 matches in 3 non-compose
+  # files ungated (an ansible `docker_container:` task, a helm values block, a
+  # workflow's `workflow_call`), 0 of 941 under the gate. The vocabulary is
+  # compose's, but it is not compose's ALONE.
   #
   # The two fences are independent and each has its own forbidden rows —
-  # deleting `requires_framework` mints a Service for the workflow job, and
-  # weakening the vocabulary or the indent mints one for a named volume.
-  - pattern: "(?m)^\\s{2}(\\w[\\w-]*):[ \\t]*\\n(?:[ \\t]*(?:#[^\\n]*)?\\n)*[ ]{3,}(?:image|build|container_name|command|entrypoint|ports|expose|environment|env_file|depends_on|volumes|volumes_from|networks|network_mode|restart|healthcheck|deploy|labels|profiles|extends|logging|working_dir|user|hostname|platform|privileged|tty|stdin_open|init|secrets|configs|cap_add|devices|dns|links|pull_policy|scale|shm_size|sysctls|tmpfs|ulimits):"
+  # deleting `requires_framework` mints a Service for a workflow job, and
+  # weakening the vocabulary or either indent mints one for a named volume.
+  - pattern: "(?m)^[ ]{2}(\\w[\\w-]*):[ \\t]*\\r?\\n(?:[ \\t]*(?:#[^\\r\\n]*)?\\r?\\n)*[ ]{3,}(?:image|build|container_name|command|entrypoint|ports|expose|env_file|depends_on|volumes|volumes_from|networks|network_mode|restart|healthcheck|deploy|profiles|extends|logging|working_dir|user|hostname|platform|privileged|tty|stdin_open|init|secrets|configs|cap_add|devices|dns|links|pull_policy|scale|shm_size|sysctls|tmpfs|ulimits):"
     entity_type: Service
     name_group: 1
     scope: file
