@@ -151,12 +151,23 @@ func TestRazorHierarchy_GenericsErased(t *testing.T) {
 // through the production resolver: as-written binds 0 of 1, the bare last
 // segment binds 1 of 1. The ocaml arm's lesson (#6948) is that "no mis-binding"
 // is not "sufficient" — so this is the losing form on binding, and it is chosen
-// anyway because a leaf-name ToID would bind to ANY same-named type in ANY
-// namespace and razor components carry no namespace at all to disambiguate
-// with (#6369's wrong-node hazard). All 7 corpus occurrences are unqualified,
-// so the qualified form is widened on no evidence in either direction; the
-// dangling edge is the recorded gap, of the same class as ocaml's
-// deliberately-unemitted module-qualified parents (#6947).
+// anyway. The reason, stated at the precision it was measured at:
+//
+//	one same-named candidate, not the intended one → the bare form BINDS, to
+//	  the wrong node. This is #6369's hazard and it is the shape that justifies
+//	  the decision.
+//	two or more same-named candidates → the bare form DANGLES. Ambiguity drops
+//	  the edge; it does not mis-point it.
+//
+// "A leaf name binds to any same-named type in any namespace" would therefore
+// be an over-claim: only the single-candidate shape mis-binds, and razor
+// components carry no namespace at all to tell the two apart. The distinction
+// matters because the ambiguous shape is the one a reader assumes, and getting
+// it backwards is the correction #6948 had to make publicly.
+//
+// All 7 corpus occurrences are unqualified, so the qualified form is widened on
+// no evidence in either direction; the dangling edge is the recorded gap, of the
+// same class as ocaml's deliberately-unemitted module-qualified parents (#6947).
 func TestRazorHierarchy_QualifiedTargetKeptAsWritten(t *testing.T) {
 	ents := extract(t, "Foo.razor", "@inherits MyApp.Components.BaseComponent\n")
 	if got := hierTargets(t, ents, "Foo", "EXTENDS"); !eqStrs(got, []string{"MyApp.Components.BaseComponent"}) {
@@ -198,14 +209,30 @@ func TestRazorHierarchy_PlainComponentHasNoEdges(t *testing.T) {
 // the same text inside markup is not one. Dropping the `^` anchor from either
 // pattern makes this fail.
 //
-// Leading horizontal whitespace before a directive is deliberately NOT decided
-// here: zero of the 7 corpus occurrences carry any, and both existing anchors
-// in this package (`reUsing`, `reInject`) are equally strict, so this arm
-// matches them rather than widening on no evidence.
+// The INDENTED case pins the second, narrower half of the anchor. Widening the
+// patterns to `^[^\S\n]*@inherits…` passes the whole razor suite, the whole
+// internal/quality package and the golden fixture at 6/6, 5/5, 0 forbidden, so
+// the direction was distinguishable, production-reachable and observed by
+// NOTHING. It is decided here rather than left to the corpus: an indented
+// directive is REJECTED, matching this package's two existing anchors
+// (`reUsing`, `reInject`), which are equally strict.
+//
+// "Zero of the 7 corpus occurrences are indented" is what motivated the choice
+// and is NOT what defends it — a zero over 105 files is corpus-relative and
+// says nothing about the 106th. Accepting indented directives may well be
+// right; it is a widening that needs its own evidence AND a coordinated change
+// to `reUsing`/`reInject`, and it must move this assertion to happen, which is
+// the entire point of the assertion.
 func TestRazorHierarchy_DirectiveMustBeLineLeading(t *testing.T) {
 	ents := extract(t, "Markup.razor", "<p>@inherits Ghost</p>\n<span>text @implements IPhantom</span>\n")
 	if got := allHierTargets(ents); len(got) != 0 {
 		t.Errorf("mid-line text produced %v, want no hierarchy edges", got)
+	}
+
+	indented := extract(t, "Indented.razor", "    @inherits IndentedBase\n\t@implements IIndented\n")
+	if got := allHierTargets(indented); len(got) != 0 {
+		t.Errorf("indented directives produced %v, want none — an indented directive is "+
+			"deliberately not recognised, as in reUsing/reInject", got)
 	}
 }
 
@@ -277,11 +304,22 @@ func TestRazorHierarchy_DuplicateTargetDeduped(t *testing.T) {
 	}
 }
 
-// THE failure mode of the rejected route. Registering razor in cross/hierarchy
+// The SYMPTOM of the rejected route, and only the symptom — the name says so
+// now because the previous one did not. Registering razor in cross/hierarchy
 // would mint a SCOPE.Component for the component AND one for each parent, on
-// top of the single component this extractor already emits. Exactly one
-// component entity per file, and never one named after a base type.
-func TestRazorHierarchy_NoDuplicateComponents(t *testing.T) {
+// top of the single component this extractor already emits.
+//
+// This test CANNOT observe that registration: extract() calls
+// extractor.Get("razor") and nothing else, so adding "razor" to
+// supportedLanguages would not move it by a byte. What it observes is the shape
+// that route produces — an entity minted from a hierarchy TARGET rather than
+// from a file path — and it does observe it: a mutant minting a SCOPE.Component
+// per target fails here, and trips the golden fixture's forbidden_entities row
+// as well. An assertion whose name claims a wider population than it covers is
+// the defect this board keeps re-finding, so the claim is narrowed to what runs.
+//
+// Exactly one component entity per file, and never one named after a base type.
+func TestRazorHierarchy_NoComponentMintedForHierarchyTarget(t *testing.T) {
 	ents := extract(t, "Shared/MainLayout.razor", "@inherits LayoutComponentBase\n@implements IDisposable\n\n<div>@Body</div>\n")
 	if got := componentNames(ents); !eqStrs(got, []string{"MainLayout"}) {
 		t.Fatalf("component entities = %v, want [MainLayout] (a base type must never become a component here)", got)

@@ -161,6 +161,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 	// --- 1a. @inherits / @implements → EXTENDS / IMPLEMENTS (#6370) ----------
 	// Embedded on the component, before the early returns below: a file with
 	// no @code block still declares a base component.
+	//
+	// TRAP FOR ANYONE MUTATING THIS FUNCTION: rebuildInjectEntities (step 3)
+	// keeps only entities[:1]. An ENTITY appended anywhere between here and
+	// there is silently discarded, so an entity-side mutant placed in this
+	// window is a no-op that scores as a phantom ALIVE and argues the guard is
+	// missing. Append entities after step 3a. RELATIONSHIPS are unaffected:
+	// these ride on entities[0], which is the record that survives.
 	entities[0].Relationships = append(entities[0].Relationships,
 		collectHierarchyEdges(src, componentName)...)
 

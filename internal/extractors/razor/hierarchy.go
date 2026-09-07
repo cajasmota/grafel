@@ -20,7 +20,14 @@
 // graph uses (@inject, @using and the CONTAINS edges to event handlers all hang
 // off that one component). That is why #6335 emitted F#'s edges from the F#
 // extractor and #6437 emitted Groovy's from Groovy's.
-// TestRazorHierarchy_NoDuplicateComponents guards it.
+//
+// NOTHING IN THIS PACKAGE OBSERVES THAT ROUTE, and the claim is narrowed to say
+// so. TestRazorHierarchy_NoComponentMintedForHierarchyTarget and the golden
+// fixture's forbidden_entities rows both grade the SHAPE the route produces —
+// an entity minted from a hierarchy target rather than from a file path, which
+// a mutant does produce and both instruments catch. Neither would move if
+// "razor" were added to supportedLanguages, because both drive this extractor
+// directly. The decision is guarded at the symptom, not at the route.
 //
 // # Razor is not a class language — what the FROM side is
 //
@@ -42,7 +49,12 @@
 // the Solidity / Crystal / F# / Groovy convention: a Blazor base component or
 // interface is essentially always declared in another file (`ComponentBase` and
 // `IDisposable` are framework types that are not in the indexed tree at all), so
-// a file-pinned structural ref would never bind.
+// a file-pinned structural ref would never bind. A NAMESPACE-QUALIFIED target is
+// kept as written and therefore dangles; the measured reason, and the precision
+// it is measured at, are in TestRazorHierarchy_QualifiedTargetKeptAsWritten —
+// briefly, a bare leaf name mis-binds only when there is exactly ONE same-named
+// candidate, and DANGLES when there are several. "Binds to any same-named type
+// in any namespace" would over-claim it.
 //
 // # BOM (#6962)
 //
