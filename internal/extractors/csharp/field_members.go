@@ -41,7 +41,7 @@ func emitFieldMembers(
 	var fields []types.EntityRecord
 	seen := make(map[string]bool)
 
-	add := func(name, typ string, startNode ts.Node) {
+	add := func(name, typ string, typeNode, startNode ts.Node) {
 		if name == "" || seen[name] {
 			return
 		}
@@ -72,6 +72,14 @@ func emitFieldMembers(
 			Metadata:           map[string]interface{}{"subtype": "field", "owner": ownerName},
 			EnrichmentRequired: false,
 		})
+		// Issue #6912 — stash every bare type name written in the declared
+		// type for attachCsharpFieldTypeRefs, which turns the ones DECLARED IN
+		// THIS FILE into REFERENCES edges once the walk has seen every
+		// declaration. Nothing is decided here: a field may be declared before
+		// the type it names.
+		if cands := csTypeRefCandidates(typeNode, src); len(cands) > 0 {
+			fields[len(fields)-1].Metadata[csFieldTypeRefsMetaKey] = cands
+		}
 	}
 
 	// Record positional parameters: `record Foo(int Id, string Name)`. The
@@ -83,9 +91,10 @@ func emitFieldMembers(
 				if p == nil || p.Type() != "parameter" {
 					continue
 				}
-				typ := leafTypeName(p.ChildByFieldName("type"), src)
+				typeNode := p.ChildByFieldName("type")
+				typ := leafTypeName(typeNode, src)
 				name := childFieldText(p, "name", src)
-				add(name, typ, p)
+				add(name, typ, typeNode, p)
 			}
 		}
 	}
@@ -98,15 +107,17 @@ func emitFieldMembers(
 			}
 			switch ch.Type() {
 			case "property_declaration":
-				typ := leafTypeName(ch.ChildByFieldName("type"), src)
+				typeNode := ch.ChildByFieldName("type")
+				typ := leafTypeName(typeNode, src)
 				name := childFieldText(ch, "name", src)
-				add(name, typ, ch)
+				add(name, typ, typeNode, ch)
 			case "field_declaration":
 				vd := findChildByType(ch, "variable_declaration")
 				if vd == nil {
 					continue
 				}
-				typ := leafTypeName(vd.ChildByFieldName("type"), src)
+				typeNode := vd.ChildByFieldName("type")
+				typ := leafTypeName(typeNode, src)
 				for j := 0; j < int(vd.ChildCount()); j++ {
 					d := vd.Child(j)
 					if d == nil || d.Type() != "variable_declarator" {
@@ -122,7 +133,7 @@ func emitFieldMembers(
 							}
 						}
 					}
-					add(name, typ, ch)
+					add(name, typ, typeNode, ch)
 				}
 			}
 		}

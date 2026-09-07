@@ -91,6 +91,12 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// ones declared in this same file (which is all #4854 ever emitted, and
 	// always as EXTENDS).
 	entities = attachCsharpHierarchy(entities)
+	// Issue #6912 — field→declared-type REFERENCES edges, for the types
+	// DECLARED IN THIS FILE only. Runs after the walk because the set of
+	// in-file declarations is only complete once every declaration is on the
+	// table; see field_type_refs.go for why the target is addressed
+	// structurally rather than by bare name.
+	entities = attachCsharpFieldTypeRefs(entities, file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "csharp")
 	extractor.TagEntitiesLanguage(entities, "csharp")
