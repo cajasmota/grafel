@@ -201,6 +201,11 @@ var commentPrefixes6949 = map[string][]string{
 	// is exactly the hazard this scan exists for. Listed in BOTH tables because
 	// the two spellings are routed by two different classifier entries.
 	".routes": {"#"},
+	// Blazor components (#6370). TWO prefixes because a .razor file is two
+	// languages stacked: the markup half comments with `@*` … `*@`, and the
+	// `@code { }` half is C# and comments with `//`. Listing only one leaves
+	// half of every razor fixture graded as code.
+	".razor": {"@*", "//"},
 	// Keyed by basename, for sources with no extension.
 	"gemfile": {"#"}, "rakefile": {"#"}, "makefile": {"#"}, "dockerfile": {"#"},
 	"procfile": {"#"},

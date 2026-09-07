@@ -237,6 +237,14 @@
       "entity_extracted_total": 22,
       "relationship_extracted_total": 43
     },
+    "razor-blazor-mini": {
+      "entity_found": 6,
+      "entity_expected": 6,
+      "relationship_found": 5,
+      "relationship_expected": 5,
+      "entity_extracted_total": 25,
+      "relationship_extracted_total": 35
+    },
     "ruby-sinatra-modular-mini": {
       "entity_found": 13,
       "entity_expected": 13,

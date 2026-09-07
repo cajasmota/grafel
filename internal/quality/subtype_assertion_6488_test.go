@@ -288,8 +288,8 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 			}
 		}
 	}
-	if fixtures != 37 {
-		t.Fatalf("parsed %d fixtures, want 37 — every golden expected.json must "+
+	if fixtures != 38 {
+		t.Fatalf("parsed %d fixtures, want 38 — every golden expected.json must "+
 			"keep parsing across this additive schema change", fixtures)
 	}
 	// #6815 added the three file-carrier rows below. They are subtype-asserting
@@ -337,7 +337,27 @@ func TestOnlyTheIntendedGoldenRowsAssertSubtype_6488(t *testing.T) {
 	// have since each been demonstrated to fire under their own mutant, which
 	// is what the principle demands of a kept row and what none of them had.
 	want := map[string][]string{
-		"proto-mini":         {"Role.ROLE_ADMIN:enum_value"},
+		"proto-mini": {"Role.ROLE_ADMIN:enum_value"},
+		// #6370's razor arm. Every component row carries its subtype, and the
+		// reason is the same one the ocaml paragraph above states as a
+		// principle: SCOPE.UIComponent has TWO meanings inside this one
+		// fixture — the component itself (subtype "component") and an
+		// `@inject` service (subtype "inject", `Js` in Counter.razor, in the
+		// same FILE as the Counter row). A Kind-only row for Counter is
+		// therefore satisfiable by a record that is not a component, which is
+		// exactly what these rows exist to rule out; the entity carrying the
+		// hierarchy edges must be the component and nothing else.
+		//
+		// The two interface rows carry "interface" for the same reason on the
+		// C# side: SCOPE.Component in Shared/Abstractions.cs is also the kind
+		// of the file carrier, of the `JsHelper` class (subtype "class") and
+		// of the `interface:*` extraction records — four meanings, one Kind,
+		// one file. A row naming only the Kind would let the IMPLEMENTS
+		// target be any of them.
+		"razor-blazor-mini": {
+			"AppLayoutBase:component", "MainLayout:component", "NavMenu:component",
+			"Counter:component", "IAppDisposable:interface", "IAppTrackable:interface",
+		},
 		"erlang-otp-mini":    {"cache_server.erl:file"},
 		"nim-objects-mini":   {"store.nim:file"},
 		"groovy-grails-mini": {"PostController.groovy:file"},

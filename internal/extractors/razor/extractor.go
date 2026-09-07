@@ -18,6 +18,10 @@
 //	@inject directive         → SCOPE.UIComponent (subtype="inject")
 //	Event-handler method      → SCOPE.Operation  (subtype="event_handler")
 //
+// Relationship kinds: IMPORTS (@using), CONTAINS (component → event handler),
+// CALLS (inside @code), and — see hierarchy.go — EXTENDS (@inherits) and
+// IMPLEMENTS (@implements), both embedded on the component entity (#6370).
+//
 // OTel span: "indexer.extract.razor"
 //
 // Error handling: on any parse failure the extractor returns the component-name
@@ -150,8 +154,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		EnrichmentRequired: false,
 	}
 	// Component entity is the first record; we mutate index 0 below to attach
-	// CONTAINS edges to event-handler operations (Issue #378).
+	// CONTAINS edges to event-handler operations (Issue #378) and the
+	// @inherits/@implements hierarchy edges (#6370).
 	entities = append(entities, componentEntity)
+
+	// --- 1a. @inherits / @implements → EXTENDS / IMPLEMENTS (#6370) ----------
+	// Embedded on the component, before the early returns below: a file with
+	// no @code block still declares a base component.
+	entities[0].Relationships = append(entities[0].Relationships,
+		collectHierarchyEdges(src, componentName)...)
 
 	// --- 2. @inject directives -----------------------------------------------
 	for _, m := range reInject.FindAllStringSubmatch(src, -1) {

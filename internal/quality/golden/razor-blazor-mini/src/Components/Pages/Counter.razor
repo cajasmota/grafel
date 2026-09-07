@@ -1,0 +1,20 @@
+@page "/counter"
+@using System.Text
+@inject IJsHelper Js
+
+@* @inherits GhostBase *@
+@*
+@implements IPhantom
+*@
+
+<p>A directive is line-leading; @inherits WraithBase here is markup text.</p>
+<button @onclick="Increment">Count: @count</button>
+
+@code {
+    private int count;
+
+    private void Increment()
+    {
+        count++;
+    }
+}
