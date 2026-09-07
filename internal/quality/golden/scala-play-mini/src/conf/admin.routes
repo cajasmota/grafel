@@ -1,0 +1,4 @@
+# Play sub-router include, reached via `-> /admin admin.Routes` in conf/routes.
+# Graded separately from conf/routes because it is routed by a DIFFERENT rule:
+# the `.routes` entry in extensionLanguageMap, not the `routes` basename entry.
+GET     /admin/users                controllers.UserController.listUsers

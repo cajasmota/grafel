@@ -21,6 +21,16 @@
 
     { "name": "UserService", "kind": "SCOPE.Component", "source_file": "UserService.scala", "must_exist": true, "note": "trait UserService" },
     { "name": "UserServiceImpl", "kind": "SCOPE.Component", "source_file": "UserService.scala", "must_exist": true },
+
+    { "name": "GET:/health", "kind": "SCOPE.Operation", "source_file": "conf/routes", "must_exist": true,
+      "note": "#6952 — conf/routes is EXTENSIONLESS. Until the classifier's `routes` basename entry it was Skip{unsupported_extension}, so internal/custom/scala's rePlayRoute (provenance PLAY_ROUTES_FILE) never saw a single production routes file. These six rows are the reachability grade: they fail if the classifier stops routing the file, and they fail if it routes it to a language whose producers do not read a routes DSL." },
+    { "name": "GET:/users", "kind": "SCOPE.Operation", "source_file": "conf/routes", "must_exist": true },
+    { "name": "GET:/users/{id}", "kind": "SCOPE.Operation", "source_file": "conf/routes", "must_exist": true,
+      "note": "Play's :id colon parameter, canonicalised to {id} by canonicalScalaColonPath." },
+    { "name": "POST:/users", "kind": "SCOPE.Operation", "source_file": "conf/routes", "must_exist": true },
+    { "name": "DELETE:/users/{id}", "kind": "SCOPE.Operation", "source_file": "conf/routes", "must_exist": true },
+    { "name": "GET:/admin/users", "kind": "SCOPE.Operation", "source_file": "conf/admin.routes", "must_exist": true,
+      "note": "Routed by a DIFFERENT rule from the five rows above: `.routes` in extensionLanguageMap, not `routes` in basenameLanguageMap. 60 of the 139 routes files measured across the Play upstreams are this sub-router include form, so deleting either entry alone must fail." },
     { "name": "findAll", "kind": "SCOPE.Operation", "source_file": "UserService.scala", "must_exist": true },
     { "name": "findById", "kind": "SCOPE.Operation", "source_file": "UserService.scala", "must_exist": true },
     { "name": "create", "kind": "SCOPE.Operation", "source_file": "UserService.scala", "must_exist": true },
@@ -62,6 +72,10 @@
     { "from_name": "UserController", "from_kind": "SCOPE.Component", "from_file": "UserController.scala",
       "kind": "CONTAINS", "to_name": "deleteUser", "to_kind": "SCOPE.Operation", "to_file": "UserController.scala",
       "must_exist": true }
+  ],
+  "forbidden_entities": [
+    { "name": "GET:/backup-only", "kind": "SCOPE.Operation", "source_file": "conf/routes.bak",
+      "note": "#6952 — src/conf/routes.bak is a byte-for-byte valid Play routes DSL, so every downstream content sniff accepts it; the only thing keeping it out of the graph is that the classifier routes `routes` and `*.routes` and NOT `routes.<anything>`. internal/custom/java's isPlayRoutesFile DOES accept the `routes.` prefix, so this is a widening a reader would reasonably make: it was measured on exactly one file in the whole corpus (playframework's deliberately-broken routes.bad) and would admit every routes.bak / routes.orig / routes.txt in exchange. FIREABLE: add \"routes.bak\": \"scala\" to basenameLanguageMap, or a `strings.HasPrefix(base, \"routes.\")` arm to detectLanguage, and this row hits." }
   ],
   "forbidden_relationships": []
 }

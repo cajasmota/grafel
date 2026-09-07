@@ -254,12 +254,12 @@
       "relationship_extracted_total": 63
     },
     "scala-play-mini": {
-      "entity_found": 23,
-      "entity_expected": 23,
+      "entity_found": 29,
+      "entity_expected": 29,
       "relationship_found": 5,
       "relationship_expected": 10,
-      "entity_extracted_total": 81,
-      "relationship_extracted_total": 201
+      "entity_extracted_total": 90,
+      "relationship_extracted_total": 210
     },
     "solidity-mini": {
       "entity_found": 40,
