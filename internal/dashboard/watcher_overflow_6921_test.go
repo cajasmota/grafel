@@ -32,6 +32,10 @@ func (o overflowingWatcher) OverflowStats() (uint64, uint64, uint64, time.Time) 
 	return o.overflows, o.rescans, o.coalesced, o.last
 }
 
+func (overflowingWatcher) InotifyBudgetReport() (string, []string, bool) {
+	return "", nil, false
+}
+
 func TestDaemonDiagnosticsReportsQueueOverflows6921(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	last := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)

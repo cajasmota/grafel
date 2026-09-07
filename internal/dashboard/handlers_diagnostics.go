@@ -88,6 +88,15 @@ type DaemonDiagnostics struct {
 	WatcherOverflows       uint64 `json:"watcher_overflows,omitempty"`
 	WatcherOverflowRescans uint64 `json:"watcher_overflow_rescans,omitempty"`
 	WatcherLastOverflow    string `json:"watcher_last_overflow,omitempty"`
+
+	// Inotify budget probe (#6932 arm B). Summary and notes are shipped
+	// together on purpose: the notes carry what the number cannot say for
+	// itself — the pool is per-UID and host-level, so this is grafel's own
+	// demand against a ceiling other processes also draw on, and grafel
+	// cannot see their share.
+	InotifyBudgetSummary string   `json:"inotify_budget_summary,omitempty"`
+	InotifyBudgetNotes   []string `json:"inotify_budget_notes,omitempty"`
+	InotifyBudgetExceeds bool     `json:"inotify_budget_exceeds,omitempty"`
 }
 
 // GroupDiagnostics covers one group's health.
@@ -359,6 +368,11 @@ func (s *Server) buildDaemonDiagnostics() DaemonDiagnostics {
 		if !lastOverflow.IsZero() {
 			d.WatcherLastOverflow = lastOverflow.UTC().Format(time.RFC3339)
 		}
+		// #6932 arm B: the inotify budget, reported here as well as in
+		// `grafel status` for the same reason the overflow counters are —
+		// exhausting the host's per-UID watch pool produces a watcher that
+		// looks healthy and delivers nothing.
+		d.InotifyBudgetSummary, d.InotifyBudgetNotes, d.InotifyBudgetExceeds = s.watcher.InotifyBudgetReport()
 	}
 
 	return d
