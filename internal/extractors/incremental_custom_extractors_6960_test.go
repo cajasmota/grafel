@@ -36,6 +36,7 @@ import (
 	"github.com/cajasmota/grafel/internal/extractors"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/treesitter"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // A Play controller: the base scala extractor emits SCOPE.Component/Operation
@@ -86,6 +87,14 @@ const customOnlyEntity6960 = "singleton:HomeController"
 // makes the gate-on case a LOSS rather than merely an absence.
 func seedAndEdit6960(t *testing.T) *graph.Document {
 	t.Helper()
+	return seedAndEdit6960WithConfig(t, nil)
+}
+
+// seedAndEdit6960WithConfig is seedAndEdit6960 with the ExtractorConfig the
+// daemon hands TryIncremental made explicit, so the CONFIG half of the gate can
+// be driven the way cmd/grafel's WithCustomExtractors reaches it.
+func seedAndEdit6960WithConfig(t *testing.T, cfg *extractor.ExtractorConfig) *graph.Document {
+	t.Helper()
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 
@@ -105,7 +114,7 @@ func seedAndEdit6960(t *testing.T) *graph.Document {
 
 	writeFile(t, repo, playControllerRel6960, playControllerV2_6960)
 
-	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, cfg)
 	// THE INCREMENTALITY PROOF. Done=false means TryIncremental declined and the
 	// caller runs a FULL index instead — on which custom dispatch is a different
 	// question entirely. Every assertion below is about the incremental path, so
@@ -162,6 +171,49 @@ func TestIncrementalDispatchesCustomExtractorsWhenTheGateIsOn6960(t *testing.T) 
 		t.Fatalf("premise: the edit added `def about()` and the base scala extractor did not "+
 			"emit it — the re-extraction did not happen, so this test is measuring nothing. "+
 			"entities: %v", entityNames6960(doc))
+	}
+
+	// R4 GRADING — the merge's ARGUMENT ORDER. `MergeWithCustom(customEnts,
+	// records)` compiles and satisfies every other assertion in this file, while
+	// moving the #6104 facet onto the wrong node and narrowing this entity from
+	// the class body (6-10) to the annotation line (7-7) — the same span-
+	// narrowing hazard the java test exists for, one fixture over. Both halves
+	// are asserted because either alone survives the swap in some configuration:
+	// the span pins which record won, the anchor pins which record the facet
+	// describes.
+	var scalaType graph.Entity
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == "SCOPE.Type" && doc.Entities[i].Name == "HomeController" {
+			scalaType = doc.Entities[i]
+		}
+	}
+	if scalaType.ID == "" {
+		t.Fatalf("premise: no SCOPE.Type|HomeController in the graph — the custom scala frameworks "+
+			"extractor's record did not survive, so the merge assertions below grade nothing. "+
+			"entities: %v", entityNames6960(doc))
+	}
+	if scalaType.StartLine != 6 || scalaType.EndLine != 10 {
+		t.Errorf("#6960: SCOPE.Type|HomeController spans %d-%d, want 6-10 (the `@Singleton` line "+
+			"through the closing brace). A span of 7-7 is the signature of MergeWithCustom being "+
+			"called with its arguments swapped: the base record's span no longer widens the "+
+			"custom one and the entity collapses onto its declaration line",
+			scalaType.StartLine, scalaType.EndLine)
+	}
+	baseComponentID := ""
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == "SCOPE.Component" && doc.Entities[i].Name == "HomeController" {
+			baseComponentID = doc.Entities[i].ID
+		}
+	}
+	if baseComponentID == "" {
+		t.Fatalf("premise: no SCOPE.Component|HomeController — the base record the facet must "+
+			"anchor to is absent; entities: %v", entityNames6960(doc))
+	}
+	if got := scalaType.PropGet(types.EntityTwinOfProperty); got != baseComponentID {
+		t.Errorf("#6960: SCOPE.Type|HomeController's %s is %q, want the BASE record's id %q. The "+
+			"facet must hang off the custom record and name the base one; the reverse means the "+
+			"merge ran with base and custom exchanged",
+			types.EntityTwinOfProperty, got, baseComponentID)
 	}
 
 	if !hasEntity6960(doc, "SCOPE.DI", customOnlyEntity6960) {
@@ -473,5 +525,139 @@ func TestIncrementalMergesCustomRecordsRatherThanAppending6960(t *testing.T) {
 		t.Errorf("#6960: the endpoint→handler flow entity is missing after the incremental pass — "+
 			"it is derived from the merged operation's span, so it is the downstream casualty of "+
 			"an un-merged append. entities: %v", entityNames6960(doc))
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #6275 — the merge-facet anchor
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIncrementalDoesNotOrphanMergeFacetAnchors6960 is the test the OLD comment
+// in entityRecordToGraphEntity asked for in advance: "if anything ever starts
+// stamping twin_of from code reachable here, the #6275 orphaned-anchor bug comes
+// back silently". #6960's dispatch is that "anything" — MergeWithCustom, and
+// therefore enrichFromTwin, is now reachable from the re-extract loop.
+//
+// The two ids have DIFFERENT PREIMAGES and that is the whole failure:
+// enrichFromTwin writes types.EntityRecord.ComputeID()
+// (sha256 over OrgID+ProjectID+SourceFile+Kind+Name) while this path mints
+// graph.EntityID(repoTag, Kind, Name, SourceFile). Without the remap the facet
+// names a hash no entity in the graph will ever carry — permanently, because
+// nothing downstream rewrites an opaque Properties string, and invisibly,
+// because a content-keyed parity comparison does not compare ids at all.
+func TestIncrementalDoesNotOrphanMergeFacetAnchors6960(t *testing.T) {
+	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "1")
+
+	doc := seedAndEdit6960(t)
+
+	ids := make(map[string]bool, len(doc.Entities))
+	for i := range doc.Entities {
+		ids[doc.Entities[i].ID] = true
+	}
+
+	// PREMISE — a facet is actually present. Without it "no orphaned anchor" is
+	// satisfied by a graph with no anchors, which is precisely the state this
+	// path was in BEFORE the fix and which must not read as a pass.
+	anchored := 0
+	for i := range doc.Entities {
+		e := doc.Entities[i]
+		twin := e.PropGet(types.EntityTwinOfProperty)
+		if twin == "" {
+			continue
+		}
+		anchored++
+		if !ids[twin] {
+			t.Errorf("#6275/#6960: %s|%s carries %s=%q, which matches NO entity id in the "+
+				"incremental graph. enrichFromTwin stamped a ComputeID() hash and this path mints "+
+				"graph.EntityID — different preimages — so the merge facet is orphaned and "+
+				"classfold's twinAnchors and the symbol index's facet-alias rule both read it as "+
+				"naming nothing",
+				e.Kind, e.Name, types.EntityTwinOfProperty, twin)
+		}
+	}
+	if anchored == 0 {
+		t.Fatalf("premise: no entity in the graph carries %s after a gate-ON incremental pass over "+
+			"a file whose custom and base records merge — the merge facet this test exists to "+
+			"check is not being produced, so the assertion above is vacuous. entities: %v",
+			types.EntityTwinOfProperty, entityNames6960(doc))
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The gate's OTHER half
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIncrementalReadsTheProgrammaticGateHalf6960 grades the half an env-only
+// read cannot see. The full path's gate is one expression over the config AND
+// the env (cmd/grafel stamps WithCustomExtractors into
+// ExtractorConfig.InProcCustomExtractors), and `grafel quality` is the only lane
+// that opts in by default anywhere — so an incremental pass that consulted only
+// GRAFEL_INPROC_CUSTOM_EXTRACTORS would leave the original #6960 defect alive in
+// precisely the lane that is on.
+//
+// Both directions are driven, because the tri-state exists to express both:
+// config-on with the env UNSET must dispatch, and config-off with the env SET
+// must not (Config wins — #2320).
+func TestIncrementalReadsTheProgrammaticGateHalf6960(t *testing.T) {
+	t.Run("config on, env unset", func(t *testing.T) {
+		t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
+		on := true
+		doc := seedAndEdit6960WithConfig(t, &extractor.ExtractorConfig{InProcCustomExtractors: &on})
+		if !hasEntity6960(doc, "SCOPE.Operation", "about") {
+			t.Fatalf("premise: base re-extraction did not happen; entities: %v", entityNames6960(doc))
+		}
+		if !hasEntity6960(doc, "SCOPE.DI", customOnlyEntity6960) {
+			t.Errorf("#6960: SCOPE.DI|%s absent with Config.InProcCustomExtractors=true and the env "+
+				"var unset — the incremental gate is reading only the env half, so a full index "+
+				"opted in through WithCustomExtractors still loses its custom entities on the next "+
+				"edit. SCOPE.DI present: %v", customOnlyEntity6960, anyEntityOfKind6960(doc, "SCOPE.DI"))
+		}
+	})
+
+	t.Run("config off, env set", func(t *testing.T) {
+		t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "1")
+		off := false
+		doc := seedAndEdit6960WithConfig(t, &extractor.ExtractorConfig{InProcCustomExtractors: &off})
+		if !hasEntity6960(doc, "SCOPE.Operation", "about") {
+			t.Fatalf("premise: base re-extraction did not happen; entities: %v", entityNames6960(doc))
+		}
+		if got := anyEntityOfKind6960(doc, "SCOPE.DI"); len(got) != 0 {
+			t.Errorf("#6960: SCOPE.DI entities %v emitted with an explicit Config false over a set "+
+				"env var. ExtractorConfig's precedence is Config-first (#2320) in BOTH directions; "+
+				"a gate that ORs the two cannot express a suppression and would diverge from a full "+
+				"index run with the same config", got)
+		}
+	})
+}
+
+// TestCustomExtractorsGateVocabulary6960 grades the helper in its OWN package.
+// Until this existed the only thing checking the exported gate was a delegating
+// table test in cmd/grafel — so a diff touching only custom_gate.go yields a
+// package set that never runs its own grader, the same trap the cmd/grafel
+// digest pin sets elsewhere.
+func TestCustomExtractorsGateVocabulary6960(t *testing.T) {
+	for _, tc := range []struct {
+		env  string
+		want bool
+	}{
+		{"1", true}, {"true", true}, {"TRUE", true}, {"yes", true}, {"Yes", true},
+		{" 1 ", true}, // trimmed
+		{"", false}, {"0", false}, {"false", false}, {"no", false}, {"garbage", false},
+		{"2", false}, {"on", false}, // NOT accepted — pins the vocabulary, not just truthiness
+	} {
+		t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", tc.env)
+		if got := extractors.InProcCustomExtractorsEnabled(); got != tc.want {
+			t.Errorf("InProcCustomExtractorsEnabled() with env %q = %v, want %v", tc.env, got, tc.want)
+		}
+		// The config-aware wrapper must agree whenever Config is silent, or the
+		// two dispatch sites do not in fact share one gate.
+		if got := extractors.CustomExtractorsEnabled(nil); got != tc.want {
+			t.Errorf("CustomExtractorsEnabled(nil) with env %q = %v, want %v", tc.env, got, tc.want)
+		}
+		if got := extractors.CustomExtractorsEnabled(&extractor.ExtractorConfig{}); got != tc.want {
+			t.Errorf("CustomExtractorsEnabled(empty cfg) with env %q = %v, want %v — a config that "+
+				"does not mention the toggle must fall through to the env, not read as false",
+				tc.env, got, tc.want)
+		}
 	}
 }
