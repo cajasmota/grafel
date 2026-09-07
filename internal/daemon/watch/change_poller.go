@@ -65,6 +65,22 @@
 // bounded number of cycles, not first-cycle detection, because first-cycle
 // detection is exactly what hid the bug.
 //
+// CONVERGENCE ON A PATH THE WALKER REFUSES (#6940). WalkRepo's file branch has
+// FOUR gates — extension filter, entry-type gate, file-level ignore layer,
+// sparse filter — and a single path is not enough to evaluate two of them (the
+// ignore layer needs the stack the walk accumulates while descending; sparse
+// needs opts.Sparse). So the poller cannot ask "would the indexer stamp this?"
+// by re-deriving the gates, and the first version of this file looped forever
+// on an untracked `photo.png` or a tracked-but-gitignored `gen.go`.
+//
+// It does not have to ask. The MANIFEST already answers it, after the fact: a
+// path grafel reported, that an index pass has since completed WITHOUT
+// stamping, is by definition a path the indexer declined — whichever gate did
+// it, including gates that do not exist yet. See declineTracker: no gate is
+// duplicated, so there is no second copy of any predicate to drift out of
+// agreement with the walker (the mistake #6940 lists as option 4, and the one
+// MA-1 already made once).
+//
 // WARM-UP (arm D of #6932). A fresh worktree's first `git status` costs
 // 2.4-9.0 s until git's untracked cache exists; every subsequent one is ~60 ms.
 // AddRepo therefore sets core.untrackedCache=true and runs one throwaway
@@ -148,6 +164,10 @@ type ChangePoller struct {
 
 	mu    sync.Mutex
 	repos map[string]struct{}
+	// declines holds one declineTracker per repo — the #6940 convergence
+	// state. It is keyed by the same absolute path as repos and dropped by
+	// RemoveRepo.
+	declines map[string]*declineTracker
 
 	cycles  uint64 // atomic — completed poll cycles
 	submits uint64 // atomic — sink invocations
@@ -176,6 +196,7 @@ func NewChangePoller(cfg ChangePollerConfig, sink EventSink, logger *slog.Logger
 		sink:          sink,
 		logger:        logger,
 		repos:         make(map[string]struct{}),
+		declines:      make(map[string]*declineTracker),
 		stopCh:        make(chan struct{}),
 		doneCh:        make(chan struct{}),
 	}
@@ -226,6 +247,7 @@ func (p *ChangePoller) RemoveRepo(repoPath string) {
 	}
 	p.mu.Lock()
 	delete(p.repos, abs)
+	delete(p.declines, abs)
 	p.mu.Unlock()
 }
 
@@ -297,7 +319,7 @@ func (p *ChangePoller) PollOnce() map[string][]string {
 
 	out := make(map[string][]string, len(repos))
 	for _, abs := range repos {
-		changed := p.pollRepo(abs)
+		changed, discovered := p.pollRepo(abs)
 		if len(changed) == 0 {
 			continue
 		}
@@ -307,6 +329,13 @@ func (p *ChangePoller) PollOnce() map[string][]string {
 		p.logger.Info("change-poller: changes detected — enqueuing reindex",
 			"repo", abs, "changed", len(changed), "bulk", bulk)
 		p.sink(abs, bulk)
+		// Only paths we ACTUALLY asked for a reindex of become pending, and
+		// only after the request went out: "the indexer declined it" is a
+		// claim about a pass that had the chance to stamp it. Recording
+		// pending on a cycle that submitted nothing would let an unrelated
+		// index pass decline a path grafel never asked about — the mirror
+		// defect (#6902), a change silently missed instead of over-reported.
+		p.trackerFor(abs).noteSubmitted(discovered, time.Now().UTC())
 	}
 	return out
 }
@@ -314,13 +343,17 @@ func (p *ChangePoller) PollOnce() map[string][]string {
 // pollRepo computes the changed set for one repo. Both halves of hybrid B live
 // here: git for DISCOVERY of paths the manifest has never heard of, and the
 // manifest's own key set for the CHANGE DECISION.
-func (p *ChangePoller) pollRepo(abs string) []string {
+//
+// It also returns the DISCOVERED paths — the candidates that are not manifest
+// keys. PollOnce hands those to the decline tracker once it has actually
+// submitted them (#6940).
+func (p *ChangePoller) pollRepo(abs string) (changedOut, discoveredOut []string) {
 	if p.stateDir == nil {
-		return nil
+		return nil, nil
 	}
 	stateDir := p.stateDir(abs)
 	if stateDir == "" {
-		return nil
+		return nil, nil
 	}
 	m := diff.LoadManifest(stateDir)
 	if len(m.Files) == 0 {
@@ -328,8 +361,15 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 		// unreadable). Every file would read as new and the poller would ask
 		// for a reindex on every cycle forever. Initial indexing belongs to the
 		// scheduler, not here.
-		return nil
+		return nil, nil
 	}
+
+	// #6940: reconcile the decline tracker against the manifest we just read,
+	// BEFORE the candidate set is built. This is where "reported, and an index
+	// pass has since declined to stamp it" is decided, and where a path the
+	// indexer has since changed its mind about is let back in.
+	tr := p.trackerFor(abs)
+	tr.reconcile(m, p.logger, abs)
 
 	cand := make(map[string]struct{}, len(m.Files)+16)
 	// Half 1 — the manifest's key set. This is what converges edit-then-revert
@@ -358,14 +398,40 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 	if !ok {
 		p.logger.Warn("change-poller: git status failed — sweeping the manifest key set only", "repo", abs)
 	}
+	//
+	// A path the tracker has recorded as DECLINED is not taken either: an
+	// index pass has already had it in front of it and did not stamp it, so
+	// it can only read as new for as long as the poller keeps offering it.
+	// That is #6940, and it is the same non-convergence as the deletion case
+	// entering through a different gate.
+	var discovered []string
 	for _, f := range files {
-		if _, known := cand[f]; known || existsOnDisk(abs, f) {
+		if _, known := cand[f]; known {
+			continue
+		}
+		if tr.declined(f) {
+			continue
+		}
+		if existsOnDisk(abs, f) {
 			cand[f] = struct{}{}
+			discovered = append(discovered, f)
 		}
 	}
 	for _, d := range dirs {
 		for _, rel := range walkUntrackedSubtree(abs, d) {
+			if _, known := cand[rel]; known {
+				continue
+			}
+			// The subtree walk applies the gates it can see, but it is rooted
+			// BELOW the repo root, so it does not inherit the root ignore
+			// stack and knows nothing of sparse state — it can hand back a
+			// path the real, root-rooted index walk then refuses. Same
+			// tracker, same reason.
+			if tr.declined(rel) {
+				continue
+			}
 			cand[rel] = struct{}{}
+			discovered = append(discovered, rel)
 		}
 	}
 
@@ -377,7 +443,181 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 
 	changed, _ := diff.Filter(abs, rels, m)
 	sort.Strings(changed)
-	return changed
+	sort.Strings(discovered)
+	return changed, discovered
+}
+
+// maxDeclinedPaths caps BOTH per-repo maps a decline passes through — pending
+// and refused. Both sets are bounded in practice by what `git status -unormal`
+// reports as FILES (an untracked subtree arrives as one collapsed `dir/` line),
+// but a cap keeps a pathological repo from turning a convergence fix into
+// unbounded daemon memory.
+//
+// pending is capped for a specific reason (#6961 review): it drains ONLY on a
+// completed index pass, so it is exactly the debounced / circuit-broken repo —
+// the scenario condition (2) is built around — where it would otherwise grow
+// without limit while nothing ever removed an entry.
+//
+// Past the cap the poller stops recording and reverts to the pre-#6940
+// behaviour for the overflow — it OVER-fires rather than dropping a path, which
+// is the direction this file chooses everywhere else. That direction is
+// asserted, not asserted-about: see TestDeclineTracker_CapOverflowOverFires.
+const maxDeclinedPaths = 4096
+
+// declineTracker is the #6940 convergence state for one repo.
+//
+// WHAT IT KNOWS, and why it needs no gate of its own. WalkRepo's four file
+// gates cannot be evaluated from a single path (the ignore layer needs the
+// stack the walk builds while descending; sparse needs opts.Sparse). But the
+// poller does not need to PREDICT the verdict — it can observe it. A path is
+// declined when all three hold:
+//
+//  1. the poller discovered it and SUBMITTED a reindex request naming it,
+//  2. an index pass has since completed — m.IndexedAt is stamped by every
+//     SaveManifestAtCommit, whether or not the file set changed, so it is
+//     proof a pass ran and not merely that something changed, and
+//  3. the manifest still does not hold the path.
+//
+// That is exactly "reported, offered to the indexer, and not stamped", and it
+// is gate-agnostic: it converges the extension filter, the ignore layer, the
+// sparse filter and any gate added later, with no predicate duplicated.
+//
+// IT IS REVERSIBLE, which is the half that keeps blocker 1's mirror closed. A
+// decline is dropped the moment the manifest holds the path — un-ignore a
+// gitignored file and the .gitignore edit is itself a manifest key, so the
+// poller reports it, the reindex re-walks the repo, the file is stamped, and
+// the next cycle lets it back in as an ordinary manifest key. Nothing here is
+// persisted: a daemon restart re-learns each decline at the cost of one cycle.
+type declineTracker struct {
+	mu sync.Mutex
+	// pending maps a submitted-but-unstamped path to the time of the FIRST
+	// submission naming it. Earliest wins, so a path re-offered every cycle
+	// still converges rather than sliding its own deadline forward.
+	pending map[string]time.Time
+	// refused holds paths condition (1)-(3) have been met for.
+	refused map[string]struct{}
+	// capWarned suppresses repeated overflow warnings for one repo.
+	capWarned bool
+}
+
+// trackerFor returns the decline tracker for abs, creating it on first use.
+func (p *ChangePoller) trackerFor(abs string) *declineTracker {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	tr, ok := p.declines[abs]
+	if !ok {
+		tr = &declineTracker{
+			pending: make(map[string]time.Time),
+			refused: make(map[string]struct{}),
+		}
+		p.declines[abs] = tr
+	}
+	return tr
+}
+
+// noteSubmitted records that the poller asked for a reindex naming these
+// discovered paths at time at.
+func (t *declineTracker) noteSubmitted(discovered []string, at time.Time) {
+	if len(discovered) == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, rel := range discovered {
+		if _, ok := t.pending[rel]; ok {
+			// Keep the FIRST submission time. A path re-offered on every
+			// cycle must not slide its own deadline forward, or condition (2)
+			// could never be met while the poller kept reporting it.
+			//
+			// It is SAFE to keep the first only because of the call ordering:
+			// pollRepo reconciles against the manifest BEFORE the caller
+			// submits, so at most one noteSubmitted lands between any two
+			// reconciles and a stale-but-earlier stamp cannot outlive the pass
+			// that answers it. That ordering is a dependency of this line, not
+			// an incidental fact — MP-2 of the #6961 review is the mutant that
+			// overwrites instead, and
+			// TestDeclineTracker_KeepsTheFirstSubmissionTime is what fails
+			// when it does.
+			continue
+		}
+		if len(t.pending) >= maxDeclinedPaths {
+			continue // overflow: this path keeps re-reporting, as it did before #6940
+		}
+		t.pending[rel] = at
+	}
+}
+
+// reconcile applies the manifest just read to the tracker: promote pending
+// paths an index pass has since declined, and forgive any refusal the manifest
+// now contradicts.
+func (t *declineTracker) reconcile(m *diff.Manifest, logger *slog.Logger, abs string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// Forgiveness FIRST. A refusal is an observation about one past index
+	// pass, not a permanent verdict: once the manifest holds the path the
+	// indexer has plainly changed its mind, and half 1 sweeps it from here on
+	// anyway.
+	//
+	// Only ONE of the ways the indexer can change its mind SELF-TRIGGERS, and
+	// it is the one driven end to end by
+	// TestChangePoller_DeclineIsForgivenWhenTheIndexerChangesItsMind: dropping
+	// a .gitignore rule, because the .gitignore is itself a manifest key, so
+	// half 1 reports the edit and the reindex it asks for re-walks the repo.
+	// The other two do NOT (#6961 review):
+	//
+	//   - Widening a sparse cone edits .git/info/sparse-checkout, which is no
+	//     manifest key, and the newly included path is suppressed — so it
+	//     cannot request the pass that would forgive it. It stays invisible
+	//     until an unrelated change triggers a stamping pass, or the daemon
+	//     restarts. That is bounded and self-healing, but it IS a behaviour
+	//     change against pre-#6940, where the next cycle picked it up.
+	//   - Growing the indexed-extension list means upgrading grafel, which
+	//     restarts the daemon — and nothing here is persisted, so the whole
+	//     decline set is gone. That one heals by construction.
+	//
+	// The order is deliberate and it is what makes the two "is it stamped?"
+	// tests in this function INDEPENDENTLY graded. Promote-then-forgive would
+	// let the promotion loop refuse a freshly stamped path and have this loop
+	// erase the evidence in the same call — two guards that only ever fail
+	// together, so neither is graded (#6902). Forgive-then-promote means a
+	// promotion that ignores the manifest leaves a stamped path REFUSED, which
+	// TestChangePoller_NewIndexableFileIsNeverDeclined can see.
+	for rel := range t.refused {
+		if _, stamped := m.Files[rel]; stamped {
+			delete(t.refused, rel)
+		}
+	}
+
+	for rel, submittedAt := range t.pending {
+		if _, stamped := m.Files[rel]; stamped {
+			delete(t.pending, rel) // the indexer took it; nothing to decline
+			continue
+		}
+		if !m.IndexedAt.After(submittedAt) {
+			continue // no pass has completed since we asked
+		}
+		delete(t.pending, rel)
+		if len(t.refused) >= maxDeclinedPaths {
+			if !t.capWarned {
+				t.capWarned = true
+				logger.Warn("change-poller: decline set full — further refused paths will keep re-reporting",
+					"repo", abs, "cap", maxDeclinedPaths)
+			}
+			continue
+		}
+		t.refused[rel] = struct{}{}
+		logger.Debug("change-poller: path reported but never stamped — the indexer declines it",
+			"repo", abs, "path", rel)
+	}
+}
+
+// declined reports whether rel is currently a known refusal.
+func (t *declineTracker) declined(rel string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	_, ok := t.refused[rel]
+	return ok
 }
 
 // existsOnDisk reports whether rel names an entry inside repoRoot that passes
@@ -400,12 +640,15 @@ func (p *ChangePoller) pollRepo(abs string) []string {
 // promise: WalkRepo applies three further gates the predicate cannot see — the
 // indexed-extension filter, the file-level ignore layer (#6931/#6933), and the
 // sparse-checkout filter. A git-reported path that clears the entry-type gate
-// and is then refused by one of those three still enters the candidate set and
-// still cannot converge. An untracked `photo.png` is the driven example; a
-// tracked-but-gitignored file is the second, widened by #6933. That residual is
-// filed as #6940 and deliberately NOT fixed here —
-// closing it means teaching the poller the walk's inherited ignore stack and
-// sparse state, which is a different change with a different cost.
+// and is then refused by one of those three still ENTERS the candidate set: an
+// untracked `photo.png` is the driven example, a tracked-but-gitignored file
+// the second (widened by #6933).
+//
+// Entering the candidate set is no longer the same thing as never converging.
+// #6940 is closed one level up, by declineTracker, which does not reproduce the
+// three gates at all — it observes that an index pass was offered the path and
+// did not stamp it. This predicate therefore stays exactly what it is: the
+// entry-type axis, in both directions, and no promise beyond it.
 //
 // The delegation is what keeps the one axis it DOES decide from drifting: the
 // poller's entry-type test IS the walker's, and TestExistsOnDisk_AgreesWithWalker
