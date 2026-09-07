@@ -99,16 +99,29 @@ source_patterns:
   # widening is not an over-fire across file kinds, which is what #6927 sent
   # this arm to look for. The reason it is still wrong is narrower and worse.
   #
-  # internal/extractors/graphql already emits EVERY field of every
-  # `type`/`interface`/`input` as its own `SCOPE.Component` (subtype `field`)
-  # named `Owner.field`, with a CONTAINS edge from its owner
-  # (graphql.go:236-270). This rule captured a strict SUBSET of those — only
-  # fields carrying an argument list — under a different kind and a BARE name,
-  # which drops the owner and collapses two same-named fields on different
-  # types into one entity per file.
+  # internal/extractors/graphql emits the fields of a `type`/`interface`/`input`
+  # DEFINITION as their own `SCOPE.Component` (subtype `field`) named
+  # `Owner.field`, with a CONTAINS edge from the owner (graphql.go:236-270).
+  # This rule captured a subset of those — only fields carrying an argument
+  # list — under a different kind and a BARE name, which drops the owner and
+  # collapses two same-named fields on different types into one entity per file.
   #
-  # It is not merely redundant, it is actively harmful, and the harm is
-  # invisible to recall. Measured on internal/quality/golden/graphql-schema-mini
+  # It is a subset THERE and not everywhere, and the difference is load-bearing
+  # enough that PR #6953 review had to correct an earlier version of this
+  # comment: the extractor's `extend type Foo { … }` branch (graphql.go:350)
+  # emits an IMPORTS/FEDERATES stub and NO field entities at all. That is how
+  # every Apollo Federation subgraph declares its fields, and gqlgen and
+  # apollo-client are both in the corpus measured above. So "the extractor
+  # already covers it" is NOT why this rule is gone. It is gone because at HEAD
+  # it produces nothing (0 of 1907 files) and, widened, it does active harm:
+  #
+  # resolve/refs.go's isOperationKind is `k == "SCOPE.Operation" || k ==
+  # "Operation"`, so an entity of kind `Operation` is a first-class candidate
+  # whenever the resolver binds an operation reference by BARE name — and the
+  # http_endpoint synthesis emits `SCOPE.Operation "QUERY /node"` carrying a
+  # bare `handler_ref: node`. A bare `Operation|node` therefore OUTRANKS the
+  # owner-qualified `SCOPE.Component|Query.node`. That is the mechanism, and it
+  # is invisible to recall. Measured on internal/quality/golden/graphql-schema-mini
   # by running the pipeline with `(?m)` added: entity_recall stayed 100%,
   # relationship_recall stayed 100%, forbidden hits stayed 0 — and TWO SERVES
   # edges silently moved. The http_endpoint synthesis emits
@@ -123,6 +136,13 @@ source_patterns:
   #
   # Removal is behaviour-preserving TODAY on every input measured (0 matches
   # in 1907 files), so nothing is lost by it and the `(?m)` landmine is gone.
+  #
+  # What is NOT closed, and should not be read as closed: widening this rule
+  # and OWNER-QUALIFYING the capture — emitting `Owner.field`, or any kind
+  # isOperationKind does not accept — would reach 1429 sites across 160 SDL
+  # files, including the `extend type` fields the extractor does not model at
+  # all. That is a real recall opportunity and the reason this comment says
+  # what the ban actually rests on. Only a BARE-named `Operation` is banned.
   #
   # The graded consequence lives in graphql-schema-mini's expected.json:
   # `QUERY /node --SERVES--> Query.node` and `QUERY /user --SERVES--> Query.user`

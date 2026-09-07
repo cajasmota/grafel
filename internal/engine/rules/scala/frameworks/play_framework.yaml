@@ -140,6 +140,18 @@ source_patterns:
   #     but not a controller route, and the ROUTES_TO edge below would then
   #     point at a target this rule set never emits.
   #
+  # Named as UNGRADED rather than left to be discovered: the CAPTURE axis. The
+  # rows above pin where the match may START (the anchor axis) and which words
+  # may open and close it (the name axis); nothing pins the SHAPE of
+  # `(\w+\.\w+)`. PR #6953 review MU2 widened it to `(\w+(?:\.\w+)?)` at
+  # both sites and it was ALIVE at every level, because over the 32 real
+  # conf/routes files that carry a controller route the two produce IDENTICAL
+  # match sets — every real line names `Controller.method`, so the optional
+  # second segment is never exercised. It is equivalent on measured input and
+  # therefore not a defect anyone can demonstrate today; it is recorded here so
+  # a later change to the capture is known to be ungraded rather than assumed
+  # to be covered by the rows above.
+  #
   # UNREACHABLE IN PRODUCTION TODAY, and this fix does not change that.
   # `conf/routes` has no extension and no entry in classifier.go's
   # basenameLanguageMap, so classifyInner returns

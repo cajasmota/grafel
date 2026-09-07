@@ -473,21 +473,51 @@ func TestIssue6927_Play_ConfRoutesIsNotClassified(t *testing.T) {
 // GraphQL — the pattern that was removed rather than widened
 // ---------------------------------------------------------------------------
 
-// TestIssue6927_GraphQL_NoOperationSourcePattern fails if the removed rule
-// returns to graphql_schema.yaml in any form.
+// TestIssue6927_GraphQL_NoOperationSourcePattern fails if a source_pattern
+// emitting the `Operation` KIND returns to graphql_schema.yaml.
 //
-// Selected structurally — by the KIND a pattern emits, not by its text — so a
-// re-add under a rewritten regex still fails.
+// The ban is on the KIND, and it rests on the repointing — not on the removed
+// rule being subsumed by the extractor. PR #6953 review corrected that premise
+// and it must not creep back into this message: internal/extractors/graphql
+// does NOT emit field entities for an `extend type Foo { … }` block (its
+// extend branch at graphql.go:350 emits only an IMPORTS/FEDERATES stub), which
+// is how every Apollo Federation subgraph declares its fields, so the removed
+// rule was not a subset there. The removal still loses nothing at HEAD — the
+// pattern matched 0 of 1907 real .graphql/.gql files — but "loses nothing
+// today" and "is subsumed" are different claims and only the first is true.
+//
+// What IS true, and is the whole reason for the ban: resolve/refs.go's
+// isOperationKind is `k == "SCOPE.Operation" || k == "Operation"`, so an
+// entity of kind `Operation` is a first-class candidate when the resolver
+// binds an operation reference by BARE name. The http_endpoint synthesis emits
+// `SCOPE.Operation "QUERY /node"` carrying a bare `handler_ref: node`, and a
+// bare `Operation|node` therefore outranks the owner-qualified
+// `SCOPE.Component|Query.node` — measured on
+// internal/quality/golden/graphql-schema-mini, where widening the rule moved
+// two SERVES edges with recall and forbidden hits both unchanged.
+//
+// So this is not a ban on ever extracting graphql fields here. Widening the
+// rule and OWNER-QUALIFYING the capture — `Owner.field`, or any kind
+// isOperationKind does not accept — is open, and would reach 1429 sites across
+// 160 SDL files. What is closed is re-adding a BARE-named `Operation`.
+//
+// Selected structurally, by the kind a pattern emits rather than by its text,
+// so a re-add under a rewritten regex still fails. That selector is NOT the
+// fence, though, and PR #6953 review MU1 demonstrated it: re-adding the same
+// regex with `entity_type: Component` passes this test and dies on
+// TestIssue6927_GraphQL_SchemaMintsNoBareFieldEntity instead. The entity-level
+// test is what actually holds the line; this one names the kind and the reason.
 func TestIssue6927_GraphQL_NoOperationSourcePattern(t *testing.T) {
 	fr := graphqlOnlyRules(t)["graphql"][0]
 	for _, sp := range fr.SourcePatterns {
 		if sp.EntityType == "Operation" {
-			t.Errorf("graphql_schema.yaml emits Operation again via %q. "+
-				"internal/extractors/graphql already emits every field as SCOPE.Component "+
-				"`Owner.field`; a bare-named duplicate repoints the http_endpoint synthesis's "+
-				"SERVES edge off the owner-qualified field (measured on "+
-				"internal/quality/golden/graphql-schema-mini). See the comment where the rule "+
-				"was removed", sp.Pattern)
+			t.Errorf("graphql_schema.yaml emits the `Operation` kind again via %q. "+
+				"resolve/refs.go's isOperationKind accepts `Operation`, so a BARE-named one "+
+				"outranks the owner-qualified `SCOPE.Component|Query.node` when the resolver "+
+				"binds the http_endpoint synthesis's bare `handler_ref` — measured on "+
+				"internal/quality/golden/graphql-schema-mini, where it repointed two SERVES "+
+				"edges with recall unchanged. Emitting `Owner.field`, or any kind "+
+				"isOperationKind does not accept, is NOT banned by this test", sp.Pattern)
 		}
 	}
 }
@@ -585,10 +615,14 @@ func TestIssue6927_LedgerOfAnchoredPatternsWithoutMultiline(t *testing.T) {
 			sets++
 			check := func(where, p string) {
 				pats++
-				if caret, dollar := hasBareRegexAnchor6927(p); !caret && !dollar {
-					return
-				}
-				if strings.Contains(p, "(?m)") {
+				// Anchor DETECTION and flag PLACEMENT are separate questions and
+				// each was a hole in the first version of this test (PR #6953
+				// review MU3 and MU5). Both live in
+				// anchorCompiledAsStartOfText6927, which
+				// TestIssue6927_LedgerHelperDetectsAnchorsAndFlagPlacement grades
+				// directly — the sweep cannot grade them, because both survivors
+				// happen to carry `^` at index 0 and neither carries a `(?m)`.
+				if !anchorCompiledAsStartOfText6927(p) {
 					return
 				}
 				got[key+"/"+where] = p
@@ -624,10 +658,14 @@ func TestIssue6927_LedgerOfAnchoredPatternsWithoutMultiline(t *testing.T) {
 	}
 }
 
-// hasBareRegexAnchor6927 reports whether p carries a `^` or `$` acting as an
-// anchor, stepping over escapes and character classes. `[^)]` and `\$` are not
-// anchors and a scan that treats them as such is 67x noise.
-func hasBareRegexAnchor6927(p string) (caret, dollar bool) {
+// firstBareRegexAnchor6927 returns the byte index of the first `^` or `$` in p
+// that is acting as an ANCHOR, or -1 if there is none. Escapes and character
+// classes are stepped over: `[^)]` and `\$` are not anchors, and a scan that
+// counts them reports 134 offenders where there are 2.
+//
+// Returning the INDEX rather than a bool is not cosmetic — the placement check
+// below needs it, and PR #6953 review MU5 is what made that necessary.
+func firstBareRegexAnchor6927(p string) int {
 	inClass := false
 	for i := 0; i < len(p); i++ {
 		switch c := p[i]; {
@@ -639,11 +677,117 @@ func hasBareRegexAnchor6927(p string) (caret, dollar bool) {
 			}
 		case c == '[':
 			inClass = true
-		case c == '^':
-			caret = true
-		case c == '$':
-			dollar = true
+		case c == '^', c == '$':
+			return i
 		}
 	}
-	return
+	return -1
+}
+
+// multilineFlagIndex6927 returns the byte index of a `(?m)` flag group in p
+// that is outside a character class, or -1.
+//
+// PR #6953 review MU5: the first version of the ledger asked
+// `strings.Contains(p, "(?m)")`, which is PLACEMENT-BLIND. Go applies a flag
+// group from its own position onward, so `^foo(?m)` is still start-of-TEXT and
+// carries the exact defect #6927 is about — and it satisfied the ledger. The
+// caller therefore compares this index against the FIRST anchor's, which is
+// the conservative reading: in `^a(?m)b$` the `^` is unaffected by the flag and
+// the pattern is an offender even though a later anchor is fine.
+func multilineFlagIndex6927(p string) int {
+	inClass := false
+	for i := 0; i < len(p); i++ {
+		switch c := p[i]; {
+		case c == '\\':
+			i++
+		case inClass:
+			if c == ']' {
+				inClass = false
+			}
+		case c == '[':
+			inClass = true
+		case c == '(':
+			if strings.HasPrefix(p[i:], "(?m)") {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// anchorCompiledAsStartOfText6927 reports whether p carries an anchor that
+// plain regexp.Compile will read as start/end of TEXT — i.e. an anchor with no
+// `(?m)` in effect at its position.
+func anchorCompiledAsStartOfText6927(p string) bool {
+	anchor := firstBareRegexAnchor6927(p)
+	if anchor < 0 {
+		return false
+	}
+	flag := multilineFlagIndex6927(p)
+	return flag < 0 || flag > anchor
+}
+
+// TestIssue6927_LedgerHelperDetectsAnchorsAndFlagPlacement grades the ledger's
+// own detection, which PR #6953 review found ungraded in two places.
+//
+// The ledger is what #6927 is being closed against, so a helper that quietly
+// stops detecting anchors turns it into a test that always passes. Both
+// survivors in the allow-list happen to carry `^` at index 0, so the sweep
+// alone cannot tell a real scanner from `p[0] == '^'` (review MU3), and it
+// could not tell `(?m)` present from `(?m)` EFFECTIVE (review MU5).
+//
+// The table is enumerated over the shapes rather than hand-picked from the two
+// live offenders, because hand-picking is what left both holes.
+func TestIssue6927_LedgerHelperDetectsAnchorsAndFlagPlacement(t *testing.T) {
+	for _, tc := range []struct {
+		pattern    string
+		wantAnchor int
+		wantOffend bool
+		why        string
+	}{
+		// --- anchor DETECTION, including anchors that are not at index 0.
+		// Kills the `p[0] == '^'` mutant (MU3): both allow-listed survivors
+		// carry `^` at 0, so the live sweep cannot distinguish them.
+		{`^foo`, 0, true, "the ordinary case"},
+		{`foo$`, 3, true, "a `$` anchor with no `^` at all — index 0 is not it"},
+		{`(?:a|b)^x`, 7, true, "a `^` in the middle of the pattern"},
+		{`\s+(\w+)$`, 8, true, "the ansible `$` shape, anchor at the end"},
+		{`x(?::|$)`, 6, true, "the .NET MAUI shape — `$` inside a group, still an anchor"},
+		// --- NON-anchors. Kills a scanner that just counts the bytes.
+		{`[^)]*`, -1, false, "`^` inside a character class is a negation"},
+		{`\$\{`, -1, false, "an ESCAPED `$` is a literal dollar"},
+		{`\^x`, -1, false, "an escaped `^` is a literal caret"},
+		{`["$]`, -1, false, "`$` inside a character class"},
+		{`[\]^]`, -1, false, "a class whose `]` is escaped does not end early"},
+		{`(\w+)`, -1, false, "no anchor at all"},
+		// --- FLAG PLACEMENT. Kills the strings.Contains mutant (MU5).
+		{`(?m)^foo`, 4, false, "the fix: the flag precedes the anchor"},
+		{`^foo(?m)`, 0, true, "MU5 — `(?m)` AFTER the anchor leaves `^` start-of-TEXT"},
+		{`^a(?m)b$`, 0, true, "a later anchor being multiline does not rescue the first"},
+		{`(?m)a[^)]$`, 9, false, "a class between flag and anchor must not confuse either scan"},
+		{`[(?m)]^x`, 6, true, "a `(?m)` INSIDE a character class is a literal set, not a flag"},
+	} {
+		if got := firstBareRegexAnchor6927(tc.pattern); got != tc.wantAnchor {
+			t.Errorf("firstBareRegexAnchor6927(%q) = %d, want %d — %s",
+				tc.pattern, got, tc.wantAnchor, tc.why)
+		}
+		if got := anchorCompiledAsStartOfText6927(tc.pattern); got != tc.wantOffend {
+			t.Errorf("anchorCompiledAsStartOfText6927(%q) = %v, want %v — %s",
+				tc.pattern, got, tc.wantOffend, tc.why)
+		}
+	}
+
+	// Positive control on the two shapes the live ledger actually holds, so a
+	// helper that passes the table above but disagrees with the sweep is caught
+	// here rather than by the sweep silently going empty.
+	for _, p := range []string{
+		`(?:public|internal)\s+(?:partial\s+)?class\s+(\w+ViewModel)\s*(?::|$)`,
+		`^-\s+name:\s+["']?([^"'\n]+)`,
+	} {
+		if !anchorCompiledAsStartOfText6927(p) {
+			t.Errorf("the live ledger's own survivor %q is no longer detected as an offender — "+
+				"TestIssue6927_LedgerOfAnchoredPatternsWithoutMultiline would report a clean "+
+				"ledger for the wrong reason", p)
+		}
+	}
 }
