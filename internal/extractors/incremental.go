@@ -80,6 +80,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -2130,11 +2131,42 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 // overwhelmingly common batch, which carries no facet at all, pays nothing and
 // never computes the second sha256. Same shape as recordsHaveTwinOf on the full
 // path.
+//
+// THE TWO ID SCHEMES DISAGREE ABOUT FIELD BOUNDARIES, and this function is the
+// first code in the tree to key a map on the COARSER one while storing the
+// FINER one — which is what makes the disagreement reachable here and nowhere
+// else. types.EntityRecord.ComputeID concatenates OrgID+ProjectID+SourceFile+
+// Kind+Name with NO separators; graph.EntityID separates every field with NUL.
+// So {SourceFile:"x.go", Kind:"A", Name:"BC"} and {SourceFile:"x.go",
+// Kind:"AB", Name:"C"} are ONE key and TWO entities: measured,
+// ComputeID collides while EntityID does not.
+//
+// Without the check below, both records write the same map slot and the winner
+// is whichever index happens to come last — so a twin_of naming that preimage is
+// repointed at an ARBITRARY one of two distinct entities. That is the #6369
+// wrong-node hazard, and it is strictly worse than the dangling anchor this
+// function exists to prevent: a dangling twin_of names an id no entity has and
+// is therefore detectable and inert, while a confidently-wrong one reads as
+// valid to classfold's twinAnchors and to the symbol index's facet-alias rule,
+// which will then alias a name onto the wrong definition.
+//
+// SO AN AMBIGUOUS KEY IS SKIPPED, NOT RESOLVED, and warned about. Skipping
+// degrades exactly to the pre-remap behaviour for that one facet — the honest,
+// detectable failure — and it is the only outcome that does not require this
+// function to invent an answer it has no evidence for. Picking one silently, the
+// behaviour before this check, is the one option that is not defensible.
+// (The underlying ComputeID separator problem is broader than this function and
+// is filed separately; do not "fix" it here by changing ComputeID, which is an
+// identity many other call sites already depend on.)
 func remapTwinOfAnchors(records []types.EntityRecord, repoTag string) {
 	if !recordsCarryTwinOf(records) {
 		return
 	}
 	preStampToFinal := make(map[string]string)
+	// ambiguous holds every pre-stamp key that TWO records with DIFFERENT final
+	// ids both claim. See the collision note in the doc comment: such a key is
+	// dropped from the remap entirely rather than resolved by arrival order.
+	var ambiguous map[string]bool
 	for k := range records {
 		r := &records[k]
 		if r.Name == "" {
@@ -2142,6 +2174,22 @@ func remapTwinOfAnchors(records []types.EntityRecord, repoTag string) {
 		}
 		preStampID := r.ComputeID()
 		finalID := graph.EntityID(repoTag, r.Kind, r.Name, r.SourceFile)
+		if prior, seen := preStampToFinal[preStampID]; seen && prior != finalID {
+			if ambiguous == nil {
+				ambiguous = make(map[string]bool, 1)
+			}
+			ambiguous[preStampID] = true
+			slog.Default().Warn("incremental: two records share one pre-stamp entity id — "+
+				"a grafel.twin_of naming it will be left unremapped rather than pointed at "+
+				"an arbitrary one of them",
+				"pre_stamp_id", preStampID,
+				"source_file", r.SourceFile,
+				"kind", r.Kind,
+				"name", r.Name,
+				"final_id", finalID,
+				"other_final_id", prior)
+			continue
+		}
 		if preStampID != finalID {
 			preStampToFinal[preStampID] = finalID
 		}
@@ -2156,6 +2204,10 @@ func remapTwinOfAnchors(records []types.EntityRecord, repoTag string) {
 		}
 		twin, ok := r.Properties[types.EntityTwinOfProperty]
 		if !ok || twin == "" {
+			continue
+		}
+		if ambiguous[twin] {
+			// LEAVE IT DANGLING, DELIBERATELY. See the doc comment.
 			continue
 		}
 		if final, remapped := preStampToFinal[twin]; remapped {
