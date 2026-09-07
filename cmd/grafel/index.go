@@ -2904,6 +2904,10 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	trk.Done(len(files), doc.Stats.Entities)
 
 	dur := time.Since(start)
+	// #6985 — close the oversized-file report before the aggregate line, so a
+	// user who saw eight names also learns how many more there were. Prints
+	// nothing unless the cap actually hid something.
+	i.classifier.ReportOversizedSummary()
 	fmt.Fprintf(os.Stderr,
 		"grafel: processed=%d extracted=%d skipped=%d failed=%d "+
 			"entities=%d relationships=%d "+

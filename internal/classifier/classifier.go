@@ -53,6 +53,10 @@ type ClassifyResult struct {
 type Classifier struct {
 	// tracer is the OTel tracer used for classify spans.
 	tracer trace.Tracer
+
+	// oversized carries this classifier's oversized-skip report state. It is
+	// per-Classifier, i.e. per index, on purpose — see oversized_report.go.
+	oversized oversizedReporter
 }
 
 // New constructs a Classifier.
@@ -168,8 +172,13 @@ func (c *Classifier) classifyWithSizeInner(filePath string, sizeBytes int64) Cla
 		return ClassifyResult{Skip: true, SkipReason: "empty_path"}
 	}
 
-	// Size check first — cheapest guard.
+	// Size check first — cheapest guard. The skip is announced (#6985): an
+	// oversized file mints no entity and appears nowhere in graph.json, and
+	// before the report the only trace of it was the aggregate `skipped=N`.
+	// See oversized_report.go for why the report lives here and why the
+	// UnsupportedTally is not the surface for it.
 	if sizeBytes > maxIndexableBytes {
+		c.oversized.report(filePath, sizeBytes)
 		return ClassifyResult{Skip: true, SkipReason: "too_large"}
 	}
 
