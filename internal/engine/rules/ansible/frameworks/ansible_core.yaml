@@ -186,11 +186,29 @@ source_patterns:
   # `copy` for that inline task, which is a forbidden row in
   # ansible-playbook-modules-mini.
   #
-  # Blind spot: the alternation is a hand-written list of 18 names, so a
-  # shorthand module outside it (`user:`, `lineinfile:`, `git:`, `uri:`) is
-  # not seen. That is unchanged by this fix, and it is why the list itself is
-  # pinned as an exact set rather than by membership — a rule that grows a
-  # generic `(\w+)` there would type every block-form key in every gated file.
+  # The alternation has TWO independent name questions and they are graded
+  # separately, because the first one's fence says nothing about the second:
+  #
+  #   * a shorthand module OUTSIDE the list (`user:`, `lineinfile:`, `git:`,
+  #     `uri:`) is not seen. A hand-written list of 18 names is a recall blind
+  #     spot, unchanged by this fix, and `lineinfile` is a forbidden row that
+  #     dies when the list is replaced by a generic `(\w+)`.
+  #   * a task KEYWORD getting INTO the list is the permissive direction, and
+  #     it was ungraded until PR #6949's review: inserting `when` left both
+  #     ./internal/engine/ and ./internal/quality/... at exit 0. `when:`,
+  #     `tags:`, `loop:`, `vars:`, `args:`, `environment:`, `block:` and their
+  #     siblings all take a list or a mapping, so a bare one has exactly the
+  #     shape this rule matches — and `when:` and `notify:` already have rules
+  #     of their own further down this file. No corpus frequency is claimed
+  #     for any of them; reachability is the property, and a count would be
+  #     the corpus-measurement-as-property trap running the permissive way.
+  #
+  # Naming the killing mutant, as this issue now requires: inserting `when`
+  # into the alternation mints a Module called `when`, which is a forbidden row
+  # in ansible-playbook-modules-mini, and the same file's Modules are asserted
+  # as an EXACT SET at engine level — which a membership check cannot do,
+  # because it is blind to a same-count SUBSTITUTION (swap `debug` for `when`)
+  # that no growth ceiling would catch either.
   - pattern: "(?m)^\\s+(apt|yum|dnf|pip|copy|template|file|service|systemd|command|shell|debug|set_fact|include_tasks|include_role|import_tasks|import_role):\\s*$"
     entity_type: Module
     name_group: 1

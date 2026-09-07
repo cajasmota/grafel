@@ -1,15 +1,14 @@
 {
   "fixture_name": "ansible-playbook-modules-mini",
   "language": "ansible",
-  "description": "Ansible Core rule patterns (#6927, the `$`-side arm). Two module rules in rules/ansible/frameworks/ansible_core.yaml were compiled without `(?m)`. Both carry a `$`, and in Go `$` without `(?m)` is end of TEXT with no trailing-newline allowance, so the FQCN rule needed the file to END with a bare module key and the shorthand rule needed `^` AND `$` at once — a file whose entire content is one indented key. Measured across 992 real YAML files (59 upstream repos plus 4 upstream ansible repos): ZERO matches for either, inside ansible repos and outside them alike. Under `(?m)` the `$` becomes end of LINE, which is exactly the block form — a module key with its arguments in the mapping below it — so both rules finally mean what their names say. The shorthand rule is plain English (`copy`, `template`, `file`, `service`, `command`) and the ansible bucket is aliased onto the whole `yaml` language, so it needed a framework gate: 59 matches in 43 non-ansible files ungated, 0 gated. The FQCN rule measured zero over-fire but is gated too, because the gate costs nothing here and a dotted map key is not ansible-only. The fixture separates the ANCHOR/`$` axis (inline forms and a commented-out module, inside files that satisfy the gate) from the GATE axis (a k8s manifest and a traefik config that name ansible nowhere), and grades the shorthand rule's NAME axis separately from both."
-  ,
+  "description": "Ansible Core rule patterns (#6927, the `$`-side arm). Two module rules in rules/ansible/frameworks/ansible_core.yaml were compiled without `(?m)`. Both carry a `$`, and in Go `$` without `(?m)` is end of TEXT with no trailing-newline allowance, so the FQCN rule needed the file to END with a bare module key and the shorthand rule needed `^` AND `$` at once \u2014 a file whose entire content is one indented key. Measured across 992 real YAML files (59 upstream repos plus 4 upstream ansible repos): ZERO matches for either, inside ansible repos and outside them alike. Under `(?m)` the `$` becomes end of LINE, which is exactly the block form \u2014 a module key with its arguments in the mapping below it \u2014 so both rules finally mean what their names say. The shorthand rule is plain English (`copy`, `template`, `file`, `service`, `command`) and the ansible bucket is aliased onto the whole `yaml` language, so it needed a framework gate: 59 matches in 43 non-ansible files ungated, 0 gated. The FQCN rule measured zero over-fire but is gated too, because the gate costs nothing here and a dotted map key is not ansible-only. The fixture separates the ANCHOR/`$` axis (inline forms and a commented-out module, inside files that satisfy the gate) from the GATE axis (a k8s manifest and a traefik config that name ansible nowhere), and grades the shorthand rule's NAME axis separately from both \u2014 twice over, since the alternation has two independent name questions: whether a module OUTSIDE the list is minted (`lineinfile`) and whether a task KEYWORD inside it would be (`when`, `tags`, `loop`).",
   "expected_entities": [
     {
       "name": "ansible.builtin.apt",
       "kind": "Module",
       "source_file": "provisioning/roles/storefront/tasks/main.yml",
       "must_exist": true,
-      "note": "#6927 recall arm for `(?m)\\s+(\\w+\\.\\w+\\.\\w+):\\s*$`. First module in the file — under end-of-TEXT only a module that is the LAST construct in the file could ever match, so a first-in-file row is the shape the old pattern was furthest from reaching."
+      "note": "#6927 recall arm for `(?m)\\s+(\\w+\\.\\w+\\.\\w+):\\s*$`. First module in the file \u2014 under end-of-TEXT only a module that is the LAST construct in the file could ever match, so a first-in-file row is the shape the old pattern was furthest from reaching."
     },
     {
       "name": "community.docker.docker_container",
@@ -23,14 +22,14 @@
       "kind": "Module",
       "source_file": "provisioning/roles/storefront/handlers/main.yml",
       "must_exist": true,
-      "note": "Same rule in a SECOND file — a role handlers/main.yml — so one file's layout is not what carries the FQCN rule's rows."
+      "note": "Same rule in a SECOND file \u2014 a role handlers/main.yml \u2014 so one file's layout is not what carries the FQCN rule's rows."
     },
     {
       "name": "template",
       "kind": "Module",
       "source_file": "provisioning/roles/storefront/tasks/main.yml",
       "must_exist": true,
-      "note": "#6927 recall arm for the shorthand rule `(?m)^\\s+(apt|yum|...|import_role):\\s*$`, which could not fire AT ALL before: it needs `^` and `$` simultaneously. `template` is also the single most common over-fire word for this rule outside ansible — 41 of its 59 non-ansible corpus matches — which is why deploy/k8s/deployment.yaml carries a k8s `template:` in exactly the matching shape and is held by the gate."
+      "note": "#6927 recall arm for the shorthand rule `(?m)^\\s+(apt|yum|...|import_role):\\s*$`, which could not fire AT ALL before: it needs `^` and `$` simultaneously. `template` is also the single most common over-fire word for this rule outside ansible \u2014 41 of its 59 non-ansible corpus matches \u2014 which is why deploy/k8s/deployment.yaml carries a k8s `template:` in exactly the matching shape and is held by the gate."
     },
     {
       "name": "service",
@@ -59,19 +58,19 @@
       "name": "copy",
       "kind": "Module",
       "must_exist": false,
-      "note": "#6927 forbidden arm, `$` direction for the shorthand rule, INSIDE a file that satisfies the framework gate — so this row is held by the anchor alone and is distinguishable from the gate rows below. The task writes the deprecated inline form `copy: src=... dest=...`; `\\s*$` is what declines it. Named in the rule comment as its own killing mutant: dropping `\\s*$` mints a Module called `copy`."
+      "note": "#6927 forbidden arm, `$` direction for the shorthand rule, INSIDE a file that satisfies the framework gate \u2014 so this row is held by the anchor alone and is distinguishable from the gate rows below. The task writes the deprecated inline form `copy: src=... dest=...`; `\\s*$` is what declines it. Named in the rule comment as its own killing mutant: dropping `\\s*$` mints a Module called `copy`."
     },
     {
       "name": "systemd",
       "kind": "Module",
       "must_exist": false,
-      "note": "#6927 forbidden arm, `^` direction for the shorthand rule — a separate half of the same anchor, in the same gate-satisfying file. A commented-out module block (`# - systemd:`) puts the key on a line it does not OPEN; without `^` the rule's own `\\s+` reaches it through the comment marker and mints a Module for code that is switched off."
+      "note": "#6927 forbidden arm, `^` direction for the shorthand rule \u2014 a separate half of the same anchor, in the same gate-satisfying file. A commented-out module block (`# - systemd:`) puts the key on a line it does not OPEN; without `^` the rule's own `\\s+` reaches it through the comment marker and mints a Module for code that is switched off."
     },
     {
       "name": "lineinfile",
       "kind": "Module",
       "must_exist": false,
-      "note": "#6927 forbidden arm, NAME direction for the shorthand rule, again inside the gate-satisfying file, so the name axis is graded independently of both the anchor and the gate (#6943's lesson: a fixture that pins one axis does not pin its neighbour). The alternation is a hand-written list of 18 module names; `lineinfile` is a real ansible module that is deliberately NOT in it. Replacing the alternation with `(\\w+)` mints this row — and would type every block-form key in every gated file."
+      "note": "#6927 forbidden arm, NAME direction for the shorthand rule, again inside the gate-satisfying file, so the name axis is graded independently of both the anchor and the gate (#6943's lesson: a fixture that pins one axis does not pin its neighbour). The alternation is a hand-written list of 18 module names; `lineinfile` is a real ansible module that is deliberately NOT in it. Replacing the alternation with `(\\w+)` mints this row \u2014 and would type every block-form key in every gated file."
     },
     {
       "name": "ansible.builtin.debug",
@@ -89,13 +88,31 @@
       "name": "command",
       "kind": "Module",
       "must_exist": false,
-      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction for the shorthand rule. deploy/k8s/deployment.yaml is a Kubernetes Deployment carrying a block-form `command:` (and a `template:`) at matching indentation and naming ansible nowhere; `requires_framework: true` is the only thing declining it. `command` rather than `template` because forbidden rows are matched by name and kind globally, and `template` is a must-have from the tasks file — a forbidden row that collides with an expected one is unfireable, which is the #6938 shape this issue asks each row to be checked against."
+      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction for the shorthand rule. deploy/k8s/deployment.yaml is a Kubernetes Deployment carrying a block-form `command:` (and a `template:`) at matching indentation and naming ansible nowhere; `requires_framework: true` is the only thing declining it. `command` rather than `template` because forbidden rows are matched by name and kind globally, and `template` is a must-have from the tasks file \u2014 a forbidden row that collides with an expected one is unfireable, which is the #6938 shape this issue asks each row to be checked against."
     },
     {
       "name": "storefront.rate.limiter",
       "kind": "Module",
       "must_exist": false,
-      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction for the FQCN rule — the rule whose over-fire measured ZERO across 683 non-ansible files, which is why it is gated on a named blind spot rather than on a count. A traefik file-provider config names its middlewares, dots are legal in a middleware name, and a dotted key in block form is indistinguishable from a collection FQCN by shape alone. This file is constructed, not sampled: the corpus contained no such key, which is exactly why zero-of-683 was treated as a measurement and not a proof."
+      "note": "#6927 forbidden arm, FRAMEWORK-GATE direction for the FQCN rule \u2014 the rule whose over-fire measured ZERO across 683 non-ansible files, which is why it is gated on a named blind spot rather than on a count. A traefik file-provider config names its middlewares, dots are legal in a middleware name, and a dotted key in block form is indistinguishable from a collection FQCN by shape alone. This file is constructed, not sampled: the corpus contained no such key, which is exactly why zero-of-683 was treated as a measurement and not a proof."
+    },
+    {
+      "name": "when",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "#6927 forbidden arm, ALTERNATION-MEMBERSHIP direction \u2014 the third axis of the shorthand rule, and the permissive one. PR #6949 review MI-1: inserting `when` into the alternation left BOTH `./internal/engine/` and `./internal/quality/...` at exit 0, because every mutant scored so far attacked the anchor, the `$`, the indent or the gate, and nothing attacked what the list CONTAINS. `when:` followed by a list of conditions is ordinary ansible and is bare-colon-legal, so it has exactly the shape the rule matches; it is a task KEYWORD, not a module, and it already has its own `when:\\s+(.+)` -> Config rule in this same file. Adding it to the alternation mints this row."
+    },
+    {
+      "name": "tags",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "Second ALTERNATION-MEMBERSHIP row, on a keyword with no other rule of its own, so the fence is not resting on `when`'s Config rule making the collision visible some other way. `tags:` with a list under it is bare-colon-legal ansible."
+    },
+    {
+      "name": "loop",
+      "kind": "Module",
+      "must_exist": false,
+      "note": "Third ALTERNATION-MEMBERSHIP row, on a loop keyword rather than a conditional or a metadata one, so one syntactic family cannot be what carries the axis. All three are graded together as an EXACT SET at engine level (TestIssue6927_Ansible_ModuleRulesReadBlockFormOnly), which a membership check cannot do: an exact set also catches a same-count SUBSTITUTION \u2014 swapping `debug` for `when` \u2014 that no growth ceiling and no per-row check would see."
     }
   ],
   "expected_relationships": [
@@ -108,7 +125,7 @@
       "to_kind": "Operation",
       "to_file": "provisioning/roles/storefront/tasks/main.yml",
       "must_exist": true,
-      "note": "The notify-triggers-handler edge. Its rule is un-anchored and untouched here, so it is a CONTROL — but a load-bearing one: the notify sits on the FIRST task on purpose, because `name:\\s+([^\\n]+)[\\s\\S]*?notify:` takes the first `name:` in the file as its source endpoint regardless of which task the notify belongs to. Putting it anywhere else would have asserted an edge that is right by accident."
+      "note": "The notify-triggers-handler edge. Its rule is un-anchored and untouched here, so it is a CONTROL \u2014 but a load-bearing one: the notify sits on the FIRST task on purpose, because `name:\\s+([^\\n]+)[\\s\\S]*?notify:` takes the first `name:` in the file as its source endpoint regardless of which task the notify belongs to. Putting it anywhere else would have asserted an edge that is right by accident."
     },
     {
       "from_name": "deployment.yaml",
@@ -119,7 +136,7 @@
       "to_kind": "SCOPE.Service",
       "to_file": "deploy/k8s/deployment.yaml",
       "must_exist": true,
-      "note": "CONTROL on a second producer path — the structured YAML extractor in internal/extractors/yaml — and deliberately in the file the framework gate DECLINES, so it also witnesses that the gate suppresses the ansible rules for that file without suppressing the file itself."
+      "note": "CONTROL on a second producer path \u2014 the structured YAML extractor in internal/extractors/yaml \u2014 and deliberately in the file the framework gate DECLINES, so it also witnesses that the gate suppresses the ansible rules for that file without suppressing the file itself."
     }
   ]
 }

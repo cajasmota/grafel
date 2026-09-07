@@ -29,6 +29,9 @@
   lineinfile:
     path: /etc/nginx/nginx.conf
     line: include conf.d/*.conf
+  loop:
+    - conf.d
+    - sites-enabled
 
 - name: Tune worker counts
   ansible.builtin.set_fact:
@@ -39,6 +42,11 @@
   service:
     name: nginx
     state: started
+  when:
+    - ansible_os_family == "Debian"
+    - not skip_restart
+  tags:
+    - runtime
 
 - name: Publish the edge container
   community.docker.docker_container:

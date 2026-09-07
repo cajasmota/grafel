@@ -18,8 +18,8 @@
       "entity_expected": 7,
       "relationship_found": 2,
       "relationship_expected": 2,
-      "entity_extracted_total": 34,
-      "relationship_extracted_total": 32
+      "entity_extracted_total": 35,
+      "relationship_extracted_total": 33
     },
     "clojure-protocols-mini": {
       "entity_found": 12,

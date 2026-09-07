@@ -676,11 +676,27 @@ func TestIssue6927_Ansible_ModuleRulesReadBlockFormOnly(t *testing.T) {
 - name: Ensure the include
   lineinfile:
     path: /etc/nginx/nginx.conf
+  loop:
+    - conf.d
 
 - name: Tune worker counts
   ansible.builtin.set_fact:
     nginx.conf:
       worker_processes: 4
+  when:
+    - ansible_os_family == "Debian"
+  tags:
+    - tuning
+  vars:
+    worker_auto: true
+  args:
+    chdir: /etc/nginx
+  environment:
+    LANG: C
+  block:
+    - name: nested
+      uri:
+        url: https://example.test
 `
 	var present []string
 	for _, m := range markers {
@@ -702,7 +718,11 @@ func TestIssue6927_Ansible_ModuleRulesReadBlockFormOnly(t *testing.T) {
 			"  extra `systemd`               -> the shorthand rule lost its `^`; that key is inside a COMMENT\n"+
 			"  extra `ansible.builtin.debug` -> the FQCN rule lost its `\\s*$` (its only anchor)\n"+
 			"  extra `lineinfile`            -> the shorthand alternation was replaced by a generic \\w+\n"+
-			"  extra `nginx.conf`            -> the FQCN rule's third dotted segment became optional",
+			"  extra `nginx.conf`            -> the FQCN rule's third dotted segment became optional\n"+
+			"  extra `when`/`tags`/`loop`/`vars`/`args`/`environment`/`block` -> a task\n"+
+			"    KEYWORD entered the alternation. This is an EXACT SET on purpose: a membership\n"+
+			"    check is blind to a same-count SUBSTITUTION (swap `debug` for `when`), which no\n"+
+			"    growth ceiling would catch either (PR #6949 review MI-1)",
 			got, want)
 	}
 }
@@ -992,6 +1012,78 @@ func TestIssue6927_Compose_HeadWhitespaceCannotCrossALine(t *testing.T) {
 					"must be `[ \\t]*\\r?\\n`: `\\s*` there crosses line boundaries, so the "+
 					"\"nothing else on this line\" claim stops being about one line",
 					got, tc.want, tc.sep)
+			}
+		})
+	}
+}
+
+// TestIssue6927_Ansible_TaskKeywordsAreNotModules grades what the shorthand
+// rule's alternation CONTAINS — its third axis, and the permissive one.
+//
+// PR #6949 review MI-1: inserting `when` into
+// `^\s+(apt|yum|…|debug|set_fact|…):\s*$` left BOTH `./internal/engine/` and
+// `./internal/quality/...` at exit 0. Every mutant scored to that point — 28
+// mine, 5 the review's, 12 re-scores — attacked the anchor, the `$`, an indent,
+// the gate or one marker. Nobody attacked the list's membership, which is the
+// only axis where the rule gets WIDER without any regex construct changing.
+//
+// Every keyword below is bare-colon-legal ansible: `when:` takes a list of
+// conditions, `tags:`/`loop:`/`with_items:` a list, `vars:`/`args:`/
+// `environment:` a mapping, `block:`/`rescue:`/`always:` a task list. So each
+// has exactly the shape the rule matches and is reachable in the sense that
+// matters. Scalar-only keywords (`register:`, `become:`, `until:`,
+// `delegate_to:`) are deliberately NOT here: a bare one is legal YAML but not
+// legal ansible, so a case built on one would be arguing rather than
+// demonstrating.
+//
+// No corpus frequency is claimed for any of them. Reachability is the property
+// under test; a count would be the corpus-measurement-as-property trap running
+// in the permissive direction, which was one of this PR's own blockers.
+//
+// Selected by behaviour, not by reading the alternation text: each case feeds a
+// minimal GATE-SATISFYING task file and asserts the keyword mints no Module,
+// with a positive control in the same file so "the rule declined it" and "the
+// rule is off" stay distinguishable.
+func TestIssue6927_Ansible_TaskKeywordsAreNotModules(t *testing.T) {
+	rules := ansibleRules6927(t)
+	markers := rules["ansible"][0].Frameworks.Detection.ImportMarkers
+
+	for _, tc := range []struct{ keyword, body string }{
+		{"when", "    - ansible_os_family == \"Debian\""},
+		{"tags", "    - runtime"},
+		{"loop", "    - conf.d"},
+		{"with_items", "    - nginx"},
+		{"vars", "    worker_auto: true"},
+		{"args", "    chdir: /etc/nginx"},
+		{"environment", "    LANG: C"},
+		{"block", "    - name: nested\n      uri:\n        url: https://example.test"},
+		{"rescue", "    - name: recover\n      uri:\n        url: https://example.test"},
+		{"always", "    - name: cleanup\n      uri:\n        url: https://example.test"},
+	} {
+		t.Run(tc.keyword, func(t *testing.T) {
+			// The positive control is a REAL shorthand module in the same
+			// file, and `state: present` under it is what satisfies the gate.
+			src := "- name: Install nginx\n  apt:\n    name: nginx\n    state: present\n  " +
+				tc.keyword + ":\n" + tc.body + "\n"
+			gated := false
+			for _, m := range markers {
+				if strings.Contains(src, m) {
+					gated = true
+					break
+				}
+			}
+			if !gated {
+				t.Fatal("this case must SATISFY the gate, or the gate declines it and the " +
+					"alternation is never consulted")
+			}
+			res := detect6927(t, rules, "provisioning/tasks/main.yml", src)
+			if !has6927(res, "Module", "apt") {
+				t.Fatalf("control: Module \"apt\" missing, so this case grades nothing; got %v",
+					names6927(res, "Module"))
+			}
+			if has6927(res, "Module", tc.keyword) {
+				t.Errorf("Module %q minted from a task KEYWORD — it is in the shorthand rule's "+
+					"alternation, which lists MODULES. Got %v", tc.keyword, names6927(res, "Module"))
 			}
 		})
 	}
