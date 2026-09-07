@@ -54,6 +54,22 @@ type ExtractorConfig struct {
 	// Tri-state: nil means "not set in Config; fall through to env var".
 	JSEmitDestructureDetail *bool
 
+	// InProcCustomExtractors controls whether an in-process indexing pass
+	// dispatches the internal/custom/** framework extractors (issue #5989).
+	// Tri-state: nil means "not set in Config; fall through to the
+	// GRAFEL_INPROC_CUSTOM_EXTRACTORS env var".
+	//
+	// #6960 — this field is how the PROGRAMMATIC half of the full path's gate
+	// (cmd/grafel's WithCustomExtractors, i.customExtractors) becomes visible to
+	// a pass that has no Indexer. The daemon's incremental re-extraction is
+	// handed an *ExtractorConfig and nothing else; without this field its gate
+	// could read only the env half, so a full index opted in through
+	// WithCustomExtractors would emit custom entities that the next incremental
+	// pass silently dropped — #6960 surviving in the other lane. Read it through
+	// extractors.CustomExtractorsEnabled, never directly, so both paths evaluate
+	// one expression.
+	InProcCustomExtractors *bool
+
 	// IncrementalReindexSet records whether IncrementalReindex was explicitly
 	// set via Config (as opposed to being the zero value). This lets callers
 	// distinguish "Config says false" from "Config not consulted".

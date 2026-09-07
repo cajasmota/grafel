@@ -80,6 +80,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1077,6 +1078,62 @@ func tryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		// daemon runs this on a watcher tick, and a panic here would take down a
 		// path whose whole job is to not lose the user's graph.
 		records, extErr := safeExtract(ctx, ext, input)
+
+		// #6960 — Pass 2: the custom/framework extractors under internal/custom/**.
+		//
+		// THIS PATH HAD NO CUSTOM DISPATCH AT ALL. The ~340 framework extractors
+		// register under PREFIXED registry keys ("python_django", "custom_scala_di"),
+		// and the exact-key `Get(cr.Language)` above can never match one, so
+		// RunCustomExtractors is the only thing that selects them —
+		// custom_dispatch.go:192. It had two non-test call sites and neither was
+		// on this path, so a re-extraction emitted the base records only.
+		//
+		// THE GATE IS THE FIX, NOT THE CALL. By DEFAULT the full in-process path
+		// does not dispatch these either (cmd/grafel/inproc_custom.go), so the
+		// default-config graph was never wrong — the initial index emitted no
+		// custom entities to lose. With the gate ON it WAS: the full index
+		// emitted them, Step 5 above evicted them on the next edit, and this loop
+		// re-added nothing, so a changed file silently lost every custom entity
+		// while every unchanged file kept its own. Reading the same gate makes
+		// the two paths agree in BOTH directions — including the one an "entities
+		// survive" assertion cannot see, where incremental would ADD entities a
+		// default full reindex never produced.
+		//
+		// BOTH HALVES OF THE GATE, not just the env var. The full path's
+		// condition is CustomExtractorsEnabled over the same ExtractorConfig, so
+		// the programmatic opt-in (cmd/grafel's WithCustomExtractors, which
+		// `grafel quality` uses and which is the only lane on by default
+		// anywhere) reaches this decision too. An env-only read here left the
+		// original defect alive in exactly that lane.
+		//
+		// SEAM PLACEMENT IS LOAD-BEARING, exactly as at cmd/grafel/index.go: after
+		// safeExtract (so base records exist to merge into) and BEFORE the Close()
+		// below, because custom extractors walk the same parse tree.
+		//
+		// MOVING IT AFTER THE Close() IS A SILENT NO-OP, NOT A CRASH, and an
+		// earlier version of this comment claiming a use-after-free was wrong —
+		// measured: the block below sets `input.TSTree = nil` immediately after
+		// Close(), so a dispatch moved past it fails the `!= nil` guard and simply
+		// never fires. It runs to completion and quietly emits nothing, which is
+		// worse to debug than a crash, not better.
+		//
+		// The `input.TSTree != nil` guard is carried for the reason the full
+		// path's is: a subset of custom extractors work on CONTENT and emit
+		// entities with no tree at all, so without it a file that FAILED to parse
+		// — or a language with no grammar at all, which is the case the dart test
+		// drives — would produce custom entities the full path never emits.
+		if CustomExtractorsEnabled(cfg) && input.TSTree != nil {
+			customEnts, customErrs := RunCustomExtractors(ctx, input)
+			for _, ce := range customErrs {
+				logger.Printf("incremental: custom extractor on %s: %v", rel, ce)
+			}
+			if len(customEnts) > 0 {
+				// MergeWithCustom, not append — the same #6104 non-destructive
+				// (SourceFile, Kind, Name) merge the full path applies.
+				records = MergeWithCustom(records, customEnts)
+			}
+		}
+
 		if input.TSTree != nil {
 			// Release the CGo allocation now rather than deferring to the end of
 			// the loop: peak RSS must stay at one live tree, not len(reallyChanged).
@@ -2009,18 +2066,21 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 	// with the wrong id, so nothing downstream of it dangles. It surfaced only
 	// because a flow property happens to embed the id as text.
 	id := graph.EntityID(repoTag, r.Kind, r.Name, r.SourceFile)
-	// #6275 — r.Properties (and therefore any grafel.twin_of a #6104 merge
-	// facet carries) is copied VERBATIM here, with no equivalent of
-	// cmd/grafel/index.go's stampEntityIDs remap (old ComputeID() -> this
-	// freshly computed `id`). That is harmless TODAY only because the sole
-	// twin_of writer, internal/extractors/custom_dispatch.go's
-	// enrichFromTwin, is reachable exclusively from the full-index path
-	// (MergeWithCustom has no caller on this incremental path — see
-	// classfold.go's FoldFrameworkClassKinds doc comment, "TryIncremental
-	// runs no cross extractors at all"). If anything ever starts stamping
-	// twin_of from code reachable here, the #6275 orphaned-anchor bug comes
-	// back silently: this function would need the same pre-stamp-id ->
-	// final-id remap stampEntityIDs performs.
+	// #6275 — r.Properties (and therefore any grafel.twin_of a #6104 merge facet
+	// carries) is copied VERBATIM here. This function performs no remap of its
+	// own, and it must not: the old comment here said the omission was safe
+	// because "MergeWithCustom has no caller on this incremental path", and
+	// #6960 ADDED that caller (the custom dispatch in the Step 6 re-extract
+	// loop), so enrichFromTwin now writes twin_of from code reachable here. The
+	// predicted failure was real and was measured: SCOPE.Type|HomeController
+	// landed carrying twin_of="861a490cf84f2640" — a ComputeID() hash — while
+	// the anchor's actual graph id is the graph.EntityID above, a different
+	// preimage entirely, so the facet named nothing.
+	//
+	// The remap is done ONE LEVEL UP, in convertExtractedRecords via
+	// remapTwinOfAnchors, and it has to be: the mapping is pre-stamp id ->
+	// final id over the WHOLE batch, and this function sees one record. A
+	// per-record fix is not expressible here.
 	return graph.Entity{
 		ID:            id,
 		Name:          r.Name,
@@ -2036,6 +2096,139 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 
 		Confidence: r.Confidence, // Phase 1C (#2769) — propagates extractor stamp.
 	}.WithProperties(r.Properties)
+}
+
+// remapTwinOfAnchors repoints every grafel.twin_of (#6104 merge-facet anchor)
+// that still names a record's PRE-STAMP id at the id this path is about to
+// derive for that record. It is the incremental equivalent of
+// cmd/grafel/index.go's stampEntityIDs remap, and it exists for exactly the
+// reason that function's #6275 comment gives: a twin_of value is an OPAQUE
+// Properties string. Every other cross-record reference in the pipeline —
+// relationship endpoints, fold remaps, resolver bindings — is rekeyed by some
+// downstream pass. Nothing anywhere rewrites twin_of, so an anchor left naming a
+// hash that never becomes an entity id is permanent, silent, and invisible to a
+// content-keyed parity comparison (which deliberately does not compare ids).
+//
+// WHY IT WAS NOT NEEDED BEFORE AND IS NOW. The sole twin_of writer is
+// custom_dispatch.go's enrichFromTwin, reached only through MergeWithCustom,
+// which until #6960 had no caller on this path. #6960's custom dispatch in the
+// Step 6 re-extract loop is that caller. entityRecordToGraphEntity's comment
+// named this trigger in advance; this function is the remap it prescribed.
+//
+// THE PREIMAGES DIFFER, which is the whole bug: enrichFromTwin stamps
+// effectiveID(&be), i.e. types.EntityRecord.ComputeID() —
+// sha256(OrgID+ProjectID+SourceFile+Kind+Name) — while this path mints
+// graph.EntityID(repoTag, Kind, Name, SourceFile). Same record, two hashes.
+//
+// BATCH SCOPE IS SUFFICIENT. The facet and its anchor are the two halves of one
+// (SourceFile, Kind, Name) merge decision made inside MergeWithCustom over ONE
+// file's records, and this runs over that same file's records — so an anchor is
+// never outside the batch. An anchor that somehow were outside it keeps its
+// pre-stamp value rather than acquiring a wrong one: the map lookup simply
+// misses.
+//
+// COST. recordsCarryTwinOf is one map lookup per record — no hashing — so the
+// overwhelmingly common batch, which carries no facet at all, pays nothing and
+// never computes the second sha256. Same shape as recordsHaveTwinOf on the full
+// path.
+//
+// THE TWO ID SCHEMES DISAGREE ABOUT FIELD BOUNDARIES, and this function is the
+// first code in the tree to key a map on the COARSER one while storing the
+// FINER one — which is what makes the disagreement reachable here and nowhere
+// else. types.EntityRecord.ComputeID concatenates OrgID+ProjectID+SourceFile+
+// Kind+Name with NO separators; graph.EntityID separates every field with NUL.
+// So {SourceFile:"x.go", Kind:"A", Name:"BC"} and {SourceFile:"x.go",
+// Kind:"AB", Name:"C"} are ONE key and TWO entities: measured,
+// ComputeID collides while EntityID does not.
+//
+// Without the check below, both records write the same map slot and the winner
+// is whichever index happens to come last — so a twin_of naming that preimage is
+// repointed at an ARBITRARY one of two distinct entities. That is the #6369
+// wrong-node hazard, and it is strictly worse than the dangling anchor this
+// function exists to prevent: a dangling twin_of names an id no entity has and
+// is therefore detectable and inert, while a confidently-wrong one reads as
+// valid to classfold's twinAnchors and to the symbol index's facet-alias rule,
+// which will then alias a name onto the wrong definition.
+//
+// SO AN AMBIGUOUS KEY IS SKIPPED, NOT RESOLVED, and warned about. Skipping
+// degrades exactly to the pre-remap behaviour for that one facet — the honest,
+// detectable failure — and it is the only outcome that does not require this
+// function to invent an answer it has no evidence for. Picking one silently, the
+// behaviour before this check, is the one option that is not defensible.
+// (The underlying ComputeID separator problem is broader than this function and
+// is filed separately; do not "fix" it here by changing ComputeID, which is an
+// identity many other call sites already depend on.)
+func remapTwinOfAnchors(records []types.EntityRecord, repoTag string) {
+	if !recordsCarryTwinOf(records) {
+		return
+	}
+	preStampToFinal := make(map[string]string)
+	// ambiguous holds every pre-stamp key that TWO records with DIFFERENT final
+	// ids both claim. See the collision note in the doc comment: such a key is
+	// dropped from the remap entirely rather than resolved by arrival order.
+	var ambiguous map[string]bool
+	for k := range records {
+		r := &records[k]
+		if r.Name == "" {
+			continue
+		}
+		preStampID := r.ComputeID()
+		finalID := graph.EntityID(repoTag, r.Kind, r.Name, r.SourceFile)
+		if prior, seen := preStampToFinal[preStampID]; seen && prior != finalID {
+			if ambiguous == nil {
+				ambiguous = make(map[string]bool, 1)
+			}
+			ambiguous[preStampID] = true
+			slog.Default().Warn("incremental: two records share one pre-stamp entity id — "+
+				"a grafel.twin_of naming it will be left unremapped rather than pointed at "+
+				"an arbitrary one of them",
+				"pre_stamp_id", preStampID,
+				"source_file", r.SourceFile,
+				"kind", r.Kind,
+				"name", r.Name,
+				"final_id", finalID,
+				"other_final_id", prior)
+			continue
+		}
+		if preStampID != finalID {
+			preStampToFinal[preStampID] = finalID
+		}
+	}
+	if len(preStampToFinal) == 0 {
+		return
+	}
+	for k := range records {
+		r := &records[k]
+		if r.Properties == nil {
+			continue
+		}
+		twin, ok := r.Properties[types.EntityTwinOfProperty]
+		if !ok || twin == "" {
+			continue
+		}
+		if ambiguous[twin] {
+			// LEAVE IT DANGLING, DELIBERATELY. See the doc comment.
+			continue
+		}
+		if final, remapped := preStampToFinal[twin]; remapped {
+			r.Properties[types.EntityTwinOfProperty] = final
+		}
+	}
+}
+
+// recordsCarryTwinOf reports whether ANY record in the batch carries a
+// grafel.twin_of property — the gate for the remap above, and a scan of cheap
+// map lookups rather than hashes.
+func recordsCarryTwinOf(records []types.EntityRecord) bool {
+	for k := range records {
+		if records[k].Properties == nil {
+			continue
+		}
+		if v := records[k].Properties[types.EntityTwinOfProperty]; v != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // convertExtractedRecords converts one file's extractor output into graph
@@ -2123,6 +2316,12 @@ func entityRecordToGraphEntity(r types.EntityRecord, repoTag string) graph.Entit
 // buildDocument's equivalent gate is corpus-wide because ITS input genuinely is
 // (merged spans every file), so it needs no second fold downstream.
 func convertExtractedRecords(records []types.EntityRecord, repoTag string, seenRel map[string]bool) ([]graph.Entity, []graph.Relationship) {
+	// #6275 / #6960 — repoint merge-facet anchors BEFORE any id is derived. See
+	// remapTwinOfAnchors: this is the incremental half of cmd/grafel/index.go's
+	// stampEntityIDs remap, and it became load-bearing the moment #6960 gave
+	// MergeWithCustom a caller on this path.
+	remapTwinOfAnchors(records, repoTag)
+
 	ents := make([]graph.Entity, 0, len(records))
 	var rels []graph.Relationship
 	// #6161 — entityPos maps a derived graph.EntityID → its index in `ents`, so a

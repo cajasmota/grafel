@@ -3881,6 +3881,17 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 	// can consult feature toggles via the Config channel (Config wins; env var
 	// is the backward-compat fallback). Future work: merge a config file on top.
 	extractorCfg := extractor.ConfigFromEnv()
+	// #6960 — carry the PROGRAMMATIC half of the custom-extractor gate
+	// (WithCustomExtractors) in the config rather than only in Indexer state, so
+	// that one expression — extractors.CustomExtractorsEnabled — decides it on
+	// this path and on the daemon's incremental path, which has no Indexer and
+	// receives nothing but an *ExtractorConfig. Only the opt-in is stamped: a
+	// false here would OVERRIDE a set env var, which is not what an unset option
+	// means.
+	if i.customExtractors {
+		on := true
+		extractorCfg.InProcCustomExtractors = &on
+	}
 
 	// Use a shared atomic counter so all workers contribute to the same
 	// tick cadence without needing an additional mutex acquisition per file.
@@ -4138,7 +4149,7 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				// the guard a file that FAILED to parse would still produce
 				// custom entities. See
 				// TestInProcCustomExtractorsNilTreeGuardIsLoadBearing.
-				if (i.customExtractors || inProcCustomExtractors()) && file.TSTree != nil {
+				if extractors.CustomExtractorsEnabled(&extractorCfg) && file.TSTree != nil {
 					customEnts, customErrs := extractors.RunCustomExtractors(ctx, file)
 					if len(customErrs) > 0 && verbose() {
 						for _, ce := range customErrs {
