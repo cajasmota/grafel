@@ -525,7 +525,20 @@ func (t *declineTracker) noteSubmitted(discovered []string, at time.Time) {
 	defer t.mu.Unlock()
 	for _, rel := range discovered {
 		if _, ok := t.pending[rel]; ok {
-			continue // keep the FIRST submission time
+			// Keep the FIRST submission time. A path re-offered on every
+			// cycle must not slide its own deadline forward, or condition (2)
+			// could never be met while the poller kept reporting it.
+			//
+			// It is SAFE to keep the first only because of the call ordering:
+			// pollRepo reconciles against the manifest BEFORE the caller
+			// submits, so at most one noteSubmitted lands between any two
+			// reconciles and a stale-but-earlier stamp cannot outlive the pass
+			// that answers it. That ordering is a dependency of this line, not
+			// an incidental fact — MP-2 of the #6961 review is the mutant that
+			// overwrites instead, and
+			// TestDeclineTracker_KeepsTheFirstSubmissionTime is what fails
+			// when it does.
+			continue
 		}
 		if len(t.pending) >= maxDeclinedPaths {
 			continue // overflow: this path keeps re-reporting, as it did before #6940

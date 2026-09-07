@@ -661,3 +661,46 @@ func TestDeclineTracker_CapOverflowOverFires(t *testing.T) {
 		}
 	}
 }
+
+// MP-2, from the #6961 review: noteSubmitted keeps the FIRST submission time,
+// and nothing observed it. A path re-offered on every cycle must not slide its
+// own deadline forward — under an overwriting tracker the newest stamp can
+// always be younger than the manifest the next reconcile reads, so condition
+// (2) is never met and the path never converges.
+//
+// Asserted twice, because the stored value and its consequence are different
+// claims: the map still holds T1, and a manifest stamped BETWEEN T1 and T2 —
+// the interval that separates the two — is proof of a completed pass.
+func TestDeclineTracker_KeepsTheFirstSubmissionTime(t *testing.T) {
+	tr := &declineTracker{
+		pending: make(map[string]time.Time),
+		refused: make(map[string]struct{}),
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	t1 := time.Now().UTC()
+	t2 := t1.Add(2 * time.Second)
+
+	tr.noteSubmitted([]string{"a.go"}, t1)
+	tr.noteSubmitted([]string{"a.go"}, t2)
+
+	tr.mu.Lock()
+	got, ok := tr.pending["a.go"]
+	tr.mu.Unlock()
+	if !ok {
+		t.Fatal("the path left the pending set entirely")
+	}
+	if !got.Equal(t1) {
+		t.Fatalf("pending holds %v, want the FIRST submission %v — a re-offered path slid its own deadline forward", got, t1)
+	}
+
+	// The consequence: a pass that completed between the two submissions is
+	// proof, and must decline. Under an overwriting tracker this manifest is
+	// older than the stored stamp and the path stays pending forever.
+	tr.reconcile(&diff.Manifest{
+		IndexedAt: t1.Add(time.Second),
+		Files:     map[string]diff.FileEntry{"alpha.go": {}},
+	}, logger, "/repo")
+	if !tr.declined("a.go") {
+		t.Fatal("a pass that completed after the first submission did not decline the path — the second submission's stamp is being used")
+	}
+}
