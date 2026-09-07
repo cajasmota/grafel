@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -4776,6 +4777,28 @@ func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
 	// preStampToFinal maps a record's pre-stamp ComputeID() to the final
 	// graph.EntityID() this function assigns it, but only when they differ.
 	preStampToFinal := make(map[string]string)
+	// ambiguous holds every pre-stamp key that TWO records with DIFFERENT final
+	// ids both claim. Issue #6971: this is the same decision, in the same
+	// shape, as internal/extractors/incremental.go's remapTwinOfAnchors — the
+	// incremental twin of this loop — and its doc comment carries the full
+	// reasoning. In short: types.EntityRecord.ComputeID concatenates
+	// OrgID+ProjectID+SourceFile+Kind+Name with NO separators while
+	// graph.EntityID NUL-separates every field, so {SourceFile:"x.go",
+	// Kind:"A", Name:"BC"} and {SourceFile:"x.go", Kind:"AB", Name:"C"} are ONE
+	// key and TWO entities. Keying a map on the COARSER id while storing the
+	// FINER one lets both records write the same slot, and the winner is
+	// whichever index comes last — so a twin_of naming that preimage would be
+	// repointed at an ARBITRARY one of two distinct entities (#6369's wrong-node
+	// hazard). Such a key is therefore SKIPPED, not resolved: skipping degrades
+	// to the pre-remap behaviour for that one facet — a dangling twin_of, which
+	// names an id no entity has and is thus detectable and inert — while
+	// resolving invents an answer this function has no evidence for, and a
+	// confidently-wrong anchor reads as VALID to classfold's twinAnchors and to
+	// the symbol index's facet-alias rule. (The underlying ComputeID separator
+	// problem is broader than this function and is filed as #6968; do not "fix"
+	// it here by changing ComputeID, which is an identity many other call sites
+	// already depend on.)
+	var ambiguous map[string]bool
 	for k := range records {
 		r := &records[k]
 		if r.Name == "" {
@@ -4783,10 +4806,26 @@ func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
 		}
 		preStampID := r.ComputeID()
 		finalID := graph.EntityID(i.repoTag, r.Kind, r.Name, r.SourceFile)
+		r.ID = finalID
+		if prior, seen := preStampToFinal[preStampID]; seen && prior != finalID {
+			if ambiguous == nil {
+				ambiguous = make(map[string]bool, 1)
+			}
+			ambiguous[preStampID] = true
+			slog.Default().Warn("index: two records share one pre-stamp entity id — "+
+				"a grafel.twin_of naming it will be left unremapped rather than pointed at "+
+				"an arbitrary one of them",
+				"pre_stamp_id", preStampID,
+				"source_file", r.SourceFile,
+				"kind", r.Kind,
+				"name", r.Name,
+				"final_id", finalID,
+				"other_final_id", prior)
+			continue
+		}
 		if preStampID != finalID {
 			preStampToFinal[preStampID] = finalID
 		}
-		r.ID = finalID
 	}
 	if len(preStampToFinal) == 0 {
 		return
@@ -4798,6 +4837,10 @@ func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
 		}
 		twin, ok := r.Properties[types.EntityTwinOfProperty]
 		if !ok || twin == "" {
+			continue
+		}
+		if ambiguous[twin] {
+			// LEAVE IT DANGLING, DELIBERATELY. See the note above.
 			continue
 		}
 		if final, remapped := preStampToFinal[twin]; remapped {
