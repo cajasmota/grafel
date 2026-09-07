@@ -1776,10 +1776,13 @@ func isLocalBindingKind(_ string, props map[string]string) bool {
 // marker is stamped.
 //
 // SCOPE. This is deliberately NOT a repo-wide taxonomy of the ~340 custom
-// producers. It is stamped on the six MEASURED producers in the
-// `aspnetcore-mvc` eviction population that mint an entity from a mention;
-// every other producer stays unmarked and behaves exactly as before. An
-// unmarked reference is the pre-#6976 status quo, not a regression.
+// producers. It is stamped on six producers that mint an entity from a
+// mention: FIVE measured in the `aspnetcore-mvc` eviction population, plus
+// BLAZOR_INJECT, which is classified by SHAPE (`@inject IFoo Foo` names a
+// service declared elsewhere — the same shape as DOTNET_DI_PROVIDER, in the
+// same lane) and appears nowhere in that population. Every other producer
+// stays unmarked and behaves exactly as before. An unmarked reference is the
+// pre-#6976 status quo, not a regression.
 //
 // The property convention mirrors #6467's `local_scope`: an extractor-stamped
 // Properties key with a single named predicate in this package, rather than a

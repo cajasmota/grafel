@@ -43,9 +43,12 @@ import (
 //	        and so does every row here, because the rows read the constant
 //	        through resolve.ReferenceShapedProp rather than a local copy.
 
-// wantMarked6976 is the closed scope of #6976: the SIX measured producers in
-// the `aspnetcore-mvc` eviction population that mint an entity from a MENTION
-// of a name declared elsewhere. Written out by hand.
+// wantMarked6976 is the closed scope of #6976: six producers that mint an
+// entity from a MENTION of a name declared elsewhere. FIVE were measured in
+// the `aspnetcore-mvc` eviction population; the sixth, BLAZOR_INJECT, is
+// classified by SHAPE and is not in that population at all — #6976 names it
+// nowhere. Saying "six measured" would assert a measurement that was never
+// taken. Written out by hand.
 //
 // Deliberately NOT a repo-wide taxonomy of the ~340 custom producers — see the
 // scope note on resolve.ReferenceShapedProp. Adding a seventh producer means
