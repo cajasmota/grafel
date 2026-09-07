@@ -548,15 +548,18 @@ func TestWalkRepo_SkipsLinguistGeneratedDir(t *testing.T) {
 }
 
 // TestWalkRepo_SkipsToolAgentDirs verifies issue #1629: AI / pair-programmer
-// and CI metadata dirs are filtered at the walker so they never appear in
-// the index. These dirs hold .md / .json config — not source — and were
-// previously inflating per-module file counts (e.g. .windsurf/skills/*.md).
+// dirs are filtered at the walker so they never appear in the index. These
+// dirs hold .md / .json config — not source — and were previously inflating
+// per-module file counts (e.g. .windsurf/skills/*.md).
+//
+// #6946 removed the CI dirs (.github / .gitlab / .circleci) from this claim:
+// a pipeline definition IS source-graph content. See
+// TestWalkRepo_CIDirsAreWalked_6946.
 func TestWalkRepo_SkipsToolAgentDirs(t *testing.T) {
 	root := t.TempDir()
 	mkfile(t, root, ".windsurf/skills/coding.md", "skill")
 	mkfile(t, root, ".cursor/rules/foo.json", "{}")
 	mkfile(t, root, ".claude/settings.json", "{}")
-	mkfile(t, root, ".github/workflows/ci.yml", "name: ci")
 	mkfile(t, root, "src/main.go", "package main")
 
 	files, skipped, err := WalkRepo(root, nil)
@@ -568,14 +571,14 @@ func TestWalkRepo_SkipsToolAgentDirs(t *testing.T) {
 	for _, s := range skipped {
 		skippedNames[filepath.Base(s.AbsPath)] = true
 	}
-	for _, want := range []string{".windsurf", ".cursor", ".claude", ".github"} {
+	for _, want := range []string{".windsurf", ".cursor", ".claude"} {
 		if !skippedNames[want] {
 			t.Errorf("expected %q to be skipped (issue #1629); skipped=%v", want, skipped)
 		}
 	}
 
 	for _, f := range files {
-		for _, prefix := range []string{".windsurf/", ".cursor/", ".claude/", ".github/"} {
+		for _, prefix := range []string{".windsurf/", ".cursor/", ".claude/"} {
 			if strings.HasPrefix(f, prefix) {
 				t.Errorf("tool-agent file leaked into walk results: %q", f)
 			}
@@ -758,7 +761,7 @@ func TestDefaultWalkerHelpers(t *testing.T) {
 // watcher and scheduler (which use IsHardcodedSkip to short-circuit).
 func TestIsHardcodedSkip_NewEntries(t *testing.T) {
 	for _, name := range []string{
-		".windsurf", ".cursor", ".claude", ".github",
+		".windsurf", ".cursor", ".claude",
 		"assets", "images", "fonts", "media", "docs",
 		".cache", "bin", "obj", ".terraform", ".ruff_cache",
 	} {
