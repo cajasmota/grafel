@@ -176,6 +176,29 @@ func (e *blazorDeepExtractor) Extract(ctx context.Context, file extractor.FileIn
 	}
 
 	src := string(file.Content)
+	// #6978 — THE `.razor` DISJUNCT IS UNREACHABLE, and kept deliberately.
+	// Three independent gates stop a `.razor` file, and ALL THREE would have
+	// to change for this arm to matter:
+	//
+	//  1. Dispatch is keyed on language. RunCustomExtractors selects via
+	//     CustomExtractorsFor, and "razor" has no entry in
+	//     customPrefixForLanguage (internal/extractors/custom_dispatch.go), so
+	//     no custom_csharp_* extractor is offered the file at all — on any of
+	//     the three dispatch paths.
+	//  2. The `file.Language != "csharp"` check 5 lines above rejects it a
+	//     second time. That check is live and load-bearing, pinned by
+	//     TestBlazorLanguageGuardRejectsNonCSharp6975, so ROUTING ALONE IS NOT
+	//     ENOUGH — the guard would have to be widened too.
+	//  3. There is no razor tree-sitter grammar, so file.TSTree is nil and the
+	//     in-proc (cmd/grafel/index.go) and incremental (incremental.go) paths
+	//     skip custom extractors entirely. The daemon subprocess path
+	//     (subproc.go) carries no such guard, so this one is path-specific.
+	//
+	// None of that is a corpus observation; it is how routing is wired. The
+	// arm is NOT deleted because the suffix pair is what names the Blazor file
+	// family (blazor.go uses the same pair), and
+	// TestCustomExtractorGatesAreReachable6978 lists it so it cannot be
+	// mistaken for a working `.razor` gate.
 	isRazor := strings.HasSuffix(file.Path, ".razor") ||
 		strings.HasSuffix(file.Path, ".razor.cs")
 	var entities []types.EntityRecord
