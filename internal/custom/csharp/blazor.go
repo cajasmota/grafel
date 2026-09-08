@@ -259,6 +259,15 @@ func (e *blazorExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	// generic type argument, not a component reference. So the markup rules
 	// below are further restricted to `.razor`, and only the two code rules
 	// (methods, [Parameter]) run over code-behind.
+	// #6978 — isRazorMarkup is UNREACHABLE, so the markup rules below have
+	// never run on any file. `.razor` classifies as language "razor", which
+	// has no entry in customPrefixForLanguage, so no custom_csharp_* extractor
+	// is ever dispatched for a `.razor` file (internal/extractors/
+	// custom_dispatch.go). Only the `.razor.cs` code-behind arm is live, and
+	// that is the arm #6975 measured. Kept and listed in
+	// TestCustomExtractorGatesAreReachable6978 rather than deleted: routing
+	// "razor" to custom_csharp_ is what would make these rules run, and this
+	// is where that change lands.
 	isRazorMarkup := strings.HasSuffix(file.Path, ".razor")
 	isRazorCodeBehind := strings.HasSuffix(file.Path, ".razor.cs")
 	if !isRazorMarkup && !isRazorCodeBehind {

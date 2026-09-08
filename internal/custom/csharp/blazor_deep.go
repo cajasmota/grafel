@@ -176,6 +176,19 @@ func (e *blazorDeepExtractor) Extract(ctx context.Context, file extractor.FileIn
 	}
 
 	src := string(file.Content)
+	// #6978 — THE `.razor` DISJUNCT IS UNREACHABLE, and kept deliberately.
+	// `.razor` classifies as language "razor" (internal/classifier), and
+	// "razor" has no entry in customPrefixForLanguage
+	// (internal/extractors/custom_dispatch.go), so CustomExtractorsFor never
+	// returns a custom_csharp_* extractor for such a file. No `.razor` file
+	// reaches this function on ANY dispatch path — that is a routing fact, not
+	// a corpus observation. (A razor grammar would also be needed for the two
+	// paths that additionally require file.TSTree != nil.)
+	//
+	// It is NOT deleted: the suffix pair names the Blazor file family, and the
+	// day razor is routed here this is the line that must already be right.
+	// TestCustomExtractorGatesAreReachable6978 lists it, so it cannot be
+	// mistaken for a working `.razor` gate — and it fails if a NEW one appears.
 	isRazor := strings.HasSuffix(file.Path, ".razor") ||
 		strings.HasSuffix(file.Path, ".razor.cs")
 	var entities []types.EntityRecord
