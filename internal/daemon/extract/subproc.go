@@ -74,6 +74,20 @@ type SubprocessOptions struct {
 	// issue #2505. When empty (single-batch mode or tests) the subprocess
 	// falls back to scanning its own batch (the original #2448 behaviour).
 	ORMFieldsPath string
+
+	// CustomExtractors carries the PROGRAMMATIC half of the
+	// custom-extractor gate (#5989/#6960/#6997) across the process
+	// boundary. nil means "the parent did not opt in programmatically",
+	// which is what every production caller passes: the sole non-test
+	// caller of WithCustomExtractors is `grafel quality`, and that runs
+	// in-process. The ENV half (GRAFEL_INPROC_CUSTOM_EXTRACTORS) needs no
+	// plumbing — the coordinator hands each child os.Environ() — so a nil
+	// here still resolves through CustomExtractorsEnabled's env fallback.
+	//
+	// It is a tri-state pointer for the same reason ExtractorConfig's own
+	// field is: Config wins over env in BOTH directions, so "did not say"
+	// has to be distinguishable from "said false".
+	CustomExtractors *bool
 }
 
 // Run is the subprocess-side entrypoint. It is invoked from
@@ -136,6 +150,16 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 
 	crossExtractors := cross.AllExtractors()
 	runExtract := !opts.SkipPasses["extract"]
+	// #6997 — the custom-extractor gate, evaluated by the SAME expression the
+	// in-process (cmd/grafel/index.go) and incremental
+	// (internal/extractors/incremental.go) dispatch sites use. Before this,
+	// Pass 2 below dispatched under runExtract alone, so an operator who opted
+	// into GRAFEL_SUBPROC_EXTRACT got custom extractors whether or not the gate
+	// #6966 keeps default-OFF was on. That divergence is precisely what the
+	// GRAFEL_SUBPROC_EXTRACT rollout exists to rule out: the subprocess path's
+	// stated acceptance criterion is output byte-identical to in-process.
+	customCfg := &extractor.ExtractorConfig{InProcCustomExtractors: opts.CustomExtractors}
+	runCustom := runExtract && extractors.CustomExtractorsEnabled(customCfg)
 	runFramework := !opts.SkipPasses["framework"]
 	runCross := !opts.SkipPasses["cross-lang"]
 
@@ -360,7 +384,19 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 		// language-equivalent) extractor for the file's language. Results
 		// are emitted as independent entities — they do NOT replace the
 		// base Pass 1 output; downstream dedup handles any overlap.
-		if runExtract {
+		//
+		// BOTH GUARDS ARE THE OTHER TWO SITES' GUARDS (#6997), not new
+		// policy. `file.TSTree != nil` is load-bearing beyond avoiding a
+		// use-after-free: a subset of custom extractors work on file CONTENT
+		// and emit entities with no parse tree at all, so without it a file
+		// that FAILED to parse still produces custom entities — on exactly
+		// the inputs the indexer decided it could not understand. That is
+		// also why the guard cannot be dropped from the other two sites to
+		// "make them agree" downward.
+		//
+		// The three sites are frozen as a set by
+		// TestRunCustomExtractorsCallSitesCarryBothGuards6997.
+		if runCustom && file.TSTree != nil {
 			customEnts, _ := extractors.RunCustomExtractors(ctx, file)
 			rels := 0
 			for k := range customEnts {

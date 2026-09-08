@@ -77,6 +77,14 @@ type CoordinatorConfig struct {
 	// foreground rebuild runs fast; only the throttled background path keeps
 	// the conservative GRAFEL_EXTRACT_GOMAXPROCS default (1 since #5960).
 	Interactive bool
+
+	// CustomExtractors forwards the PROGRAMMATIC half of the
+	// custom-extractor gate to every child via --custom-extractors
+	// (#6997). nil (the production case) forwards nothing and lets each
+	// child resolve the gate from the inherited environment, which is the
+	// same answer the in-process path computes. See
+	// SubprocessOptions.CustomExtractors.
+	CustomExtractors *bool
 }
 
 // runtimeCaps is the process-wide runtime-reloadable cap store (#5137). The
@@ -526,6 +534,17 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 			}
 			if skip != "" {
 				args = append(args, "--skip-pass", skip)
+			}
+			// #6997 — carry the programmatic custom-extractor opt-in across
+			// the process boundary. Only forwarded when the parent actually
+			// said something; otherwise the child falls back to the env half,
+			// which it inherits through childEnv.
+			if cfg.CustomExtractors != nil {
+				if *cfg.CustomExtractors {
+					args = append(args, "--custom-extractors", "true")
+				} else {
+					args = append(args, "--custom-extractors", "false")
+				}
 			}
 
 			cmd := exec.CommandContext(ctx, bin, args...)
