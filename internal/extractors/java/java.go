@@ -241,6 +241,41 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitTemplateRenderEdges(root, file, &entities)
 	}()
 
+	// Issue #6912 arm E — field -> declared-type REFERENCES edges, same-file
+	// targets only. See field_type_refs.go for the full ruling.
+	//
+	// It must run after walk, which is where every record for THIS file is
+	// produced: the classes, the enum value-sets, Lombok's synthesized
+	// builders and the nosql `schema` model node all reach `entities` from
+	// inside it, and the allow-list and the ambiguity rule have to weigh all
+	// of them. The position is LATER than that but the extra distance is NOT
+	// load-bearing today, and saying so is more useful than implying it is.
+	//
+	// An equivalence argument is only as good as its enumeration, so here is
+	// the complete list of the SEVEN passes between walk's return and this
+	// call, and what each does to `entities`:
+	//
+	//	stampClassLevelTransactional  takes &entities, but only mutates
+	//	                              op.Properties via findJavaOp
+	//	attachImportRelationships     handed &entities[0]; cannot append
+	//	synthesizePanacheDSLEntities  the ONLY appender — and it stamps
+	//	                              panacheDSLSyntheticSourceFile, so its
+	//	                              records never share this file's path
+	//	emitReferences                relationships only
+	//	emitConfigConsumerEdges       relationships only
+	//	emitExceptionFlowEdges        relationships only
+	//	emitTemplateRenderEdges       relationships only
+	//
+	// The first two were missing from an earlier revision of this comment,
+	// and stampClassLevelTransactional is the only other pass that takes the
+	// slice BY POINTER — exactly the one an incomplete enumeration should not
+	// have dropped. So no record for this file exists here that did not exist
+	// at walk's return: moving this call up changes no output, a mutant that
+	// does so is alive under the suite AND produces a byte-identical 147/147
+	// corpus result, and it sits here only so a future pass that DOES append a
+	// same-file entity is seen by default rather than by luck.
+	attachJavaFieldTypeRefs(entities, file.Path)
+
 	// Track B (analog of #642/#650 for Java) — IMPORTS ToID rewrite.
 	// Rewrites IMPORTS edges whose source_module's longest dotted
 	// prefix matches a known external JVM package to an
@@ -446,6 +481,15 @@ func walk(
 						EndLine:    int(p.EndPoint().Row) + 1,
 						Signature:  sig,
 					}
+					// Issue #6912 arm E — stash the record component's
+					// declared type so attachJavaFieldTypeRefs can emit the
+					// field -> type REFERENCES edge once the file's full
+					// record set exists. typeNode is the same node typeName
+					// was read from; the AST is passed rather than the string
+					// because a flat type string cannot be unwrapped safely
+					// (arm C's ruling, and swift's lossy field_type property
+					// is the live counter-example).
+					stashJavaFieldTypeRefs(&fieldRec, typeNode, file.Content, rec.Name)
 					*out = append(*out, fieldRec)
 					(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 						types.RelationshipRecord{
@@ -1464,7 +1508,7 @@ func buildField(node ts.Node, file extractor.FileInput, parentType string) (type
 	// Build field signature: "Type name" (strip visibility).
 	fieldSig := buildFieldSignature(node, file.Content, name)
 
-	return types.EntityRecord{
+	rec := types.EntityRecord{
 		Name:       emittedName,
 		Kind:       "SCOPE.Schema",
 		Subtype:    "field",
@@ -1473,7 +1517,15 @@ func buildField(node ts.Node, file extractor.FileInput, parentType string) (type
 		StartLine:  int(node.StartPoint().Row) + 1,
 		EndLine:    int(node.EndPoint().Row) + 1,
 		Signature:  fieldSig,
-	}, true
+	}
+	// Issue #6912 arm E — stash the declared type's AST node so
+	// attachJavaFieldTypeRefs can emit the field -> type REFERENCES edge once
+	// the file's full record set exists. The `type` child is the node
+	// buildFieldSignature already spans as text; leafTypeName is deliberately
+	// NOT reused here (it reduces a type expression to one leaf, which is the
+	// lossy shape arm C refused).
+	stashJavaFieldTypeRefs(&rec, node.ChildByFieldName("type"), file.Content, parentType)
+	return rec, true
 }
 
 // buildFieldSignature produces "Type name" for a Java field, stripping visibility.
