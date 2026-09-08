@@ -30,9 +30,23 @@ source_patterns:
     scope: file
 
   # echo.New() engine init
-  - pattern: 'echo\.New\s*\(\s*\)'
+  # echo.New() engine init, named after the ASSIGNED VARIABLE (#6916): e := echo.New()
+  # name_group 0 named this entity "echo.New()" — a marker string, one per FILE, that no
+  # edge could ever bind to. Naming the variable is also what makes a PER-ROUTER
+  # anchor possible (#6914): a file building two routers now mints two entities.
+  #
+  # The `(?m)^[ \t]*` ANCHOR is load-bearing and graded. Without it the capture is
+  # just "the token left of the `=`", which in Go is reached from inside comments
+  # and doc examples — `// r := echo.New()` would mint a plausible-looking
+  # `Config:r` in a file that builds no router at all. `(?:\w+\.)?` keeps
+  # `s.router = echo.New()` naming `router` rather than `s`; the optional
+  # `var` + type group is what lets `var r *echo.Echo = echo.New()` match at all.
+  # Measured: Go puts the type AFTER the name, so deleting that group makes an
+  # explicitly typed declaration mint NOTHING — it does not capture the type the
+  # way the TypeScript sibling did (#6916 Tier B, review ask 2).
+  - pattern: '(?m)^[ \t]*(?:var\s+)?(?:\w+\.)?(\w+)(?:\s+[\w.*\[\]]+)?\s*:?=\s*echo\.New\s*\(\s*\)'
     entity_type: Config
-    name_group: 0
+    name_group: 1
     scope: file
 
 relationship_rules:

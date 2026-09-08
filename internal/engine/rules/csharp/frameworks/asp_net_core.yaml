@@ -87,9 +87,18 @@ source_patterns:
     scope: file
 
   # WebApplication.CreateBuilder(...) entry point
-  - pattern: "WebApplication\\.CreateBuilder\\s*\\("
+  # Named after the ASSIGNED VARIABLE (#6916): var builder = WebApplication.CreateBuilder(...)
+  # name_group 0 named this entity "WebApplication.CreateBuilder(" — a marker string with a trailing
+  # paren that no edge could bind to, one per FILE.
+  #
+  # The `(?m)^[ \\t]*` ANCHOR is load-bearing and graded: unanchored, the capture is
+  # just "the token left of the `=`", which is reachable from a commented-out
+  # example line. `(?:[\\w.<>\\[\\]]+\\s+)?` is the declarator/TYPE slot, so both
+  # `var builder =` and `WebApplicationBuilder builder =` name `builder` and neither
+  # names the type; `(?:\\w+\\.)?` keeps `this.builder =` naming `builder`.
+  - pattern: "(?m)^[ \\t]*(?:[\\w.<>\\[\\]]+\\s+)?(?:\\w+\\.)?(\\w+)\\s*=\\s*WebApplication\\.CreateBuilder\\s*\\("
     entity_type: Config
-    name_group: 0
+    name_group: 1
     scope: file
 
   # builder.Services.AddXxx(...) — DI service registration

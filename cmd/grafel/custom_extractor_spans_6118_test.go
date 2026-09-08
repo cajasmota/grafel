@@ -734,6 +734,37 @@ const (
 	// components, the two /orders endpoints, the six C# hierarchy edges and the
 	// language histogram above are all unchanged.
 	gateOffDigest6809 = "acfd2bc242dc7eadee89bf94de824776d5e8fc8c60078397e569d86ba3ebeb4d"
+	// gateOffDigest6916 is the current pin. #6916 Tier A narrowed eight `Config`
+	// source_patterns from `name_group: 0` — the entity Name was the whole regex
+	// match — to the ASSIGNED VARIABLE. One of the eight is axum's
+	// `Router::new()`, and this fixture's rs/routes.rs builds its router as an
+	// unassigned expression:
+	//
+	//	pub fn app() -> Router {
+	//	    Router::new().route("/items", get(list_items))
+	//	}
+	//
+	// With no variable there is no name to give the entity, so it is no longer
+	// minted. The delta is 141/283 -> 140/282, enumerated member by member (the
+	// gate-OFF entity+relationship sets dumped before and after and diffed; NOT
+	// derived from the counts):
+	//
+	//	-E Config "Router::new()" rs/routes.rs
+	//	     the marker node itself. Its Name was the matched text, so nothing
+	//	     could ever reference it: no relationship in this fixture had it as
+	//	     an endpoint, before or after.
+	//	-R Module:span6918 -[CONTAINS]-> Config:"Router::new()"
+	//	     the module containment edge carrying the entity above; it goes with
+	//	     it, and it was the ONLY edge incident on it.
+	//
+	// That is the whole delta: a marker with no referent plus its own
+	// containment. Every positioned entity, both /orders endpoints, the six C#
+	// hierarchy edges and the language histogram are unchanged. The loss is the
+	// deliberate cost recorded on #6916 — six unassigned shapes were measured on
+	// the Tier B arm and every one lost only a marker with no edge to anchor —
+	// and it is pinned in internal/engine by
+	// TestIssue6916_TierAUnassignedConstructionMintsNoConfig.
+	gateOffDigest6916 = "9415edfea35f8254755f3b0e8505b01e43706918f201bc473d6c5fd0283537a5"
 )
 
 func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
@@ -741,8 +772,16 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 	t.Setenv("GRAFEL_INPROC_CUSTOM_EXTRACTORS", "")
 	off := persistAndReload(t, runIndexerOn(t, fixture, "span6118", nil))
 	got := semanticDigest6118(off)
-	if got == gateOffDigest6809 {
+	if got == gateOffDigest6916 {
 		return
+	}
+	if got == gateOffDigest6809 {
+		t.Fatalf("gate-OFF graph reverted to the pre-#6916 baseline — an axum " +
+			"`Router::new()` with no assignment is minting a `Config` entity named " +
+			"after the whole regex match again. rs/routes.rs returns the router as a " +
+			"bare expression, so there is no variable to name it after; check that " +
+			"rust/frameworks/axum.yaml still anchors its Config pattern on a `let` " +
+			"binding and still uses name_group 1")
 	}
 	if got == gateOffDigest6862 {
 		t.Fatalf("gate-OFF graph reverted to the pre-#6809 baseline — a relationship_rule " +
@@ -793,8 +832,8 @@ func TestCustomExtractorGateOffGraphIsUnchanged(t *testing.T) {
 		t.Fatalf("gate-OFF graph reverted to the pre-fix 2f0175dfc baseline — the #6118 " +
 			"span donation is no longer reaching the default path")
 	}
-	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6809 %s\n post-#6862 %s\n post-#6742 %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
-		"(entities=%d relationships=%d)", got, gateOffDigest6809, gateOffDigest6862,
+	t.Fatalf("gate-OFF graph changed against ALL pinned digests\n got  %s\n post-#6916 %s\n post-#6809 %s\n post-#6862 %s\n post-#6742 %s\n post-#6601 %s\n post-#6485 %s\n post-#6152 %s\n post-#6138 %s\n post-#6118 %s\n 2f0175dfc %s\n"+
+		"(entities=%d relationships=%d)", got, gateOffDigest6916, gateOffDigest6809, gateOffDigest6862,
 		gateOffDigest6742, gateOffDigest6601, gateOffDigest6485, gateOffDigest6152,
 		gateOffDigest6138, gateOffDigest6118, gateOffDigest6118Base,
 		len(off.Entities), len(off.Relationships))
@@ -924,9 +963,16 @@ func TestCustomExtractorGateOffDeltaIsExactlyTheDocumentedSpanGain(t *testing.T)
 	// `Response` stub plus its Module:_external CONTAINS edge, which existed
 	// only to terminate that third one. Nothing that came out of a file was
 	// removed, which is why the file-component positions below are untouched.
+	//
+	// Then #6916 Tier A narrowed axum's `Config` pattern to the assigned variable
+	// (141/283 -> 140/282). rs/routes.rs builds its router as an unassigned
+	// expression, so the marker entity `Config:"Router::new()"` and the single
+	// Module CONTAINS edge that carried it are gone — enumerated member by member
+	// in the gateOffDigest6916 comment. Nothing that came out of a file was
+	// removed, so the file-component positions below are again untouched.
 	const (
-		wantEntities = 141
-		wantRels     = 283
+		wantEntities = 140
+		wantRels     = 282
 	)
 	if len(off.Entities) != wantEntities || len(off.Relationships) != wantRels {
 		t.Fatalf("gate-OFF graph size moved: entities=%d (want %d) relationships=%d (want %d) — "+

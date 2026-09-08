@@ -12,9 +12,37 @@ source_patterns:
     scope: file
 
   # DB connection: gorm.Open(...)
-  - pattern: 'gorm\.Open\s*\('
+  # DB connection: gorm.Open(...), named after the ASSIGNED VARIABLE (#6916): db, err := gorm.Open(...)
+  # name_group 0 named this entity "gorm.Open(" — a marker string, one per FILE,
+  # that no edge could ever bind to. Naming the variable is also what makes a
+  # per-CONNECTION anchor possible (#6914): a file opening two databases now
+  # mints two entities instead of one.
+  #
+  # The `(?m)^[ \t]*` ANCHOR is load-bearing and graded. Without it the capture is
+  # just "the token left of the `=`", which in Go is reached from inside comments
+  # and doc examples — `// db := gorm.Open(dsn)` would mint a plausible-looking
+  # `Config:db` in a file that opens no database at all. `(?:\w+\.)?` keeps
+  # `s.db = gorm.Open(...)` naming `db` rather than `s`; the optional
+  # `var` + type group is what lets `var db *gorm.DB = gorm.Open(...)` match at all.
+  # Measured: Go puts the type AFTER the name, so deleting that group makes an
+  # explicitly typed declaration mint NOTHING — it does not capture the type the
+  # way the TypeScript sibling did (#6916 Tier B, review ask 2).
+  #
+  # gorm.Open returns (*gorm.DB, error), so `db, err := gorm.Open(...)` is THE
+  # idiom and `(?:\s*,\s*[\w.]+)*` is here to let it through naming `db`. Go's
+  # multi-return is positional — the first name is the first return — so unlike
+  # Python's `app, env = App(), "prod"` this comma list can be read safely.
+  #
+  # MEASURED, and the reason this site is not a copy of the Tier B template: with
+  # the comma list absent AND no anchor — i.e. the Tier B Python pattern ported
+  # verbatim — this line mints `Config:err`. The ERROR value, named as though it
+  # were the database: identifier-shaped, so it reads as a real answer. That is
+  # the Tier B blocker shape (#6369) in Go. The two groups cover different halves
+  # of it and are graded separately: the comma list by this line, the anchor by a
+  # commented-out `// db := gorm.Open(dsn)`.
+  - pattern: '(?m)^[ \t]*(?:var\s+)?(?:\w+\.)?(\w+)(?:\s*,\s*[\w.]+)*(?:\s+[\w.*\[\]]+)?\s*:?=\s*gorm\.Open\s*\('
     entity_type: Config
-    name_group: 0
+    name_group: 1
     scope: file
 
   # AutoMigrate: db.AutoMigrate(&User{})
