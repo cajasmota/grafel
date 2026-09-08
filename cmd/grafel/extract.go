@@ -86,6 +86,21 @@ func subprocBatchSize() int {
 	return n
 }
 
+// subprocCustomExtractorsOptIn mirrors, for the subprocess-extract path, the
+// stamp classifyAndReadWithProgress applies to ExtractorConfig: only the
+// programmatic OPT-IN travels. An unset WithCustomExtractors must not be
+// forwarded as an explicit `false`, because Config beats env in both
+// directions — a forwarded false would suppress a set
+// GRAFEL_INPROC_CUSTOM_EXTRACTORS in the child while the in-process path
+// honoured it, which is the very disagreement #6997 is closing.
+func subprocCustomExtractorsOptIn(optedIn bool) *bool {
+	if !optedIn {
+		return nil
+	}
+	on := true
+	return &on
+}
+
 // skipPassNames flattens the indexer's skip-set into the slice the
 // coordinator forwards to each subprocess via --skip-pass.
 func skipPassNames(set map[string]bool) []string {
@@ -120,6 +135,10 @@ func runExtractSubprocess(argv []string) error {
 		skipPasses = fs.String("skip-pass", "", "comma-separated pass names to skip")
 		drfNames   = fs.String("drf-names", "", "path to coordinator-written DRF register-name file (#1292)")
 		ormFields  = fs.String("orm-fields", "", "path to coordinator-written ORM field-name file (#2505)")
+		// #6997 — tri-state: unset means "the parent said nothing", and the
+		// child then resolves the custom-extractor gate from the inherited
+		// environment exactly as the in-process path does.
+		customExtr = fs.String("custom-extractors", "", "programmatic custom-extractor opt-in (true/false); empty means fall back to GRAFEL_INPROC_CUSTOM_EXTRACTORS")
 	)
 	if err := fs.Parse(argv); err != nil {
 		return err
@@ -140,6 +159,18 @@ func runExtractSubprocess(argv []string) error {
 		}
 	}
 
+	var customExtractors *bool
+	switch strings.ToLower(strings.TrimSpace(*customExtr)) {
+	case "":
+		// nil — env fallback.
+	case "1", "true", "yes":
+		on := true
+		customExtractors = &on
+	default:
+		off := false
+		customExtractors = &off
+	}
+
 	return extract.Run(context.Background(), extract.SubprocessOptions{
 		RepoRoot:      *repo,
 		Language:      *lang,
@@ -149,5 +180,7 @@ func runExtractSubprocess(argv []string) error {
 		SkipPasses:    skipSet,
 		DRFNamesPath:  *drfNames,
 		ORMFieldsPath: *ormFields,
+
+		CustomExtractors: customExtractors,
 	})
 }

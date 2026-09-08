@@ -1806,6 +1806,13 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			// #5135: foreground rebuilds run at the higher rebuild cap;
 			// background scheduler reindexes stay throttled.
 			Interactive: i.interactive,
+			// #6997 — the same programmatic half of the custom-extractor gate
+			// classifyAndReadWithProgress stamps onto ExtractorConfig, carried
+			// to the children so this path evaluates the identical gate. Only
+			// the opt-in is stamped, for the same reason as there: a false
+			// would OVERRIDE a set env var, which is not what an unset option
+			// means.
+			CustomExtractors: subprocCustomExtractorsOptIn(i.customExtractors),
 		})
 		if cerr != nil {
 			trk.Fail(cerr.Error())
