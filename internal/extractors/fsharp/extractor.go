@@ -534,7 +534,35 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// `Core.fs` declaring `module Core.fs` already emits a record named
 	// exactly the path, and graph.EntityID does not hash Subtype, so a second
 	// SCOPE.Component would land under the module record's id (#6369/#6480).
-	return extractor.PrependFileCarrier(filePath, "fsharp", entities)
+	// #6912 arm E: the field→declared-type REFERENCES edge. Placement is
+	// load-bearing in BOTH directions and the call therefore wraps the carrier
+	// rather than preceding it:
+	//
+	//   - It runs AFTER applyElmishFeliz, which RE-KINDS the `Model` record to
+	//     SCOPE.Model and the `Msg` DU to SCOPE.Event — and this ordering is
+	//     LOAD-BEARING, via the AMBIGUITY RULE rather than the allow-list.
+	//     `open Foo.Model` beside an Elmish `type Model` is the distinguishing
+	//     input: read after the re-kind the name denotes two kinds and the pass
+	//     declines (0 edges); read before, both records are SCOPE.Component,
+	//     one kind, and the pass emits a stub that DANGLES because Component
+	//     and Model share a kind family. It is not, as an earlier draft of this
+	//     comment claimed, that the allow-list would lose the re-kinded rows —
+	//     before the re-kind those records are already admitted. See the
+	//     fsharpTypeDeclKinds block for the full experiment, and
+	//     TestFSharpFieldTypeRefs_PlacementAfterTheElmishRekindIsLoadBearing
+	//     for the grader.
+	//   - It must run after EVERY producer that can add a same-file record,
+	//     because its ambiguity rule counts the graph nodes a name denotes in
+	//     this file and a collision it cannot see reaches the resolver as a
+	//     dangling edge. Passing the post-PrependFileCarrier slice makes that
+	//     unconditional rather than resting on the carrier's Name always being
+	//     a path. That half is defence-in-depth and is scored as such: moving
+	//     the call to BEFORE PrependFileCarrier is an EQUIVALENT mutant (ALIVE,
+	//     and unkillable) because FileEntity names the carrier file.Path
+	//     (extractor/extractor.go:344) and every F# path contains a `.`, which
+	//     no bare candidate token ever does.
+	return attachFSharpFieldTypeRefs(
+		extractor.PrependFileCarrier(filePath, "fsharp", entities), filePath)
 }
 
 // classifyTypeSubtype determines the F# type subtype from the declaration context.
