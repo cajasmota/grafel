@@ -117,7 +117,8 @@ type Order =
       Fn: int -> Customer
       Qual: Domain.Customer
       Gen: 'T
-      Mut: mutable Customer }
+      Anno: Customer // why this field exists
+      mutable Bal: Customer }
 `
 	got := map[string]string{}
 	for _, e := range extractFSharp(src, "D.fs") {
@@ -136,7 +137,17 @@ type Order =
 		"Order.Fn":    "int -> Customer",
 		"Order.Qual":  "Domain.Customer",
 		"Order.Gen":   "'T",
-		"Order.Mut":   "mutable Customer",
+		// `mutable` is a prefix on the FIELD, not on the type — the earlier
+		// spelling of this row (`Mut: mutable Customer`) is not legal F# and
+		// graded a shape that cannot occur. parseRecordFields TrimPrefix'es
+		// "mutable " off the segment, so the real construct lands here.
+		"Order.Bal": "Customer",
+		// THE EDGE OF THE VERBATIM CLAIM. Nothing strips a trailing comment,
+		// so the property is the SEGMENT after the colon, not the type. It is
+		// harmless under the declaration gate (`why`/`this`/... are not
+		// declared here) but it is a real limitation rather than a rounding,
+		// and a file declaring `type why` would get a spurious edge.
+		"Order.Anno": "Customer // why this field exists",
 	}
 	for name, w := range want {
 		if got[name] != w {
@@ -404,6 +415,75 @@ type Env =
 		"App.fs:Env.Cfg -> "+p+"Config",
 		"App.fs:Env.Last -> "+p+"Msg",
 		"App.fs:Env.State -> "+p+"Model",
+	)
+}
+
+// TestFSharpFieldTypeRefs_PlacementAfterTheElmishRekindIsLoadBearing grades
+// WHERE attachFSharpFieldTypeRefs is called from, which no other row does.
+//
+// The header's first draft claimed the placement mattered because the
+// allow-list needs the re-kinded SCOPE.Model/SCOPE.Event rows. A three-row
+// experiment refuted that reason — before the re-kind those records are
+// already-admitted SCOPE.Component subtypes — and the second draft then
+// retracted the CLAIM along with its reason. That over-corrected. The claim
+// holds on a different mechanism: RULE 2.
+//
+// `open Foo.Model` is not exotic; `Model` is the commonest module name in an
+// Elmish app, and importDisplayName truncates the path to its last segment.
+//
+//	read AFTER the re-kind (as shipped): `Model` denotes SCOPE.Model AND
+//	  SCOPE.Component/import -> two kinds -> rule 2 refuses -> 0 edges.
+//	read BEFORE: both records are SCOPE.Component -> ONE kind -> rule 2 is
+//	  silent, the allow-list admits, and the emitted stub DANGLES, because
+//	  Component and Model are both in componentKindFamily so
+//	  lookupLocationKind finds no unique answer and ambigLocation blanks it.
+//
+// Measured: as shipped 0 edges; with the call moved before applyElmishFeliz,
+// 1 edge that fails to resolve through BuildIndex -> ReferencesEmbedded. So
+// this is a reachable dangling-edge mutant, and it was ALIVE until this test.
+//
+// Two premise guards below, because the fixture only grades what it says if
+// BOTH records really exist with the kinds claimed.
+func TestFSharpFieldTypeRefs_PlacementAfterTheElmishRekindIsLoadBearing(t *testing.T) {
+	src := `module App
+
+open Elmish
+open Foo.Model
+
+type Config = { Debug: bool }
+
+type Model = { Count: int }
+
+type Env =
+    { State: Model
+      Cfg: Config }
+`
+	recs := fsExtract(t, map[string]string{"App.fs": src})
+
+	var sawRekind, sawPlaceholder bool
+	for _, e := range recs {
+		if e.Name == "Model" && e.Kind == "SCOPE.Model" && e.Subtype == "elmish_model" {
+			sawRekind = true
+		}
+		if e.Name == "Model" && e.Kind == "SCOPE.Component" && e.Subtype == "import" {
+			sawPlaceholder = true
+		}
+	}
+	if !sawRekind {
+		t.Fatal("applyElmishFeliz did not re-kind Model to SCOPE.Model — this " +
+			"fixture is not exercising the ordering it was written for")
+	}
+	if !sawPlaceholder {
+		t.Fatal("no SCOPE.Component/import named Model — importDisplayName no " +
+			"longer truncates `open Foo.Model` to its last segment, so the " +
+			"in-family rival this row depends on is absent")
+	}
+
+	// `Cfg: Config` is the POSITIVE CONTROL: the same file, the same pass, an
+	// ordinary record target with no rival. Without it, "no Model edge" is
+	// indistinguishable from "this file produces nothing".
+	fsWantEdges(t, recs,
+		"App.fs:Env.Cfg -> scope:component:class:fsharp:App.fs:Config",
 	)
 }
 

@@ -36,16 +36,25 @@ import (
 //     (extractor.go's moduleRE/typeRE/memberRE + extractIndentBody). There is
 //     no tree-sitter grammar for F# in this tree, so "stash from the AST" is
 //     not an available option, not a choice declined.
-//  2. `member_type` IS THE VERBATIM SOURCE TEXT, NOT A LOSSY PROJECTION.
+//  2. `member_type` IS THE VERBATIM SEGMENT TEXT, NOT A LOSSY PROJECTION.
 //     parseRecordFields takes everything after the first `:` in the field
 //     segment and only TrimSpace's it (du_record_members.go:140). Probed
 //     against `Order`, `Customer option`, `Customer list`,
 //     `Map<string, Customer>`, `Customer[]`, `int * Customer`,
-//     `int -> Customer`, `Domain.Customer` and `'T`, the property is character
-//     for character the declared type as written. It is the one shipped
-//     field-type property on this issue that loses nothing, which is why this
-//     arm needs no stash and why the fixture in
-//     field_type_refs_6912_test.go pins all nine shapes against literals.
+//     `int -> Customer`, `Domain.Customer` and `'T`, it is character for
+//     character what was written. It is the one shipped field-type property on
+//     this issue that loses nothing — swift's is the first pre-order
+//     type_identifier and yields `Dictionary` for `Dictionary<String, Order>` —
+//     which is why this arm needs no stash.
+//
+//     THE PRECISE CLAIM IS "THE SEGMENT AFTER THE COLON", NOT "THE TYPE".
+//     Nothing strips a trailing comment, so `Anno: Customer // why` arrives as
+//     `"Customer // why"` and scans to candidates [Customer why]. It is
+//     harmless — `why` is refused by the declaration gate and the right edge
+//     still emits — but it is a real edge of the verbatim claim rather than a
+//     rounding of it, and a file that happened to declare `type why` would get
+//     a spurious edge. Pinned by the trailing-comment row in
+//     TestFSharpFieldTypeRefs_MemberTypeIsVerbatimSourceText.
 //
 // F#'s POSTFIX GENERICS ARE NOT A SPECIAL CASE — THEY ARE WHY TOKENISING WORKS
 //
@@ -230,29 +239,51 @@ type fsharpFieldTypeTarget struct {
 // dropped there. Graded by TestFSharpFieldTypeRefs_ElmishModelAndMsgAreTargets,
 // which fails when those two rows alone are deleted.
 //
-// THESE TWO ROWS AND THE CALL PLACEMENT ARE ONE DECISION, NOT TWO GUARDS, AND
-// SCORING THEM SEPARATELY IS MISLEADING. Measured rather than argued:
+// THE CALL PLACEMENT IS LOAD-BEARING TOO — BUT THROUGH RULE 2, NOT THIS
+// ALLOW-LIST. This paragraph has been wrong twice in opposite directions and
+// the sequence is worth keeping, because the second error is the rarer one.
+//
+// The first draft said the after-applyElmishFeliz placement was load-bearing
+// BECAUSE the allow-list needs the re-kinded rows. A three-row experiment
+// refuted that justification:
 //
 //	drop the two rows, keep the placement          -> DEAD (1 test)
 //	move the call before applyElmishFeliz,
-//	  keep the two rows                            -> ALIVE
-//	move the call AND drop the two rows            -> ALIVE
+//	  keep the two rows                            -> ALIVE  <- fixture-bound
+//	move the call AND drop the two rows            -> ALIVE  <- fixture-bound
 //
-// Before the re-kind, `Model` is still SCOPE.Component/record and `Msg` still
-// SCOPE.Component/discriminated_union — both already admitted — so the earlier
-// placement needs no extra rows and produces identical output. The two
-// arrangements are equivalent, which means the middle row above is the honest
-// verdict for the placement: it is NOT independently graded, and the two rows'
-// kill holds only while the placement is held constant. Recorded because a pair
-// of mutually-masking guards grades neither, and the failure mode is claiming
-// both are load-bearing when one arrangement of the pair is what matters.
+// Before the re-kind, `Model` is SCOPE.Component/record and `Msg` is
+// SCOPE.Component/discriminated_union — both already admitted — so on THAT
+// input the two arrangements agree, and the allow-list explanation is indeed
+// wrong. The second draft then RETRACTED THE CLAIM ALONG WITH ITS REASON. That
+// over-corrected: the claim survives on a different mechanism, and withdrawing
+// it left a reachable dangling-edge mutant ungraded.
 //
-// The after-placement is nonetheless the one kept, on an argument that does not
-// depend on the Elmish rows at all: read at the END, the pass sees the FINAL
-// Kind and Subtype of every record, so a future producer that re-kinds or adds
-// a same-file record cannot silently invalidate either the allow-list or the
-// ambiguity rule. Reading earlier would rest on the invariant "no later pass
-// changes a Kind" — an invariant applyElmishFeliz already breaks.
+// The distinguishing input is the commonest module name in an Elmish app:
+//
+//	module App
+//	open Elmish
+//	open Foo.Model      // import placeholder, SCOPE.Component, named "Model"
+//	type Model = { Count: int }
+//	type Env = { State: Model }
+//
+//	as shipped (read AFTER the re-kind)  -> 0 edges
+//	call moved BEFORE the re-kind        -> 1 edge, DANGLING through
+//	                                        BuildIndex -> ReferencesEmbedded
+//
+// The separator is RULE 2. Read after the re-kind, `Model` denotes two kinds
+// (SCOPE.Model/elmish_model + SCOPE.Component/import), so rule 2 refuses. Read
+// before, both records are SCOPE.Component — one kind — so rule 2 is silent,
+// the allow-list admits, and the emitted stub cannot resolve: Component and
+// Model are BOTH in componentKindFamily, so lookupLocationKind finds no unique
+// answer and ambigLocation blanks it. Graded by
+// TestFSharpFieldTypeRefs_PlacementAfterTheElmishRekindIsLoadBearing.
+//
+// So: the two allow-list rows are graded (each individually — deleting either
+// one alone kills), AND the placement is graded, and they are graded by
+// DIFFERENT rules. Recorded at length because "the justification failed, so the
+// claim falls" is the wrong inference — re-derive whether the claim still holds
+// before retracting it.
 //
 //	REFUSED, and each of the three refusals is a distinct hazard:
 //
@@ -308,14 +339,35 @@ var fsharpTypeDeclKinds = map[string]bool{
 //
 //  2. A name that denotes MORE THAN ONE DISTINCT GRAPH NODE in this file is
 //     dropped, and the count spans EVERY record in the file rather than only
-//     the admitted ones. This is the resolver's own ambiguity rule mirrored at
-//     the emit site: buildSymbolIndex marks (file, name) ambiguous on meeting a
-//     second distinct entity ID (`existing != e.ID`, internal/resolve/refs.go:1308),
-//     and the byLocation fallback this address depends on consults
-//     ambigLocation first — so a name shared with a NON-target node cannot bind
-//     either, and emitting would guarantee a dangling stub. Arm C's rule (count
-//     only within the admitted set) would not see such a collision; #7038 is
-//     filed against it for that.
+//     the admitted ones. Arm C's rule (count only within the admitted set)
+//     would not see such a collision; #7038 is filed against it for that.
+//
+//     IT IS A CONSERVATIVE APPROXIMATION OF THE RESOLVER'S RULE, NOT A MIRROR
+//     OF IT, and the earlier draft of this comment claimed otherwise: it said
+//     that a second kind means statusAmbiguous so "emitting would GUARANTEE a
+//     dangling stub". That premise is false in the direction the rule is
+//     graded. Measured by hand-emitting the refused edge on this arm's own
+//     shadow fixture and driving it through BuildIndex -> ReferencesEmbedded:
+//
+//     rival SCOPE.Operation/let beside SCOPE.Component/record  -> BINDS, correctly
+//     rival SCOPE.Component/import beside SCOPE.Model          -> DANGLES
+//
+//     The separator is the KIND FAMILY. refs.go:2982 tries
+//     lookupLocationKind(file, name, structuralKindFamilies("component"))
+//     BEFORE the kind-agnostic byLocation tier that ambigLocation guards, so a
+//     rival OUTSIDE componentKindFamily is simply not weighed and the edge
+//     resolves. The rule is therefore genuinely load-bearing only when the
+//     rival kind is INSIDE that family — Component/View/Model, the case rule 2
+//     shares with the call-placement experiment above — and it silently costs
+//     recall for every out-of-family rival (SCOPE.Operation, SCOPE.Pattern, the
+//     SCOPE.Schema sub-populations).
+//
+//     The over-strictness is KEPT here rather than narrowed: mirroring the
+//     family table at the emit site is real coupling to the resolver's internal
+//     tiering and deserves its own decision across arms C/D/E, not a rider on
+//     this one. What is fixed is the stated reason. The general form — count
+//     the kinds the resolver TIER THAT RESOLVES YOUR ADDRESS actually weighs —
+//     is recorded on #6912.
 //
 //     THE UNIT IS THE KIND, NOT THE RECORD, and that too is the resolver's own
 //     rule rather than a convenience: graph.EntityID hashes

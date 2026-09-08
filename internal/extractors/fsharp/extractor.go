@@ -539,15 +539,18 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// rather than preceding it:
 	//
 	//   - It runs AFTER applyElmishFeliz, which RE-KINDS the `Model` record to
-	//     SCOPE.Model and the `Msg` DU to SCOPE.Event. This is NOT because the
-	//     earlier placement would lose those edges — measured, it would not:
-	//     before the re-kind both records are already-admitted
-	//     SCOPE.Component subtypes, and moving the call produces identical
-	//     output. The reason is that reading at the END means the allow-list
-	//     and the ambiguity rule see every record's FINAL Kind and Subtype, so
-	//     a future pass that re-kinds something cannot silently invalidate
-	//     either. See the fsharpTypeDeclKinds comment for the three-row
-	//     experiment behind that claim.
+	//     SCOPE.Model and the `Msg` DU to SCOPE.Event — and this ordering is
+	//     LOAD-BEARING, via the AMBIGUITY RULE rather than the allow-list.
+	//     `open Foo.Model` beside an Elmish `type Model` is the distinguishing
+	//     input: read after the re-kind the name denotes two kinds and the pass
+	//     declines (0 edges); read before, both records are SCOPE.Component,
+	//     one kind, and the pass emits a stub that DANGLES because Component
+	//     and Model share a kind family. It is not, as an earlier draft of this
+	//     comment claimed, that the allow-list would lose the re-kinded rows —
+	//     before the re-kind those records are already admitted. See the
+	//     fsharpTypeDeclKinds block for the full experiment, and
+	//     TestFSharpFieldTypeRefs_PlacementAfterTheElmishRekindIsLoadBearing
+	//     for the grader.
 	//   - It must run after EVERY producer that can add a same-file record,
 	//     because its ambiguity rule counts the graph nodes a name denotes in
 	//     this file and a collision it cannot see reaches the resolver as a

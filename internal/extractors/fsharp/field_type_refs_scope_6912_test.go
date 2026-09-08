@@ -106,6 +106,54 @@ func TestFSharpFieldTypeRefs_TargetsAreScopedToTheRequestedFile(t *testing.T) {
 	}
 }
 
+// TestFSharpFieldTypeRefs_OnlySchemaKindedFieldsAreAnchors grades the
+// `r.Kind != "SCOPE.Schema"` conjunct of the field loop, which the external
+// suite cannot reach.
+//
+// It IS equivalent for anything extractFSharp can produce: du_record_members.go:46
+// is the only site in the package that mints Subtype "field", and it always sets
+// Kind SCOPE.Schema, so through Extract the two conjuncts fire together and
+// deleting either changes nothing. That makes it exactly the shape M13/M14/M15
+// are — reachable only through the direct-call path this arm already relies on —
+// and this arm's own standard is that "unreachable from outside" is a reason to
+// call the function directly, not a reason to leave a conjunct ungraded.
+//
+// The distinguishing input is a hand-built SCOPE.Component record carrying
+// Subtype "field": without the Kind conjunct it becomes an edge ANCHOR, and the
+// pass would start hanging field-type edges off a record that is not a field
+// entity at all.
+func TestFSharpFieldTypeRefs_OnlySchemaKindedFieldsAreAnchors(t *testing.T) {
+	records := []types.EntityRecord{
+		{Name: "Money", Kind: "SCOPE.Component", Subtype: "record", SourceFile: "A.fs"},
+		// Subtype says "field"; Kind does not. Only the Kind conjunct refuses it.
+		{Name: "Impostor.Amount", Kind: "SCOPE.Component", Subtype: "field", SourceFile: "A.fs",
+			Properties: map[string]string{
+				"member_name": "Amount", "member_type": "Money", "parent_class": "Impostor",
+			}},
+		// POSITIVE CONTROL — a real field record, same file, same target, so a
+		// failure separates "the Kind conjunct held" from "nothing emits here".
+		{Name: "Real.Amount", Kind: "SCOPE.Schema", Subtype: "field", SourceFile: "A.fs",
+			Properties: map[string]string{
+				"member_name": "Amount", "member_type": "Money", "parent_class": "Real",
+			}},
+	}
+
+	out := attachFSharpFieldTypeRefs(records, "A.fs")
+	got := map[string]int{}
+	for i := range out {
+		got[out[i].Name] = len(out[i].Relationships)
+	}
+	if got["Impostor.Amount"] != 0 {
+		t.Errorf("a SCOPE.Component record with Subtype \"field\" received %d edge(s) — "+
+			"the field loop's Kind conjunct is not holding, so a non-field record "+
+			"can become a field-type edge anchor", got["Impostor.Amount"])
+	}
+	if got["Real.Amount"] != 1 {
+		t.Fatalf("the positive control received %d edge(s), want 1 — the assertion "+
+			"above proves nothing if this input emits nothing at all", got["Real.Amount"])
+	}
+}
+
 func fsKeysOf(m map[string]fsharpFieldTypeTarget) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
