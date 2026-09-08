@@ -191,6 +191,17 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	records = attachClassContains(records, file.Path)
 
 	// ----------------------------------------------------------------
+	// 4b-bis. Issue #6912 — field→declared-type REFERENCES. Runs after
+	//     every primary-pass record for the file is in place, because the
+	//     pass refuses any target name carried by more than one same-file
+	//     record and the SCOPE.Enum value-sets (step 2) and import
+	//     placeholders (step 3) are part of that count. See
+	//     field_type_refs.go. The struct-anchored DEPENDS_ON emitted by
+	//     extractStructFieldDependencies is deliberately left untouched.
+	// ----------------------------------------------------------------
+	records = attachGoFieldTypeRefs(records, file.Path)
+
+	// ----------------------------------------------------------------
 	// 4c. Track A (analog of #641/#650/#670 for Go) — REFERENCES-edge
 	//     emission. Runs after every primary-pass entity is in place so
 	//     the file-scope symbol table covers functions, methods,

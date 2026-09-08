@@ -140,6 +140,22 @@ func extractStructFieldEntities(
 				Metadata:           map[string]interface{}{"subtype": "field", "owner": ownerName},
 				EnrichmentRequired: false,
 			})
+			// Issue #6912 — stash every bare type name written in the declared
+			// type for attachGoFieldTypeRefs, which turns the ones DECLARED IN
+			// THIS FILE into field-anchored REFERENCES edges once every record
+			// for the file exists. Nothing is decided here: a field may be
+			// declared before the type it names, and the collision rule needs
+			// the enum value-sets and import records that are appended after
+			// extractTypes returns (field_type_refs.go).
+			//
+			// The TYPE NODE is read, not the Signature string, so the grammar's
+			// own qualified_type / anonymous-struct classification is what the
+			// candidate rule stands on. Computed per field record rather than
+			// per field_declaration so `A, B Order` gives each of A and B its
+			// own stash.
+			if cands := goFieldTypeCandidates(typeNode, src); len(cands) > 0 {
+				fields[len(fields)-1].Metadata[goFieldTypeRefsMetaKey] = cands
+			}
 		}
 	}
 
