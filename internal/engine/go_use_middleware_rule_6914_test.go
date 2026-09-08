@@ -87,6 +87,40 @@ func main() {
 }
 `
 
+// use6914TwoArgMultiline is the SAME two-argument content in gofmt's own
+// layout. Coordinator mutant CQ-1 re-added the defect with the arguments
+// separated by a newline —
+// `'\.Use\s*\(\s*(\w[\w.]*)\s*,\s*\n\s*(\w[\w.]*)'`, same
+// source_type/target_type/kind/groups — and a table whose every leg put both
+// arguments on ONE line slept through it. The deleted rules used `\s*`, and
+// RE2's `\s` matches `\n`, so they DID fire on this layout; the pin covered it
+// only incidentally, never by assertion, which is exactly what a narrower
+// re-add walks through.
+//
+// Three axes are enumerated here and that is where this stops: arity (the
+// NoCorrectEdgeWasLost test), identifier shape, and line layout. The goal is a
+// pin that survives the obvious rewrites, not one that anticipates every
+// possible regex.
+const use6914TwoArgMultiline = `package main
+
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+)
+
+func main() {
+	r := chi.NewRouter()
+	r.Use(
+		middleware.RequestID,
+		middleware.Logger,
+	)
+	r.Get("/orders", listOrders)
+	http.ListenAndServe(":8080", r)
+}
+`
+
 const use6914TwoArgBare = `package main
 
 import "github.com/gin-gonic/gin"
@@ -201,6 +235,11 @@ func TestIssue6914_TwoArgUseEmitsNoMiddlewareEdge(t *testing.T) {
 			name:    "bare identifiers (gin group middleware)",
 			src:     use6914TwoArgBare,
 			control: "Route:/v1/items --ROUTES_TO--> Controller:listItems",
+		},
+		{
+			name:    "gofmt multi-line layout (chi stack of three)",
+			src:     use6914TwoArgMultiline,
+			control: "Route:/orders --ROUTES_TO--> Controller:listOrders",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
