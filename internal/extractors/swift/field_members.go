@@ -38,6 +38,10 @@ func emitSwiftFieldMembers(
 
 	var fields []types.EntityRecord
 	seen := make(map[string]bool)
+	// #6912 arm G — the owner's generic parameters shadow any same-named type
+	// declared in the file. Collected here because `node` (the owning
+	// declaration) is only in hand at this site.
+	typeParams := swiftTypeParameterNames(node, src)
 
 	if body != nil {
 		for i := 0; i < int(body.ChildCount()); i++ {
@@ -56,8 +60,17 @@ func emitSwiftFieldMembers(
 			}
 			seen[name] = true
 			typ := ""
+			// #6912 arm G — `cands` is the field→declared-type edge's input, and
+			// it is deliberately NOT derived from `typ`. firstDescendantText
+			// returns the FIRST pre-order type_identifier, so `typ` is
+			// "Dictionary" for `Dictionary<String, Order>` and "Foundation" for
+			// `Foundation.Data`: the information the edge needs is already gone
+			// by the time the property is written. See field_type_refs.go's
+			// header for the probe and for what the property is left as.
+			var cands []string
 			if ta := firstChildOfType(ch, "type_annotation"); ta != nil {
 				typ = firstDescendantText(ta, src, "type_identifier")
+				cands = swiftFieldTypeCandidates(ta, src, typeParams)
 			}
 			dotted := ownerName + "." + name
 			sig := name
@@ -80,7 +93,10 @@ func emitSwiftFieldMembers(
 					"field_type":   typ,
 					"parent_class": ownerName,
 				},
-				Metadata:           map[string]interface{}{"subtype": "field", "owner": ownerName},
+				Metadata: map[string]interface{}{
+					"subtype": "field", "owner": ownerName,
+					swiftFieldTypeRefsMetaKey: cands,
+				},
 				EnrichmentRequired: false,
 			})
 		}
