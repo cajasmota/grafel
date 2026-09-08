@@ -260,14 +260,27 @@ func (e *blazorExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	// below are further restricted to `.razor`, and only the two code rules
 	// (methods, [Parameter]) run over code-behind.
 	// #6978 — isRazorMarkup is UNREACHABLE, so the markup rules below have
-	// never run on any file. `.razor` classifies as language "razor", which
-	// has no entry in customPrefixForLanguage, so no custom_csharp_* extractor
-	// is ever dispatched for a `.razor` file (internal/extractors/
-	// custom_dispatch.go). Only the `.razor.cs` code-behind arm is live, and
-	// that is the arm #6975 measured. Kept and listed in
-	// TestCustomExtractorGatesAreReachable6978 rather than deleted: routing
-	// "razor" to custom_csharp_ is what would make these rules run, and this
-	// is where that change lands.
+	// never run on any file, and could not have before #6975 either. This
+	// EXTENDS point 2 above rather than restating it: there is a THIRD gate,
+	// earlier than both of the two named there. Dispatch itself is keyed on
+	// language — RunCustomExtractors selects via CustomExtractorsFor, and
+	// "razor" has no entry in customPrefixForLanguage
+	// (internal/extractors/custom_dispatch.go) — so a `.razor` file is never
+	// handed to a custom_csharp_* extractor in the first place, on ANY of the
+	// three dispatch paths.
+	//
+	// SO ROUTING ALONE WOULD NOT MAKE THESE RULES RUN. Point 2 above is right
+	// and this comment does not contradict it: reaching the markup rules needs
+	// all three, in order — (1) an entry routing "razor" to `custom_csharp_`;
+	// (2) the `file.Language != "csharp"` check above widened, which
+	// TestBlazorLanguageGuardRejectsNonCSharp6975 pins deliberately; and (3) a
+	// razor tree-sitter grammar, for the two dispatch paths that also require
+	// file.TSTree != nil (cmd/grafel/index.go, incremental.go — the daemon
+	// subprocess path has no such guard).
+	//
+	// Kept, not deleted, and listed in
+	// TestCustomExtractorGatesAreReachable6978 so it cannot be mistaken for a
+	// working `.razor` gate; that test fails if a NEW unreachable gate appears.
 	isRazorMarkup := strings.HasSuffix(file.Path, ".razor")
 	isRazorCodeBehind := strings.HasSuffix(file.Path, ".razor.cs")
 	if !isRazorMarkup && !isRazorCodeBehind {
