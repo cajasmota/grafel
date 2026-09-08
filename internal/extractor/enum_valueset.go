@@ -20,8 +20,17 @@ import (
 //     the full member list AND each member's literal value, so a Django
 //     Python `class Status(IntEnum): ACTIVE = 1; ARCHIVED = 2` is reproduced
 //     value-for-value by a NestJS `enum Status { ACTIVE = 1, ARCHIVED = 2 }`.
-//   - "which fields are constrained to enum X?" — the inbound TYPED_AS edges
-//     from fields/params declared with the enum type.
+//   - "which fields are constrained to enum X?" — inbound REFERENCES edges
+//     carrying the property ref_kind="field_target_type", emitted from a field
+//     record to this node's QualifiedName. Of the six
+//     ref_kind="field_target_type" producers, only C#'s
+//     (internal/extractors/csharp/field_type_refs.go, #6984) addresses its
+//     target by QualifiedName; the five in internal/custom/{python,golang,
+//     java,javascript,ruby} emit a `Class:<target>` stub instead, so C# is the
+//     only one that names a value-set node the way this helper spells it.
+//     No TYPED_AS edge exists: that kind was
+//     declared, never produced, and deleted by #6906 — see the RETIRED KINDS
+//     note in internal/types/kinds.go.
 //
 // Each language extractor detects the enum shape (Python Enum subclass, TS
 // `enum` / string-literal union, Java enum, Go iota const block, Ruby
@@ -67,8 +76,14 @@ type constMember struct {
 //	scope:enum:<sourceFile>:<EnumName>
 //
 // File-scoped so distinct same-named enums in different files stay distinct.
-// This value is stored as the entity's QualifiedName, so a TYPED_AS edge whose
-// ToID equals it binds via the resolver's byQualifiedName exact-match tier.
+// This value is stored as the entity's QualifiedName (see EnumEntity below), so
+// an edge whose ToID equals it binds via the resolver's byQualifiedName
+// exact-match tier — the first probe in resolve.Index.LookupStatusHint, ahead
+// of the structural, kind and bare-name tiers. The one producer that uses it is
+// C#'s field→declared-type pass (csInFileTypeTargets in
+// internal/extractors/csharp/field_type_refs.go), which reads the SCOPE.Enum
+// record's QualifiedName directly and emits REFERENCES with
+// ref_kind="field_target_type".
 func EnumQualifiedName(sourceFile, enumName string) string {
 	return "scope:enum:" + sourceFile + ":" + enumName
 }

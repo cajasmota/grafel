@@ -19,9 +19,10 @@ import (
 // five languages through one shared helper (internal/custom/{python,golang,
 // java,javascript,ruby}, `referencesClassEdge`): Kind REFERENCES with the
 // property `ref_kind: "field_target_type"`. Core adopts that spelling rather
-// than minting a third name — `TYPED_AS` and `HAS_TYPE` are both declared in
-// internal/types/kinds.go with zero producers (#6906, #5828), and a third
-// spelling would split every "which fields point at X?" query.
+// than minting a third name — `TYPED_AS` and `HAS_TYPE` were both declared in
+// internal/types/kinds.go with zero producers (#6906, #5828) and were DELETED
+// by #6906 once this pass shipped; a third spelling would have split every
+// "which fields point at X?" query.
 //
 // THE ADDRESS IS NOT the custom lane's `Class:<Target>`, and that divergence is
 // measured, not stylistic. Both `Customer` and `Class:<Customer>` reach the

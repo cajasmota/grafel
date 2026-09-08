@@ -8,10 +8,18 @@
 
   var INFRA = [["Platform / k8s",39],["Message brokers",22],["Observability",13],["Databases",12],["CI / CD",12],["Protocols",12],["Security",11],["Build systems",4]];
 
-  // Full authoritative kind lists, sourced from internal/types/kinds.go
-  // AllEntityKinds() (60) and AllRelationshipKinds() (106) — every kind grafel
-  // extractors are permitted to emit, grouped by category. Display forms strip
-  // the "SCOPE." prefix and lowercase to match the on-disk / MCP-rendered form.
+  // Display lists of the kinds grafel emits, grouped by category. Sourced from
+  // internal/types/kinds.go AllEntityKinds() / AllRelationshipKinds(), with the
+  // "SCOPE." prefix stripped and lowercased to match the on-disk / MCP-rendered
+  // form.
+  //
+  // HAND-MAINTAINED, and a SUBSET: nothing syncs these arrays with those
+  // accessors, and they have drifted behind them before. The counts that used
+  // to be quoted here described these arrays, not the accessors, so they are
+  // gone rather than restated — an unchecked number is how the drift went
+  // unnoticed. Add new kinds here by hand; the accessors remain the only
+  // authority. TYPED_AS and HAS_TYPE were removed by #6906 because both were
+  // deleted from the vocabulary.
   var ENT_GROUPS = [
     { label: "Code structure", items: ["operation","component","class","function","schema","variable","reference","constant","enum","constraint"] },
     { label: "Web & API", items: ["endpoint","route","http_endpoint_definition","http_endpoint_call","grpc_service","grpc_method","external_api","command","custom_validator"] },
@@ -23,7 +31,7 @@
     { label: "Docs, patterns & analysis", items: ["document","heading","code_block","scope_unknown","external","pattern","evolution","agent_pattern","markdown_document","section","design_decision"] }
   ];
   var REL_GROUPS = [
-    { label: "Structural", items: ["calls","imports","extends","implements","uses","uses_hook","contains","depends_on","references","has_props","has_type","typed_as","inherits"] },
+    { label: "Structural", items: ["calls","imports","extends","implements","uses","uses_hook","contains","depends_on","references","has_props","inherits"] },
     { label: "Web, routing & API", items: ["routes_to","serves","renders","returns","accepts_input","tagged_as","fetches","grpc_implements","grpc_handles","handles","handles_command","unresolved_fetch","navigates_to","validates","consumes_api"] },
     { label: "Data & persistence", items: ["accesses_table","reads_from","writes_to","queries","joins_collection","graph_relates","reads_field","writes_field","resolves_to","shares_data","shares_table_with","precedes","modifies_table","maps_to"] },
     { label: "Messaging & events", items: ["publishes_to","subscribes_to","transforms","batches","triggers","eventbridge_triggers","eventgrid_triggers","cloudevent_flows","captures"] },

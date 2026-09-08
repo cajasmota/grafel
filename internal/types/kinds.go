@@ -1236,10 +1236,6 @@ const (
 	// citizens via this edge kind.
 	RelationshipKindUnresolvedFetch RelationshipKind = "UNRESOLVED_FETCH"
 
-	// #1343: TypeScript type extraction edges.
-	//   HAS_TYPE     : entity → SCOPE.Schema  (e.g. a variable or field whose declared type is the target schema)
-	RelationshipKindHasType RelationshipKind = "HAS_TYPE"
-
 	// #1344: Post-rebuild rename / move / split detection.
 	// Emitted from a NEW entity to the OLD entity's ID after the indexer
 	// detects that a function, method, or class was renamed between rebuilds.
@@ -1794,18 +1790,6 @@ const (
 	// internal/engine/ws_channel_grouping.go.
 	RelationshipKindJoinsChannel RelationshipKind = "JOINS_CHANNEL"
 	RelationshipKindBroadcastsTo RelationshipKind = "BROADCASTS_TO"
-	// #3628 data-model: field/param → enum value-set edge. Emitted from a
-	// model field, struct field, or parameter whose declared type is a
-	// SCOPE.Enum value-set node, to that node. Lets the graph answer "which
-	// fields are constrained to enum X's values?" — the inbound side of the
-	// enum-parity contract. ToID is the SCOPE.Enum entity's QualifiedName so
-	// the resolver binds it via the byQualifiedName exact-match tier. Properties:
-	//   "enum"  : the bare enum type name.
-	//   "field" : the field/param name carrying the type (when known).
-	// Honest-partial: only statically-resolvable enum-typed declarations emit
-	// this edge; dynamic / computed types do not. See
-	// internal/extractor/enum_valueset.go.
-	RelationshipKindTypedAs RelationshipKind = "TYPED_AS"
 	// [sbom] DEPENDS_ON_PACKAGE points a manifest's project-anchor entity at a
 	// synthetic SCOPE.Package node (Name "package:<ecosystem>:<name>") it
 	// declares as an external dependency. Distinct from the file-scoped
@@ -1908,6 +1892,18 @@ const (
 	RelationshipKindDeploys RelationshipKind = "DEPLOYS"
 )
 
+// RETIRED KINDS — do not re-add. TYPED_AS (#6906) and HAS_TYPE (#5828) were
+// declared and registered here for months with zero producers and zero
+// consumers. Both named the same concept: a field / parameter → its declared
+// type. #6984 shipped that edge for C# as RelationshipKindReferences carrying
+// the property ref_kind="field_target_type" (internal/extractors/csharp/
+// field_type_refs.go), which is the spelling the custom lane had already
+// shipped in five languages via referencesClassEdge. A third name for one
+// concept is the defect #6451 was merged to remove for SCOPE.ExternalAPI, so
+// both constants were deleted rather than kept as reserved words. The deletion
+// is pinned by TestRetiredRelationshipKindsStayRetired in
+// kinds_retired_6906_test.go.
+//
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
 func AllRelationshipKinds() []RelationshipKind {
 	return []RelationshipKind{
@@ -1980,8 +1976,6 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindCloudEventFlows,
 		// #1217:
 		RelationshipKindUnresolvedFetch,
-		// #1343:
-		RelationshipKindHasType,
 		// #1344 rename detection:
 		RelationshipKindRenamedFrom,
 		// #1374 Django signal/admin connectivity:
@@ -2060,8 +2054,6 @@ func AllRelationshipKinds() []RelationshipKind {
 		// [realtime] WS room/channel grouping: JOINS_CHANNEL / BROADCASTS_TO.
 		RelationshipKindJoinsChannel,
 		RelationshipKindBroadcastsTo,
-		// #3628 data-model: field/param → enum value-set edge.
-		RelationshipKindTypedAs,
 		// #3834 (epic #3829) member-granularity inheritance edge:
 		RelationshipKindInherits,
 		// #4306 deterministic markdown doc ingestion (opt-in):
