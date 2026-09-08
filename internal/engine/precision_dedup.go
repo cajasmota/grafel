@@ -15,9 +15,11 @@ package engine
 //     dropped kind so no relationship is lost.
 //
 //  2. Statement-level noise — `Operation` entities whose Name is not a valid
-//     identifier (e.g. the langchain `@tool` source_pattern emits an Operation
-//     literally named "@tool" via name_group: 0). These are statement /
-//     decorator fragments, not operations, and are dropped.
+//     identifier (historically the langchain `@tool` source_pattern, which
+//     emitted an Operation literally named "@tool" via name_group: 0; that rule
+//     was deleted at the rule level in #6916 Tier C, but the filter stays — any
+//     rule can still produce this shape). These are statement / decorator
+//     fragments, not operations, and are dropped.
 //
 // CONSERVATIVE BY DESIGN:
 //   - Multi-kind collapse only fires when a group genuinely contains >1 distinct
@@ -283,14 +285,18 @@ func symbolicID(kind, name string) string {
 // be KEPT. So we drop ONLY three concrete statement shapes that carry no
 // architectural signal:
 //
-// #6916 Tier C note: three of the four examples this comment used to list —
-// "RunnableSequence.from(", ".bindTools(", "tool(async (" — no longer exist.
-// They were `name_group: 0` marker rules in
-// javascript_typescript/frameworks/langchain.yaml and were DELETED at the rule
-// level rather than filtered here. Their presence in this list was also the
-// evidence that #6916's "already dropped downstream as Operation noise" claim
-// about them was wrong: this pass never dropped them, and the langchain site
-// it WAS written for is the python `@tool` decorator, case (1) below.
+// #6916 Tier C note: all four of the examples this comment used to list —
+// "RunnableSequence.from(", ".bindTools(", "tool(async (" and the python
+// "@tool" — were `name_group: 0` marker rules in the two langchain.yaml files,
+// and all four have now been DELETED at the rule level rather than filtered
+// here. The first three were the evidence that #6916's "already dropped
+// downstream as Operation noise" claim was wrong: this pass never dropped them.
+// The python `@tool` decorator is the one site where the claim held — it is
+// case (1) below and WAS always dropped, which is why deleting its rule (this
+// tier's 10th and last site) changed no graph.
+//
+// The predicate below is deliberately NOT narrowed to match: it guards the
+// SHAPE, not those particular rules, and any future rule can reintroduce it.
 //
 //  1. Bare decorator text — name starts with `@` and the remainder is a plain
 //     identifier with no call/args (e.g. "@tool", "@property"). A decorator
