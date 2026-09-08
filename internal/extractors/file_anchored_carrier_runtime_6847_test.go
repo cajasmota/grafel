@@ -199,18 +199,112 @@ var exercisedLanguages6847 = []string{
 	"vbnet", "vue", "yaml", "zig",
 }
 
-// anchoringLanguages6847 is the exact set of exercised languages whose corpus
-// files actually PRODUCE a path-anchored FromID. This is vacuity layer 3 ("the
-// FULL content"): a truncated or gutted corpus file still classifies and still
-// extracts, so it would leave exercisedLanguages6847 intact — but the import
-// statements would be gone and the language would drop out of this set.
-var anchoringLanguages6847 = []string{
-	"astro", "bicep", "clojure", "cobol", "cpp", "crystal", "csharp", "dart",
-	"dockerfile", "elixir", "fish", "fsharp", "go", "graphql", "groovy",
-	"html", "java", "javascript", "just", "kotlin", "lua", "markdown", "php",
-	"protobuf", "python", "ruby", "rust", "scala", "shell", "swift",
-	"terraform", "typescript", "vue", "yaml", "zig",
+// anchoringBounds6847 pins, PER LANGUAGE and as an INDEPENDENT LITERAL, how
+// much of the corpus each language contributes to this guard. Its keys are also
+// the exact set of exercised languages whose corpus files PRODUCE a
+// path-anchored FromID (vacuity layer 3, "the FULL content": a truncated or
+// gutted corpus file still classifies and still extracts, so it would leave
+// exercisedLanguages6847 intact — but the import statements would be gone and
+// the language would drop out of this set).
+//
+// WHY COUNTS AND NOT JUST A SET (#6923). Everything this file asserted about a
+// language was either set MEMBERSHIP or a RELATIVE comparison between counters
+// that all move together (carried == anchoring, detected == anchoring). So a
+// language whose corpus contribution SHRANK — a narrowed regex, a moved
+// fixture, a rewritten extractor arm — kept every assertion satisfied while the
+// guard measured a fraction of what it used to. Measured, with the boundary
+// located exactly: zig 3 -> 1 anchoring file was ALIVE (whole suite green);
+// only zig 3 -> 0, which drops it out of the SET, was caught. That is "vacuous
+// walk reports clean" one level up: not a walk that does nothing, but a walk
+// whose POPULATION erodes underneath it.
+//
+// THE SHAPE, and why it is not exact counts. The issue offered two acceptable
+// shapes — a per-language floor, or exact counts with a "bump me deliberately"
+// message. Exact counts were rejected on a measurement, not a preference: over
+// the last 200 commits that touch a testdata/ path, 547 testdata files were
+// ADDED. An exact table would go red on a large fraction of those commits for
+// reasons unrelated to the invariant, and this guard already carries a
+// documented history of being silenced rather than maintained (#6834, #6908).
+// Both numbers below are therefore FLOORS, and both are monotone-safe under
+// corpus GROWTH — adding a corpus file can only raise one of them, never lower
+// either — so the maintenance edit is only ever required by a DELETION or a
+// RENAME, which is exactly the event this pin exists to make loud.
+//
+// BOTH DIRECTIONS ARE GRADED, which a floor alone cannot do (#6902: recall
+// assertions cannot see over-firing):
+//
+//   - minAnchoring is the EROSION direction. It is the number of corpus files
+//     of that language observed to anchor on their own path. Fewer than this
+//     and the guard is measuring less of the language than it used to.
+//
+//   - minNonAnchoring is the OVER-FIRING direction, and it is the count of
+//     exercised files of that language that must NOT anchor (exercised minus
+//     anchoring). A predicate that broadens — a language starting to anchor
+//     files it has no business anchoring — consumes this gap and trips the
+//     floor while every recall-shaped assertion above stays green. It too is
+//     addition-safe: a new anchoring file raises exercised and anchoring
+//     together and leaves the gap alone.
+//
+//     WHERE THIS DIRECTION IS UNGRADED, said plainly rather than implied. For
+//     the thirteen languages whose every exercised file already anchors
+//     (minNonAnchoring 0 — astro, clojure, cpp, crystal, dockerfile, elixir,
+//     fish, fsharp, graphql, java, php, swift, zig), there is no corpus
+//     file left for a broadened predicate to wrongly claim, so a 0 floor grades
+//     nothing and is recorded as 0 rather than pretended otherwise. The
+//     cross-language half of the over-firing question IS graded, by the set
+//     comparisons: a language at zero anchoring today (css, jcl, razor, sql,
+//     svelte, vbnet, commonlisp) that starts anchoring appears as "unexpected"
+//     in the anchoring set diff.
+//
+// TO CHANGE A NUMBER HERE: it is a deliberate bump, not a formality. Raise a
+// floor when a corpus file is genuinely added; LOWER one only when you can name
+// the corpus file that was deleted or renamed. Lowering it to match a red run
+// is how this guard was made vacuous before.
+//
+// MEASURED 2026-09-08 on macOS/APFS, in-tree walk over 907 candidate files.
+var anchoringBounds6847 = map[string]struct{ minAnchoring, minNonAnchoring int }{
+	"astro":      {2, 0},
+	"bicep":      {1, 1},
+	"clojure":    {3, 0},
+	"cobol":      {2, 9},
+	"cpp":        {3, 0},
+	"crystal":    {1, 0},
+	"csharp":     {6, 1},
+	"dart":       {3, 1},
+	"dockerfile": {3, 0},
+	"elixir":     {8, 0},
+	"fish":       {1, 0},
+	"fsharp":     {1, 0},
+	"go":         {98, 18},
+	"graphql":    {4, 0},
+	"groovy":     {4, 2},
+	"html":       {2, 2},
+	"java":       {31, 0},
+	"javascript": {9, 6},
+	"just":       {1, 2},
+	"kotlin":     {6, 1},
+	"lua":        {1, 2},
+	"markdown":   {17, 4},
+	"php":        {12, 0},
+	"protobuf":   {2, 1},
+	"python":     {94, 15},
+	"ruby":       {3, 10},
+	"rust":       {20, 1},
+	"scala":      {5, 3},
+	"shell":      {1, 5},
+	"swift":      {3, 0},
+	"terraform":  {2, 3},
+	"typescript": {209, 25},
+	"vue":        {7, 1},
+	"yaml":       {13, 16},
+	"zig":        {3, 0},
 }
+
+// anchoringLanguages6847 is the key set of anchoringBounds6847 — the same exact
+// set this file pinned as a literal slice before #6923, now derived from the
+// table so the two cannot disagree. The table is itself a hand-written literal,
+// so nothing here is derived from the collection under test.
+var anchoringLanguages6847 = sortedStringKeys(anchoringBounds6847)
 
 // noExtractorLanguages6847 is the exact set of languages the classifier DOES
 // produce over this corpus but for which no extractor is registered, so the
@@ -580,6 +674,97 @@ func TestFileAnchoredCarrier_CorpusCoverage_6847(t *testing.T) {
 			"changed:\n%s\nA language that leaves this set is exercised but no longer "+
 			"exercises the INVARIANT — its corpus file has lost the import statements the "+
 			"check needs, and the guard is vacuous for it.", diff)
+	}
+}
+
+// TestFileAnchoredCarrier_PerLanguagePopulation_6847 pins the SIZE of each
+// language's contribution, in both directions (#6923).
+//
+// The set comparisons above answer "is this language still here"; every other
+// assertion in this file is relative (carried == anchoring, detected ==
+// anchoring) and so is satisfied by all four counters shrinking together. That
+// left the population free to erode to a single file per language with the
+// suite green — measured: zig 3 -> 1 anchoring file was ALIVE, zig 3 -> 0 was
+// DEAD. This test is what makes the first row fail too.
+//
+// Both assertions are floors, for the maintenance reason written at
+// anchoringBounds6847: they are monotone-safe under corpus growth, so only a
+// deletion or a rename requires an edit here.
+func TestFileAnchoredCarrier_PerLanguagePopulation_6847(t *testing.T) {
+	res := carrierScan(t)
+
+	// THE TABLE-SHAPE PIN, and it is here because of what this file IS. This
+	// guard exists to stop ANOTHER guard being silenced, and without the three
+	// numbers below it could be silenced in one edit itself: gutting all 35
+	// rows to {0, 0} leaves every name, every loop and every message in place
+	// and the whole suite green — MEASURED as ALIVE by the review of #7010.
+	// Deleting a row is already caught (the key set is derived from this table,
+	// so the language disappears from the anchoring set diff); HOLLOWING the
+	// rows out was not, and given this file's documented history of being made
+	// vacuous (#6834, #6908) it is the likelier edit of the two.
+	//
+	// These are pins on the TABLE, not on the walk — they read no measurement —
+	// so they cost nothing on a corpus addition: a deliberate bump only ever
+	// RAISES a floor, and both sums only rise with it. The one edit that must
+	// touch them is the legitimate relocation case — an extractor that properly
+	// learns to anchor files it used to skip moves count from minNonAnchoring
+	// to minAnchoring — which lowers the second sum and must bump it in the
+	// same commit. That is one deliberate edit for one deliberate behaviour
+	// change, which is the point.
+	const (
+		anchoringBoundsRows6847         = 35
+		anchoringBoundsAnchoringSum6847 = 581
+		anchoringBoundsNonAnchoringSum  = 129
+	)
+	if len(anchoringBounds6847) != anchoringBoundsRows6847 {
+		t.Errorf("anchoringBounds6847 has %d rows, want exactly %d — a language was added or "+
+			"removed. Adding one is a real event (the anchoring set diff will say so too); "+
+			"removing one means this guard covers less than it did.",
+			len(anchoringBounds6847), anchoringBoundsRows6847)
+	}
+	sumAnchoring, sumNonAnchoring := 0, 0
+	for _, b := range anchoringBounds6847 {
+		sumAnchoring += b.minAnchoring
+		sumNonAnchoring += b.minNonAnchoring
+	}
+	if sumAnchoring < anchoringBoundsAnchoringSum6847 || sumNonAnchoring < anchoringBoundsNonAnchoringSum {
+		t.Errorf("anchoringBounds6847 was HOLLOWED OUT: minAnchoring sums to %d (want >= %d) and "+
+			"minNonAnchoring to %d (want >= %d).\n"+
+			"Lowering a floor without a corpus file having been deleted is how a guard gets "+
+			"silenced while still looking intact — this file exists because that happened to the "+
+			"one next to it. Name the deleted or renamed corpus file, or the extractor behaviour "+
+			"change that moved files between the two columns, in the same commit that lowers "+
+			"these constants.",
+			sumAnchoring, anchoringBoundsAnchoringSum6847, sumNonAnchoring, anchoringBoundsNonAnchoringSum)
+	}
+
+	for _, lang := range sortedStringKeys(anchoringBounds6847) {
+		want := anchoringBounds6847[lang]
+
+		// EROSION. Fewer anchoring files than the language is pinned at means
+		// the guard is measuring less of it than it used to, while every
+		// relative assertion in this file still balances.
+		if got := res.anchoring[lang]; got < want.minAnchoring {
+			t.Errorf("language %q ERODED: %d corpus files anchor on their own path, pinned at >= %d.\n"+
+				"Every other assertion in this file is relative (carried == anchoring == detected), "+
+				"so a shrinking population passes them all — this floor is the only thing that sees "+
+				"it. Name the corpus file that was deleted or renamed before lowering the number in "+
+				"anchoringBounds6847; lowering it to match a red run is how this guard was made "+
+				"vacuous before.", lang, got, want.minAnchoring)
+		}
+
+		// OVER-FIRING. The files of this language that must NOT anchor. A
+		// broadened predicate consumes this gap, and no recall-shaped
+		// assertion can see that happen (#6902).
+		if got := res.exercised[lang] - res.anchoring[lang]; got < want.minNonAnchoring {
+			t.Errorf("language %q OVER-FIRES: only %d of its %d exercised corpus files do NOT anchor "+
+				"on their own path, pinned at >= %d.\n"+
+				"Files that never anchored are now anchoring, which is a predicate that grew too "+
+				"broad — the direction a floor on the anchoring count cannot see. If the extractor "+
+				"legitimately learned to anchor these files, raise minAnchoring and lower "+
+				"minNonAnchoring together, in one deliberate edit.",
+				lang, got, res.exercised[lang], want.minNonAnchoring)
+		}
 	}
 }
 
