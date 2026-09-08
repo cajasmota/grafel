@@ -25,7 +25,11 @@ import (
 // "python"` — a scan-and-assert guard has several independent no-op modes and
 // would survive the very rewrite it exists to catch.
 //
-// AXES. Varied: the address's language segment (and the entity Language /
+// AXES. Two axes are graded here: the address's LANGUAGE segment and its
+// SCOPE segment (rows `config-scope` / `operation-scope`), each varied while
+// the other is held at the binding value.
+//
+// Varied: the address's language segment (and the entity Language /
 // file extension that go with it). Held constant: the entity kind and
 // subtype, the declared name, the global uniqueness of that name, the
 // cross-file relationship (the consumer's file declares nothing), the
@@ -59,7 +63,7 @@ import (
 // by the file the subclass declaration lives in), so the same-file
 // lookupLocationKind tier necessarily misses and only the cross-file tier
 // can bind.
-func langGuardFixture6998(lang, ext string) (base types.EntityRecord, consumer types.EntityRecord, ref string) {
+func langGuardFixture6998(scopeKind, lang, ext string) (base types.EntityRecord, consumer types.EntityRecord, ref string) {
 	baseFile := "app/base" + ext
 	childFile := "app/child" + ext
 	base = types.EntityRecord{
@@ -75,13 +79,14 @@ func langGuardFixture6998(lang, ext string) (base types.EntityRecord, consumer t
 		Name: "Child", QualifiedName: "Child",
 		SourceFile: childFile, Language: lang,
 	}
-	ref = "scope:component:class:" + lang + ":" + childFile + ":SharedBase"
+	ref = "scope:" + scopeKind + ":class:" + lang + ":" + childFile + ":SharedBase"
 	return base, consumer, ref
 }
 
 func TestStructuralComponentCrossFileTier_IsPythonOnly6998(t *testing.T) {
 	cases := []struct {
 		name     string
+		scope    string
 		lang     string
 		ext      string
 		wantBind bool
@@ -89,13 +94,13 @@ func TestStructuralComponentCrossFileTier_IsPythonOnly6998(t *testing.T) {
 		// The positive control. Without it every negative below could pass
 		// by the tier never firing at all, which is the commonest way an
 		// absence assertion here turns out to be decoration.
-		{name: "python", lang: "python", ext: ".py", wantBind: true},
+		{name: "python", scope: "component", lang: "python", ext: ".py", wantBind: true},
 		// Second positive control: the guard reads `strings.ToLower(...)`,
 		// so the invariant is case-INSENSITIVE python-only. A reader would
 		// otherwise reasonably assume an exact byte match, and a future
 		// edit that dropped the ToLower would be a silent narrowing that
 		// no other row here can see.
-		{name: "Python-mixed-case", lang: "Python", ext: ".py", wantBind: true},
+		{name: "Python-mixed-case", scope: "component", lang: "Python", ext: ".py", wantBind: true},
 		// The negatives are an ENUMERATION of the guard's neighbours, not a
 		// sample. Two sampled members cannot detect a predicate that got
 		// BROADER (#6998's own shape), and each of the following was scored
@@ -107,19 +112,47 @@ func TestStructuralComponentCrossFileTier_IsPythonOnly6998(t *testing.T) {
 		// deliberately same-file precisely because a cross-file guess is
 		// #6369's wrong-node hazard, so those two rows pin the actual
 		// decision rather than a general principle.
-		{name: "csharp", lang: "csharp", ext: ".cs", wantBind: false},
-		{name: "protobuf", lang: "protobuf", ext: ".proto", wantBind: false},
-		{name: "php", lang: "php", ext: ".php", wantBind: false},
-		{name: "python3", lang: "python3", ext: ".py", wantBind: false},
-		{name: "ruby", lang: "ruby", ext: ".rb", wantBind: false},
-		{name: "java", lang: "java", ext: ".java", wantBind: false},
+		{name: "csharp", scope: "component", lang: "csharp", ext: ".cs", wantBind: false},
+		{name: "protobuf", scope: "component", lang: "protobuf", ext: ".proto", wantBind: false},
+		{name: "php", scope: "component", lang: "php", ext: ".php", wantBind: false},
+		{name: "python3", scope: "component", lang: "python3", ext: ".py", wantBind: false},
+		{name: "ruby", scope: "component", lang: "ruby", ext: ".rb", wantBind: false},
+		{name: "java", scope: "component", lang: "java", ext: ".java", wantBind: false},
 		// Language varied, file paths held identical to the python case.
-		{name: "ruby-on-python-paths", lang: "ruby", ext: ".py", wantBind: false},
+		{name: "ruby-on-python-paths", scope: "component", lang: "ruby", ext: ".py", wantBind: false},
+		// SCOPE is the second graded axis. The nine rows above vary the
+		// language and hold the scope segment at "component", so on their own
+		// they say nothing about the OTHER guard on refs.go:3094
+		// (`strings.EqualFold(scopeKind, "component")`). Widening that one to
+		// `HasPrefix(strings.ToLower(scopeKind), "co")` was scored ALIVE
+		// against them — and it is reachable on an address production emits
+		// today: internal/extractors/python/config_consumer.go:333 mints
+		// `scope:config:ref:python:<file>:<Name>`, which under that widening
+		// bound a CONFIG reference to a class in another file. A
+		// confidently-wrong edge of exactly #6369's shape.
+		//
+		// Both rows hold lang at "python" — the language guard is satisfied,
+		// so a failure here is unambiguously about the scope guard.
+		//
+		// The subtype segment stays "class" rather than production's "ref":
+		// lookupStructural never reads it. The only segments it indexes are
+		// stubScopeKindIndex(1), stubScopeLangIndex(3), stubScopeFileIndex(4)
+		// and stubScopeTailIndex(5) — there is no `parts[2]` in the function —
+		// so `scope:config:ref:…` and `scope:config:class:…` take an identical
+		// path, and holding the subtype constant keeps scope the only varied
+		// axis at no cost in fidelity.
+		{name: "config-scope", scope: "config", lang: "python", ext: ".py", wantBind: false},
+		// "operation" is the largest scope kind in the tree, and the comment
+		// above this block says the package-keyed path "only fires for
+		// operation scope" — the two are entangled in a reader's mind, so pin
+		// that they stay separate. Deliberately not the whole scope
+		// vocabulary: the goal is a pin that survives an obvious widening.
+		{name: "operation-scope", scope: "operation", lang: "python", ext: ".py", wantBind: false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			base, consumer, ref := langGuardFixture6998(tc.lang, tc.ext)
+			base, consumer, ref := langGuardFixture6998(tc.scope, tc.lang, tc.ext)
 			idx := BuildIndex([]types.EntityRecord{base, consumer})
 
 			// Premise 1 — the cross-file tier's own precondition holds in
@@ -138,7 +171,7 @@ func TestStructuralComponentCrossFileTier_IsPythonOnly6998(t *testing.T) {
 			// Premise 2 — the same-file tier misses. The consumer's file does
 			// not declare `SharedBase`, so nothing but the cross-file tier
 			// can produce a binding here.
-			if id, ok := idx.lookupLocationKind(consumer.SourceFile, "SharedBase", componentKindFamily); ok {
+			if id, ok := idx.lookupLocationKind(consumer.SourceFile, "SharedBase", structuralKindFamilies(tc.scope)); ok {
 				t.Fatalf("premise: lookupLocationKind(%q, SharedBase) = (%q,true); the "+
 					"consumer file must not declare the name or the same-file tier, not "+
 					"the cross-file one, is what this case measures (#6998)",
