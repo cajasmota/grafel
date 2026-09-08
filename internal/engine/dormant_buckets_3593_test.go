@@ -218,7 +218,8 @@ func TestDormant3593_AliasMapWiring(t *testing.T) {
 	det.once.Do(det.compile)
 
 	// Each alias target must have received the dormant bucket's sets appended.
-	for bucket, targets := range dormantBucketAliases {
+	for _, alias := range dormantBucketAliases {
+		bucket, targets := alias.bucket, alias.targets
 		src := det.compiled[bucket]
 		if len(src) == 0 {
 			t.Errorf("dormant bucket %q compiled to 0 rule sets — cannot fire", bucket)
@@ -233,7 +234,7 @@ func TestDormant3593_AliasMapWiring(t *testing.T) {
 	}
 
 	// html_templates is intentionally NOT aliased (doc-only frameworks).
-	if _, ok := dormantBucketAliases["html_templates"]; ok {
+	if dormantAliasTargets("html_templates") != nil {
 		t.Error("html_templates must not be aliased: its frameworks carry no engine schema")
 	}
 }

@@ -87,7 +87,7 @@ func rules6927(t *testing.T, frameworkName, wantBucket string) map[string][]Fram
 		t.Fatalf("expected exactly one %q rule set in the %q bucket, got %d",
 			frameworkName, wantBucket, len(out[wantBucket]))
 	}
-	if targets := dormantBucketAliases[wantBucket]; !containsStr6927(targets, "yaml") {
+	if targets := dormantAliasTargets(wantBucket); !containsStr6927(targets, "yaml") {
 		t.Fatalf("bucket %q is no longer aliased onto yaml (%v); these tests hand Detect "+
 			"Language=yaml and would grade nothing", wantBucket, targets)
 	}

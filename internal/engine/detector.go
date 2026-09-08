@@ -118,11 +118,59 @@ func (c compiledRuleSet) frameworkPresent(content string) bool {
 //     docker_compose.yaml rules target compose files → `yaml`. The bucket is
 //     indivisible at load time, so it is aliased onto both; non-matching
 //     patterns are inert.)
-var dormantBucketAliases = map[string][]string{
-	"cicd":       {"yaml"},
-	"ansible":    {"yaml"},
-	"kubernetes": {"yaml"},
-	"docker":     {"dockerfile", "yaml"},
+//
+// # This is an ORDERED SLICE, not a map, and the order is load-bearing (#7030)
+//
+// compile() APPENDS each bucket's compiled rule sets onto the shared target
+// key, and Detect's per-file `seenEntities` (see below) lets the FIRST rule set
+// that matches an entity claim it — the later one is silently shadowed. The
+// emitted `framework` property comes from the bucket directory name
+// (`framework: lang`), so for two buckets aliased onto the SAME target the
+// consultation order decides the property that gets stamped.
+//
+// While this was a `map[string][]string`, `range` over it randomised that order
+// per process. `docker/frameworks/docker_compose.yaml`#1 and
+// `kubernetes/frameworks/kubernetes_manifests.yaml`#12 carry the byte-identical
+// pattern `image:\s+(\S+)` (entity_type Dependency) and co-occur on 92 files /
+// 142 entities, so those entities came out `framework=docker` or
+// `framework=kubernetes` depending on the map seed: two indexes of an unchanged
+// tree could disagree.
+//
+// The order below is LEXICAL BY BUCKET NAME. That is a deliberate non-choice:
+// it is the same rule the loader already uses to order rule FILES
+// (fs.WalkDir, loader.go), it is mechanically re-derivable by anyone reading
+// this list, and it does not smuggle in a claim that `docker` deserves to beat
+// `kubernetes` on the shared `image:` pattern. It only guarantees that the pair
+// HAS a stable winner, which is the precondition for choosing one on the
+// merits (#7028 owns that choice, and wants a file_conventions-scoped gate
+// rather than a reordering).
+//
+// So: reordering these entries CHANGES EXTRACTION OUTPUT for any two buckets
+// sharing a target language. Do it deliberately, with a recall measurement, and
+// update TestDormantAliasOrderIsExactAndStable_7030 — which pins this exact
+// sequence — in the same change.
+var dormantBucketAliases = []dormantBucketAlias{
+	{bucket: "ansible", targets: []string{"yaml"}},
+	{bucket: "cicd", targets: []string{"yaml"}},
+	{bucket: "docker", targets: []string{"dockerfile", "yaml"}},
+	{bucket: "kubernetes", targets: []string{"yaml"}},
+}
+
+// dormantBucketAlias is one bucket→concrete-language(s) alias entry.
+type dormantBucketAlias struct {
+	bucket  string
+	targets []string
+}
+
+// dormantAliasTargets returns the concrete languages a bucket is aliased onto,
+// or nil when the bucket is not aliased at all.
+func dormantAliasTargets(bucket string) []string {
+	for _, a := range dormantBucketAliases {
+		if a.bucket == bucket {
+			return a.targets
+		}
+	}
+	return nil
 }
 
 // Detector applies YAML-driven framework extraction rules to source files.
@@ -312,12 +360,16 @@ func (d *Detector) compile() {
 	// frameworks/*.yaml files carry engine schema keys (source_patterns /
 	// file_conventions / relationship_rules) — they are documentation-only
 	// descriptors — so aliasing it onto `html` would add zero extraction.
-	for bucket, targets := range dormantBucketAliases {
-		sets, ok := d.compiled[bucket]
+	//
+	// Iterated in the fixed slice order declared at dormantBucketAliases — see
+	// the comment there for why the order decides output and must not drift
+	// (#7030).
+	for _, alias := range dormantBucketAliases {
+		sets, ok := d.compiled[alias.bucket]
 		if !ok || len(sets) == 0 {
 			continue
 		}
-		for _, target := range targets {
+		for _, target := range alias.targets {
 			d.compiled[target] = append(d.compiled[target], sets...)
 		}
 	}
