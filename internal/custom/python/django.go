@@ -157,13 +157,30 @@ var (
 	// but it drops `TreeForeignKey(Category, ...)` with it — measured, not
 	// assumed: see TestIssue6988_RegexBoundaryRejected_WouldDropSubclasses.
 	// This regex extracts a target; it is NOT the constructor filter.
-	// `isDjangoRelationalField` decides which constructors are PROCESSED — but it
-	// does not bound what this regex READS. The caller hands it a 400-char
-	// forward window (`fullRHS` below) that can span later lines, so a
-	// legitimate `ForeignKey` whose own argument this regex cannot parse
-	// (`models.ForeignKey(settings.AUTH_USER_MODEL, ...)`) can still match a
-	// string belonging to a constructor the gate REJECTED. That residue survives
-	// #6988 and is zero-incidence on the measured corpus; it is filed separately.
+	// `isDjangoRelationalField` decides which constructors are PROCESSED. It does
+	// not bound what this regex READS — the CALLER's window does, and until
+	// #6990 that window was a raw 400-byte forward slice from the matched field,
+	// unbounded by the declaration it belonged to. A legitimate `ForeignKey`
+	// whose own argument this regex cannot parse
+	// (`models.ForeignKey(settings.AUTH_USER_MODEL, ...)` — dotted and
+	// lowercase-initial, so the `[A-Z]` symbol alternative correctly rejects it)
+	// therefore ran on into the NEXT field's declaration and captured ITS target.
+	// django/contrib/admin/models.py's `LogEntry.user` did exactly that and came
+	// out targeting `ContentType`: a real model, a bound edge, the wrong thing.
+	//
+	// CORRECTION (#6990): an earlier version of this comment called that residue
+	// "zero-incidence on the measured corpus". That was a measurement of the
+	// snake_case target population (chosen for #6988's `content_type` shape)
+	// stated over a wider one. `ContentType` is CamelCase and a genuine model
+	// name, so no shape filter could see it. The general population was never
+	// counted — it is UNMEASURED, not zero.
+	//
+	// The window is now bounded by the field's OWN call parentheses
+	// (`djangoDeclEnd`), so this regex can no longer read text belonging to a
+	// constructor the gate rejected — or to any other declaration. The regex
+	// itself is UNCHANGED: adding a left `\b` here would close the same case but
+	// drop `TreeForeignKey(Category, ...)` with it (#6988), and two guards that
+	// only fire together grade neither.
 	djangoModelRelTargetRe = regexp.MustCompile(
 		`(?:ForeignKey|OneToOneField|ManyToManyField)\s*\(\s*(?:to\s*=\s*)?(?:["']([^"']+)["']|([A-Z][A-Za-z0-9_]*))`)
 
@@ -715,7 +732,19 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			if attr == "" || !isDjangoRelationalField(rhs) {
 				continue
 			}
-			fullRHS := body[fIdx[0]:min(fIdx[0]+400, len(body))]
+			// #6990 — bound the target scan to THIS field's own declaration.
+			// fIdx[1] is one past the match, whose last byte is the `(` of the
+			// constructor call (djangoModelFieldRe ends `\s*\(`), so the slice
+			// runs from the start of the assignment line to the matching `)`.
+			// Multi-line declarations are covered by construction: the scan
+			// follows parens, not bytes or lines. The 400-byte cap survives ONLY
+			// as the unbalanced-source fallback, where it is exactly the old
+			// behaviour — never wider.
+			end := djangoDeclEnd(body, fIdx[1]-1)
+			if end < 0 {
+				end = min(fIdx[0]+400, len(body))
+			}
+			fullRHS := body[fIdx[0]:end]
 			if target, rawFKString, isSelf := djangoRelTargetDetail(fullRHS, className); target != "" {
 				rel := referencesClassEdge(file.Path, className+"."+attr, target, "django", attr)
 				// #6986 — carry the RELATION-SHAPE properties the core
@@ -1042,6 +1071,79 @@ func djangoRelTargetDetail(rhs, ownerClass string) (target, rawFKString string, 
 func djangoRelTarget(rhs, ownerClass string) string {
 	target, _, _ := djangoRelTargetDetail(rhs, ownerClass)
 	return target
+}
+
+// djangoDeclEnd returns the index one past the `)` that closes the call whose
+// opening `(` sits at openPos, or -1 when the source is unbalanced within body.
+//
+// #6990 — this is what bounds a relational field's target scan to the field's
+// OWN declaration. A byte window cannot do that: Django field declarations
+// legitimately span lines, so any fixed count is either too short for a real
+// multi-line `ForeignKey(\n  "app.Model",\n  on_delete=...\n)` or long enough to
+// reach the NEXT field's constructor. Following the parentheses is exact in
+// both directions.
+//
+// It counts parenthesis depth only — a `)` cannot appear inside `[...]` or
+// `{...}` without its own `(` — and it skips the two places a `)` can appear
+// without closing anything: string literals (single, double, and triple-quoted,
+// honouring backslash escapes) and `#` comments. An unterminated single-quoted
+// string or comment yields -1 rather than a guess, so the caller falls back to
+// the pre-#6990 byte window instead of over-reading further than it used to.
+func djangoDeclEnd(body string, openPos int) int {
+	if openPos < 0 || openPos >= len(body) || body[openPos] != '(' {
+		return -1
+	}
+	depth := 0
+	for i := openPos; i < len(body); i++ {
+		switch body[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		case '#':
+			nl := strings.IndexByte(body[i:], '\n')
+			if nl < 0 {
+				return -1
+			}
+			i += nl
+		case '\'', '"':
+			j := skipPyStringLiteral(body, i)
+			if j < 0 {
+				return -1
+			}
+			i = j - 1
+		}
+	}
+	return -1
+}
+
+// skipPyStringLiteral returns the index one past the string literal that starts
+// at i (which must hold a quote byte), or -1 if it is unterminated. Triple
+// quotes are handled first so a `)` inside a docstring-style default cannot be
+// mistaken for a closing paren.
+func skipPyStringLiteral(s string, i int) int {
+	q := s[i]
+	if i+2 < len(s) && s[i+1] == q && s[i+2] == q {
+		quote := s[i : i+3]
+		if end := strings.Index(s[i+3:], quote); end >= 0 {
+			return i + 3 + end + 3
+		}
+		return -1
+	}
+	for j := i + 1; j < len(s); j++ {
+		switch s[j] {
+		case '\\':
+			j++
+		case '\n':
+			return -1
+		case q:
+			return j + 1
+		}
+	}
+	return -1
 }
 
 // extractBalancedBrackets returns the content of a [...] list starting at openPos.

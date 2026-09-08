@@ -452,38 +452,45 @@ class Vendor(models.Model):
 }
 
 // ---------------------------------------------------------------------------
-// KNOWN-WRONG, pinned deliberately. A fix to #6990 is EXPECTED to break this.
+// #6990 — FIXED. This was a known-wrong pin; it is now a positive assertion.
 // ---------------------------------------------------------------------------
 
-// TestPythonFieldTargetType_KnownWrong_6990_OverReadBindsToTheNextFieldsTarget
-// pins a wrong BOUND edge that this address change creates, and that the PR
-// body originally denied existed.
+// TestPythonFieldTargetType_6990_NoOverReadIntoTheNextFieldsTarget was, until
+// #6990 shipped, a KNOWN-WRONG pin: it asserted that `LogEntry.user` came out
+// bound to `ContentType`, and carried a t.Skip telling the fixer to delete it.
+// It is converted rather than deleted, because deleting it would leave the
+// defect's own named shape unobserved — and the correct behaviour is a
+// NEGATIVE, which nothing else in this file grades.
 //
-// #6990's mechanism: `djangoModelRelTargetRe` has no left word boundary and the
-// producer hands it a 400-char `fullRHS` window. For
-// `user = models.ForeignKey(settings.AUTH_USER_MODEL, …)` the dotted target is
-// correctly REJECTED by the `[A-Z]` symbol alternative — and the window then
-// runs on into the NEXT field's `ForeignKey(ContentType`, capturing that. The
-// field's target_type becomes a class it does not reference.
+// The mechanism that was fixed: `djangoModelRelTargetRe` has no left word
+// boundary and the producer handed it a raw 400-BYTE forward window, unbounded
+// by the declaration it started in. For
+// `user = models.ForeignKey(settings.AUTH_USER_MODEL, …)` the dotted,
+// lowercase-initial target is correctly REJECTED by the `[A-Z]` symbol
+// alternative — and the window then ran on into the NEXT field's
+// `ForeignKey(ContentType`, capturing that. The field's target_type became a
+// class it does not reference: django/contrib/admin/models.py, verbatim.
 //
-// Under the old `Class:<Target>` address that wrong edge could not bind, so it
-// surfaced as one more dangling stub. Under the structural address it binds
-// whenever the wrong name has a unique in-tree declaration — which is exactly
-// #6369's hazard, a confident wrong edge that no dangling count can see.
+// That made it strictly worse than #6988's case. `ContentType` is CamelCase and
+// a genuine model, so the edge BOUND, to a legitimate node, in the declaring
+// file. Neither `NeverBindsToANonDeclaringFile` nor a dangling count could see
+// it: the FILE was right, the NAME was wrong, and no control here observes that
+// dimension.
 //
-// THIS IS NOT COVERED BY THE OVER-FIRE CONTROLS IN THIS FILE, and that is the
-// point of pinning it separately: `NeverBindsToANonDeclaringFile` and the
-// corpus "0 bound to a non-declaring file" figure both grade the FILE the
-// resolver picked. Here the file is right — `ContentType` really is declared
-// there. The wrongness is in the NAME the extractor chose, a dimension neither
-// control observes.
+// The window is now bounded by the field's own call parentheses
+// (`djangoDeclEnd`), so the correct target for `LogEntry.user` is NONE: the
+// declaration names `settings.AUTH_USER_MODEL`, a settings indirection this
+// extractor does not resolve, and emitting nothing is what "does not resolve"
+// looks like. Asserted as "no field_target_type edge AT ALL" rather than "not
+// ContentType", so a re-broadened window cannot pass by capturing a different
+// wrong target.
 //
-// On the django corpus this particular edge stays dangling, but for a reason
-// that lives elsewhere: the `ext:django:` external-synthesis pass intercepts
-// first. The guarantee is that pass's, not this address's. Fixing #6990 (either
-// anchoring the regex or bounding the window at the field's own call) should
-// make this test fail with `Class:` / no edge at all — delete it then.
-func TestPythonFieldTargetType_KnownWrong_6990_OverReadBindsToTheNextFieldsTarget(t *testing.T) {
+// GRAPH-LEVEL INCIDENCE IS NOT ESTABLISHED. An earlier comment here claimed
+// that on the real django corpus this edge stays dangling anyway because the
+// `ext:django:` external-synthesis pass intercepts first. Nobody verified that,
+// and it is not asserted. What this test grades is EXTRACTOR-LEVEL behaviour,
+// end to end through the merge and resolve path, which it does prove.
+func TestPythonFieldTargetType_6990_NoOverReadIntoTheNextFieldsTarget(t *testing.T) {
 	files := map[string]string{
 		"admin/models.py": `from django.conf import settings
 from django.db import models
@@ -505,57 +512,39 @@ class ContentType(models.Model):
 	for i := range ents {
 		byID[ents[i].ID] = ents[i]
 	}
-
-	// Control on the premise, through the production path: the SAME field with
-	// no sibling behind it emits NO edge at all. So the capture below is the
-	// 400-char window running on into the next field, not the symbol
-	// alternative accepting `settings.AUTH_USER_MODEL`.
-	lone := mergedFor6986(t, map[string]string{
-		"admin/models.py": `from django.conf import settings
-from django.db import models
-
-
-class LogEntry(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-`,
-	})
-	for _, e := range fieldTargetEdges6986(lone) {
-		if edgeKey6986(e.Owner, e.Rel) == "LogEntry.user" {
-			t.Fatalf("LogEntry.user emits a target edge (%q) with NO sibling field behind it — this "+
-				"test's premise (the window over-reads into the NEXT field) is not what is happening",
-				propOf6986(e.Rel.Properties, "target_type"))
-		}
-	}
-
 	idx := resolve.BuildIndex(ents)
 	resolve.ReferencesEmbedded(ents, idx)
 
-	var userEdge *types.RelationshipRecord
+	var sawContentType bool
 	for _, e := range fieldTargetEdges6986(ents) {
-		if edgeKey6986(e.Owner, e.Rel) == "LogEntry.user" {
-			r := e.Rel
-			userEdge = &r
+		switch edgeKey6986(e.Owner, e.Rel) {
+		case "LogEntry.user":
+			// THE FORBIDDEN ROW.
+			t.Errorf("LogEntry.user emitted a field_target_type edge (target_type=%q, ToID=%q); want "+
+				"NONE. The declaration names settings.AUTH_USER_MODEL — any target here came from "+
+				"reading past the end of this field's own declaration (#6990)",
+				propOf6986(e.Rel.Properties, "target_type"), e.Rel.ToID)
+		case "LogEntry.content_type":
+			// POSITIVE CONTROL, and the specific sibling whose target was
+			// stolen. Without it the negative above could pass vacuously —
+			// "this fixture produced nothing" reads identically.
+			sawContentType = true
+			if got := propOf6986(e.Rel.Properties, "target_type"); got != "ContentType" {
+				t.Errorf("LogEntry.content_type target_type = %q, want \"ContentType\" — the #6990 "+
+					"window bound dropped a target that was always correct", got)
+			}
+			target, bound := byID[e.Rel.ToID]
+			if !bound {
+				t.Errorf("LogEntry.content_type did NOT bind (ToID %q): the narrowing cost a real edge",
+					e.Rel.ToID)
+			} else if target.Name != "ContentType" || target.SourceFile != "contenttypes/models.py" {
+				t.Errorf("LogEntry.content_type bound to %s@%s, want ContentType@contenttypes/models.py",
+					target.Name, target.SourceFile)
+			}
 		}
 	}
-	if userEdge == nil {
-		t.Skip("LogEntry.user emits no target edge — #6990 appears fixed; delete this known-wrong pin")
+	if !sawContentType {
+		t.Fatal("LogEntry.content_type emitted no field_target_type edge at all — the positive control " +
+			"is gone, so the LogEntry.user negative above proves nothing (#6990)")
 	}
-	if got := propOf6986(userEdge.Properties, "target_type"); got != "ContentType" {
-		t.Fatalf("LogEntry.user target_type = %q, want \"ContentType\" — #6990's over-read shape has "+
-			"changed and this pin no longer describes it", got)
-	}
-	target, bound := byID[userEdge.ToID]
-	if !bound {
-		t.Fatalf("LogEntry.user did NOT bind (ToID %q). If #6990 or the address changed so this "+
-			"wrong edge can no longer bind, that is an improvement — delete this known-wrong pin",
-			userEdge.ToID)
-	}
-	if target.Name != "ContentType" || target.SourceFile != "contenttypes/models.py" {
-		t.Fatalf("LogEntry.user bound to %s@%s, want the known-wrong ContentType@contenttypes/models.py",
-			target.Name, target.SourceFile)
-	}
-	t.Logf("KNOWN WRONG (#6990, pinned by #6986): LogEntry.user -[REFERENCES field_target_type]-> "+
-		"%s@%s. The field references settings.AUTH_USER_MODEL; the 400-char window captured the "+
-		"NEXT field's target. Dangling under the old address, BOUND under this one.",
-		target.Name, target.SourceFile)
 }
