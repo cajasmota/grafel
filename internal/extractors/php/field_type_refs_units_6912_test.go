@@ -237,6 +237,37 @@ func TestPhpFieldTypeRefs_Unit_FoldedSpellingCollisionRefusesBoth(t *testing.T) 
 	}
 }
 
+// TestPhpFieldTypeRefs_Unit_OneEdgePerTargetNotPerCandidate grades the `emitted`
+// dedup, which no external fixture can reach.
+//
+// Two candidates fold to ONE target only when the type expression names the same
+// class twice in different case — `Money|money` — and PHP rejects that source as
+// a duplicate union member, so no .php file can produce it. The guard is
+// therefore defensive rather than reachable, and it is graded HERE, by handing
+// the function the record such a file would produce, rather than left alive on
+// the strength of "PHP would not compile it": this function takes RECORDS, and
+// the property that matters — one edge per target, never per candidate — should
+// not depend on an upstream parser's error handling.
+func TestPhpFieldTypeRefs_Unit_OneEdgePerTargetNotPerCandidate(t *testing.T) {
+	records := []types.EntityRecord{
+		{Name: "Money", Kind: "SCOPE.Component", Subtype: "class", SourceFile: "a.php"},
+		{Name: "Order.price", Kind: "SCOPE.Schema", Subtype: "field", SourceFile: "a.php",
+			Properties: map[string]string{
+				"field_name": "price", "field_type": "Money|money", "parent_class": "Order",
+			}},
+	}
+	out := attachPhpFieldTypeRefs(records, "a.php")
+	for i := range out {
+		if out[i].Name != "Order.price" {
+			continue
+		}
+		if n := len(out[i].Relationships); n != 1 {
+			t.Errorf("got %d edges for a type naming one target twice, want 1 — "+
+				"the edge count must follow the TARGET set, not the candidate list", n)
+		}
+	}
+}
+
 // TestPhpFieldTypeRefs_Unit_CandidateScannerEnumeratesTheShapeSpace grades the
 // scanner as a PROPERTY over PHP's type syntax rather than as a handful of lucky
 // fixtures. Every row is a legal PHP type expression.

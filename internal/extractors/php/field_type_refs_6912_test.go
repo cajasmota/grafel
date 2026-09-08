@@ -188,23 +188,23 @@ func TestPhpFieldTypeRefs_ShapeSpace(t *testing.T) {
 	want := map[string][]string{
 		// --- bound: the type is declared in THIS file ---
 		"Order2.buyer":      {"Customer"},
-		"Order2.maybeBuyer": {"Customer"},                // nullable names one type
-		"Order2.either":     {"Customer", "Money"},       // a union names BOTH
-		"Order2.both":       {"Customer", "Shipper"},     // an intersection names BOTH
+		"Order2.maybeBuyer": {"Customer"},            // nullable names one type
+		"Order2.either":     {"Customer", "Money"},   // a union names BOTH
+		"Order2.both":       {"Customer", "Shipper"}, // an intersection names BOTH
 		// `(Customer&Shipper)|null` — a PHP 8.2 DNF type. NO edge, and NOT
 		// because this pass refuses it: phpDeclaredType captures nothing at all
 		// for the shape, so field_type is "" (and the Signature loses the type
 		// too). A CAPTURE gap that predates this arm, made visible by
 		// enumerating the shape space rather than sampling it, and pinned as a
 		// known ceiling by TestPhpFieldTypeRefs_DNFTypeIsAKnownCaptureCeiling.
-		"Order2.dnf": nil,
-		"Order2.mixedUnion": {"Money"},                   // `int` is not declared here
-		"Order2.folded":     {"Customer"},                // PHP class names fold case
-		"Order2.trait":      {"Loggable"},                // a trait IS an admitted target
-		"Order2.m1":         {"Money"},                   // multi-declarator, first
-		"Order2.m2":         {"Money"},                   // multi-declarator, second
-		"Order2.owner":      {"Customer"},                // promoted ctor parameter
-		"Order2.amount":     {"Money"},                   // promoted + nullable
+		"Order2.dnf":        nil,
+		"Order2.mixedUnion": {"Money"},    // `int` is not declared here
+		"Order2.folded":     {"Customer"}, // PHP class names fold case
+		"Order2.trait":      {"Loggable"}, // a trait IS an admitted target
+		"Order2.m1":         {"Money"},    // multi-declarator, first
+		"Order2.m2":         {"Money"},    // multi-declarator, second
+		"Order2.owner":      {"Customer"}, // promoted ctor parameter
+		"Order2.amount":     {"Money"},    // promoted + nullable
 
 		// --- refused: qualified names are never reduced to a segment ---
 		"Order2.imported":    nil, // `use Other\Order` — Order is NOT declared here
