@@ -179,6 +179,30 @@ func TestRustFieldTypeRefs_EmittedEdges(t *testing.T) {
 		t.Fatalf("field-type edges mismatch\n got:\n%s\nwant:\n%s",
 			strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
+
+	// The candidate stash is CONSUMED, not left behind. graph.go:176 copies
+	// EntityRecord.Metadata onto the JSON-serialised Entity.Metadata
+	// (`json:"metadata,omitempty"`), so without attachRustFieldTypeRefs's
+	// delete() every Rust field entity in every indexed repo would persist a
+	// `field_type_refs` array into the graph. The doc comment claims the clear;
+	// this is what observes it — deleting the line is otherwise ALIVE through
+	// all three suites including ./cmd/grafel/ (review of #7000).
+	fieldsSeen := 0
+	for i := range recs {
+		if recs[i].Kind != "SCOPE.Schema" || recs[i].Subtype != "field" {
+			continue
+		}
+		fieldsSeen++
+		if v, ok := recs[i].Metadata["field_type_refs"]; ok {
+			t.Errorf("%s leaked the candidate stash into Metadata: %v", recs[i].Name, v)
+		}
+	}
+	// Positive control: the fixture's field records must actually be here, or
+	// "no stash" is true because nothing was inspected. 19 Order fields + 1
+	// Customer + 1 Holder + 2 Loan + 1 Event.Placed.
+	if fieldsSeen != 24 {
+		t.Fatalf("expected 24 field records to inspect for a leaked stash, got %d", fieldsSeen)
+	}
 }
 
 // TestRustFieldTypeRefs_EdgeProperties cross-checks the two properties that are
