@@ -110,7 +110,14 @@ var reachabilityEdgeKinds = map[string]bool{
 // an HTTP route — and #6776 arm B7 added both kinds together because both are
 // live. Seeding only the prefixed one persisted every Java/Spring/Django
 // route into the sidecar as unreachable, along with everything only it reaches.
-// internal/mcp/dead_code.go's frameworkEntryKindsMCP mirrors this map.
+// #6909: internal/mcp/dead_code.go used to hand-copy this map (and
+// reachabilityEdgeKinds) into frameworkEntryKindsMCP. The two copies diverged
+// twice — on "Route" (#6902) and on "SCOPE.ChannelBinding" — and the second
+// divergence was live, because handleDeadCode PREFERS the sidecar this pass
+// writes and only consults its own map when the sidecar fails to load. There
+// is now no copy: mcp consumes IsFrameworkEntryKind / IsReachabilityEdgeKind
+// below. (internal/coverage has its own edge-kind set for a different
+// question — test reachability — and is deliberately not folded in here.)
 var frameworkEntryKinds = map[string]bool{
 	"http_endpoint_definition": true,
 	"http_endpoint":            true,
@@ -118,9 +125,81 @@ var frameworkEntryKinds = map[string]bool{
 	"SCOPE.Route":              true,
 	"Route":                    true, // #6902
 	"SCOPE.MessageTopic":       true,
+	// #5782 (ADR-0025), added here by #6909: a ChannelBinding is a
+	// config-side messaging declaration with no callers by design — never
+	// report it as dead code. ADR-0025 §3 named only the MCP map because
+	// that was the only seed set at the time; the sidecar this pass writes
+	// is what the tool actually reads, so the seed has to be here too.
+	"SCOPE.ChannelBinding":     true,
 	"SCOPE.GrpcMethod":         true,
 	"SCOPE.ServerlessFunction": true,
 	"SCOPE.EventBusEvent":      true,
+}
+
+// IsFrameworkEntryKind reports whether an entity of this kind is a
+// framework-managed entry-point, i.e. a BFS seed that needs no inbound edge.
+//
+// Exported for internal/mcp's grafel_dead_code fallback, which used to keep a
+// hand-copied mirror of frameworkEntryKinds. #6909: one set, one consumer path.
+func IsFrameworkEntryKind(kind string) bool { return frameworkEntryKinds[kind] }
+
+// IsReachabilityEdgeKind reports whether an edge of this kind propagates
+// reachability. Exported for the same reason as IsFrameworkEntryKind (#6909).
+func IsReachabilityEdgeKind(kind string) bool { return reachabilityEdgeKinds[kind] }
+
+// ReachabilityEdgeKinds returns every reachability-propagating edge kind,
+// sorted, for the same reason FrameworkEntryKinds exists: this set cannot be
+// graded by sampling.
+//
+// It is the BFS TRAVERSAL FILTER (see the `if !reachabilityEdgeKinds[e.Kind]`
+// below), so a member leaving it is worse for a user than a missing seed:
+// an entity reachable only through, say, an IMPORTS edge stops being reachable
+// and the dead-code tool reports LIVE code as dead. Under-reporting is a
+// quietly useless tool; over-reporting sends people to delete working code.
+// Deleting "IMPORTS" was scored ALIVE against every test in this repo before
+// the enumeration in internal/mcp existed.
+//
+// NOT to be confused with internal/coverage's identically-named
+// reachabilityEdgeKinds, whose line 208 is syntactically identical to the one
+// below. That set is {TESTS, CALLS} built from types.RelationshipKind*
+// constants and answers "which tests reach this entity" (coverage.PropTestReachable),
+// not "is this dead". It is a name collision, not a copy of this set, and must
+// not be folded in here — the resemblance has already produced one issue filed
+// on a wrong premise (#7012, closed invalid).
+func ReachabilityEdgeKinds() []string {
+	out := make([]string, 0, len(reachabilityEdgeKinds))
+	for k := range reachabilityEdgeKinds {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// FrameworkEntryKinds returns every seed kind, sorted.
+//
+// The predicate above cannot be tested by sampling: a positive/negative list of
+// SOME members grades only those members, so deleting an unlisted seed — say
+// "SCOPE.GrpcMethod", which would report every gRPC method as dead code — is
+// silent. This exists so a test can assert the WHOLE set against an independent
+// hand-written literal, which is the only shape that catches a member being
+// added, removed or renamed. Review of #6909 scored three such mutants ALIVE
+// against a sampled pin.
+//
+// The grading test lives in internal/mcp (channelbinding_sidecar_seed_6909_test.go)
+// because that is where the consumer is: an edit to this map that breaks the
+// dead-code tool leaves ./internal/links/ green. Do not delete it as "not about
+// links".
+//
+// Seeding a kind makes its whole TRANSITIVE CLOSURE reachable, not just the
+// entity itself — that is the intended semantics (a route's handlers are live
+// because the route is), and it is the blast radius of adding a member here.
+func FrameworkEntryKinds() []string {
+	out := make([]string, 0, len(frameworkEntryKinds))
+	for k := range frameworkEntryKinds {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // reachabilityEntry is one persistent reachability fact for the sidecar.
