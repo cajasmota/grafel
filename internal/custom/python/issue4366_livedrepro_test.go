@@ -153,11 +153,18 @@ func TestIssue4366_DjangoModelFields_AreMembers(t *testing.T) {
 	// Relational fields carry a REFERENCES edge to the target model. contract.py
 	// has `group = models.ForeignKey(Group, ...)` and
 	// `recipients = models.ManyToManyField("User", ...)`.
-	if !hasReferencesTo(ents, "Class:Group") {
-		t.Errorf("expected REFERENCES edge to Class:Group (ForeignKey target)")
+	//
+	// #6986 moved the target address from the bare-name `Class:<Target>` stub to
+	// the structural `scope:component:class:python:<file>:<Target>` form. What
+	// this pins is unchanged — BOTH relational fields still emit a target edge,
+	// and each still names the same target model — only the dialect moved.
+	groupRef := extreg.BuildComponentStructuralRef("python", "core/models/contract.py", "Group")
+	userRef := extreg.BuildComponentStructuralRef("python", "core/models/contract.py", "User")
+	if !hasReferencesTo(ents, groupRef) {
+		t.Errorf("expected REFERENCES edge to %s (ForeignKey target)", groupRef)
 	}
-	if !hasReferencesTo(ents, "Class:User") {
-		t.Errorf("expected REFERENCES edge to Class:User (ManyToManyField string target)")
+	if !hasReferencesTo(ents, userRef) {
+		t.Errorf("expected REFERENCES edge to %s (ManyToManyField string target)", userRef)
 	}
 }
 
@@ -173,13 +180,51 @@ func TestIssue4366_SQLAlchemyFields_AreMembers(t *testing.T) {
 		t.Errorf("SQLAlchemy model has %d/%d orphan field entities (want 0)", orphans, total)
 	}
 
-	// Relationship target must carry a resolving REFERENCES edge.
-	idx := resolve.BuildIndex(ents)
-	if _, ok := idx.Lookup("Class:Order"); !ok {
-		t.Errorf("Class:Order did not resolve in symbol table")
+	// Relationship target must carry a RESOLVING REFERENCES edge. That is the
+	// property this has always pinned — the old form asserted it by looking the
+	// `Class:Order` stub up in the symbol table. #6986 re-addressed the edge to
+	// `scope:component:class:python:<file>:<Target>`, which the bare-name
+	// `Index.Lookup` tier does not serve, so the same property is now pinned one
+	// layer lower and more strictly: drive the REAL production path
+	// (BuildIndex → ReferencesEmbedded) and require the emitted edge's ToID to
+	// come back REWRITTEN to a real entity ID. Weaker would be to drop the
+	// resolution half and keep only "an edge exists"; this keeps both.
+	orderRef := extreg.BuildComponentStructuralRef("python", "app/models/orders.py", "Order")
+	customerRef := extreg.BuildComponentStructuralRef("python", "app/models/orders.py", "Customer")
+	if !hasReferencesTo(ents, orderRef) && !hasReferencesTo(ents, customerRef) {
+		t.Errorf("expected a REFERENCES edge to a related SQLAlchemy model (%s / %s)", orderRef, customerRef)
 	}
-	if !hasReferencesTo(ents, "Class:Order") && !hasReferencesTo(ents, "Class:Customer") {
-		t.Errorf("expected a REFERENCES edge to a related SQLAlchemy model")
+	ids := map[string]bool{}
+	for i := range ents {
+		ids[ents[i].ID] = true
+	}
+	idx := resolve.BuildIndex(ents)
+	resolve.ReferencesEmbedded(ents, idx)
+	boundTargets := 0
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Kind != string(types.RelationshipKindReferences) {
+				continue
+			}
+			isFieldTarget := false
+			for _, p := range r.Properties {
+				if p.K == "ref_kind" && p.V == "field_target_type" {
+					isFieldTarget = true
+				}
+			}
+			if !isFieldTarget {
+				continue
+			}
+			if !ids[r.ToID] {
+				t.Errorf("%s -[REFERENCES]-> %q did NOT bind to an entity ID (dangling stub)",
+					ents[i].Name, r.ToID)
+				continue
+			}
+			boundTargets++
+		}
+	}
+	if boundTargets == 0 {
+		t.Error("no field_target_type edge bound: the resolution half of this assertion is vacuous")
 	}
 }
 

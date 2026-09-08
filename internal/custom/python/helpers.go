@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -95,13 +96,39 @@ func containsFieldEdge(ownerClass, memberName, fieldName, framework string) type
 // type is the field's only outbound semantic edge; without it the related model /
 // nested serializer rings.
 //
-// FromID is the field entity's qualified Name (`<owner>.<field>`); ToID is the
-// `Class:<target>` stub the resolver binds to the real class entity (same-file
-// or symbol-table wide). The edge is hung off the field entity by the caller.
-func referencesClassEdge(memberName, targetClass, framework, fieldName string) types.RelationshipRecord {
+// FromID is the field entity's qualified Name (`<owner>.<field>`).
+//
+// ToID is the STRUCTURAL address
+// `scope:component:class:python:<declaring_file>:<Target>`, not the
+// `Class:<Target>` bare-name stub this helper shipped until #6986. Measured
+// reason, gate-ON on the 16-repo corpus: 917 `field_target_type` edges, 840
+// (91.6%) DANGLING, essentially all Python (django 880 edges / 836 dangling).
+// `Class:<Target>` reaches the resolver's bare-name tier, which returns
+// AMBIGUOUS the moment two entities share the name — and on Django that is the
+// ordinary case twice over: a second app declaring `Author`, and, for a
+// UNIQUELY declared model, grafel's own untwinned rule-pack `Model` node
+// sitting beside the tree-sitter class anchor (#6981). Only ~54% of the loss is
+// duplicate names; the other ~40% is a unique class made ambiguous by grafel.
+//
+// The address is deliberately built from the CONSUMER's file — the file this
+// per-file extractor is reading — and NOT from the target's file, which a
+// pass-1 extractor cannot know. That is not a compromise: it is the Python
+// dialect the resolver already speaks. internal/resolve/refs.go's
+// lookupStructural resolves `scope:component:class:python:<file>:<Name>` in two
+// tiers — same-file `lookupLocationKind`, then, for `component` scope with
+// lang=="python" only, `lookupUniqueRealComponentByName`, which binds when
+// exactly one entity in the whole graph declares the name. The Python
+// hierarchy extractor has emitted EXTENDS targets in exactly this shape, with
+// exactly this consumer's-file convention, since the flask-realworld wave.
+//
+// So this pass is NOT same-file-only the way the C# port (#6984) had to be:
+// a cross-file target still binds when its declaration is globally unique, and
+// an ambiguous or absent target still dangles — never more edges than before,
+// and never a guessed one.
+func referencesClassEdge(filePath, memberName, targetClass, framework, fieldName string) types.RelationshipRecord {
 	return types.RelationshipRecord{
 		FromID: memberName,
-		ToID:   pyClassRef(targetClass),
+		ToID:   extractor.BuildComponentStructuralRef("python", filePath, targetClass),
 		Kind:   string(types.RelationshipKindReferences),
 		Properties: types.Props{
 			{K: "field_name", V: fieldName},

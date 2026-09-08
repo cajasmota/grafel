@@ -194,6 +194,18 @@ func fieldTargetEdgesFrom6988(rels []types.RelationshipRecord, from string) []ty
 	return out
 }
 
+// fieldTargetRef6988 is the ToID a field_target_type edge carries for a target
+// declared in the fixture file these tests extract ("models.py"). #6986 moved
+// that address off the bare-name `Class:<Target>` stub (which never bound once
+// a second entity shared the name) and onto the structural
+// `scope:component:class:python:<file>:<Target>` form. The assertions below are
+// unchanged in INTENT — "this field emits a target edge pointing at <Target>" —
+// only the dialect the target is named in has moved. `pyClassRef` is still the
+// right helper for the CONTAINS FromID, which was never re-addressed.
+func fieldTargetRef6988(target string) string {
+	return extractor.BuildComponentStructuralRef("python", "models.py", target)
+}
+
 func hasEdge6988(rels []types.RelationshipRecord, from, to, kind string) bool {
 	for _, r := range rels {
 		if r.FromID == from && r.ToID == to && r.Kind == kind {
@@ -239,8 +251,8 @@ func TestIssue6988_NamedGFKFieldEmitsNoTargetEdge(t *testing.T) {
 	// Positive control: the sibling REAL ForeignKey on the same class still
 	// resolves, so the negative above is not a vacuous "this file produced
 	// nothing" pass.
-	if !hasEdge6988(rels, "GenericB1.content_type", pyClassRef("ContentType"), string(types.RelationshipKindReferences)) {
-		t.Error("GenericB1.content_type -> Class:ContentType missing: the fix removed a LEGITIMATE edge (#6988)")
+	if !hasEdge6988(rels, "GenericB1.content_type", fieldTargetRef6988("ContentType"), string(types.RelationshipKindReferences)) {
+		t.Error("GenericB1.content_type -> ContentType missing: the fix removed a LEGITIMATE edge (#6988)")
 	}
 	// The GFK field itself must still be a CONTAINS member of its model — the
 	// fix removes the wrong REFERENCES edge, not the field node.
@@ -263,8 +275,8 @@ func TestIssue6988_NamedGFKFieldEmitsNoTargetEdge(t *testing.T) {
 func TestIssue6988_WrongButBoundEdgeShapeIsGone(t *testing.T) {
 	rels := djangoEdges6988(t, gfkSrc6988)
 
-	if hasEdge6988(rels, "Book.created_by", pyClassRef("created_by_ct"), string(types.RelationshipKindReferences)) {
-		t.Error("Book.created_by -> Class:created_by_ct still emitted: the wrong-but-BOUND edge shape " +
+	if hasEdge6988(rels, "Book.created_by", fieldTargetRef6988("created_by_ct"), string(types.RelationshipKindReferences)) {
+		t.Error("Book.created_by -> created_by_ct still emitted: the wrong-but-BOUND edge shape " +
 			"(#6369's wrong-node hazard) survives (#6988)")
 	}
 	if got := fieldTargetEdgesFrom6988(rels, "Book.created_by"); len(got) != 0 {
@@ -272,8 +284,8 @@ func TestIssue6988_WrongButBoundEdgeShapeIsGone(t *testing.T) {
 			len(got), got[0].ToID)
 	}
 	// The sibling that MINTS the `created_by_ct` node keeps its own real edge.
-	if !hasEdge6988(rels, "Book.created_by_ct", pyClassRef("ContentType"), string(types.RelationshipKindReferences)) {
-		t.Error("Book.created_by_ct -> Class:ContentType missing (#6988)")
+	if !hasEdge6988(rels, "Book.created_by_ct", fieldTargetRef6988("ContentType"), string(types.RelationshipKindReferences)) {
+		t.Error("Book.created_by_ct -> ContentType missing (#6988)")
 	}
 }
 
@@ -320,8 +332,8 @@ class Book(models.Model):
 		"Book.category":    "Category",  // third-party *ForeignKey subclass
 	}
 	for from, target := range want {
-		if !hasEdge6988(rels, from, pyClassRef(target), string(types.RelationshipKindReferences)) {
-			t.Errorf("%s -> Class:%s missing — #6988 broke a legitimate relational field", from, target)
+		if !hasEdge6988(rels, from, fieldTargetRef6988(target), string(types.RelationshipKindReferences)) {
+			t.Errorf("%s -> %s missing — #6988 broke a legitimate relational field", from, target)
 		}
 	}
 }
