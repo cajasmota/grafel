@@ -20,7 +20,15 @@ package types_test
 //
 //   - TestPrefixOnlyPairs6911_EndpointPairIsNotFolded — the two kinds are
 //     present, distinct, and neither is spelled as the other. This is the one
-//     that fires when someone "fixes the obviously missing prefix".
+//     that fires when someone "fixes the obviously missing prefix". IT IS NOT
+//     THE ONLY ONE, AND IT WAS NOT FIRST: both spellings of that fold were
+//     scored on #6911 and each is already caught by four pre-existing tests
+//     (TestEndpointBare6776_IsADistinctValidEntityKind,
+//     TestEndpointBare6776_MembershipIsNotHTTPMembership,
+//     TestEntityKindVocabularyIsPinnedToItsVersion,
+//     TestAllEntityKinds6830_ListsEveryDeclaredKindExactlyOnce). This one is
+//     kept because its failure text names #6820, which none of theirs does —
+//     not because the fold was unguarded.
 //   - TestPrefixOnlyPairs6911_PopulationIsClassified — the SET of prefix-only
 //     pairs is exactly the twelve classified below. #6911 asks whether any
 //     OTHER pair means two things while differing only by the prefix; the
@@ -34,6 +42,36 @@ package types_test
 // pair SHRINKS the population, which the set assertion would also catch but
 // would report as "a pair went missing" rather than naming the concept; and a
 // new unclassified pair leaves the Endpoint pair untouched.
+//
+// # KNOWN LIMIT: only the STRICT direction is gated, and this was measured
+//
+// The table forces a thirteenth pair to be CLASSIFIED, not to be classified
+// HONESTLY. Classifying a newcomer `false` (semantically distinct) is a hard
+// failure until the twoConcept roster below moves with it; classifying it
+// `true` (synonym) is free and green, and nothing observes whether that is
+// true. The permissive half — the `Endpoint` situation recurring — is the
+// unguarded one.
+//
+// Tying a `true` row to the `*Bare` constant family was built and scored on
+// #6911 rather than argued about, and it does NOT close this. Two reasons, in
+// order of weight:
+//
+//   - The compiler forces the name. For any prefix-only pair the identifier
+//     `EntityKind<X>` is already taken by the PREFIXED kind (declaring a second
+//     one does not compile — scored), so the bare constant is pushed to
+//     `EntityKind<X>Bare` whatever the author means by it. A thirteenth pair
+//     that means two things, declared the way anyone would declare it and
+//     marked `true`, stayed GREEN under the check.
+//   - `EntityKindEndpointBare` is itself in that family. The one pair on this
+//     list that is NOT a synonym carries the `Bare` suffix, and kinds.go says
+//     why: the suffix names the SPELLING, not the concept. So family
+//     membership cannot mean "synonym" without contradicting the row this file
+//     exists for.
+//
+// The check only ever fired on a deliberately unconventional identifier, so it
+// would have graded orthography while reading as if it graded honesty. Left
+// unbuilt on purpose; there is no oracle for "same concept", and the failure
+// texts below state the intent instead.
 
 import (
 	"sort"
@@ -119,7 +157,7 @@ func TestPrefixOnlyPairs6911_EndpointPairIsNotFolded(t *testing.T) {
 			"These are two members naming two concepts — an Electron IPC channel and an HTTP "+
 			"entrypoint. The `SCOPE.` prefix looks like the accident #6776 describes and is not "+
 			"one here: the rename that would separate the names properly was declined in #6820, "+
-			"so folding them silently re-labels every Electron IPC channel as HTTP.",
+			"so folding them re-labels every Electron IPC channel as HTTP.",
 			bare, sawBare, prefixed, sawPrefixed)
 	}
 }

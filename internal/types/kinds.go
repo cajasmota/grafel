@@ -774,10 +774,25 @@ const (
 	// OWNER IN #6820 (a rename plus a stored-graph migration); that ruling
 	// stands, so the confusable spelling is deliberate and is carried here
 	// instead. Deleting this constant, or pointing it at "SCOPE.Endpoint",
-	// silently re-labels every Electron IPC channel as an HTTP endpoint.
-	// internal/types/prefix_only_pairs_6911_test.go fails if either happens,
-	// and pins the twelve-pair population so a thirteenth pair cannot be added
-	// without someone saying which of the two readings it is.
+	// re-labels every Electron IPC channel as an HTTP endpoint.
+	//
+	// THAT FOLD IS NOT SILENT, AND THE GUARDS ARE OLDER THAN THIS COMMENT — so
+	// do not delete any of them as redundant. Both spellings of the fold
+	// (repointing this constant, or dropping it from AllEntityKinds()) were
+	// scored on #6911 and each is caught by FOUR pre-existing tests:
+	// TestEndpointBare6776_IsADistinctValidEntityKind and
+	// TestEndpointBare6776_MembershipIsNotHTTPMembership
+	// (endpoint_bare_kind_6776_test.go), TestEntityKindVocabularyIsPinnedToItsVersion
+	// (kind_vocabulary_bump_guard_6779_test.go) and
+	// TestAllEntityKinds6830_ListsEveryDeclaredKindExactlyOnce
+	// (all_entity_kinds_roster_6830_test.go). Re-spelling the three
+	// electron.yaml producers is caught by a fifth,
+	// TestRuleDeclaredLedger6776_IsRetiredBecauseThePopulationIsEmpty.
+	// internal/types/prefix_only_pairs_6911_test.go adds a sixth lock on the
+	// fold, kept only because its failure text names #6820; what it adds that
+	// nothing else observed is the NEXT pair — it pins the twelve-pair
+	// population, so a thirteenth cannot be added without someone saying which
+	// of the two readings it is.
 	EntityKindEndpointBare EntityKind = "Endpoint"
 )
 
