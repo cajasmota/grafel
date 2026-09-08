@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/otel"
@@ -505,7 +506,7 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			if strings.HasSuffix(callee, "Serializer") && !strings.Contains(callee, ".") &&
 				callee != "Serializer" && callee != "ModelSerializer" {
 				serEnt.Relationships = append(serEnt.Relationships,
-					referencesClassEdge(className+"."+attr, callee, "drf", attr))
+					referencesClassEdge(file.Path, className+"."+attr, callee, "drf", attr))
 			}
 		}
 
@@ -715,9 +716,38 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 				continue
 			}
 			fullRHS := body[fIdx[0]:min(fIdx[0]+400, len(body))]
-			if target := djangoRelTarget(fullRHS, className); target != "" {
-				modelEnt.Relationships = append(modelEnt.Relationships,
-					referencesClassEdge(className+"."+attr, target, "django", attr))
+			if target, rawFKString, isSelf := djangoRelTargetDetail(fullRHS, className); target != "" {
+				rel := referencesClassEdge(file.Path, className+"."+attr, target, "django", attr)
+				// #6986 — carry the RELATION-SHAPE properties the core
+				// extractor's parallel edge carries. This is not decoration.
+				// internal/extractors/python/django_relational.go emits a
+				// REFERENCES edge from the SAME field entity to the SAME target,
+				// stamped `django_rel` / `self_ref` / `django_fk_string`. While
+				// this pass's ToID was the never-binding `Class:<Target>` the two
+				// edges could not collide, so both survived. Now that the
+				// structural ToID resolves to the same entity ID, graph assembly
+				// DEDUPES the pair and keeps exactly one property set — measured
+				// on django gate-ON: REFERENCES edges carrying `django_rel` fell
+				// 1018 → 258 when the address changed and these three properties
+				// were not carried across. Restoring them here is what makes the
+				// address change property-preserving rather than a silent
+				// substitution (#6973).
+				//
+				// The values mirror the core extractor's semantics EXACTLY:
+				// `django_rel` is the constructor's leaf name (ForeignKey /
+				// OneToOneField / ManyToManyField, and the *ForeignKey suffix
+				// forms isDjangoRelationalField admits); `self_ref` is true ONLY
+				// for the literal string target `'self'` — NOT for a symbol
+				// target that happens to name the enclosing class, which is
+				// parseTargetExpr's rule; `django_fk_string` is set only for the
+				// string form and carries the raw value BEFORE app_label
+				// stripping.
+				rel.Properties.Set("django_rel", djangoRelCtorLeaf(rhs))
+				rel.Properties.Set("self_ref", strconv.FormatBool(isSelf))
+				if rawFKString != "" {
+					rel.Properties.Set("django_fk_string", rawFKString)
+				}
+				modelEnt.Relationships = append(modelEnt.Relationships, rel)
 			}
 		}
 		out = append(out, modelEnt)
@@ -952,6 +982,57 @@ func isDjangoRelationalField(rhs string) bool {
 		strings.HasSuffix(ctor, "ManyToManyField")
 }
 
+// djangoRelCtorLeaf returns the leaf constructor name of a relational field's
+// RHS — `models.ForeignKey` → `ForeignKey`. Mirrors the leaf-stripping
+// isDjangoRelationalField already performs.
+//
+// The resulting `django_rel` vocabulary is a strict SUPERSET of the core
+// extractor's, not the same set (#6986). Core gates on
+// `djangoRelationalFieldTypes`, an exact three-name allow-list; this lane gates
+// on `isDjangoRelationalField`, a `*ForeignKey` / `*OneToOneField` /
+// `*ManyToManyField` SUFFIX rule. So a third-party subclass such as
+// `TreeForeignKey` reaches here and is stamped `django_rel: TreeForeignKey`, a
+// value core never emits — because core emits no edge for that field at all.
+// That direction is a gain and is what keeps the property-preservation claim
+// safe: this lane can only ADD a `django_rel`-carrying edge where core had
+// none, never rename one core already produced. Pinned by
+// TestIssue6988_LegitimateRelationalFieldsSurvive's `Book.category` row.
+func djangoRelCtorLeaf(rhs string) string {
+	ctor := rhs
+	if dot := strings.LastIndexByte(ctor, '.'); dot >= 0 {
+		ctor = ctor[dot+1:]
+	}
+	return ctor
+}
+
+// djangoRelTargetDetail is djangoRelTarget plus the two facts the `self_ref`
+// and `django_fk_string` edge properties need: whether the target was written
+// as the literal string `'self'`, and the raw string-literal value before the
+// app_label segment is stripped. Returns ("", "", false) exactly where
+// djangoRelTarget returns "".
+//
+// `isSelf` is deliberately NOT "the target resolves to the enclosing class":
+// `ForeignKey(Person)` written inside `class Person` returns isSelf=false, the
+// same as internal/extractors/python/django_relational.go's parseTargetExpr,
+// so the two producers cannot disagree on the property.
+func djangoRelTargetDetail(rhs, ownerClass string) (target, rawFKString string, isSelf bool) {
+	m := djangoModelRelTargetRe.FindStringSubmatch(rhs)
+	if m == nil {
+		return "", "", false
+	}
+	if m[1] != "" { // string form
+		raw := m[1]
+		if raw == "self" {
+			return ownerClass, "self", true
+		}
+		if dot := strings.LastIndexByte(raw, '.'); dot >= 0 {
+			return raw[dot+1:], raw, false
+		}
+		return raw, raw, false
+	}
+	return m[2], "", false // symbol form
+}
+
 // djangoRelTarget extracts the bare target-model class name from a relational
 // field declaration's argument blob. Handles the string form
 // (`ForeignKey('app.Model', ...)` / `ForeignKey('self', ...)`) and the symbol
@@ -959,21 +1040,8 @@ func isDjangoRelationalField(rhs string) bool {
 // returns the enclosing model class so the edge self-references the owner.
 // Returns "" when no recognizable target is present (e.g. lazy callables).
 func djangoRelTarget(rhs, ownerClass string) string {
-	m := djangoModelRelTargetRe.FindStringSubmatch(rhs)
-	if m == nil {
-		return ""
-	}
-	if m[1] != "" { // string form
-		raw := m[1]
-		if raw == "self" {
-			return ownerClass
-		}
-		if dot := strings.LastIndexByte(raw, '.'); dot >= 0 {
-			return raw[dot+1:] // strip app_label
-		}
-		return raw
-	}
-	return m[2] // symbol form
+	target, _, _ := djangoRelTargetDetail(rhs, ownerClass)
+	return target
 }
 
 // extractBalancedBrackets returns the content of a [...] list starting at openPos.

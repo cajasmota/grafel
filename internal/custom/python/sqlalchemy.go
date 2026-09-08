@@ -198,7 +198,7 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 			out[modelIdx].Relationships = append(out[modelIdx].Relationships,
 				containsFieldEdge(className, className+"."+relAttr, relAttr, "sqlalchemy"))
 			out[modelIdx].Relationships = append(out[modelIdx].Relationships,
-				referencesClassEdge(className+"."+relAttr, targetModel, "sqlalchemy", relAttr))
+				referencesClassEdge(file.Path, className+"."+relAttr, targetModel, "sqlalchemy", relAttr))
 
 			// GRAPH_RELATES model↔model edge with cardinality. SQLAlchemy
 			// relationship() default is a collection (one_to_many); uselist=False

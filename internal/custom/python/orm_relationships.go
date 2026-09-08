@@ -113,7 +113,7 @@ func (e *PeeweeRelExtractor) Extract(ctx context.Context, file extractor.FileInp
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			// Issue #4366 — relation field → target model REFERENCES.
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, target, "peewee", attr))
+				referencesClassEdge(file.Path, className+"."+attr, target, "peewee", attr))
 			out = append(out, relEnt)
 		}
 
@@ -131,7 +131,7 @@ func (e *PeeweeRelExtractor) Extract(ctx context.Context, file extractor.FileInp
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			// Issue #4366 — relation field → target model REFERENCES.
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, target, "peewee", attr))
+				referencesClassEdge(file.Path, className+"."+attr, target, "peewee", attr))
 			out = append(out, relEnt)
 		}
 	}
@@ -231,7 +231,7 @@ func (e *PonyRelExtractor) Extract(ctx context.Context, file extractor.FileInput
 			}
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, target, "pony", attr))
+				referencesClassEdge(file.Path, className+"."+attr, target, "pony", attr))
 			out = append(out, relEnt)
 		}
 	}
@@ -325,7 +325,7 @@ func (e *BeanieRelExtractor) Extract(ctx context.Context, file extractor.FileInp
 			}
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, target, "beanie", attr))
+				referencesClassEdge(file.Path, className+"."+attr, target, "beanie", attr))
 			out = append(out, relEnt)
 		}
 
@@ -342,7 +342,7 @@ func (e *BeanieRelExtractor) Extract(ctx context.Context, file extractor.FileInp
 			}
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, target, "beanie", attr))
+				referencesClassEdge(file.Path, className+"."+attr, target, "beanie", attr))
 			out = append(out, relEnt)
 		}
 	}
@@ -455,7 +455,7 @@ func (e *MongoEngineRelExtractor) Extract(ctx context.Context, file extractor.Fi
 				}
 				relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 				relEnt.Relationships = append(relEnt.Relationships,
-					referencesClassEdge(className+"."+attr, ormRelTargetLeaf(target), "mongoengine", attr))
+					referencesClassEdge(file.Path, className+"."+attr, ormRelTargetLeaf(target), "mongoengine", attr))
 				out = append(out, relEnt)
 			}
 		}
@@ -558,7 +558,7 @@ func (e *TortoiseRelExtractor) Extract(ctx context.Context, file extractor.FileI
 			}
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
+				referencesClassEdge(file.Path, className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
 			out = append(out, relEnt)
 		}
 
@@ -580,7 +580,7 @@ func (e *TortoiseRelExtractor) Extract(ctx context.Context, file extractor.FileI
 			}
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
+				referencesClassEdge(file.Path, className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
 			out = append(out, relEnt)
 		}
 
@@ -597,7 +597,7 @@ func (e *TortoiseRelExtractor) Extract(ctx context.Context, file extractor.FileI
 			}
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
+				referencesClassEdge(file.Path, className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
 			out = append(out, relEnt)
 		}
 
@@ -614,7 +614,7 @@ func (e *TortoiseRelExtractor) Extract(ctx context.Context, file extractor.FileI
 			}
 			relEnt := entity(className+"."+attr, "SCOPE.Schema", "", file.Path, relLine, props)
 			relEnt.Relationships = append(relEnt.Relationships,
-				referencesClassEdge(className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
+				referencesClassEdge(file.Path, className+"."+attr, ormRelTargetLeaf(target), "tortoise", attr))
 			out = append(out, relEnt)
 		}
 	}
