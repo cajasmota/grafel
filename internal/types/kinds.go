@@ -760,6 +760,39 @@ const (
 	//
 	// Spelling unchanged — nothing is renamed or retired — so
 	// KindVocabularyVersion does not move.
+	//
+	// #6911 — DO NOT FOLD THIS INTO SCOPE.Endpoint. THE MISSING PREFIX IS NOT
+	// AN ACCIDENT HERE. Twelve kinds in AllEntityKinds() have a `SCOPE.`-less
+	// twin; eleven of them (Component, Model, Schema, View, Config, Operation,
+	// Route, Service, Constraint, Plugin, Template — the `*Bare` constants
+	// above) really are one concept written two ways, which is why the #6776
+	// B-series and internal/entkinds' sweep guard call the prefix an accident.
+	// THIS PAIR IS THE ONE EXCEPTION: `Endpoint` is an Electron IPC channel,
+	// `SCOPE.Endpoint` is an HTTP entrypoint, and the prefix is the only thing
+	// telling them apart. Renaming the bare kind to something like `IPCChannel`
+	// so they differed by more than a prefix was PRICED AND DECLINED BY THE
+	// OWNER IN #6820 (a rename plus a stored-graph migration); that ruling
+	// stands, so the confusable spelling is deliberate and is carried here
+	// instead. Deleting this constant, or pointing it at "SCOPE.Endpoint",
+	// re-labels every Electron IPC channel as an HTTP endpoint.
+	//
+	// THAT FOLD IS NOT SILENT, AND THE GUARDS ARE OLDER THAN THIS COMMENT — so
+	// do not delete any of them as redundant. Both spellings of the fold
+	// (repointing this constant, or dropping it from AllEntityKinds()) were
+	// scored on #6911 and each is caught by FOUR pre-existing tests:
+	// TestEndpointBare6776_IsADistinctValidEntityKind and
+	// TestEndpointBare6776_MembershipIsNotHTTPMembership
+	// (endpoint_bare_kind_6776_test.go), TestEntityKindVocabularyIsPinnedToItsVersion
+	// (kind_vocabulary_bump_guard_6779_test.go) and
+	// TestAllEntityKinds6830_ListsEveryDeclaredKindExactlyOnce
+	// (all_entity_kinds_roster_6830_test.go). Re-spelling the three
+	// electron.yaml producers is caught by a fifth,
+	// TestRuleDeclaredLedger6776_IsRetiredBecauseThePopulationIsEmpty.
+	// internal/types/prefix_only_pairs_6911_test.go adds a sixth lock on the
+	// fold, kept only because its failure text names #6820; what it adds that
+	// nothing else observed is the NEXT pair — it pins the twelve-pair
+	// population, so a thirteenth cannot be added without someone saying which
+	// of the two readings it is.
 	EntityKindEndpointBare EntityKind = "Endpoint"
 )
 

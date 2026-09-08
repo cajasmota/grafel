@@ -81,6 +81,17 @@ package types_test
 //     It is ledgered rather than skipped precisely so the claim stops being
 //     prose and becomes a number that cannot move unnoticed.
 //
+// # The accident claim has exactly one exception (#6911)
+//
+// "Un-prefixed is an accident" is true of every kind in AllEntityKinds() except
+// the `Endpoint` / `SCOPE.Endpoint` pair: the bare spelling is an Electron IPC
+// channel (#6776 arm B9), the prefixed one is the HTTP entrypoint, and #6820
+// priced and DECLINED the rename that would separate them by more than the
+// prefix. So do not read "accident" as "safe to merge a prefixed and
+// un-prefixed kind": for that one pair the prefix carries the meaning.
+// internal/types/prefix_only_pairs_6911_test.go pins the population of
+// prefix-only pairs and fails if that one is folded.
+//
 // # What this guard is NOT
 //
 // The rule-YAML producer family (internal/engine/rules/**/*.yaml, ~532 sites)
@@ -141,7 +152,8 @@ var goPrefixedKindsDeferred = map[string]bool{}
 const goPrefixedKindsDeferredMax = 0
 
 // goUnprefixedKindsDeferred are the un-prefixed entity kinds a Go producer
-// declares. See the file header: drift, not a second namespace.
+// declares. See the file header: drift, not a second namespace — with the one
+// exception the header records, `Endpoint` (#6911).
 //
 // `File` is called out on #6776 as the largest non-enum entity kind (894
 // entities) and as an internal commit-coupling artefact rather than a
