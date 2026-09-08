@@ -43,10 +43,12 @@ source_patterns:
     entity_type: Component
     name_group: 1
     scope: class
-  # App instantiation: cdk.App() / App()
-  - pattern: "(?:cdk\\.)?App\\s*\\(\\s*\\)"
+  # App instantiation, named after the ASSIGNED VARIABLE (#6916): app = cdk.App()
+  # name_group 0 named this entity "cdk.App()" — a marker string the CALLS rule
+  # below (source_group 2 = the variable) could never bind to.
+  - pattern: "(\\w+)\\s*=\\s*(?:cdk\\.)?App\\s*\\(\\s*\\)"
     entity_type: Config
-    name_group: 0
+    name_group: 1
     scope: file
   # CfnOutput: CfnOutput(self, "OutputId", ...)
   - pattern: "(?:cdk\\.)?CfnOutput\\s*\\(\\s*\\w+\\s*,\\s*[\"']([^\"']+)[\"']"

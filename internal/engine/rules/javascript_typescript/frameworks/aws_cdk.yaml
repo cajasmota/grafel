@@ -46,10 +46,12 @@ source_patterns:
     entity_type: Component
     name_group: 1
     scope: class
-  # App instantiation: new cdk.App() / new App()
-  - pattern: "new\\s+(?:cdk\\.)?App\\s*\\("
+  # App instantiation, named after the ASSIGNED VARIABLE (#6916): const app = new cdk.App()
+  # name_group 0 named this entity "new cdk.App(" — a marker string the CALLS rule
+  # below (source_group 2 = the variable) could never bind to.
+  - pattern: "(?:(?:const|let|var)\\s+)?(\\w+)(?:\\s*:\\s*[\\w.]+)?\\s*=\\s*new\\s+(?:cdk\\.)?App\\s*\\("
     entity_type: Config
-    name_group: 0
+    name_group: 1
     scope: file
   # CfnOutput: new cdk.CfnOutput(this, 'OutputId', …)
   - pattern: "(?:new\\s+)?(?:cdk\\.)?CfnOutput\\s*\\(\\s*\\w+\\s*,\\s*[\"']([^\"']+)[\"']"

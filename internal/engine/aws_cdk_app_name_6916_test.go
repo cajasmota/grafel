@@ -1,0 +1,288 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"slices"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/extractor"
+)
+
+// #6916 (Tier B, aws_cdk arm): the two aws_cdk `Config` source_patterns used
+// `name_group: 0`, so the entity's Name was the whole regex match —
+// `"new cdk.App("` (JS/TS) and `"cdk.App()"` (Python).
+//
+// The relationship rule in the SAME file could therefore never bind:
+//
+//	source_type: Config
+//	target_type: Component
+//	relationship: CALLS
+//	source_group: 2   // the VARIABLE in `new MyStack(app, 'Id')` -> "app"
+//
+// The edge's source name is the variable `app`; the entity's name was the
+// marker string `new cdk.App(`. Those two strings can never be equal, so the
+// edge shipped dangling at its source end — the #6906 `bug-extractor` shape.
+//
+// Narrowing the capture to the assigned variable (the express.yaml:91 shape)
+// makes an ALREADY-EMITTED edge start binding. These tests pin the ARTEFACT:
+// the entity's Name and the edge with BOTH endpoint IDs, driven through the
+// real LoadAllRules() + Detector.Detect() path. A count is not evidence.
+//
+// The detector builds a relationship endpoint ID as "<type>:<captured name>"
+// (detector.go:562) and an entity carries Kind + Name; the source end BINDS
+// exactly when some emitted entity has Kind/Name equal to the edge's FromID
+// halves. That equality is what these tests assert, in both directions.
+
+// cdk6916TSApp is the canonical CDK entry point (`bin/app.ts`). The Stack class
+// is declared in the same file so BOTH endpoints of the CALLS edge are emitted
+// here and can be named.
+const cdk6916TSApp = `import * as cdk from 'aws-cdk-lib';
+
+export class ApiStack extends cdk.Stack {
+}
+
+const app = new cdk.App();
+new ApiStack(app, 'ApiStack');
+app.synth();
+`
+
+// cdk6916PyApp is the Python idiom. Python has no const/let/var, so the JS
+// regex is NOT reusable here — this fixture is what pins that the Python rule
+// was written for Python rather than copied.
+const cdk6916PyApp = `import aws_cdk as cdk
+
+class ApiStack(cdk.Stack):
+    pass
+
+app = cdk.App()
+ApiStack(app, "ApiStack")
+app.synth()
+`
+
+// cdk6916TSMultiDeclarator exists to grade the WIDENING mutant: replacing the
+// variable capture `(\w+)` with `(.+)`. On a single-declarator line `(.+)` is
+// still forced to stop at the `=`, so it captures "app" and is indistinguishable
+// there. A multi-declarator line separates them: `(.+)` captures
+// "region = 'eu-west-1', app" and the edge stops binding again.
+const cdk6916TSMultiDeclarator = `import * as cdk from 'aws-cdk-lib';
+
+export class ApiStack extends cdk.Stack {
+}
+
+const region = 'eu-west-1', app = new cdk.App();
+new ApiStack(app, 'ApiStack');
+`
+
+// cdk6916PyAttrApp is the Python analogue and grades the SAME widening in the
+// Python rule. Python has no declarator keyword, so the multi-declarator line
+// above has no Python spelling; the shape that separates `(\w+)` from `(.+)`
+// here is an ATTRIBUTE target, `self.app = cdk.App()`, which is idiomatic when
+// the App is built inside a class. `(\w+)` captures "app"; `(.+)` captures
+// "self.app", which the CALLS rule's `(\w+)` source group can never equal.
+const cdk6916PyAttrApp = `import aws_cdk as cdk
+
+class ApiStack(cdk.Stack):
+    pass
+
+
+class Deployment:
+    def build(self):
+        self.app = cdk.App()
+        ApiStack(self.app, "ApiStack")
+`
+
+// cdk6916TSBareApp / cdk6916PyBareApp are the construction with NO assignment.
+// This is the deliberate cost of the narrowing and is pinned as such: an
+// unassigned App mints no Config entity at all. It is also the fixture that
+// kills a mutant re-widening the pattern to match without the assignment.
+//
+// Each carries the Stack class as its POSITIVE CONTROL: the file must still
+// emit Component:ApiStack, so "no Config entity" cannot pass because the
+// fixture stopped producing anything.
+const cdk6916TSBareApp = `import * as cdk from 'aws-cdk-lib';
+
+export class ApiStack extends cdk.Stack {
+}
+
+new cdk.App();
+`
+
+const cdk6916PyBareApp = `import aws_cdk as cdk
+
+class ApiStack(cdk.Stack):
+    pass
+
+cdk.App()
+`
+
+func detect6916(t *testing.T, path, lang, src string) *DetectResult {
+	t.Helper()
+	rules, err := LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules: %v", err)
+	}
+	res, err := New(rules).Detect(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  []byte(src),
+		Language: lang,
+	})
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+	return res
+}
+
+func rels6916(res *DetectResult) []string {
+	out := make([]string, 0, len(res.Relationships))
+	for _, r := range res.Relationships {
+		out = append(out, fmt.Sprintf("%s --%s--> %s", r.FromID, r.Kind, r.ToID))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// entityIDs6916 renders every emitted entity in the same "<Kind>:<Name>" shape
+// the detector uses for relationship endpoints, which is what makes the
+// binding assertion below a real comparison rather than two separate greps.
+func entityIDs6916(res *DetectResult) []string {
+	out := make([]string, 0, len(res.Entities))
+	for _, e := range res.Entities {
+		out = append(out, fmt.Sprintf("%s:%s", e.Kind, e.Name))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestIssue6916_CDKAppConfigIsNamedAfterVariable pins the entity Name. Before
+// the change it failed with Config:"new cdk.App(" / Config:"cdk.App()".
+func TestIssue6916_CDKAppConfigIsNamedAfterVariable(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, lang, src string
+		// forbidden is the marker Name the shipped `name_group: 0` produced.
+		forbidden string
+	}{
+		{"typescript", "bin/app.ts", "typescript", cdk6916TSApp, "new cdk.App("},
+		{"python", "app.py", "python", cdk6916PyApp, "cdk.App()"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids := entityIDs6916(detect6916(t, tc.path, tc.lang, tc.src))
+
+			if !slices.Contains(ids, "Config:app") {
+				t.Errorf("the CDK App entity is not named after its assigned variable; "+
+					"expected Config:app among the emitted entities:\n  %s",
+					strings.Join(ids, "\n  "))
+			}
+			if slices.Contains(ids, "Config:"+tc.forbidden) {
+				t.Errorf("the #6916 marker Name is back: Config:%q. name_group must be the "+
+					"variable capture, not 0 (the whole match).", tc.forbidden)
+			}
+		})
+	}
+}
+
+// TestIssue6916_CDKCallsEdgeBindsAtItsSource is the point of the change: the
+// already-shipped `Config CALLS Component` edge now resolves at BOTH ends.
+// Both endpoint IDs are named explicitly.
+func TestIssue6916_CDKCallsEdgeBindsAtItsSource(t *testing.T) {
+	for _, tc := range []struct{ name, path, lang, src string }{
+		{"typescript", "bin/app.ts", "typescript", cdk6916TSApp},
+		{"python", "app.py", "python", cdk6916PyApp},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := detect6916(t, tc.path, tc.lang, tc.src)
+			rels := rels6916(res)
+			ids := entityIDs6916(res)
+
+			const want = "Config:app --CALLS--> Component:ApiStack"
+			if !slices.Contains(rels, want) {
+				t.Fatalf("expected the CDK app->stack edge %q; relationships emitted:\n  %s",
+					want, strings.Join(rels, "\n  "))
+			}
+
+			// The binding itself: every endpoint of that edge must name an
+			// entity this same run emitted. Before #6916 the source end,
+			// Config:app, had no referent — the entity was Config:"new cdk.App(".
+			for _, endpoint := range []string{"Config:app", "Component:ApiStack"} {
+				if !slices.Contains(ids, endpoint) {
+					t.Errorf("edge %q dangles: endpoint %s names no emitted entity. Entities:\n  %s",
+						want, endpoint, strings.Join(ids, "\n  "))
+				}
+			}
+		})
+	}
+}
+
+// TestIssue6916_GreedyCaptureWouldBreakBinding grades the `(.+)` widening of
+// the variable capture, in BOTH rules. The single-assignment fixtures cannot
+// grade it: there `(.+)` is pinned by the `=` and captures "app" too, so it is
+// indistinguishable. Each language needs the shape that separates them, and
+// the two languages do NOT share one — JS/TS has a multi-declarator `const`
+// line, Python has no declarator keyword at all and uses an attribute target.
+func TestIssue6916_GreedyCaptureWouldBreakBinding(t *testing.T) {
+	identifier := regexp.MustCompile(`^\w+$`)
+
+	for _, tc := range []struct{ name, path, lang, src string }{
+		{"typescript multi-declarator const", "bin/app.ts", "typescript", cdk6916TSMultiDeclarator},
+		{"python attribute target", "app.py", "python", cdk6916PyAttrApp},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids := entityIDs6916(detect6916(t, tc.path, tc.lang, tc.src))
+
+			if !slices.Contains(ids, "Config:app") {
+				t.Errorf("the CDK App Config entity must be named `app` here too; the variable "+
+					"capture has to be identifier-shaped, not greedy. Entities:\n  %s",
+					strings.Join(ids, "\n  "))
+			}
+			for _, id := range ids {
+				name, ok := strings.CutPrefix(id, "Config:")
+				if !ok {
+					continue
+				}
+				// These fixtures carry no CfnOutput, so every Config here
+				// comes from the App rule and must be a bare identifier —
+				// anything else cannot equal the CALLS rule's `(\w+)` source.
+				if !identifier.MatchString(name) {
+					t.Errorf("a Config entity was minted with a non-identifier Name: %q. "+
+						"The CALLS rule sources on `(\\w+)`, so such a name can never bind.", name)
+				}
+			}
+		})
+	}
+}
+
+// TestIssue6916_UnassignedAppMintsNoConfig pins the DELIBERATE COST of the
+// narrowing, so it is a decision on the record rather than a silent regression.
+// A bare `new cdk.App()` cannot be passed to a Stack constructor, so it has no
+// edge to anchor; the shipped rule gave it a marker node instead.
+func TestIssue6916_UnassignedAppMintsNoConfig(t *testing.T) {
+	for _, tc := range []struct{ name, path, lang, src string }{
+		{"typescript", "bin/app.ts", "typescript", cdk6916TSBareApp},
+		{"python", "app.py", "python", cdk6916PyBareApp},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids := entityIDs6916(detect6916(t, tc.path, tc.lang, tc.src))
+
+			for _, id := range ids {
+				// CfnOutput also mints Config; this fixture has none, so any
+				// Config here comes from the App rule.
+				if strings.HasPrefix(id, "Config:") {
+					t.Errorf("an UNASSIGNED `App()` construction minted %q. The #6916 rule is "+
+						"anchored on the assignment on purpose: without a variable there is "+
+						"nothing for the CALLS edge to bind to.", id)
+				}
+			}
+
+			// Positive control — without it the loop above passes vacuously
+			// on a fixture that stopped producing anything at all.
+			if !slices.Contains(ids, "Component:ApiStack") {
+				t.Errorf("positive control missing: this fixture no longer emits "+
+					"Component:ApiStack, so the absence assertion above proves nothing. Entities:\n  %s",
+					strings.Join(ids, "\n  "))
+			}
+		})
+	}
+}
