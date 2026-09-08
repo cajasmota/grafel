@@ -79,10 +79,25 @@ new ApiStack(app, 'ApiStack');
 
 // cdk6916PyAttrApp is the Python analogue and grades the SAME widening in the
 // Python rule. Python has no declarator keyword, so the multi-declarator line
-// above has no Python spelling; the shape that separates `(\w+)` from `(.+)`
-// here is an ATTRIBUTE target, `self.app = cdk.App()`, which is idiomatic when
-// the App is built inside a class. `(\w+)` captures "app"; `(.+)` captures
-// "self.app", which the CALLS rule's `(\w+)` source group can never equal.
+// above has no Python spelling; the shape that separates `(\w+)` from `(.+)` and
+// from `([\w.]+)` here is an ATTRIBUTE target, `self.app = cdk.App()`, which is
+// idiomatic when the App is built inside a class. `(\w+)` (with the rule's
+// `(?:\w+\.)?` prefix consuming `self.`) names it "app"; the widened captures
+// name it "self.app".
+//
+// CORRECTED (review ask 4): this fixture grades the NAME ONLY. It emits no
+// relationship at all — the Python CALLS rule is `(\w+Stack)\s*\(\s*(\w+)\s*,`
+// and `ApiStack(self.app, "ApiStack")` has no `,` directly after a bare `(\w+)`,
+// so NEITHER spelling produces an edge here. The earlier comment implied "app"
+// would bind and "self.app" would not; measured, neither does. The binding is
+// graded by TestIssue6916_CDKCallsEdgeBindsAtItsSource, not here.
+//
+// The second method carries a MULTI-LEVEL attribute chain, `self.inner.app`. The
+// rule's `(?:\w+\.)?` prefix is one level deep, so that line mints nothing —
+// correct, because a dotted name could never equal the CALLS rule's `(\w+)`
+// source anyway. It grades the dotted-capture mutant `(\w+)` -> `([\w.]+)`,
+// which the single-level `self.app` line cannot: there the `(?:\w+\.)?` prefix
+// already eats `self.` and both spellings name it "app".
 const cdk6916PyAttrApp = `import aws_cdk as cdk
 
 class ApiStack(cdk.Stack):
@@ -93,6 +108,79 @@ class Deployment:
     def build(self):
         self.app = cdk.App()
         ApiStack(self.app, "ApiStack")
+
+    def build_nested(self):
+        self.inner.app = cdk.App()
+`
+
+// cdk6916TSAnnotated carries a TYPE ANNOTATION, which is ordinary TypeScript and
+// which no fixture covered (review ask 2 / mutant RM4). Deleting the rule's
+// `(?:\s*:\s*[\w.]+)?` group makes `(\w+)` land inside the annotation and mint
+// `Config:App` — the TYPE name — so the edge dangles again.
+const cdk6916TSAnnotated = `import * as cdk from 'aws-cdk-lib';
+
+export class ApiStack extends cdk.Stack {
+}
+
+const app: cdk.App = new cdk.App();
+new ApiStack(app, 'ApiStack');
+`
+
+// cdk6916PyMultiTarget is the review BLOCKER made into a fixture. Python's
+// `App()` is a plain call, so the text of a multi-target assignment contains the
+// literal substring `env = cdk.App()`. An unanchored `(\w+)\s*=` captures `env`
+// — which is the string "prod" — and the CALLS edge then BINDS TO THE WRONG
+// VARIABLE. Before #6916 that edge merely dangled; a confidently wrong endpoint
+// is worse than a known-bad one.
+//
+// The rule's `(?m)^[ \t]*` anchor makes this mint nothing instead. That is the
+// deliberate cost and it is pinned as such: no Config entity, and no relationship
+// sourced on a Config.
+const cdk6916PyMultiTarget = `import aws_cdk as cdk
+
+class EnvStack(cdk.Stack):
+    pass
+
+app, env = cdk.App(), "prod"
+EnvStack(env, "EnvStack")
+`
+
+// cdk6916TSDestructured is the nearest JS/TS spelling of the same hazard. It is
+// here to SHOW the JS rule does not have the seam rather than to assume it: the
+// JS pattern requires `= new ... App(` immediately, so `(\w+)` can only ever be
+// the token directly left of that `=`, which in JS is the assignment target.
+// A destructuring form matches nothing at all.
+const cdk6916TSDestructured = `import * as cdk from 'aws-cdk-lib';
+
+export class EnvStack extends cdk.Stack {
+}
+
+const [app, env] = [new cdk.App(), 'prod'];
+new EnvStack(env, 'EnvStack');
+`
+
+// cdk6916TSPlainAppCall / cdk6916TSNewAppCall are the OVER-FIRING pair (review
+// ask 3 / coordinator mutant CV-1). They are the same file except for the word
+// `new`. `App()` as a plain call is an ordinary React component invocation in a
+// repo with no CDK anywhere; `new` is the only thing keeping this rule off it.
+//
+// The `new` leg is the POSITIVE CONTROL: it proves the rule can reach this file
+// at all, so the absence asserted on the other leg is not vacuous. Both are
+// deliberately free of any CDK marker.
+const cdk6916TSPlainAppCall = `import App from './App';
+
+function bootstrap() {
+  const app = App();
+  return app;
+}
+`
+
+const cdk6916TSNewAppCall = `import App from './App';
+
+function bootstrap() {
+  const app = new App();
+  return app;
+}
 `
 
 // cdk6916TSBareApp / cdk6916PyBareApp are the construction with NO assignment.
@@ -166,6 +254,7 @@ func TestIssue6916_CDKAppConfigIsNamedAfterVariable(t *testing.T) {
 		forbidden string
 	}{
 		{"typescript", "bin/app.ts", "typescript", cdk6916TSApp, "new cdk.App("},
+		{"typescript with type annotation", "bin/app.ts", "typescript", cdk6916TSAnnotated, "new cdk.App("},
 		{"python", "app.py", "python", cdk6916PyApp, "cdk.App()"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -190,6 +279,7 @@ func TestIssue6916_CDKAppConfigIsNamedAfterVariable(t *testing.T) {
 func TestIssue6916_CDKCallsEdgeBindsAtItsSource(t *testing.T) {
 	for _, tc := range []struct{ name, path, lang, src string }{
 		{"typescript", "bin/app.ts", "typescript", cdk6916TSApp},
+		{"typescript with type annotation", "bin/app.ts", "typescript", cdk6916TSAnnotated},
 		{"python", "app.py", "python", cdk6916PyApp},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -284,5 +374,99 @@ func TestIssue6916_UnassignedAppMintsNoConfig(t *testing.T) {
 					strings.Join(ids, "\n  "))
 			}
 		})
+	}
+}
+
+// TestIssue6916_MultiTargetAssignmentDoesNotMisattribute is the review blocker,
+// pinned. The failure mode it guards is NOT "an edge goes missing" — it is "an
+// edge binds to the wrong variable", which the rest of this file cannot see
+// because the wrong name (`env`) is identifier-shaped and passes every other
+// assertion here.
+//
+// Both legs assert the same two things: no Config entity is minted from a
+// multi-target / destructuring assignment, and the `Config:env --CALLS-->` edge
+// the relationship rule emits from `EnvStack(env, …)` therefore does NOT BIND.
+//
+// That edge is emitted either way — the relationship rule is independent of the
+// entity rule and fires on the `EnvStack(env,` text alone. It dangled before
+// #6916 and it must go on dangling: the whole point of this issue is that a
+// dangling endpoint is a known-bad one, while an endpoint that resolves to the
+// WRONG variable is a wrong answer stated confidently. Asserting "the edge is
+// absent" would be false; asserting "the edge does not bind" is the real
+// guarantee. Component:EnvStack is the positive control on each leg.
+func TestIssue6916_MultiTargetAssignmentDoesNotMisattribute(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, lang, src string
+		// wrong is the name the unanchored capture donated. Named so a future
+		// failure reads as this defect rather than as a general absence.
+		wrong string
+	}{
+		{"python tuple assignment", "app.py", "python", cdk6916PyMultiTarget, "env"},
+		{"typescript array destructuring", "bin/app.ts", "typescript", cdk6916TSDestructured, "env"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := detect6916(t, tc.path, tc.lang, tc.src)
+			ids := entityIDs6916(res)
+			rels := rels6916(res)
+
+			for _, id := range ids {
+				if strings.HasPrefix(id, "Config:") {
+					t.Errorf("a multi-target assignment minted %q. The App is bound to `app`; "+
+						"any other name here makes the CALLS edge resolve to the WRONG variable "+
+						"(%q is a string literal), which is worse than the dangling edge it replaced.",
+						id, tc.wrong)
+				}
+			}
+			for _, r := range rels {
+				src, _, ok := strings.Cut(r, " --")
+				if !ok || !strings.HasPrefix(src, "Config:") {
+					continue
+				}
+				if slices.Contains(ids, src) {
+					t.Errorf("the edge %q BINDS: its source %s names an entity emitted by this "+
+						"same run. It dangled before #6916 and must go on dangling — resolving it "+
+						"to %q (a string literal, not the App) is a confidently wrong answer.",
+						r, src, tc.wrong)
+				}
+			}
+
+			// Positive control — without it both loops pass on a fixture that
+			// stopped producing anything at all.
+			if !slices.Contains(ids, "Component:EnvStack") {
+				t.Errorf("positive control missing: this fixture no longer emits "+
+					"Component:EnvStack, so the absence assertions above prove nothing. Entities:\n  %s",
+					strings.Join(ids, "\n  "))
+			}
+		})
+	}
+}
+
+// TestIssue6916_PlainAppCallIsNotACDKApp grades the rule in the OVER-FIRING
+// direction — the direction every mutant on the first round of this change
+// missed, and the one #7013 measured at 24.5% of minted framework entities
+// landing in repos that do not use the framework (Config at 60.5%).
+//
+// The interaction is worth stating: making the Name useful also makes an
+// over-firing hit HARDER to spot. Before #6916 a stray match was named `App(`,
+// visibly junk; now it would be named `app`, which reads as a real CDK
+// application.
+func TestIssue6916_PlainAppCallIsNotACDKApp(t *testing.T) {
+	// Negative: `const app = App()` in a file with no CDK anywhere.
+	ids := entityIDs6916(detect6916(t, "src/bootstrap.tsx", "typescript", cdk6916TSPlainAppCall))
+	for _, id := range ids {
+		if strings.HasPrefix(id, "Config:") {
+			t.Errorf("a plain `App()` call in a non-CDK file minted %q. `new` is the only thing "+
+				"separating this rule from every JS file that calls a function named App().", id)
+		}
+	}
+
+	// Positive control: the SAME file with `new` added must mint Config:app.
+	// Without this the assertion above would also pass if the rule had stopped
+	// firing on this path, this language, or this content entirely.
+	ctrl := entityIDs6916(detect6916(t, "src/bootstrap.tsx", "typescript", cdk6916TSNewAppCall))
+	if !slices.Contains(ctrl, "Config:app") {
+		t.Errorf("positive control missing: `const app = new App()` at the same path no longer "+
+			"mints Config:app, so the absence asserted above proves nothing about `new`. Entities:\n  %s",
+			strings.Join(ctrl, "\n  "))
 	}
 }
