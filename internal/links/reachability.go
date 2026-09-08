@@ -110,7 +110,14 @@ var reachabilityEdgeKinds = map[string]bool{
 // an HTTP route — and #6776 arm B7 added both kinds together because both are
 // live. Seeding only the prefixed one persisted every Java/Spring/Django
 // route into the sidecar as unreachable, along with everything only it reaches.
-// internal/mcp/dead_code.go's frameworkEntryKindsMCP mirrors this map.
+// #6909: internal/mcp/dead_code.go used to hand-copy this map (and
+// reachabilityEdgeKinds) into frameworkEntryKindsMCP. The two copies diverged
+// twice — on "Route" (#6902) and on "SCOPE.ChannelBinding" — and the second
+// divergence was live, because handleDeadCode PREFERS the sidecar this pass
+// writes and only consults its own map when the sidecar fails to load. There
+// is now no copy: mcp consumes IsFrameworkEntryKind / IsReachabilityEdgeKind
+// below. (internal/coverage has its own edge-kind set for a different
+// question — test reachability — and is deliberately not folded in here.)
 var frameworkEntryKinds = map[string]bool{
 	"http_endpoint_definition": true,
 	"http_endpoint":            true,
@@ -118,10 +125,27 @@ var frameworkEntryKinds = map[string]bool{
 	"SCOPE.Route":              true,
 	"Route":                    true, // #6902
 	"SCOPE.MessageTopic":       true,
+	// #5782 (ADR-0025), added here by #6909: a ChannelBinding is a
+	// config-side messaging declaration with no callers by design — never
+	// report it as dead code. ADR-0025 §3 named only the MCP map because
+	// that was the only seed set at the time; the sidecar this pass writes
+	// is what the tool actually reads, so the seed has to be here too.
+	"SCOPE.ChannelBinding":     true,
 	"SCOPE.GrpcMethod":         true,
 	"SCOPE.ServerlessFunction": true,
 	"SCOPE.EventBusEvent":      true,
 }
+
+// IsFrameworkEntryKind reports whether an entity of this kind is a
+// framework-managed entry-point, i.e. a BFS seed that needs no inbound edge.
+//
+// Exported for internal/mcp's grafel_dead_code fallback, which used to keep a
+// hand-copied mirror of frameworkEntryKinds. #6909: one set, one consumer path.
+func IsFrameworkEntryKind(kind string) bool { return frameworkEntryKinds[kind] }
+
+// IsReachabilityEdgeKind reports whether an edge of this kind propagates
+// reachability. Exported for the same reason as IsFrameworkEntryKind (#6909).
+func IsReachabilityEdgeKind(kind string) bool { return reachabilityEdgeKinds[kind] }
 
 // reachabilityEntry is one persistent reachability fact for the sidecar.
 type reachabilityEntry struct {

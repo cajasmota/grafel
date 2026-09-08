@@ -210,43 +210,13 @@ func loadReachabilitySidecar(path string) (*reachabilitySidecarDoc, bool) {
 	return &doc, true
 }
 
-// reachabilityEdgeKindsMCP mirrors the link-pass edge kind set. Kept
-// in this file (not imported from links/) to avoid an mcp → links
-// dependency.
-var reachabilityEdgeKindsMCP = map[string]bool{
-	"CALLS": true, "IMPORTS": true, "REFERENCES": true, "USES": true,
-	"USES_HOOK": true, "HANDLES": true, "HANDLES_SIGNAL": true,
-	"NAVIGATES_TO": true, "ROUTES_TO": true, "IMPLEMENTS": true,
-	"EXTENDS": true, "RENDERS": true, "FETCHES": true, "TESTS": true,
-	"REGISTERS": true, "RESOLVES_TO": true, "STEP_IN_PROCESS": true,
-	"PRODUCES": true, "CONSUMES": true, "CONTAINS": true,
-	"DEPENDS_ON": true, "ENTRY_POINT_OF": true,
-	"DISCRIMINATES_ON": true, "UNRESOLVED_FETCH": true,
-}
-
-// frameworkEntryKindsMCP mirrors the link-pass framework seeds
-// (internal/links/reachability.go frameworkEntryKinds).
-//
-// #6902: BOTH Route spellings are seeds. Bare "Route"
-// (types.EntityKindRouteBare) is what the Java route extractors and
-// internal/engine/{spring,django}_routes.go emit; "SCOPE.Route" is what the
-// Lua / Vaadin / gateway synthesisers emit. Both mean an HTTP route, so
-// neither is ever dead code. Seeding only the prefixed spelling made this tool
-// report every Java/Spring/Django route as dead.
-var frameworkEntryKindsMCP = map[string]bool{
-	"http_endpoint_definition": true,
-	"http_endpoint":            true,
-	"SCOPE.Endpoint":           true,
-	"SCOPE.Route":              true,
-	"Route":                    true, // #6902
-	"SCOPE.MessageTopic":       true,
-	// #5782 (ADR-0025): a ChannelBinding is a config-side messaging
-	// declaration with no callers by design — never report it as dead code.
-	"SCOPE.ChannelBinding":     true,
-	"SCOPE.GrpcMethod":         true,
-	"SCOPE.ServerlessFunction": true,
-	"SCOPE.EventBusEvent":      true,
-}
+// #6909: frameworkEntryKindsMCP and reachabilityEdgeKindsMCP used to live
+// here as hand-copied mirrors of internal/links' frameworkEntryKinds and
+// reachabilityEdgeKinds, "kept in this file to avoid an mcp -> links
+// dependency". That dependency already exists (reachabilitySidecarPath above
+// calls links.PassSidecarPath), and the copies diverged twice: on bare "Route"
+// (#6902) and on "SCOPE.ChannelBinding" (#6909, ADR-0025). Both sets are now
+// consumed from links directly, so there is nothing left to keep in sync.
 
 // deadCodeItem is the per-entry wire shape returned by handleDeadCode.
 type deadCodeItem struct {
@@ -274,7 +244,7 @@ func computeDeadCodeLive(lg *LoadedGroup, repoFilter map[string]bool, kindFilter
 		}
 		adj := map[string][]string{}
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
-			if !reachabilityEdgeKindsMCP[rel.Kind] {
+			if !links.IsReachabilityEdgeKind(rel.Kind) {
 				return true
 			}
 			adj[rel.FromID] = append(adj[rel.FromID], rel.ToID)
@@ -282,7 +252,7 @@ func computeDeadCodeLive(lg *LoadedGroup, repoFilter map[string]bool, kindFilter
 		})
 		seeds := map[string]bool{}
 		r.forEachEntity(func(e *graph.Entity) bool {
-			if frameworkEntryKindsMCP[e.Kind] || isFrameworkOrHandler(e) {
+			if links.IsFrameworkEntryKind(e.Kind) || isFrameworkOrHandler(e) {
 				seeds[e.ID] = true
 			}
 			return true
@@ -353,7 +323,7 @@ func computeDeadCodeFromEntry(lg *LoadedGroup, fromID string, repoFilter map[str
 		}
 		adj := map[string][]string{}
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
-			if !reachabilityEdgeKindsMCP[rel.Kind] {
+			if !links.IsReachabilityEdgeKind(rel.Kind) {
 				return true
 			}
 			adj[rel.FromID] = append(adj[rel.FromID], rel.ToID)

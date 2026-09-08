@@ -1282,7 +1282,8 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 // #5781: Kafka topics are extracted as kind "SCOPE.MessageTopic" (leaf
 // "messagetopic"), which ends in "messagetopic" — NOT ".topic" — so the old
 // suffix set silently excluded every message-topic entity from the topology
-// scans. dead_code.go (frameworkEntryKindsMCP) and denoise.go
+// scans. The reachability seed set (internal/links frameworkEntryKinds; it
+// lived here as frameworkEntryKindsMCP until #6909) and denoise.go
 // (isStructuralLineless) already treat SCOPE.MessageTopic / messagetopic as
 // topic-like; this restores consistency with them.
 func isTopic(e *graph.Entity) bool { return isTopicKind(e.Kind) }
