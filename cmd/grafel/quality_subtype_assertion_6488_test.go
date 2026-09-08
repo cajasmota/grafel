@@ -100,7 +100,8 @@ func TestProtoEnumValueSubtypeIsGraded_6488(t *testing.T) {
 	// enum-value subtype flip was live and undetected — the fixture's size AT
 	// THAT TIME. #6518 has since added the per-file carrier entity and the
 	// file -> message CONTAINS row that carrier made gradeable, so the figures
-	// the assertion below demands are 19/19 and 17/17. The #6488 property is
+	// the assertion below demands are 19/19 and 18/18 (#6912 arm B added the
+	// eighteenth relationship row). The #6488 property is
 	// unchanged: absolute counts, re-derived here rather than read from
 	// baseline.json.
 	rep := quality.Evaluate(fix, doc)
@@ -115,9 +116,11 @@ func TestProtoEnumValueSubtypeIsGraded_6488(t *testing.T) {
 				r.SubtypeMismatch, r.GotSubtype, "enum_value")
 		}
 	}
-	// 19 since #6518 added the per-file SCOPE.Component carrier, and 17/17
-	// relationships since the file -> message CONTAINS row it made gradeable
-	// (see proto-mini/NOTICE.md, which asked for exactly that row).
+	// 19 since #6518 added the per-file SCOPE.Component carrier, and 18/18
+	// relationships since #6912 arm B added the field->declared-type row
+	// (User.profile -> Profile) on top of the file -> message CONTAINS row
+	// #6518 made gradeable (see proto-mini/NOTICE.md, which asked for that one).
+	// The entity count is unchanged: arm B adds an edge, not an entity.
 	if rep.EntityExpected != 19 || rep.EntityFound != 19 {
 		var missing []string
 		for _, r := range rep.EntityResults {
@@ -128,8 +131,8 @@ func TestProtoEnumValueSubtypeIsGraded_6488(t *testing.T) {
 		t.Errorf("proto-mini entities %d/%d want 19/19; missing: %v",
 			rep.EntityFound, rep.EntityExpected, missing)
 	}
-	if rep.RelExpected != 17 || rep.RelFound != 17 {
-		t.Errorf("proto-mini relationships %d/%d want 17/17", rep.RelFound, rep.RelExpected)
+	if rep.RelExpected != 18 || rep.RelFound != 18 {
+		t.Errorf("proto-mini relationships %d/%d want 18/18", rep.RelFound, rep.RelExpected)
 	}
 	if n := len(rep.ForbiddenHits); n != 0 {
 		t.Errorf("proto-mini forbidden hits = %d, want 0", n)
