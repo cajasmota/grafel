@@ -46,10 +46,22 @@ source_patterns:
     entity_type: Component
     name_group: 1
     scope: class
-  # App instantiation: new cdk.App() / new App()
-  - pattern: "new\\s+(?:cdk\\.)?App\\s*\\("
+  # App instantiation, named after the ASSIGNED VARIABLE (#6916): const app = new cdk.App()
+  # name_group 0 named this entity "new cdk.App(" — a marker string the CALLS rule
+  # below (source_group 2 = the variable) could never bind to.
+  #
+  # `new` is LOAD-BEARING and graded (review CV-1): without it this fires on any
+  # JS file calling a function named App() — `const app = App()` in ordinary
+  # React — minting a plausible-looking `Config:app` in a repo with no CDK.
+  # The `(?:\\s*:\\s*[\\w.]+)?` annotation group is load-bearing too (review RM4):
+  # without it `const app: cdk.App = new cdk.App()` captures the TYPE, `App`.
+  # There is no `^` anchor here and none is needed: `(\\w+)` is forced to be the
+  # token immediately left of `= new ... App(`, which in JS is always the
+  # assignment target. Python's `App()` is a plain call and DOES need the
+  # anchor — see that file.
+  - pattern: "(\\w+)(?:\\s*:\\s*[\\w.]+)?\\s*=\\s*new\\s+(?:cdk\\.)?App\\s*\\("
     entity_type: Config
-    name_group: 0
+    name_group: 1
     scope: file
   # CfnOutput: new cdk.CfnOutput(this, 'OutputId', …)
   - pattern: "(?:new\\s+)?(?:cdk\\.)?CfnOutput\\s*\\(\\s*\\w+\\s*,\\s*[\"']([^\"']+)[\"']"
