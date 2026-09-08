@@ -157,6 +157,16 @@ func rustFieldsFromList(
 			Metadata:           map[string]interface{}{"subtype": "field", "owner": owner},
 			EnrichmentRequired: false,
 		})
+		// Issue #6912 — stash every bare type name written in the declared
+		// type for attachRustFieldTypeRefs, which turns the ones DECLARED IN
+		// THIS FILE into REFERENCES edges once the walk has seen every
+		// declaration. Nothing is decided here: a field may be declared before
+		// the type it names. The TYPE NODE is read, not the `field_type`
+		// string, so the grammar's own primitive/qualified-path classification
+		// is what the candidate rule stands on (field_type_refs.go).
+		if cands := rustTypeRefCandidates(ch.ChildByFieldName("type"), file.Content); len(cands) > 0 {
+			out[len(out)-1].Metadata[rustFieldTypeRefsMetaKey] = cands
+		}
 	}
 	return out
 }
