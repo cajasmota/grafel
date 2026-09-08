@@ -1,0 +1,217 @@
+package resolve
+
+import (
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
+)
+
+// #6998 — lookupStructural's cross-file, whole-graph unique-name fallback
+// (lookupUniqueRealComponentByName) fires for `component`-scope structural
+// addresses with lang == "python" and for no other language. Removing that
+// guard was ALIVE: the resolver package, the touched extractor packages and
+// the full golden ratchet all stayed green, so the restriction of the widest
+// tier in the structural lookup to one language was asserted by nothing.
+//
+// Today's behaviour is correct; this file is the missing assertion. The tier
+// is what makes the Python address dialect NOT same-file-only, which is
+// exactly what separates it from the C# (#6984) and protobuf (#6991) ports —
+// both deliberately same-file because a cross-file guess is #6369's
+// wrong-node hazard. Widening it would give every language a whole-graph
+// unique-name fallback: the permissive direction, where a binding that should
+// not happen becomes a confidently-wrong edge that reads as valid.
+//
+// The pin is behavioural, not a source scan for the literal `lang ==
+// "python"` — a scan-and-assert guard has several independent no-op modes and
+// would survive the very rewrite it exists to catch.
+//
+// AXES. Two axes are graded here: the address's LANGUAGE segment and its
+// SCOPE segment (rows `config-scope` / `operation-scope`), each varied while
+// the other is held at the binding value.
+//
+// Varied: the address's language segment (and the entity Language /
+// file extension that go with it). Held constant: the entity kind and
+// subtype, the declared name, the global uniqueness of that name, the
+// cross-file relationship (the consumer's file declares nothing), the
+// directory (so pkgDirOf is identical), and the address's scope-kind and
+// subtype segments. Case `ruby-on-python-paths` additionally holds the FILE
+// PATHS constant too, so the only thing separating it from the binding case
+// is the language segment itself — the guard cannot be mistaken for a
+// path- or extension-keyed effect.
+//
+// The ADDRESS's language segment is the load-bearing half of that joint
+// variation; the entity's `Language` field is not read by this tier at all.
+// Probed directly during review: entity Language=ruby with a python address
+// BINDS, entity Language=python with a ruby address does NOT. The fixture
+// varies both only because that is what a realistic record looks like.
+//
+// Two facts recorded here so the next reader does not re-derive them:
+//   - Mixed-case `Python` BINDS, because the guard reads
+//     `strings.ToLower(parts[stubScopeLangIndex])` on the line above. The
+//     invariant is case-insensitive python-only, and the `Python-mixed-case`
+//     row below is what grades it.
+//   - An EMPTY language segment dangles honestly (statusUnmatched). It takes
+//     no third path: the `(lang == "" || lang == "python")` conditions near
+//     refs.go:4574 are disposition routing in a different function, not a
+//     binding tier. Enumerated and confirmed, not assumed.
+
+// langGuardFixture6998 builds the one shape both halves of the pair share:
+// a class `SharedBase` declared in `app/base<ext>`, globally unique, and a
+// consumer file `app/child<ext>` that declares NOTHING. The structural
+// address is minted with the CONSUMER's file — the Python dialect's
+// convention (the hierarchy extractor addresses `class Child(SharedBase):`
+// by the file the subclass declaration lives in), so the same-file
+// lookupLocationKind tier necessarily misses and only the cross-file tier
+// can bind.
+func langGuardFixture6998(scopeKind, lang, ext string) (base types.EntityRecord, consumer types.EntityRecord, ref string) {
+	baseFile := "app/base" + ext
+	childFile := "app/child" + ext
+	base = types.EntityRecord{
+		ID: "c0de6998ba5e0001", Kind: "Class", Subtype: "class",
+		Name: "SharedBase", QualifiedName: "SharedBase",
+		SourceFile: baseFile, Language: lang,
+	}
+	// The consumer entity exists only so the consumer file is a real file in
+	// the index with a real, DIFFERENT name in it — the same-file tier has
+	// something to miss on rather than nothing at all.
+	consumer = types.EntityRecord{
+		ID: "c0de6998c41d0002", Kind: "Class", Subtype: "class",
+		Name: "Child", QualifiedName: "Child",
+		SourceFile: childFile, Language: lang,
+	}
+	ref = "scope:" + scopeKind + ":class:" + lang + ":" + childFile + ":SharedBase"
+	return base, consumer, ref
+}
+
+func TestStructuralComponentCrossFileTier_IsPythonOnly6998(t *testing.T) {
+	cases := []struct {
+		name     string
+		scope    string
+		lang     string
+		ext      string
+		wantBind bool
+	}{
+		// The positive control. Without it every negative below could pass
+		// by the tier never firing at all, which is the commonest way an
+		// absence assertion here turns out to be decoration.
+		{name: "python", scope: "component", lang: "python", ext: ".py", wantBind: true},
+		// Second positive control: the guard reads `strings.ToLower(...)`,
+		// so the invariant is case-INSENSITIVE python-only. A reader would
+		// otherwise reasonably assume an exact byte match, and a future
+		// edit that dropped the ToLower would be a silent narrowing that
+		// no other row here can see.
+		{name: "Python-mixed-case", scope: "component", lang: "Python", ext: ".py", wantBind: true},
+		// The negatives are an ENUMERATION of the guard's neighbours, not a
+		// sample. Two sampled members cannot detect a predicate that got
+		// BROADER (#6998's own shape), and each of the following was scored
+		// as an individually ALIVE widening before these rows existed:
+		//   `HasPrefix(lang, "py")`  admits python3
+		//   `HasPrefix(lang, "p")`   admits php, protobuf, proto
+		//   `lang == "python" || lang == "csharp" || ...`
+		// csharp and protobuf are the two ports (#6984, #6991) that are
+		// deliberately same-file precisely because a cross-file guess is
+		// #6369's wrong-node hazard, so those two rows pin the actual
+		// decision rather than a general principle.
+		{name: "csharp", scope: "component", lang: "csharp", ext: ".cs", wantBind: false},
+		{name: "protobuf", scope: "component", lang: "protobuf", ext: ".proto", wantBind: false},
+		{name: "php", scope: "component", lang: "php", ext: ".php", wantBind: false},
+		{name: "python3", scope: "component", lang: "python3", ext: ".py", wantBind: false},
+		{name: "ruby", scope: "component", lang: "ruby", ext: ".rb", wantBind: false},
+		{name: "java", scope: "component", lang: "java", ext: ".java", wantBind: false},
+		// Language varied, file paths held identical to the python case.
+		{name: "ruby-on-python-paths", scope: "component", lang: "ruby", ext: ".py", wantBind: false},
+		// SCOPE is the second graded axis. The nine rows above vary the
+		// language and hold the scope segment at "component", so on their own
+		// they say nothing about the OTHER guard on refs.go:3094
+		// (`strings.EqualFold(scopeKind, "component")`). Widening that one to
+		// `HasPrefix(strings.ToLower(scopeKind), "co")` was scored ALIVE
+		// against them — and it is reachable on an address production emits
+		// today: internal/extractors/python/config_consumer.go:333 mints
+		// `scope:config:ref:python:<file>:<Name>`, which under that widening
+		// bound a CONFIG reference to a class in another file. A
+		// confidently-wrong edge of exactly #6369's shape.
+		//
+		// Both rows hold lang at "python" — the language guard is satisfied,
+		// so a failure here is unambiguously about the scope guard.
+		//
+		// The subtype segment stays "class" rather than production's "ref":
+		// lookupStructural never reads it. The only segments it indexes are
+		// stubScopeKindIndex(1), stubScopeLangIndex(3), stubScopeFileIndex(4)
+		// and stubScopeTailIndex(5) — there is no `parts[2]` in the function —
+		// so `scope:config:ref:…` and `scope:config:class:…` take an identical
+		// path, and holding the subtype constant keeps scope the only varied
+		// axis at no cost in fidelity.
+		{name: "config-scope", scope: "config", lang: "python", ext: ".py", wantBind: false},
+		// "operation" is the largest scope kind in the tree, and the comment
+		// above this block says the package-keyed path "only fires for
+		// operation scope" — the two are entangled in a reader's mind, so pin
+		// that they stay separate. Deliberately not the whole scope
+		// vocabulary: the goal is a pin that survives an obvious widening.
+		{name: "operation-scope", scope: "operation", lang: "python", ext: ".py", wantBind: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base, consumer, ref := langGuardFixture6998(tc.scope, tc.lang, tc.ext)
+			idx := BuildIndex([]types.EntityRecord{base, consumer})
+
+			// Premise 1 — the cross-file tier's own precondition holds in
+			// EVERY case, binding and non-binding alike. `SharedBase` is
+			// globally unique, so lookupUniqueRealComponentByName would
+			// return the base class if it were reached. This is what makes
+			// the negatives sharp: the ONLY thing withholding the binding is
+			// the language guard, not an absent or ambiguous candidate.
+			if id, ok := idx.lookupUniqueRealComponentByName("SharedBase"); !ok || id != base.ID {
+				t.Fatalf("premise: lookupUniqueRealComponentByName(SharedBase) = (%q,%v), "+
+					"want (%q,true) — the cross-file tier could not have bound in this "+
+					"fixture for a reason unrelated to the language guard (#6998)",
+					id, ok, base.ID)
+			}
+
+			// Premise 2 — the same-file tier misses. The consumer's file does
+			// not declare `SharedBase`, so nothing but the cross-file tier
+			// can produce a binding here.
+			if id, ok := idx.lookupLocationKind(consumer.SourceFile, "SharedBase", structuralKindFamilies(tc.scope)); ok {
+				t.Fatalf("premise: lookupLocationKind(%q, SharedBase) = (%q,true); the "+
+					"consumer file must not declare the name or the same-file tier, not "+
+					"the cross-file one, is what this case measures (#6998)",
+					consumer.SourceFile, id)
+			}
+
+			id, status, handled := idx.lookupStructural(ref)
+			if !handled {
+				t.Fatalf("lookupStructural did not claim %q (handled=false)", ref)
+			}
+
+			if tc.wantBind {
+				if id != base.ID {
+					t.Fatalf("lookupStructural(%q) = %q (status=%d), want the class "+
+						"%q declared in %q — the Python cross-file unique-name tier "+
+						"must still bind (#6998 positive control)",
+						ref, id, status, base.ID, base.SourceFile)
+				}
+				if status != statusRewritten {
+					t.Fatalf("lookupStructural(%q) status = %d, want statusRewritten=%d (#6998)",
+						ref, status, statusRewritten)
+				}
+				return
+			}
+
+			if id == base.ID {
+				t.Fatalf("lookupStructural(%q) bound the class %q declared in %q — a "+
+					"lang=%q structural address reached the whole-graph unique-name "+
+					"fallback, which is python-only. A cross-file guess in another "+
+					"language's dialect is a confidently-wrong edge (#6998, #6369)",
+					ref, base.ID, base.SourceFile, tc.lang)
+			}
+			if id != "" {
+				t.Fatalf("lookupStructural(%q) = %q, want no binding (#6998)", ref, id)
+			}
+			if status != statusUnmatched {
+				t.Fatalf("lookupStructural(%q) status = %d, want statusUnmatched=%d — the "+
+					"address must dangle honestly rather than resolve or report an "+
+					"ambiguity it did not find (#6998)", ref, status, statusUnmatched)
+			}
+		})
+	}
+}
