@@ -34,10 +34,15 @@ import (
 
 // strict7014MinContainerEntries is the non-vacuity floor for mode 2: the number
 // of executable-container entries the strict decoder must actually have built
-// from the real embedded tree. The tree currently yields ~445
-// (329 source_patterns + 78 relationship_rules + 38 file_conventions); the floor
-// is set below that so ordinary rule authoring does not trip it, but far enough
-// above zero that a guard which never runs on real data cannot pass.
+// from the real embedded tree. The tree currently yields 562
+// (329 source_patterns + 155 file_conventions + 78 relationship_rules); the
+// floor is set below that so ordinary rule authoring does not trip it, but far
+// enough above zero that a guard which never runs on real data cannot pass.
+//
+// (An earlier revision of this comment said "~445 … 38 file_conventions". 38 is
+// the audit's FILE count for file_conventions, not its ENTRY count. Corrected
+// in review — a floor comment that misstates the population it floors is the
+// same defect class this file closes one layer down.)
 const strict7014MinContainerEntries = 350
 
 // goodRuleYAML is a rule file exercising all three executable containers with
@@ -110,6 +115,17 @@ func Test7014_UnknownKeyInsideExecutableContainerFailsLoad(t *testing.T) {
 			badKey: "name_form",
 		},
 		{
+			// Key matching is documented as exact and case-sensitive, which is
+			// marginally stricter than yaml.v3's own field matching. Nothing
+			// observed that until this leg: a future edit lowercasing keys
+			// "helpfully" would start accepting `Name_Group`, a widening in
+			// exactly the direction this guard exists to prevent.
+			name:      "case variant of a real key",
+			container: "source_patterns",
+			old:       "    name_group: 1", new: "    Name_Group: 1",
+			badKey: "Name_Group",
+		},
+		{
 			// The key that produced #7014, moved into an executable position.
 			name:      "unmodelled metadata key inside source_patterns",
 			container: "source_patterns",
@@ -133,7 +149,13 @@ func Test7014_UnknownKeyInsideExecutableContainerFailsLoad(t *testing.T) {
 				}
 			}
 			if got := len(rules["py"]); got != 1 {
-				t.Errorf("loaded %d py rules, want 1 (the good sibling only)", got)
+				t.Fatalf("loaded %d py rules, want 1 (the good sibling only)", got)
+			}
+			// The other half of the case pin: the exactly-spelled key is
+			// ACCEPTED, in the same run that rejects its case variant. A guard
+			// that rejected both would pass the leg above and be useless.
+			if got := rules["py"][0].SourcePatterns[0].NameGroup; got != 1 {
+				t.Errorf("the exactly-spelled `name_group` did not decode: NameGroup = %d, want 1", got)
 			}
 
 			if len(rep.Failures) != 1 {

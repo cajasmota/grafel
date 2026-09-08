@@ -40,13 +40,29 @@ import (
 //
 // Key matching is exact and case-sensitive, which is marginally stricter than
 // yaml.v3's own field matching. No rule file in the tree relies on the
-// difference (measured: 0 red).
+// difference (measured: 0 red), and the case-variant leg of
+// Test7014_UnknownKeyInsideExecutableContainerFailsLoad observes it.
+//
+// One further deliberate narrowing: a YAML MERGE KEY (`<<: *base`) inside a
+// guarded entry is rejected, because `<<` is not a modelled field name. Zero
+// rule files use one today. YAML ALIASES are unaffected — an aliased entry is
+// resolved before the guard sees it, so a typo reached through an alias fires
+// correctly (verified in review).
 
 // strictContainerFields returns the set of YAML keys a struct models, derived
 // from its `yaml:"..."` tags. Deriving it by reflection rather than hand-listing
 // the keys means a NEW field added to SourcePattern et al. is accepted the
 // moment it is declared — the guard cannot drift out of sync with the struct it
 // is guarding.
+//
+// One limit on that claim, recorded because it is a landmine rather than a
+// hazard: the walk is t.Field(i) only, so it does NOT understand an embedded or
+// `,inline` field. None of the three guarded structs has one today. If one is
+// added, this walk would allow the embedded type's own lowercased NAME and
+// reject the keys yaml.v3 actually inlines — which fails CLOSED (rule files go
+// red, nothing is silently accepted) and is caught by
+// Test7014_AllEmbeddedRuleFilesStillLoad, but it is a surprise worth naming
+// here rather than rediscovering.
 func strictContainerFields(t reflect.Type) map[string]bool {
 	fields := make(map[string]bool, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
