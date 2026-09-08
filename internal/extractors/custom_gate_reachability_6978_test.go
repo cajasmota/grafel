@@ -203,6 +203,11 @@ type gateSite struct {
 	lit  string
 	file string
 	line int
+	// subjectIsPath reports whether the expression the literal is compared
+	// AGAINST derives from the file's path. This is what tells a gate from a
+	// content match, and it is asserted rather than taken from the list —
+	// see the adjudication check in the test.
+	subjectIsPath bool
 }
 
 // scanCustomGates walks internal/custom/** and returns every extension-shaped
@@ -305,6 +310,122 @@ func scanCustomGates(t *testing.T) (dead, live []gateSite, filesParsed int, keyl
 			}
 			return true
 		})
+		// PATH TAINT. The same single-assignment bindings, kept as expressions
+		// rather than literals, plus the parameters that receive a
+		// path-derived argument at a call site IN THIS FILE. Every helper this
+		// matters for (isVueFile, isPlayRoutesFile, isSqlxMigrationFile) is
+		// called from the same file as its declaration; a cross-file caller is
+		// not followed, and the effect of missing one is a LOUD failure on the
+		// gate list, never a silent pass — see subjectVerdicts.
+		// A MAY-analysis, so an identifier assigned more than once keeps ALL
+		// its right-hand sides and is tainted if ANY of them is path-derived.
+		// (Literal resolution above is a MUST-analysis and drops such an
+		// identifier — the two questions want opposite polarities.) The
+		// bindings are file-scoped, so a name as ordinary as `fp` is bound in
+		// several functions at once; requiring a single binding here reported
+		// two genuine gates as content matches.
+		exprBind := map[string][]ast.Expr{}
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch d := n.(type) {
+			case *ast.ValueSpec:
+				for i, nm := range d.Names {
+					if i < len(d.Values) {
+						exprBind[nm.Name] = append(exprBind[nm.Name], d.Values[i])
+					}
+				}
+			case *ast.AssignStmt:
+				if len(d.Lhs) != len(d.Rhs) {
+					return true
+				}
+				for i, lhs := range d.Lhs {
+					if id, ok := lhs.(*ast.Ident); ok {
+						exprBind[id.Name] = append(exprBind[id.Name], d.Rhs[i])
+					}
+				}
+			}
+			return true
+		})
+		taintedParam := map[string]bool{}
+		var isPathExpr func(ast.Expr, map[ast.Expr]bool) bool
+		isPathExpr = func(e ast.Expr, seen map[ast.Expr]bool) bool {
+			if e == nil || seen[e] {
+				return false
+			}
+			seen[e] = true
+			switch v := e.(type) {
+			case *ast.SelectorExpr:
+				// file.Path / ctx.FilePath — the only two path sources a
+				// FileInput or a PatternContext offers.
+				if v.Sel.Name == "Path" || v.Sel.Name == "FilePath" {
+					return true
+				}
+				return isPathExpr(v.X, seen)
+			case *ast.Ident:
+				if taintedParam[v.Name] {
+					return true
+				}
+				for _, b := range exprBind[v.Name] {
+					if isPathExpr(b, seen) {
+						return true
+					}
+				}
+			case *ast.CallExpr:
+				// strings.ToLower(p), filepath.ToSlash(p), filepath.Base(p) …
+				// a wrapper is path-derived when any argument is.
+				for _, a := range v.Args {
+					if isPathExpr(a, seen) {
+						return true
+					}
+				}
+			case *ast.SliceExpr:
+				return isPathExpr(v.X, seen)
+			case *ast.IndexExpr:
+				return isPathExpr(v.X, seen)
+			case *ast.ParenExpr:
+				return isPathExpr(v.X, seen)
+			case *ast.BinaryExpr:
+				return isPathExpr(v.X, seen) || isPathExpr(v.Y, seen)
+			}
+			return false
+		}
+		// Fixpoint: a tainted argument taints the parameter, which can taint a
+		// binding, which can taint another argument. Three passes settle every
+		// chain in this tree; the loop stops early when nothing changes.
+		for pass := 0; pass < 3; pass++ {
+			changed := false
+			ast.Inspect(f, func(n ast.Node) bool {
+				ce, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				id, ok := ce.Fun.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				for _, fd := range funcs {
+					if fd.Name.Name != id.Name || fd.Type.Params == nil {
+						continue
+					}
+					pos := 0
+					for _, fl := range fd.Type.Params.List {
+						for _, nm := range fl.Names {
+							if pos < len(ce.Args) && !taintedParam[nm.Name] &&
+								isPathExpr(ce.Args[pos], map[ast.Expr]bool{}) {
+								taintedParam[nm.Name] = true
+								changed = true
+							}
+							pos++
+						}
+					}
+				}
+				return true
+			})
+			if !changed {
+				break
+			}
+		}
+		pathSubject := func(e ast.Expr) bool { return isPathExpr(e, map[ast.Expr]bool{}) }
+
 		// resolve returns the literal an expression denotes: itself when it is
 		// one, or its unique single-literal binding when it is an identifier.
 		resolve := func(e ast.Expr) *ast.BasicLit {
@@ -319,7 +440,7 @@ func scanCustomGates(t *testing.T) (dead, live []gateSite, filesParsed int, keyl
 			return nil
 		}
 
-		record := func(bl *ast.BasicLit) {
+		record := func(bl *ast.BasicLit, subject ast.Expr) {
 			if bl.Kind != token.STRING {
 				return
 			}
@@ -328,10 +449,11 @@ func scanCustomGates(t *testing.T) (dead, live []gateSite, filesParsed int, keyl
 				return
 			}
 			all = append(all, gateSite{
-				id:   rel + "|" + enclosing(bl.Pos()) + "|" + s,
-				lit:  s,
-				file: p,
-				line: fset.Position(bl.Pos()).Line,
+				id:            rel + "|" + enclosing(bl.Pos()) + "|" + s,
+				lit:           s,
+				file:          p,
+				line:          fset.Position(bl.Pos()).Line,
+				subjectIsPath: pathSubject(subject),
 			})
 		}
 
@@ -360,10 +482,21 @@ func scanCustomGates(t *testing.T) (dead, live []gateSite, filesParsed int, keyl
 				}
 				switch se.Sel.Name {
 				case "HasSuffix", "EqualFold":
-					for _, a := range v.Args {
-						if bl := resolve(a); bl != nil {
-							record(bl)
+					// The subject is the OTHER operand: HasSuffix(subject,
+					// lit) and EqualFold in either order.
+					for i, a := range v.Args {
+						bl := resolve(a)
+						if bl == nil {
+							continue
 						}
+						var subject ast.Expr
+						for j, o := range v.Args {
+							if j != i {
+								subject = o
+								break
+							}
+						}
+						record(bl, subject)
 					}
 				}
 			case *ast.BinaryExpr:
@@ -374,15 +507,25 @@ func scanCustomGates(t *testing.T) (dead, live []gateSite, filesParsed int, keyl
 				lb, rb := resolve(v.X), resolve(v.Y)
 				lok, rok := lb != nil, rb != nil
 				if lok && !rok {
-					record(lb)
+					record(lb, v.Y)
 				}
 				if rok && !lok {
-					record(rb)
+					record(rb, v.X)
 				}
-			case *ast.CaseClause:
-				for _, e := range v.List {
-					if bl := resolve(e); bl != nil {
-						record(bl)
+			case *ast.SwitchStmt:
+				// Handled at the switch, not the case, so the tag — which is
+				// the subject — is in scope. A tagless `switch { case … }`
+				// carries its comparisons inside the case expressions and is
+				// picked up by the branches above.
+				for _, st := range v.Body.List {
+					cc, ok := st.(*ast.CaseClause)
+					if !ok {
+						continue
+					}
+					for _, e := range cc.List {
+						if bl := resolve(e); bl != nil {
+							record(bl, v.Tag)
+						}
 					}
 				}
 			}
@@ -548,6 +691,17 @@ func gateIsReachable(s gateSite, dirKeys []string) bool {
 	return false
 }
 
+// subjectVerdicts aggregates, per id, whether ANY site behind that id compares
+// its literal against a path-derived expression. A gate must have one; a
+// content match must not.
+func subjectVerdicts(sites []gateSite) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range sites {
+		out[s.id] = out[s.id] || s.subjectIsPath
+	}
+	return out
+}
+
 func ids(sites []gateSite) []string {
 	out := make([]string, 0, len(sites))
 	seen := map[string]bool{}
@@ -627,6 +781,39 @@ func TestCustomExtractorGatesAreReachable6978(t *testing.T) {
 			t.Errorf("%q is listed BOTH as an unreachable gate and as a content match — it can only be one", w)
 		}
 		adjudicated[w] = "content"
+	}
+
+	// THE ADJUDICATION IS CHECKED AGAINST A PROPERTY, NOT TAKEN ON TRUST.
+	// Membership alone cannot tell the two lists apart: `adjudicated[g] != ""`
+	// is satisfied identically by either, so moving a genuine dead gate into
+	// knownContentMatchLiterals used to pass — and the failure message above
+	// invites exactly that edit by offering both lists without a way to
+	// choose. The lists mean different things (`gate` = a defect or latent
+	// capability someone must look at; `content` = a false positive to
+	// ignore), so a misfile does not mislabel a finding, it RETIRES it. The
+	// scan already knows the subject expression — that is how the two content
+	// entries were identified as matching against a parsed `receiver` rather
+	// than a path — so the difference is asserted here.
+	//
+	// Direction of error: a path-derived subject the taint analysis fails to
+	// recognise makes the GATE list fail loudly (a listed gate reported as
+	// having a non-path subject). It cannot turn into a silent pass.
+	subjectPath := subjectVerdicts(dead)
+	for _, w := range knownUnreachableGates {
+		if _, seen := subjectPath[w]; !seen {
+			continue // reported by the reverse-direction check below
+		}
+		if !subjectPath[w] {
+			t.Errorf("%q is listed as an unreachable GATE but its literal is not compared against a path-derived expression. Either it is a content match in the wrong list (move it to knownContentMatchLiterals), or the path taint failed to follow the subject — which is a scanner bug.", w)
+		}
+	}
+	for _, w := range knownContentMatchLiterals {
+		if _, seen := subjectPath[w]; !seen {
+			continue
+		}
+		if subjectPath[w] {
+			t.Errorf("%q is listed as a CONTENT MATCH but its literal IS compared against a path-derived expression, so it is a file gate. Listing a real gate here retires a live finding into the ignore bucket, which is the failure this whole test exists to prevent. Move it to knownUnreachableGates.", w)
+		}
 	}
 
 	gotSet := map[string]bool{}
