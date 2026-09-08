@@ -281,3 +281,30 @@ func TestJavaFieldTypeRefs_Unit_AnotherFilesCollisionDoesNotShadowThisFile(t *te
 		rival,
 	}, "Order", "Customer")
 }
+
+// SCOPE.Class participates in the component address family through the INDEX'S
+// TRIM ALIAS, not through componentKindFamily directly, and that indirection is
+// what an earlier revision of javaComponentAddressFamily missed.
+//
+// BuildIndex keys every entity under its raw Kind AND its SCOPE-trimmed alias
+// (refs.go:1208-1211), so a `SCOPE.Class` entity is reachable under "Class" —
+// which IS a componentKindFamily member even though "SCOPE.Class" is not. Such
+// an entity therefore blanks uniqueMatchInFamily against a same-(file, name)
+// Component and drops the ref through to ambigLocation, where it dangles.
+//
+// Not reachable from java source today: no java producer emits a Class- or
+// SCOPE.Class-kinded entity. It is graded anyway because the map's whole job is
+// to mirror the resolver, and a mirror with a hole in it is worse than no mirror
+// — it emits a stub the resolver has already decided to refuse. The bare "Class"
+// spelling is graded beside it so neither entry can be deleted unnoticed.
+func TestJavaFieldTypeRefs_Unit_ScopeClassParticipatesViaTheTrimAlias(t *testing.T) {
+	for _, kind := range []string{"SCOPE.Class", "Class"} {
+		t.Run(kind, func(t *testing.T) {
+			javaFTAssertTargets(t, []types.EntityRecord{
+				javaFTComp("Order", "class"),
+				javaFTComp("Customer", "class"),
+				{Name: "Customer", Kind: kind, Subtype: "class", SourceFile: javaFTUnitFile},
+			}, "Order")
+		})
+	}
+}

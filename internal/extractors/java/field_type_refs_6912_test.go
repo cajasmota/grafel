@@ -24,7 +24,23 @@ package java_test
 // else get their own: cross-file targets need a second FILE; the type-parameter
 // over-fire needs a file that DECLARES the parameter's name; the nosql `schema`
 // collision needs an @Document annotation; the Lombok duplicate-Component case
-// needs a @Builder. Each is below with its own comment.
+// needs a @Builder beside a hand-declared `<Class>Builder`. Each is below with
+// its own comment.
+//
+// RECALL CEILING — what 147 corpus edges is bounded BY, so the number is not
+// read as completeness. This arm can only ever emit for a field that has a
+// field ENTITY, and java's field-entity population has two pre-existing holes
+// (neither introduced here, neither this arm's to fix):
+//
+//   - A MULTI-DECLARATOR field emits only its FIRST name. `class M { Customer
+//     a, b; }` yields `SCOPE.Schema/field M.a` and nothing for `b`, so `b` can
+//     never carry an edge.
+//   - AN INTERFACE CONSTANT emits NO field entity at all. `interface Consts {
+//     Customer DEFAULT = null; }` yields no field record and no edge.
+//
+// A third, smaller ceiling is on the TARGET side: an `@interface` annotation
+// type gets no SCOPE.Component, so an in-file annotation type can never be a
+// target. All three were observed by probe, not inferred.
 
 import (
 	"context"
@@ -570,5 +586,67 @@ func TestJavaFieldTypeRefs_ResolvesToEntityIDs(t *testing.T) {
 		f + "Order.price => " + f + "SCOPE.Component:Money [record]",
 		f + "Invoice.buyer => " + f + "SCOPE.Component:Customer [class]",
 		f + "Invoice.cc => " + f + "SCOPE.Component:Customer [class]",
+	})
+}
+
+// TestJavaFieldTypeRefs_LombokBuilderDuplicateComponentIsOneNode is the
+// PRODUCTION-REACHABLE grader for the count-kinds-not-records rule, and it
+// exists because an earlier revision of this arm described the shape wrongly.
+//
+// synthesizeLombokEntities emits a synthesized SCOPE.Component/class for
+// `@Builder` named `<Class>Builder` (lombok.go:438) — never the annotated
+// class's own name, which is what the earlier description claimed. So the
+// collision is constructible only like this: `@Builder class Order` synthesizes
+// `OrderBuilder` into this file, and the file ALSO declares `class OrderBuilder`
+// by hand. Two SCOPE.Component/class records, one Name, one file — and
+// therefore ONE graph node, since graph.EntityID excludes Subtype and both
+// records carry the same Kind.
+//
+// A field typed `OrderBuilder` must still get its edge. A rule counting RECORDS
+// deletes it, which is #7038's defect reached from java source rather than from
+// a hand-built record set. The fixture asserts the premise (two records, one
+// name) before asserting the edge, so it cannot pass vacuously if Lombok stops
+// synthesizing.
+func TestJavaFieldTypeRefs_LombokBuilderDuplicateComponentIsOneNode(t *testing.T) {
+	const path = "Order.java"
+	recs := extractJavaFT(t, map[string]string{path: `import lombok.Builder;
+
+@Builder
+class Order {
+  String id;
+}
+
+class OrderBuilder {
+  String stage;
+}
+
+class Host {
+  OrderBuilder ob;
+  Order order;
+}
+`})
+	// Premise: TWO SCOPE.Component records named OrderBuilder in this file,
+	// one synthesized and one declared. Without both, the rule this test
+	// grades is not exercised and the assertion below would be vacuous.
+	var synthesized, declared int
+	for i := range recs {
+		if recs[i].Kind != "SCOPE.Component" || recs[i].Name != "OrderBuilder" ||
+			recs[i].SourceFile != path {
+			continue
+		}
+		if recs[i].Properties["synthesized_from"] != "" {
+			synthesized++
+		} else {
+			declared++
+		}
+	}
+	if synthesized != 1 || declared != 1 {
+		t.Fatalf("premise absent: %d synthesized + %d declared OrderBuilder "+
+			"components, want 1 + 1 — the duplicate-record rule is not exercised",
+			synthesized, declared)
+	}
+	javaFTWantEqual(t, javaFTEdges(recs), []string{
+		path + ":Host.ob => OrderBuilder",
+		path + ":Host.order => Order",
 	})
 }

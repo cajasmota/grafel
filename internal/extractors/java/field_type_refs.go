@@ -85,7 +85,7 @@ import (
 // `SCOPE.Schema`/`schema` named `Order` in the SAME FILE as `class Order`, and
 // SCOPE.Schema/`field` records carry `Order.buyer`-shaped names. Neither is a
 // legal target. Graded by TestJavaFieldTypeRefs_NoSqlModelSchemaIsNeverATarget
-// and TestJavaFieldTypeRefs_FieldIsNeverATarget.
+// and TestJavaFieldTypeRefs_Unit_FieldIsNeverATarget.
 //
 // THE AMBIGUITY RULE, AND WHY JAVA'S IS NOT ARM D'S. Arm D counts distinct
 // KINDS across EVERY same-file record and drops any name denoting more than
@@ -117,21 +117,30 @@ import (
 // name only when two DISTINCT family kinds carry it. Within one file two records
 // sharing a Kind are ONE graph node (graph.EntityID hashes (repo, Kind, Name,
 // SourceFile) with Subtype EXCLUDED, mirroring refs.go:1308's `existing != e.ID`
-// test), so `class Order` beside Lombok's synthesized `SCOPE.Component`
-// `Order` — or beside a second `SCOPE.Component`/`record` of the same name — is
-// one node and one ToID, and counting RECORDS instead would delete an edge that
-// binds perfectly well. That is #7038's defect and it is graded in BOTH
-// directions here:
+// test), so two same-file records sharing a Kind are one node and one ToID, and
+// counting RECORDS instead would delete an edge that binds perfectly well. That
+// is #7038's defect.
 //
-//   - TestJavaFieldTypeRefs_SameFileEnumTypeBinds drives the REAL RESOLVER over
-//     an extracted `enum Status` + `Status status;` file and asserts the edge is
-//     rewritten to the Component's ID — a mutant restoring arm D's all-kinds
-//     count fails it. It carries a POSITIVE CONTROL in the same fixture (a
-//     class-typed field in the same file) so it cannot pass by the edge simply
-//     never being emitted.
-//   - TestJavaFieldTypeRefs_DuplicateComponentRecordsAreOneNode gives a name two
-//     admitted records of the same Kind; a mutant counting records drops it.
-//   - TestJavaFieldTypeRefs_TwoDistinctFamilyKindsAreRefused constructs the
+// It is NOT hypothetical, and the production shape is Lombok's: `@Builder class
+// Order` makes synthesizeLombokEntities emit a SCOPE.Component/class named
+// `OrderBuilder` (lombok.go:438 — always `<Class>Builder`, NEVER the annotated
+// class's own name), so a file that ALSO declares `class OrderBuilder` carries
+// TWO SCOPE.Component/class records of that name. One graph node; a field typed
+// `OrderBuilder` binds; a record count deletes the edge. Graded from java SOURCE
+// by TestJavaFieldTypeRefs_LombokBuilderDuplicateComponentIsOneNode, not only
+// from a hand-built record set. Both directions:
+//
+//   - TestJavaFieldTypeRefs_ResolvesToEntityIDs drives the REAL RESOLVER over an
+//     extracted file carrying `enum Status` beside `Status state;` and asserts
+//     the edge is rewritten to the Component's ID — a mutant restoring arm D's
+//     all-kinds count fails it. It carries POSITIVE CONTROLS in the same fixture
+//     (class-, interface- and record-typed fields) so it cannot pass by the edge
+//     simply never being emitted.
+//   - TestJavaFieldTypeRefs_LombokBuilderDuplicateComponentIsOneNode gives a name
+//     two same-Kind records FROM JAVA SOURCE, and
+//     TestJavaFieldTypeRefs_Unit_DuplicateComponentRecordsAreOneNode does the
+//     same at record level; a mutant counting records drops both.
+//   - TestJavaFieldTypeRefs_Unit_TwoDistinctFamilyKindsAreRefused constructs the
 //     SCOPE.Component + SCOPE.Model collision the rule exists for.
 //   - TestJavaFieldTypeRefs_Unit_AnotherFilesCollisionDoesNotShadowThisFile
 //     grades the pass-1 SCOPE of the count, which fails in the same direction:
@@ -290,24 +299,40 @@ type javaFieldTypeTarget struct {
 	name string
 }
 
-// javaComponentAddressFamily is the set of entity Kinds that
-// internal/resolve's lookupLocationKind weighs when resolving a
-// `scope:component:…` structural ref — componentKindFamily at
-// internal/resolve/refs.go:2341, both the bare and SCOPE.-prefixed spellings,
-// since BuildIndex writes each entity under its raw Kind AND its SCOPE-trimmed
-// alias (refs.go:1289-1296).
+// javaComponentAddressFamily is the set of entity Kinds that can make a
+// `scope:component:…` structural ref ambiguous — i.e. every Kind that
+// internal/resolve's lookupLocationKind weighs when resolving one.
+//
+// It is NOT a copy of componentKindFamily (internal/resolve/refs.go:2341,
+// {Component, Class, View, Model, SCOPE.Component, SCOPE.View, SCOPE.Model}).
+// It is that slice CLOSED UNDER THE INDEX'S TRIM ALIAS, and the distinction is
+// load-bearing rather than pedantic. BuildIndex writes each entity under its raw
+// Kind AND its SCOPE-trimmed alias (refs.go:1208-1211), so an entity whose Kind
+// is `SCOPE.Class` is keyed under BOTH "SCOPE.Class" and "Class" — and "Class"
+// IS in the family, even though "SCOPE.Class" itself is not. Such an entity
+// therefore participates in uniqueMatchInFamily, blanks the match against a
+// same-(file, name) Component, and drops the ref through to ambigLocation, where
+// it dangles.
+//
+// So the membership test is `K ∈ family || strings.TrimPrefix(K, "SCOPE.") ∈
+// family`, and the eight entries below are exactly that set. An earlier revision
+// omitted "SCOPE.Class" while its own comment claimed to carry "both spellings":
+// a real mirror hole, found by a reviewer's mutant, unreachable from java source
+// today (no java producer emits a bare- or SCOPE.Class-kinded entity) but wrong
+// in the direction that emits a stub the resolver refuses. Graded by
+// TestJavaFieldTypeRefs_Unit_ScopeClassParticipatesViaTheTrimAlias.
 //
 // It is duplicated here rather than exported from internal/resolve because the
 // dependency must not run extractor → resolver, and because arm D established
 // that an independently-written literal is a stronger grader than a shared
-// constant. The invariant this pass depends on is narrow and stated so the next
-// edit can check it: a Kind ABSENT from this set cannot make a component-space
-// ref ambiguous, so admitting one here can only cost edges, and adding a Kind to
-// componentKindFamily upstream without adding it here would let this pass emit
-// a stub that dangles.
+// constant. The invariant to preserve: a Kind ABSENT from this set cannot make a
+// component-space ref ambiguous, so adding a Kind to componentKindFamily
+// upstream — or adding a Kind whose trimmed alias lands in it — without adding
+// it here would let this pass emit a stub that dangles.
 var javaComponentAddressFamily = map[string]bool{
 	"Component": true, "Class": true, "View": true, "Model": true,
-	"SCOPE.Component": true, "SCOPE.View": true, "SCOPE.Model": true,
+	"SCOPE.Component": true, "SCOPE.Class": true,
+	"SCOPE.View": true, "SCOPE.Model": true,
 }
 
 // javaInFileTypeTargets indexes every TYPE DECLARED in this file that a

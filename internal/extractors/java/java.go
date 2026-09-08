@@ -249,15 +249,31 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// builders and the nosql `schema` model node all reach `entities` from
 	// inside it, and the allow-list and the ambiguity rule have to weigh all
 	// of them. The position is LATER than that but the extra distance is NOT
-	// load-bearing today, and saying so is more useful than implying it is:
-	// of the passes between walk and here, synthesizePanacheDSLEntities is
-	// the only one that appends entities at all and it stamps a SYNTHETIC
-	// source path, while emitReferences / emitConfigConsumerEdges /
-	// emitExceptionFlowEdges / emitTemplateRenderEdges attach relationships
-	// only. Moving this call up to walk's return changes no output, and a
-	// mutant that does so is alive under the suite for exactly that reason.
-	// It sits here so a future pass that DOES append a same-file entity is
-	// seen by default rather than by luck.
+	// load-bearing today, and saying so is more useful than implying it is.
+	//
+	// An equivalence argument is only as good as its enumeration, so here is
+	// the complete list of the SEVEN passes between walk's return and this
+	// call, and what each does to `entities`:
+	//
+	//	stampClassLevelTransactional  takes &entities, but only mutates
+	//	                              op.Properties via findJavaOp
+	//	attachImportRelationships     handed &entities[0]; cannot append
+	//	synthesizePanacheDSLEntities  the ONLY appender — and it stamps
+	//	                              panacheDSLSyntheticSourceFile, so its
+	//	                              records never share this file's path
+	//	emitReferences                relationships only
+	//	emitConfigConsumerEdges       relationships only
+	//	emitExceptionFlowEdges        relationships only
+	//	emitTemplateRenderEdges       relationships only
+	//
+	// The first two were missing from an earlier revision of this comment,
+	// and stampClassLevelTransactional is the only other pass that takes the
+	// slice BY POINTER — exactly the one an incomplete enumeration should not
+	// have dropped. So no record for this file exists here that did not exist
+	// at walk's return: moving this call up changes no output, a mutant that
+	// does so is alive under the suite AND produces a byte-identical 147/147
+	// corpus result, and it sits here only so a future pass that DOES append a
+	// same-file entity is seen by default rather than by luck.
 	attachJavaFieldTypeRefs(entities, file.Path)
 
 	// Track B (analog of #642/#650 for Java) — IMPORTS ToID rewrite.
