@@ -41,6 +41,7 @@ package extractors_test
 // distinct failure.
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/printer"
@@ -98,6 +99,38 @@ func TestRunCustomExtractorsCallSitesCarryBothGuards6997(t *testing.T) {
 		// pass this test exists to make impossible.
 		t.Fatalf("scan found no %s call sites at all; the scanner is broken, "+
 			"not the repo (root %s)", dispatcherName, dispatchScanRoot)
+	}
+
+	// COVERAGE CHECK — the scanner must not be able to MISS a dispatch.
+	//
+	// scanDispatchSites6997 descends into func declarations and matches a
+	// direct callee, so on review two fourth sites slipped past it with the
+	// whole suite green: one written as a package-level `var x = func(...)`,
+	// and one called through a function VALUE (`d := RunCustomExtractors;
+	// d(ctx, f)`). The second shape is not hypothetical here — `extract.Run`
+	// itself reaches production only as a function value (`Hooks{RunExtract:
+	// …}`), so the net was blind to the calling convention the surrounding
+	// code already uses.
+	//
+	// Every mention of the dispatcher in the scanned files is therefore
+	// counted by an INDEPENDENT traversal (its own walk, its own parse, its
+	// own visitor) and required to be accounted for by a collected site. A
+	// count derived from the collection it grades could not detect an omission
+	// in that collection — which is the shape of failure this whole test
+	// exists to prevent, one level down.
+	idents, filesScanned := scanDispatcherMentions6997(t)
+	if filesScanned == 0 || len(idents) == 0 {
+		t.Fatalf("the independent mention scan saw %d file(s) and %d mention(s) of %s; "+
+			"either would make the coverage check below pass trivially",
+			filesScanned, len(idents), dispatcherName)
+	}
+	if len(idents) != len(sites) {
+		t.Errorf("the scanner did not attribute every %s mention to a dispatch site: "+
+			"%d mention(s) across %d file(s), %d site(s) collected.\n  mentions:\n    %s\n"+
+			"A mention the site walk cannot see is a dispatch this test cannot grade — "+
+			"a package-level `var x = func(...)`, or a call through a function value. "+
+			"Teach scanDispatchSites6997 that shape rather than relaxing this count.",
+			dispatcherName, len(idents), filesScanned, len(sites), strings.Join(idents, "\n    "))
 	}
 
 	var found []string
@@ -344,4 +377,71 @@ func exprText6997(fset *token.FileSet, e ast.Expr) string {
 		return ""
 	}
 	return sb.String()
+}
+
+// scanDispatcherMentions6997 counts every mention of the dispatcher across the
+// same non-test file set, and returns one "<path>:<line>:<col>" per mention
+// plus the number of files it looked at.
+//
+// DELIBERATELY INDEPENDENT of scanDispatchSites6997: its own walk, its own
+// parse, and a flat ast.Inspect over identifiers rather than a statement walk
+// that has to understand guards, function literals or callee shapes. Sharing
+// either the walk or the visitor would make it agree with the site scan by
+// construction and detect nothing.
+//
+// The declaration's own name is not a mention: `func RunCustomExtractors(...)`
+// in custom_dispatch.go is the thing being called, not a call of it.
+func scanDispatcherMentions6997(t *testing.T) (mentions []string, files int) {
+	t.Helper()
+	root, err := filepath.Abs(dispatchScanRoot)
+	if err != nil {
+		t.Fatalf("abs(%s): %v", dispatchScanRoot, err)
+	}
+	fset := token.NewFileSet()
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, werr error) error {
+		if werr != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] || (p != root && strings.HasPrefix(d.Name(), ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		src, rerr := os.ReadFile(p)
+		if rerr != nil || !strings.Contains(string(src), dispatcherName) {
+			return nil
+		}
+		f, perr := parser.ParseFile(fset, p, src, 0)
+		if perr != nil {
+			t.Fatalf("parse %s: %v", p, perr)
+		}
+		files++
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
+		declNames := map[*ast.Ident]bool{}
+		for _, decl := range f.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok {
+				declNames[fn.Name] = true
+			}
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok || id.Name != dispatcherName || declNames[id] {
+				return true
+			}
+			pos := fset.Position(id.Pos())
+			mentions = append(mentions, fmt.Sprintf("%s:%d:%d", rel, pos.Line, pos.Column))
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+	sort.Strings(mentions)
+	return mentions, files
 }
