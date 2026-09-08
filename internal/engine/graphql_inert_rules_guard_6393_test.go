@@ -197,8 +197,10 @@ func TestInertRuleFiles_RealRuleIsNotFlagged(t *testing.T) {
 		"detection markers only": "frameworks:\n  name: Yoga\n  detection:\n    import_markers:\n    - \"graphql-yoga\"\n",
 		"file conventions only":  "file_conventions:\n- glob: \"**/*.graphql\"\n  entity_type: Model\n",
 		"source patterns only":   "source_patterns:\n- pattern: \"type (\\\\w+)\"\n  entity_type: Model\n",
+		// `relationship`, not `relationship_type`: the latter is not a modelled
+		// key and, since #7014, does not load at all.
 		"relationship rules only": "relationship_rules:\n- pattern: \"implements (\\\\w+)\"\n  " +
-			"relationship_type: IMPLEMENTS\n",
+			"relationship: IMPLEMENTS\n",
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
