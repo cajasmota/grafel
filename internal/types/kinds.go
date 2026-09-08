@@ -760,6 +760,24 @@ const (
 	//
 	// Spelling unchanged — nothing is renamed or retired — so
 	// KindVocabularyVersion does not move.
+	//
+	// #6911 — DO NOT FOLD THIS INTO SCOPE.Endpoint. THE MISSING PREFIX IS NOT
+	// AN ACCIDENT HERE. Twelve kinds in AllEntityKinds() have a `SCOPE.`-less
+	// twin; eleven of them (Component, Model, Schema, View, Config, Operation,
+	// Route, Service, Constraint, Plugin, Template — the `*Bare` constants
+	// above) really are one concept written two ways, which is why the #6776
+	// B-series and internal/entkinds' sweep guard call the prefix an accident.
+	// THIS PAIR IS THE ONE EXCEPTION: `Endpoint` is an Electron IPC channel,
+	// `SCOPE.Endpoint` is an HTTP entrypoint, and the prefix is the only thing
+	// telling them apart. Renaming the bare kind to something like `IPCChannel`
+	// so they differed by more than a prefix was PRICED AND DECLINED BY THE
+	// OWNER IN #6820 (a rename plus a stored-graph migration); that ruling
+	// stands, so the confusable spelling is deliberate and is carried here
+	// instead. Deleting this constant, or pointing it at "SCOPE.Endpoint",
+	// silently re-labels every Electron IPC channel as an HTTP endpoint.
+	// internal/types/prefix_only_pairs_6911_test.go fails if either happens,
+	// and pins the twelve-pair population so a thirteenth pair cannot be added
+	// without someone saying which of the two readings it is.
 	EntityKindEndpointBare EntityKind = "Endpoint"
 )
 

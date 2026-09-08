@@ -65,6 +65,18 @@ package entkinds_test
 // is why `Module` validates by coincidence rather than by design. Nothing
 // documents an un-prefixed namespace, and nothing implements one.
 //
+// ONE EXCEPTION, ADDED BY #6911. The verdict above is true of every rule-YAML
+// kind except one: bare `Endpoint` (electron.yaml:41,46,52) is an Electron IPC
+// channel, while SCOPE.Endpoint is the HTTP entrypoint. #6776 arm B9 therefore
+// admitted it as a DISTINCT member rather than folding it, and #6820 priced and
+// DECLINED the rename that would have made the two names differ by more than a
+// prefix. For that one pair the `SCOPE.` prefix is load-bearing. Read the
+// paragraphs above as "an accident everywhere it has not been examined and
+// found otherwise", not as a licence to merge a prefixed and un-prefixed kind
+// on sight. See internal/types/kinds.go at EntityKindEndpointBare, and
+// internal/types/prefix_only_pairs_6911_test.go, which fails if the pair is
+// folded.
+//
 // This verdict stands and is now the repository's only one. The competing note
 // in internal/types/producer_kinds_test.go, which called the un-prefixed names
 // "intentionally outside the validator set", was retracted by #6776 arm B3; the
