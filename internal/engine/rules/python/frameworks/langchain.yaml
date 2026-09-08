@@ -39,11 +39,24 @@ source_patterns:
     entity_type: Operation
     name_group: 1
     scope: file
-  # @tool decorator
-  - pattern: "@tool\\b"
-    entity_type: Operation
-    name_group: 0
-    scope: function
+  # #6916 Tier C (10th and last site): the `@tool` decorator used to mint an
+  # Operation entity literally NAMED "@tool" via `name_group: 0` — the decorator
+  # text itself, identical for every decorated function in the repo, so a whole
+  # file's tools collapsed to ONE per-file boolean marker with no referent for
+  # any edge to point at (`relationship_rules: []` here, so it never had one).
+  #
+  # Unlike the three JS langchain markers deleted alongside it, this one really
+  # was already dead weight: dropStatementNoiseOperations
+  # (internal/engine/precision_dedup.go) drops an Operation whose Name is "@" +
+  # a bare identifier, and "@tool" is exactly that — case (1), the shape the
+  # pass's own doc comment was written for. `@tool("named")` matches only
+  # "@tool" too (the pattern ends at `\b`), so the Name was ALWAYS "@tool" and
+  # ALWAYS dropped. Measured through the real detector, not read off the
+  # comment: the entity reached the rule layer and never reached the graph.
+  #
+  # So this deletion is a zero-recall-change cleanup, and the ONLY input that
+  # distinguishes it is a detector run with PrecisionDedupEnabled=false — see
+  # TestIssue6916_TierCPythonToolMarkerIsNoLongerMintedAtTheRuleLayer.
   # Agent factory
   - pattern: "create_\\w+_agent\\s*\\("
     entity_type: Service
