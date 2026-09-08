@@ -33,8 +33,9 @@ import (
 // rather than derived from the production value so that a change to the
 // production value is what the test reports.
 var wantDormantAliasOrder7030 = []dormantBucketAlias{
-	{bucket: "ansible", targets: []string{"yaml"}},
+	// cicd is deliberately out of lexical position — see the declaration.
 	{bucket: "cicd", targets: []string{"yaml"}},
+	{bucket: "ansible", targets: []string{"yaml"}},
 	{bucket: "docker", targets: []string{"dockerfile", "yaml"}},
 	{bucket: "kubernetes", targets: []string{"yaml"}},
 }
@@ -138,30 +139,103 @@ func TestDormantAliasAppendsEveryBucket_7030(t *testing.T) {
 	}
 }
 
+// dormantPairCase7030 is one pair of buckets that (a) alias onto the same
+// concrete language and (b) carry a pattern that matches the same text, so the
+// consultation order alone decides which bucket's name is stamped as
+// `framework` on the resulting entity.
+type dormantPairCase7030 struct {
+	name    string
+	pair    [2]string // the two competing buckets, in no particular order
+	path    string
+	content string
+	kind    string
+	entity  string
+}
+
+// dormantPairCases7030 covers BOTH shared-target pairs in the alias list.
+// Covering only one leaves the other pinned by declaration and ungraded: a
+// call site that swapped just that pair's two entries would change ~999
+// entities' framework label and pass the whole package.
+var dormantPairCases7030 = []dormantPairCase7030{
+	{
+		// docker/frameworks/docker_compose.yaml#1 and
+		// kubernetes/frameworks/kubernetes_manifests.yaml#12 carry the
+		// byte-identical pattern `image:\s+(\S+)` for entity_type Dependency.
+		name: "docker_vs_kubernetes_image",
+		pair: [2]string{"docker", "kubernetes"},
+		path: "deploy/stack.yaml",
+		content: `services:
+  web:
+    image: nginx:1.25
+`,
+		kind:   "Dependency",
+		entity: "nginx:1.25",
+	},
+	{
+		// ansible/frameworks/ansible_core.yaml#0 and
+		// cicd/frameworks/github_actions.yaml#3 both type a `- name:` list item
+		// as a Task; they differ only by an anchor. This fixture is a PURE
+		// GitHub Actions workflow with no Ansible content whatsoever, which is
+		// what the measured corpus population looks like (90 workflow files,
+		// zero playbooks), so `cicd` is the correct label here and the order
+		// must keep producing it.
+		name: "cicd_vs_ansible_named_step",
+		pair: [2]string{"cicd", "ansible"},
+		path: ".github/workflows/ci.yml",
+		content: `name: ci
+on:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install deps
+        run: go mod download
+      - name: Run unit tests
+        run: go test ./...
+`,
+		kind:   "Task",
+		entity: "Install deps",
+	},
+}
+
+// firstDeclared7030 returns whichever of a and b appears first in
+// dormantBucketAliases, i.e. the bucket the declared order elects to win any
+// pattern the two share. Derived rather than hard-coded so that this test
+// grades the CONSEQUENCE of the declared order while
+// TestDormantAliasOrderIsExactAndStable_7030 grades the order itself.
+func firstDeclared7030(t *testing.T, a, b string) string {
+	t.Helper()
+	for _, al := range dormantBucketAliases {
+		if al.bucket == a || al.bucket == b {
+			return al.bucket
+		}
+	}
+	t.Fatalf("neither %q nor %q is aliased; this case grades nothing", a, b)
+	return ""
+}
+
 // TestDormantAliasConsultationOrderIsDeterministic_7030 is the behavioural
 // grade, and the one that fails on main.
 //
-// docker/frameworks/docker_compose.yaml#1 and
-// kubernetes/frameworks/kubernetes_manifests.yaml#12 carry the byte-identical
-// pattern `image:\s+(\S+)` for entity_type Dependency. On a yaml file matched by
-// both, whichever bucket is consulted first claims the entity and stamps its own
-// bucket name as `framework`.
+// On a yaml file matched by two aliased buckets, whichever is consulted first
+// claims the entity and stamps its own bucket name as `framework`.
 //
 // A single Detect proves NOTHING here: it would report one winner under the bug
 // too. `-count=N` is no defence either — it reruns in the same process, and the
 // same *Detector compiles once via sync.Once. What breaks the bug is building
 // MANY Detectors: Go re-randomises the start offset on every `range` over a map,
 // so each fresh compile() drew an independent order. This test therefore
-// compiles the real rules independently many times and requires that all runs
-// agree AND that the agreed winner is the declared-first bucket.
+// compiles the real rules independently many times per case and requires that
+// all runs agree AND that the agreed winner is the declared-first bucket.
 //
-// Verified: on main this fails (observed both `docker` and `kubernetes` across
-// the iterations); on this branch every iteration yields `docker`.
+// Verified on main (1b115b73b), by running each case there rather than
+// asserting it: docker/kubernetes came out `map[docker:23 kubernetes:177]` over
+// 200 compiles, and the pure GitHub Actions workflow `map[ansible:48 cicd:352]`
+// over 400. Both cases therefore FAIL on main. On this branch every iteration of
+// every case yields a single value.
 func TestDormantAliasConsultationOrderIsDeterministic_7030(t *testing.T) {
-	const composeYAML = `services:
-  web:
-    image: nginx:1.25
-`
 	const iterations = 200
 
 	rules, err := LoadAllRules()
@@ -169,48 +243,43 @@ func TestDormantAliasConsultationOrderIsDeterministic_7030(t *testing.T) {
 		t.Fatalf("LoadAllRules failed: %v", err)
 	}
 
-	// Which aliased bucket SHOULD win is read off the declared order rather than
-	// hard-coded, so this test states the consequence of the order and the order
-	// test states the order. Both `docker` and `kubernetes` alias onto `yaml` and
-	// both carry the shared `image:` pattern.
-	winner := ""
-	for _, a := range dormantBucketAliases {
-		if a.bucket == "docker" || a.bucket == "kubernetes" {
-			winner = a.bucket
-			break
-		}
-	}
-	if winner == "" {
-		t.Fatal("neither docker nor kubernetes is aliased; this test grades nothing")
-	}
+	for _, tc := range dormantPairCases7030 {
+		t.Run(tc.name, func(t *testing.T) {
+			winner := firstDeclared7030(t, tc.pair[0], tc.pair[1])
 
-	observed := map[string]int{}
-	for i := 0; i < iterations; i++ {
-		det := New(rules)
-		res, err := det.Detect(context.Background(), extractor.FileInput{
-			Path:     "deploy/stack.yaml",
-			Language: "yaml",
-			Content:  []byte(composeYAML),
+			observed := map[string]int{}
+			for i := 0; i < iterations; i++ {
+				det := New(rules)
+				res, err := det.Detect(context.Background(), extractor.FileInput{
+					Path:     tc.path,
+					Language: "yaml",
+					Content:  []byte(tc.content),
+				})
+				if err != nil {
+					t.Fatalf("Detect failed on iteration %d: %v", i, err)
+				}
+				e := findEntity(res.Entities, tc.kind, tc.entity)
+				if e == nil {
+					t.Fatalf("iteration %d: no %s entity %q — the shared pattern no longer "+
+						"fires, so this case grades nothing", i, tc.kind, tc.entity)
+				}
+				observed[e.Properties["framework"]]++
+			}
+
+			// Both competing buckets must actually be capable of producing this
+			// entity, or "one winner" is trivially true and grades nothing. Assert
+			// it by construction: the loser is the other member of the pair, and
+			// #7028 measured both producers on this pattern.
+			if len(observed) != 1 {
+				t.Fatalf("the `framework` property on an identical input took %d distinct "+
+					"values across %d independent compiles (%v) — bucket consultation "+
+					"order is not deterministic", len(observed), iterations, observed)
+			}
+			if observed[winner] != iterations {
+				t.Fatalf("framework property = %v across %d compiles, want %q every time "+
+					"(the first of %q/%q in the declared alias order)",
+					observed, iterations, winner, tc.pair[0], tc.pair[1])
+			}
 		})
-		if err != nil {
-			t.Fatalf("Detect failed on iteration %d: %v", i, err)
-		}
-		e := findEntity(res.Entities, "Dependency", "nginx:1.25")
-		if e == nil {
-			t.Fatalf("iteration %d: no Dependency entity %q — the shared `image:` pattern "+
-				"no longer fires, so this test grades nothing", i, "nginx:1.25")
-		}
-		observed[e.Properties["framework"]]++
-	}
-
-	if len(observed) != 1 {
-		t.Fatalf("the `framework` property on an identical input took %d distinct values "+
-			"across %d independent compiles (%v) — bucket consultation order is not "+
-			"deterministic", len(observed), iterations, observed)
-	}
-	if observed[winner] != iterations {
-		t.Fatalf("framework property = %v across %d compiles, want %q every time "+
-			"(the first of docker/kubernetes in the declared alias order)",
-			observed, iterations, winner)
 	}
 }

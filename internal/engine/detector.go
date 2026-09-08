@@ -136,22 +136,47 @@ func (c compiledRuleSet) frameworkPresent(content string) bool {
 // `framework=kubernetes` depending on the map seed: two indexes of an unchanged
 // tree could disagree.
 //
-// The order below is LEXICAL BY BUCKET NAME. That is a deliberate non-choice:
-// it is the same rule the loader already uses to order rule FILES
-// (fs.WalkDir, loader.go), it is mechanically re-derivable by anyone reading
-// this list, and it does not smuggle in a claim that `docker` deserves to beat
-// `kubernetes` on the shared `image:` pattern. It only guarantees that the pair
-// HAS a stable winner, which is the precondition for choosing one on the
-// merits (#7028 owns that choice, and wants a file_conventions-scoped gate
-// rather than a reordering).
+// The order below is LEXICAL BY BUCKET NAME, WITH ONE DOCUMENTED EXCEPTION.
+// Two pairs of buckets share the `yaml` target and share a pattern, so the
+// order decides a label for each; they are argued separately on purpose,
+// because one global order has to serve both and no single rule earns both.
+//
+//   - docker vs kubernetes — LEXICAL, and genuinely a non-choice. `image:` in
+//     a compose file is docker and in a manifest is kubernetes, so EITHER fixed
+//     winner is wrong for roughly half the 142 entities. There is no status quo
+//     worth preserving (the winner was random) and no evidence favouring
+//     either, so lexical picks one without smuggling in a claim. All it buys is
+//     that the pair HAS a stable winner, which is the precondition for choosing
+//     one on the merits. #7028 owns that choice and wants a
+//     file_conventions-scoped gate (`docker-compose.yml` vs `k8s/*.yaml`),
+//     NOT a reordering here.
+//
+//   - cicd vs ansible — `cicd` IS OUT OF LEXICAL POSITION, DELIBERATELY.
+//     `ansible/…/ansible_core.yaml`#0 and `cicd/…/github_actions.yaml`#3 differ
+//     only by an anchor (`(?m)^\s+` vs `\s+`) and shadow each other on ~999
+//     entities — 7x the docker/kubernetes pair, and #7028's largest row. Unlike
+//     that pair, ONE label here is simply correct: the measured population is
+//     90 `.github/workflows/*.y*ml` files and ZERO Ansible playbooks, so every
+//     one of those entities is CI, not Ansible. Lexical would pin `ansible` on
+//     all of them, every run — trading a coin-flip mislabel for a permanent
+//     one. Putting `cicd` first is NOT a status-quo reflex (it happened to win
+//     ~86% of the time under the map, and that frequency is noise, not a
+//     property); it is the only label anyone has evidence for.
+//
+//     The correct long-term fix is to disambiguate the two patterns or gate
+//     them on file_conventions, exactly as for docker/kubernetes. Until then a
+//     determinism fix must not ship a new mislabel class as a side effect.
 //
 // So: reordering these entries CHANGES EXTRACTION OUTPUT for any two buckets
 // sharing a target language. Do it deliberately, with a recall measurement, and
-// update TestDormantAliasOrderIsExactAndStable_7030 — which pins this exact
-// sequence — in the same change.
+// update TestDormantAliasOrderIsExactAndStable_7030 (which pins this exact
+// sequence) and TestDormantAliasConsultationOrderIsDeterministic_7030 (which
+// pins the observable consequence for BOTH pairs) in the same change.
 var dormantBucketAliases = []dormantBucketAlias{
-	{bucket: "ansible", targets: []string{"yaml"}},
+	// cicd before ansible: out of lexical order on purpose — see above.
 	{bucket: "cicd", targets: []string{"yaml"}},
+	{bucket: "ansible", targets: []string{"yaml"}},
+	// lexical from here.
 	{bucket: "docker", targets: []string{"dockerfile", "yaml"}},
 	{bucket: "kubernetes", targets: []string{"yaml"}},
 }
