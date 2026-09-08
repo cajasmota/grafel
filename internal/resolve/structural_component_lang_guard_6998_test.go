@@ -34,6 +34,22 @@ import (
 // PATHS constant too, so the only thing separating it from the binding case
 // is the language segment itself — the guard cannot be mistaken for a
 // path- or extension-keyed effect.
+//
+// The ADDRESS's language segment is the load-bearing half of that joint
+// variation; the entity's `Language` field is not read by this tier at all.
+// Probed directly during review: entity Language=ruby with a python address
+// BINDS, entity Language=python with a ruby address does NOT. The fixture
+// varies both only because that is what a realistic record looks like.
+//
+// Two facts recorded here so the next reader does not re-derive them:
+//   - Mixed-case `Python` BINDS, because the guard reads
+//     `strings.ToLower(parts[stubScopeLangIndex])` on the line above. The
+//     invariant is case-insensitive python-only, and the `Python-mixed-case`
+//     row below is what grades it.
+//   - An EMPTY language segment dangles honestly (statusUnmatched). It takes
+//     no third path: the `(lang == "" || lang == "python")` conditions near
+//     refs.go:4574 are disposition routing in a different function, not a
+//     binding tier. Enumerated and confirmed, not assumed.
 
 // langGuardFixture6998 builds the one shape both halves of the pair share:
 // a class `SharedBase` declared in `app/base<ext>`, globally unique, and a
@@ -70,10 +86,31 @@ func TestStructuralComponentCrossFileTier_IsPythonOnly6998(t *testing.T) {
 		ext      string
 		wantBind bool
 	}{
-		// The positive control. Without it the three negatives below could
-		// all pass by the tier never firing at all, which is the commonest
-		// way an absence assertion here turns out to be decoration.
+		// The positive control. Without it every negative below could pass
+		// by the tier never firing at all, which is the commonest way an
+		// absence assertion here turns out to be decoration.
 		{name: "python", lang: "python", ext: ".py", wantBind: true},
+		// Second positive control: the guard reads `strings.ToLower(...)`,
+		// so the invariant is case-INSENSITIVE python-only. A reader would
+		// otherwise reasonably assume an exact byte match, and a future
+		// edit that dropped the ToLower would be a silent narrowing that
+		// no other row here can see.
+		{name: "Python-mixed-case", lang: "Python", ext: ".py", wantBind: true},
+		// The negatives are an ENUMERATION of the guard's neighbours, not a
+		// sample. Two sampled members cannot detect a predicate that got
+		// BROADER (#6998's own shape), and each of the following was scored
+		// as an individually ALIVE widening before these rows existed:
+		//   `HasPrefix(lang, "py")`  admits python3
+		//   `HasPrefix(lang, "p")`   admits php, protobuf, proto
+		//   `lang == "python" || lang == "csharp" || ...`
+		// csharp and protobuf are the two ports (#6984, #6991) that are
+		// deliberately same-file precisely because a cross-file guess is
+		// #6369's wrong-node hazard, so those two rows pin the actual
+		// decision rather than a general principle.
+		{name: "csharp", lang: "csharp", ext: ".cs", wantBind: false},
+		{name: "protobuf", lang: "protobuf", ext: ".proto", wantBind: false},
+		{name: "php", lang: "php", ext: ".php", wantBind: false},
+		{name: "python3", lang: "python3", ext: ".py", wantBind: false},
 		{name: "ruby", lang: "ruby", ext: ".rb", wantBind: false},
 		{name: "java", lang: "java", ext: ".java", wantBind: false},
 		// Language varied, file paths held identical to the python case.
