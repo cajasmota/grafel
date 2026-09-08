@@ -1,10 +1,14 @@
 package engine
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -116,13 +120,15 @@ type hiddenMarkerInventoryEntry struct {
 // sibling look covered; this function exists to look at the sibling.
 //
 // examined counts files parsed, so "nothing hidden" is distinguishable from
-// "nothing scanned".
-func hiddenImportMarkerInventory(fsys fs.FS, rootDir string) (entries []hiddenMarkerInventoryEntry, examined int, err error) {
+// "nothing scanned". skipped lists every file the walk reached but could not
+// read as a mapping, so "nothing hidden" is also distinguishable from "the
+// file was never decoded" — see the block comment at the skip sites.
+func hiddenImportMarkerInventory(fsys fs.FS, rootDir string) (entries []hiddenMarkerInventoryEntry, examined int, skipped []string, err error) {
 	// Ask the loader which files it opens, rather than re-deriving its path
 	// rule. See hiddenMarkerInventoryEntry.LoaderScoped.
 	_, report, loadErr := LoadAllRulesFromFSReport(fsys, rootDir)
 	if loadErr != nil {
-		return nil, 0, loadErr
+		return nil, 0, nil, loadErr
 	}
 	candidates := make(map[string]bool, len(report.Candidates))
 	for _, c := range report.Candidates {
@@ -139,17 +145,41 @@ func hiddenImportMarkerInventory(fsys fs.FS, rootDir string) (entries []hiddenMa
 		if ext := filepath.Ext(path); ext != ".yaml" && ext != ".yml" {
 			return nil
 		}
+		// Every early return from here on is recorded. A scan-and-assert-absence
+		// guard has more ways to be a no-op than to work, and "the decoder could
+		// not read this file" is the one that looks healthiest: examined stays
+		// plausible, the entry set stays exactly right, and a file carrying
+		// hidden markers is simply never looked at. Two real shapes do it — a
+		// top-level SEQUENCE and a MULTI-DOCUMENT file — and neither is
+		// hypothetical: the loader and internal/entkinds have the same
+		// first-document-only limit. So a skip must be loud, not impossible.
 		data, readErr := fs.ReadFile(fsys, path)
 		if readErr != nil {
+			skipped = append(skipped, filepath.ToSlash(path)+": read: "+readErr.Error())
 			return nil
 		}
+		//
+		// The two shapes fail differently and both have to be caught. A
+		// top-level sequence fails the decode outright. A multi-document file
+		// does NOT: yaml.Unmarshal reads document 1 and returns nil, so a second
+		// document carrying markers is dropped with no error at all — the
+		// quieter of the two. A decoder loop is what tells them apart.
+		dec := yaml.NewDecoder(bytes.NewReader(data))
 		var raw map[string]any
-		if yaml.Unmarshal(data, &raw) != nil {
+		if uerr := dec.Decode(&raw); uerr != nil && !errors.Is(uerr, io.EOF) {
+			skipped = append(skipped, filepath.ToSlash(path)+": decode into map[string]any: "+uerr.Error())
+			return nil
+		}
+		var extra any
+		if derr := dec.Decode(&extra); derr == nil {
+			skipped = append(skipped, filepath.ToSlash(path)+
+				": multi-document: only document 1 is decoded, later documents are not scanned")
 			return nil
 		}
 		examined++
 		rel, relErr := filepath.Rel(rootDir, path)
 		if relErr != nil {
+			skipped = append(skipped, filepath.ToSlash(path)+": relative path: "+relErr.Error())
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
@@ -180,7 +210,8 @@ func hiddenImportMarkerInventory(fsys fs.FS, rootDir string) (entries []hiddenMa
 		}
 		return entries[i].Key < entries[j].Key
 	})
-	return entries, examined, walkErr
+	sort.Strings(skipped)
+	return entries, examined, skipped, walkErr
 }
 
 // countImportMarkerBlocks counts non-empty `import_markers:` lists anywhere
@@ -243,9 +274,18 @@ var knownHiddenMarkerInventory = []hiddenMarkerInventoryEntry{
 // assertion #7024's guard cannot make, because its walk is loader-scoped and
 // these ten files are not.
 func TestRuleTree_HiddenImportMarkersAreOutsideLoaderScope(t *testing.T) {
-	got, examined, err := hiddenImportMarkerInventory(rulesFS, "rules")
+	got, examined, skipped, err := hiddenImportMarkerInventory(rulesFS, "rules")
 	if err != nil {
 		t.Fatalf("walking the embedded rules tree: %v", err)
+	}
+	// A file the walk could not decode is a file this guard did not judge. All
+	// 714 rule files parse as mappings today, so this costs nothing and closes
+	// the hole permanently: a rule file added as a top-level sequence, or as a
+	// multi-document file, must fail here rather than pass silently.
+	for _, sk := range skipped {
+		t.Errorf("the hidden-marker walk skipped %s. This guard asserts an ABSENCE, so a "+
+			"file it cannot decode is a file it did not check — markers hidden there would "+
+			"read as a clean tree (#7025). Fix the file, or teach the walk its shape.", sk)
 	}
 	// Non-vacuity: the whole tree, not the loader-scoped fifth of it.
 	if examined < 700 {
@@ -421,9 +461,12 @@ func TestHiddenImportMarkerInventory_Controls(t *testing.T) {
 			"toolchains:\n- name: cargo\n  detection:\n    files:\n    - Cargo.toml\n")},
 	}
 
-	got, examined, err := hiddenImportMarkerInventory(fsys, "rules")
+	got, examined, skipped, err := hiddenImportMarkerInventory(fsys, "rules")
 	if err != nil {
 		t.Fatalf("hiddenImportMarkerInventory: %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Errorf("skipped = %v, want none: every fixture here is a mapping", skipped)
 	}
 	if examined != 5 {
 		t.Errorf("examined = %d, want 5 (every yaml file, not only loader-scoped ones)", examined)
@@ -440,6 +483,66 @@ func TestHiddenImportMarkerInventory_Controls(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("inventory[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// TestHiddenImportMarkerInventory_UndecodableFilesAreReported is the positive
+// control on the skip counter. Without it, `skipped == 0` on the real tree is
+// satisfied just as well by a walk that never appends to skipped at all — the
+// same vacuity the counter exists to remove, moved one level up.
+//
+// Both fixtures are real shapes, not invented ones, and both carry hidden
+// markers so that a silent skip would be a MISSED FINDING rather than a
+// harmless omission:
+//
+//   - a top-level SEQUENCE, which does not decode into map[string]any; and
+//   - a MULTI-DOCUMENT file, whose second document is where the markers are.
+//
+// The third fixture is an ordinary mapping, so "everything was skipped" cannot
+// pass either.
+func TestHiddenImportMarkerInventory_UndecodableFilesAreReported(t *testing.T) {
+	fsys := fstest.MapFS{
+		// Top-level sequence: yaml.Unmarshal cannot fit it into a map.
+		"rules/go/seq_patterns.yaml": {Data: []byte(
+			"- name: testing\n  detection:\n    import_markers:\n    - '\"testing\"'\n")},
+		// Multi-document: the markers live after the separator.
+		"rules/go/multidoc_patterns.yaml": {Data: []byte(
+			"testing_frameworks: []\n---\ntesting:\n- name: testify\n  detection:\n" +
+				"    import_markers:\n    - '\"github.com/stretchr/testify\"'\n")},
+		// Decodable, and genuinely hidden: the walk must still do its job.
+		"rules/lua/test_patterns.yaml": {Data: []byte(
+			"testing:\n- name: busted\n  detection:\n    import_markers:\n    - \"require('busted')\"\n")},
+	}
+
+	got, examined, skipped, err := hiddenImportMarkerInventory(fsys, "rules")
+	if err != nil {
+		t.Fatalf("hiddenImportMarkerInventory: %v", err)
+	}
+
+	if len(skipped) != 2 {
+		t.Fatalf("skipped = %v, want 2 entries (the sequence file and the multi-document "+
+			"file): if either now decodes, the walk grew a shape it did not have and the "+
+			"tree assertion's skipped==0 is checking something different", skipped)
+	}
+	for _, want := range []string{"rules/go/multidoc_patterns.yaml", "rules/go/seq_patterns.yaml"} {
+		found := false
+		for _, sk := range skipped {
+			if strings.HasPrefix(sk, want+":") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("skipped = %v, want an entry naming %s", skipped, want)
+		}
+	}
+	// The skip is loud, not fatal: the rest of the walk still runs and still
+	// reports. A counter that fired by aborting the walk would make the tree
+	// assertion pass for the wrong reason.
+	if examined != 1 {
+		t.Errorf("examined = %d, want 1 (only the decodable fixture)", examined)
+	}
+	if len(got) != 1 || got[0].Path != "lua/test_patterns.yaml" || got[0].Key != "testing" || got[0].Blocks != 1 {
+		t.Errorf("inventory = %+v, want the one decodable hidden entry", got)
 	}
 }
 
