@@ -1,4 +1,4 @@
-frameworks_and_dialects:
+frameworks:
   name: SQLite
   category: rdbms_dialect
   file_extensions:

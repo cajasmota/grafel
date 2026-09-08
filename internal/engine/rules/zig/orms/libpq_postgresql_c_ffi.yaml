@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: libpq (PostgreSQL C FFI)
   type: c_ffi_binding
   detection:

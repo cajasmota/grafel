@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: Blade
   full_name: Blade (Laravel)
   language: php

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Ruby SQLite Driver (sqlite3 gem)
   category: sqlite_driver
   rubygems_packages:

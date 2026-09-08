@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: elasticsearch-ruby
   gem_name: elasticsearch
   detection:

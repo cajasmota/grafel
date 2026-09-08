@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Theo (Neo4j Swift Driver)
   category: graph_database
   swift_package: theo

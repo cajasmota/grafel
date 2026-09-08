@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: elasticsearch/elasticsearch
   composer_package: elasticsearch/elasticsearch
   detection:

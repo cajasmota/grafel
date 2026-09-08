@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Scanamo (guardian/scanamo)
   category: nosql_database
   sbt_dependency: '"org.scanamo" %% "scanamo" % "x.y.z"'

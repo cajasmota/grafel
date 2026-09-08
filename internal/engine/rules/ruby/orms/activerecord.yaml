@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: ActiveRecord
   gem_name: activerecord
   category: active_record_orm

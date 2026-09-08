@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: PostgresNIO / postgres-kit (Swift PostgreSQL Drivers)
   category: postgres_driver
   spm_packages:

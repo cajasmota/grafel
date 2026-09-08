@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Supabase Swift
   category: backend_as_a_service_client
   spm_coordinates:

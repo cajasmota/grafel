@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: mongo_dart (Dart MongoDB driver)
   pub_package: mongo_dart
   category: nosql_driver

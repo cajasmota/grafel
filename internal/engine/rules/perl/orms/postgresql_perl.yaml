@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: DBD::Pg (Perl DBI PostgreSQL Driver)
   category: postgres_driver
   cpan_module: DBD::Pg

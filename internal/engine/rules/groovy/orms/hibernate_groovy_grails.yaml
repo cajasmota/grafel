@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Hibernate (Groovy / Grails)
   category: orm_jpa
   gradle_coordinates:

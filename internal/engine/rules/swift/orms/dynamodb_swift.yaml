@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Soto DynamoDB (soto-project/soto)
   category: nosql_database
   spm_package: soto

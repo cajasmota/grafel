@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Haskell Drivers (mysql-haskell, mysql-simple)
   category: relational_database
   hackage_package: mysql-haskell

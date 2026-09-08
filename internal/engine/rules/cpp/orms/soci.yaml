@@ -1,4 +1,4 @@
-orm_db:
+frameworks:
   name: SOCI
   category: sql_abstraction
   github_stars_2025: 1500+

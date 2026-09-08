@@ -1,4 +1,4 @@
-orms_databases:
+frameworks:
   name: Spring Data (Kotlin)
   gradle_coordinates:
   - org.springframework.boot:spring-boot-starter-data-jpa

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Neocons (Neo4j Clojure Driver)
   category: graph_database
   clojars_package: clojurewerkz/neocons

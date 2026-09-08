@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: No ORM — C FFI is the norm
   type: architectural_note
   notes: 'Zig intentionally has no runtime reflection and no memory-managed strings,

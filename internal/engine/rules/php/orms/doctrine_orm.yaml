@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Doctrine ORM
   package_name: doctrine/orm
   category: data_mapper_orm

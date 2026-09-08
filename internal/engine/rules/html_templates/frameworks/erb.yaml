@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: ERB
   full_name: Embedded Ruby
   language: ruby

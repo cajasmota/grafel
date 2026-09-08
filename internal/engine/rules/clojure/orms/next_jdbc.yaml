@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: next.jdbc
   clojars_artifact: com.github.seancorfield/next.jdbc
   category: sql_jdbc

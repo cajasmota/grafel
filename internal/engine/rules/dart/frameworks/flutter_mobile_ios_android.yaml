@@ -1,4 +1,4 @@
-mobile:
+frameworks:
   name: Flutter Mobile (iOS + Android)
   category: mobile_cross_platform
   detection:

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: NEST / Elasticsearch.Net
   nuget_package: NEST
   detection:

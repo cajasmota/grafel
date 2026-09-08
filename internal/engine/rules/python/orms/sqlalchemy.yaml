@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: SQLAlchemy
   pypi_package: sqlalchemy
   category: sql_orm

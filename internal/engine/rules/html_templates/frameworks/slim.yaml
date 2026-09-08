@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: Slim
   full_name: Slim (Ruby)
   language: ruby

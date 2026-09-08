@@ -1,4 +1,4 @@
-database:
+frameworks:
   name: pgmoon
   luarocks_package: pgmoon
   category: postgresql_driver

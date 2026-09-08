@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: drift (formerly moor)
   pubspec_dependency: drift
   category: orm_sqlite

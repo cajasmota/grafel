@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: laudis/neo4j-php-client
   category: graph_database
   composer_package: laudis/neo4j-php-client

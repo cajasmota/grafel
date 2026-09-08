@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: datastax/php-driver
   category: nosql_database
   composer_package: datastax/php-driver

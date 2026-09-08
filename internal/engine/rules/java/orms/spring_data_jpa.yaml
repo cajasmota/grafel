@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Spring Data JPA
   maven_coordinates: org.springframework.data:spring-data-jpa
   gradle_dependency: implementation 'org.springframework.data:spring-data-jpa'

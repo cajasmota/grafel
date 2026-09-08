@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Neo4j Go Driver
   category: graph_database
   module_path: github.com/neo4j/neo4j-go-driver/v5

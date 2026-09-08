@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: DataStax Java Driver (Kotlin) / Spring Data Cassandra Kotlin
   category: nosql_database
   gradle_dependency: implementation 'com.datastax.oss:java-driver-core'

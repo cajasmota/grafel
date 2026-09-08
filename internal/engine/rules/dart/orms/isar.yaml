@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: isar
   pubspec_dependency: isar
   category: nosql_embedded

@@ -1,4 +1,4 @@
-orms_and_database:
+frameworks:
   name: sequelize
   npm_packages:
   - sequelize

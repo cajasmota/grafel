@@ -1,4 +1,4 @@
-framework_templates:
+frameworks:
   name: Vue Single File Components
   framework: Vue
   extensions:

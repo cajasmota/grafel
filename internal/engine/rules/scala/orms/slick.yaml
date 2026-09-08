@@ -1,4 +1,4 @@
-orm_db:
+frameworks:
   name: Slick
   sbt_coordinates:
   - com.typesafe.slick::slick

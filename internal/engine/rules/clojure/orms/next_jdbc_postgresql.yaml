@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: next.jdbc PostgreSQL (Clojure)
   category: postgres_driver
   clojars_packages:

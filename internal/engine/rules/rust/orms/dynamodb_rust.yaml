@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: AWS DynamoDB Rust SDK (aws-sdk-dynamodb)
   category: nosql_database
   crate_name: aws-sdk-dynamodb

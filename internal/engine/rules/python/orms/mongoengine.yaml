@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MongoEngine
   pypi_package: mongoengine
   category: document_odm

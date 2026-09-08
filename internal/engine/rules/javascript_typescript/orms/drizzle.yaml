@@ -1,4 +1,4 @@
-orms_and_database:
+frameworks:
   name: drizzle
   npm_packages:
   - drizzle-orm

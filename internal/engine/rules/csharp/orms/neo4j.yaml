@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Neo4j .NET Driver
   category: graph_database
   nuget_package: Neo4j.Driver

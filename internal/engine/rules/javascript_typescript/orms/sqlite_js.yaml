@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: JavaScript/TypeScript SQLite Drivers (better-sqlite3 / sql.js / libsql)
   category: sqlite_driver
   npm_packages:

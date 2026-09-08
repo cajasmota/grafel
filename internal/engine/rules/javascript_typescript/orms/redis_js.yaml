@@ -2,7 +2,7 @@
 #
 # Top-level `orms:` key is consumed by the modular_loader (detection).
 
-orms:
+frameworks:
   name: ioredis / node-redis
   npm_package: ioredis
   category: cache_client

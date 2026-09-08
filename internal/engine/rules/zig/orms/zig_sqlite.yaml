@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: zig-sqlite
   type: zig_wrapper
   github: vrischmann/zig-sqlite

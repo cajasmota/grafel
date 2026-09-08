@@ -1,4 +1,4 @@
-frameworks_and_dialects:
+frameworks:
   name: MySQL / MariaDB
   category: rdbms_dialect
   file_extensions:

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Clojure Drivers (next.jdbc, clojure.java.jdbc)
   category: relational_database
   deps_edn: com.github.seancorfield/next.jdbc

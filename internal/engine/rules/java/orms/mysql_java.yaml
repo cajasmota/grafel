@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Connector/J (Java JDBC Driver)
   category: relational_database
   maven_coordinates: com.mysql:mysql-connector-j

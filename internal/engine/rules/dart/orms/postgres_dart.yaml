@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: postgres (Dart PostgreSQL Driver)
   category: postgres_driver
   pub_package: postgres

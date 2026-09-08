@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Npgsql (.NET PostgreSQL Driver)
   category: postgres_driver
   nuget_package: Npgsql

@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Eloquent (Laravel ORM)
   package_name: illuminate/database
   category: active_record_orm

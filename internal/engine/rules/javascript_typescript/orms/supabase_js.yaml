@@ -1,4 +1,4 @@
-orms_and_database:
+frameworks:
   name: supabase-js
   npm_packages:
   - '@supabase/supabase-js'

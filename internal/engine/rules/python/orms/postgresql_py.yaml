@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: PostgreSQL Python Drivers (psycopg2/psycopg3/asyncpg)
   category: postgres_driver
   pypi_packages:

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Go Driver (go-sql-driver/mysql)
   category: relational_database
   go_module: github.com/go-sql-driver/mysql

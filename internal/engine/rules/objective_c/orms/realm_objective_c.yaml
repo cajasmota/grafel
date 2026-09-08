@@ -1,4 +1,4 @@
-database:
+frameworks:
   name: Realm (Objective-C)
   type: mobile_database
   pod_coordinates:

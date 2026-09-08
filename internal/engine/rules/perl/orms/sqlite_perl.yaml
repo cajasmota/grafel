@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Perl SQLite Driver (DBD::SQLite via DBI)
   category: sqlite_driver
   cpan_modules:

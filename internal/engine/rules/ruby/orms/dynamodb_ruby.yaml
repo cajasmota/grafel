@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: AWS DynamoDB Ruby SDK (aws-sdk-dynamodb)
   category: nosql_database
   gem_name: aws-sdk-dynamodb

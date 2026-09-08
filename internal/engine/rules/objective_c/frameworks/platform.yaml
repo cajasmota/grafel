@@ -1,4 +1,4 @@
-mobile:
+frameworks:
   platform: iOS (Legacy Objective-C)
   category: legacy_ios
   notes: 'Legacy iOS development with UIKit is the dominant Objective-C mobile pattern.

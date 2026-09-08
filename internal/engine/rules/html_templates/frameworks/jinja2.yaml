@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: Jinja2
   full_name: Jinja2 (and Jinja)
   language: python

@@ -1,4 +1,4 @@
-framework:
+frameworks:
   name: aws_dynamodb_api (pub.dev)
   category: nosql_database
   pub_package: aws_dynamodb_api

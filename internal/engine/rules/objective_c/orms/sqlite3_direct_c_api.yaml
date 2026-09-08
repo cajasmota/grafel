@@ -1,4 +1,4 @@
-database:
+frameworks:
   name: SQLite3 (direct C API)
   type: sqlite_direct
   pod_coordinates:

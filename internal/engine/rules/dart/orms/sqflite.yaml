@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: sqflite
   pubspec_dependency: sqflite
   category: sqlite_raw

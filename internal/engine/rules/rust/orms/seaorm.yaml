@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: SeaORM
   crate: sea-orm
   category: orm_async

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Django ORM
   pypi_package: django
   category: sql_orm

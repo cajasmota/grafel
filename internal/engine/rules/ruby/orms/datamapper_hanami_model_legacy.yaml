@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: DataMapper / Hanami::Model (legacy)
   gem_name: data_mapper
   category: data_mapper_legacy

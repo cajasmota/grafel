@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: cassandra-driver (DataStax Node.js Driver)
   category: nosql_database
   npm_package: cassandra-driver

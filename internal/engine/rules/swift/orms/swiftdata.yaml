@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: SwiftData
   category: orm_declarative
   spm_product: N/A — bundled with Apple SDK (iOS 17+)

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: AWS DynamoDB Java SDK / Spring Data DynamoDB / DynamoDB Enhanced Client
   category: nosql_database
   maven_coordinates: software.amazon.awssdk:dynamodb

@@ -1,4 +1,4 @@
-framework_templates:
+frameworks:
   name: Angular Component Templates
   framework: Angular
   extensions:

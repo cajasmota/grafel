@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: mongodb/mongodb (PHP driver)
   composer_package: mongodb/mongodb
   category: nosql_driver

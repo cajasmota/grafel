@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: hive
   pubspec_dependency: hive
   category: nosql_embedded_kv

@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Sequel
   gem_name: sequel
   category: dataset_orm

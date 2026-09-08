@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Swift Driver (mysql-nio / vapor/mysql-kit)
   category: relational_database
   spm_package: https://github.com/vapor/mysql-kit

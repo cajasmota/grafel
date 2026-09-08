@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Core Data
   category: orm_object_graph
   spm_product: N/A — bundled with Apple SDK

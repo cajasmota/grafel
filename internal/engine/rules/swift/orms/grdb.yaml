@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: GRDB
   category: orm_sqlite
   spm_coordinates:

@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: rusqlite
   crate: rusqlite
   category: embedded_sql

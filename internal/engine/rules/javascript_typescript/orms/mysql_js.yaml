@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL JavaScript/TypeScript Drivers (mysql2, mysql, Knex)
   category: relational_database
   npm_package: mysql2

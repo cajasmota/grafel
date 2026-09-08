@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: KMongo (Kotlin MongoDB driver)
   maven_coordinates: org.litote.kmongo:kmongo
   category: nosql_driver

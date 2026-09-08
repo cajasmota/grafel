@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: Mustache
   full_name: Mustache
   language: polyglot

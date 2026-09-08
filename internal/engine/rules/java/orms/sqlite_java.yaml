@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Java SQLite Driver (sqlite-jdbc / Xerial)
   category: sqlite_driver
   maven_coordinates:

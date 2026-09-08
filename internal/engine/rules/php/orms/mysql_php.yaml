@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL PHP Extensions (PDO::mysql, mysqli)
   category: relational_database
   detection:

@@ -1,4 +1,4 @@
-database:
+frameworks:
   name: lua-resty-mysql
   category: mysql_driver_openresty
   detection:

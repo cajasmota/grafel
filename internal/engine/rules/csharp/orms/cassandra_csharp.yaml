@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: CassandraCSharpDriver (DataStax C# Driver)
   category: nosql_database
   nuget_package: CassandraCSharpDriver

@@ -1,4 +1,4 @@
-orms_and_database:
+frameworks:
   name: mikro-orm
   npm_packages:
   - '@mikro-orm/core'

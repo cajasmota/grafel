@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Dapper
   nuget_package: Dapper
   category: micro_orm

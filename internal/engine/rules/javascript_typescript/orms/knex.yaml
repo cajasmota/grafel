@@ -1,4 +1,4 @@
-orms_and_database:
+frameworks:
   name: knex
   npm_packages:
   - knex

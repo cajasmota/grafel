@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: floor
   pubspec_dependency: floor
   category: orm_sqlite

@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: Pug
   full_name: Pug (formerly Jade)
   language: javascript

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Beanie
   pypi_package: beanie
   category: document_odm_async

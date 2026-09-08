@@ -1,4 +1,4 @@
-framework_templates:
+frameworks:
   name: Astro Components
   framework: Astro
   extensions:

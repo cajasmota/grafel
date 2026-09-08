@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: HoneySQL
   clojars_artifact: com.github.seancorfield/honeysql
   category: sql_dsl

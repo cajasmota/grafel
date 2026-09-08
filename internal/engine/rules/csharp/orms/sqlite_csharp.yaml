@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: C# SQLite Driver (Microsoft.Data.Sqlite / System.Data.SQLite)
   category: sqlite_driver
   nuget_packages:

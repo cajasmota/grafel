@@ -1,4 +1,4 @@
-frameworks_and_dialects:
+frameworks:
   name: PostgreSQL
   category: rdbms_dialect
   file_extensions:

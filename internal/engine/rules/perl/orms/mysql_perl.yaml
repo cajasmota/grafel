@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Perl Driver (DBD::mysql / DBI)
   category: relational_database
   cpan_module: DBD::mysql

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: phantom / quill-cassandra (Scala Cassandra Drivers)
   category: nosql_database
   sbt_dependency: '"com.outworkers" %% "phantom-dsl" % "2.x.x"'

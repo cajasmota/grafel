@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: SQLite.swift
   category: sqlite_driver
   spm_coordinates:

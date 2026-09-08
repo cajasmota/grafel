@@ -1,4 +1,4 @@
-mobile:
+frameworks:
   name: Flutter Web (web target)
   category: mobile_web
   detection:

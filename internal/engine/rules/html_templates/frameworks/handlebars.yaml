@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: Handlebars
   full_name: Handlebars.js
   language: javascript

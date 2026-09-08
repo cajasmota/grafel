@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Neo4j Ruby Driver / ActiveGraph
   category: graph_database
   gem_name: neo4j-ruby-driver

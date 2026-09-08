@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: REST::Neo4p (Neo4j Perl Driver)
   category: graph_database
   cpan_module: REST::Neo4p

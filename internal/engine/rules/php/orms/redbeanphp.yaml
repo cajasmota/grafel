@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: RedBeanPHP
   package_name: gabordemooij/redbeanphp
   category: zero_config_orm

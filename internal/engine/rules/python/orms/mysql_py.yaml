@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Python Drivers (mysql-connector-python, PyMySQL, aiomysql)
   category: relational_database
   pypi_package: mysql-connector-python
