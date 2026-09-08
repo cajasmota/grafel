@@ -44,13 +44,5 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-  # Middleware USE: .Use(middlewareName) -> middlewareName
-  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*(?:,\s*(\w[\w.]*))?\s*\)'
-    source_type: Middleware
-    target_type: Controller
-    relationship: ROUTES_TO
-    source_group: 1
-    target_group: 2
-
 # These run after YAML-driven extraction and contribute additional entities +
 # relationships to the pipeline result.

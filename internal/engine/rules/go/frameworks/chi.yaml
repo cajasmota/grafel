@@ -57,11 +57,3 @@ relationship_rules:
     relationship: ROUTES_TO
     source_group: 1
     target_group: 2
-
-  # Middleware USE: .Use(middlewareName) -> middlewareName
-  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*(?:,\s*(\w[\w.]*))?\s*\)'
-    source_type: Middleware
-    target_type: Controller
-    relationship: ROUTES_TO
-    source_group: 1
-    target_group: 2
