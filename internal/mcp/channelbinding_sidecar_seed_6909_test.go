@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -203,6 +204,42 @@ func TestDeadCode_ChannelBindingIsSeededOnTheSidecarPath_6909(t *testing.T) {
 // other: SCOPE.ChannelBinding and Route must be seeds (ADR-0025, #6902), and
 // SCOPE.Class must not be, or the dead-code tool reports nothing at all.
 func TestReachabilitySeedSetsAreNotDuplicated_6909(t *testing.T) {
+	// ENUMERATION, not sampling. The review of this PR scored three mutants
+	// ALIVE against the positive/negative loops below: deleting the
+	// pre-existing seed "SCOPE.GrpcMethod" (every gRPC method then reports as
+	// dead code), adding a plausible new seed "SCOPE.Interface", and adding an
+	// empty-string key. A list of SOME members grades only those members, and
+	// nothing tells a reader which half is covered — so the whole set is
+	// asserted against a literal written out BY HAND here. It is deliberately
+	// not derived from links.FrameworkEntryKinds(): a want list computed from
+	// the set under test agrees with any deletion.
+	//
+	// Changing the seed set intentionally? Edit this literal in the same
+	// commit, and say in the message which kind moved and why.
+	wantSeeds := []string{
+		"Route",                    // #6902, bare spelling
+		"SCOPE.ChannelBinding",     // #5782 / ADR-0025, #6909
+		"SCOPE.Endpoint",           //
+		"SCOPE.EventBusEvent",      //
+		"SCOPE.GrpcMethod",         //
+		"SCOPE.MessageTopic",       // #5781
+		"SCOPE.Route",              // #6902, prefixed spelling
+		"SCOPE.ServerlessFunction", //
+		"http_endpoint",            //
+		"http_endpoint_definition", //
+	}
+	gotSeeds := links.FrameworkEntryKinds()
+	if !slices.Equal(gotSeeds, wantSeeds) {
+		t.Errorf("links.FrameworkEntryKinds() has drifted from the set this "+
+			"repo intends to seed the dead-code BFS from.\n got:  %q\n want: %q\n"+
+			"A kind REMOVED here is reported as dead code from the next link pass "+
+			"on; a kind ADDED makes it and its whole transitive closure "+
+			"unconditionally reachable, silencing genuine findings. If the change "+
+			"is intended, edit wantSeeds in the same commit.", gotSeeds, wantSeeds)
+	}
+
+	// The two loops below are kept for the diagnosis they give: the exact-set
+	// assertion says "drifted", these say which direction and why it matters.
 	for _, kind := range []string{
 		"SCOPE.ChannelBinding", // #5782 / ADR-0025
 		"Route",                // #6902

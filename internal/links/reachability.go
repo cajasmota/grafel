@@ -147,6 +147,33 @@ func IsFrameworkEntryKind(kind string) bool { return frameworkEntryKinds[kind] }
 // reachability. Exported for the same reason as IsFrameworkEntryKind (#6909).
 func IsReachabilityEdgeKind(kind string) bool { return reachabilityEdgeKinds[kind] }
 
+// FrameworkEntryKinds returns every seed kind, sorted.
+//
+// The predicate above cannot be tested by sampling: a positive/negative list of
+// SOME members grades only those members, so deleting an unlisted seed — say
+// "SCOPE.GrpcMethod", which would report every gRPC method as dead code — is
+// silent. This exists so a test can assert the WHOLE set against an independent
+// hand-written literal, which is the only shape that catches a member being
+// added, removed or renamed. Review of #6909 scored three such mutants ALIVE
+// against a sampled pin.
+//
+// The grading test lives in internal/mcp (channelbinding_sidecar_seed_6909_test.go)
+// because that is where the consumer is: an edit to this map that breaks the
+// dead-code tool leaves ./internal/links/ green. Do not delete it as "not about
+// links".
+//
+// Seeding a kind makes its whole TRANSITIVE CLOSURE reachable, not just the
+// entity itself — that is the intended semantics (a route's handlers are live
+// because the route is), and it is the blast radius of adding a member here.
+func FrameworkEntryKinds() []string {
+	out := make([]string, 0, len(frameworkEntryKinds))
+	for k := range frameworkEntryKinds {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // reachabilityEntry is one persistent reachability fact for the sidecar.
 type reachabilityEntry struct {
 	Repo         string   `json:"repo"`
