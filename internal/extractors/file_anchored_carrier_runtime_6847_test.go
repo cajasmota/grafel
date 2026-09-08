@@ -693,6 +693,51 @@ func TestFileAnchoredCarrier_CorpusCoverage_6847(t *testing.T) {
 func TestFileAnchoredCarrier_PerLanguagePopulation_6847(t *testing.T) {
 	res := carrierScan(t)
 
+	// THE TABLE-SHAPE PIN, and it is here because of what this file IS. This
+	// guard exists to stop ANOTHER guard being silenced, and without the three
+	// numbers below it could be silenced in one edit itself: gutting all 35
+	// rows to {0, 0} leaves every name, every loop and every message in place
+	// and the whole suite green — MEASURED as ALIVE by the review of #7010.
+	// Deleting a row is already caught (the key set is derived from this table,
+	// so the language disappears from the anchoring set diff); HOLLOWING the
+	// rows out was not, and given this file's documented history of being made
+	// vacuous (#6834, #6908) it is the likelier edit of the two.
+	//
+	// These are pins on the TABLE, not on the walk — they read no measurement —
+	// so they cost nothing on a corpus addition: a deliberate bump only ever
+	// RAISES a floor, and both sums only rise with it. The one edit that must
+	// touch them is the legitimate relocation case — an extractor that properly
+	// learns to anchor files it used to skip moves count from minNonAnchoring
+	// to minAnchoring — which lowers the second sum and must bump it in the
+	// same commit. That is one deliberate edit for one deliberate behaviour
+	// change, which is the point.
+	const (
+		anchoringBoundsRows6847         = 35
+		anchoringBoundsAnchoringSum6847 = 581
+		anchoringBoundsNonAnchoringSum  = 129
+	)
+	if len(anchoringBounds6847) != anchoringBoundsRows6847 {
+		t.Errorf("anchoringBounds6847 has %d rows, want exactly %d — a language was added or "+
+			"removed. Adding one is a real event (the anchoring set diff will say so too); "+
+			"removing one means this guard covers less than it did.",
+			len(anchoringBounds6847), anchoringBoundsRows6847)
+	}
+	sumAnchoring, sumNonAnchoring := 0, 0
+	for _, b := range anchoringBounds6847 {
+		sumAnchoring += b.minAnchoring
+		sumNonAnchoring += b.minNonAnchoring
+	}
+	if sumAnchoring < anchoringBoundsAnchoringSum6847 || sumNonAnchoring < anchoringBoundsNonAnchoringSum {
+		t.Errorf("anchoringBounds6847 was HOLLOWED OUT: minAnchoring sums to %d (want >= %d) and "+
+			"minNonAnchoring to %d (want >= %d).\n"+
+			"Lowering a floor without a corpus file having been deleted is how a guard gets "+
+			"silenced while still looking intact — this file exists because that happened to the "+
+			"one next to it. Name the deleted or renamed corpus file, or the extractor behaviour "+
+			"change that moved files between the two columns, in the same commit that lowers "+
+			"these constants.",
+			sumAnchoring, anchoringBoundsAnchoringSum6847, sumNonAnchoring, anchoringBoundsNonAnchoringSum)
+	}
+
 	for _, lang := range sortedStringKeys(anchoringBounds6847) {
 		want := anchoringBounds6847[lang]
 
