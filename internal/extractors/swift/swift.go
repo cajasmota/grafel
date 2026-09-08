@@ -68,6 +68,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	walkNode(file.TSTree.RootNode(), file, &entities)
 	// Issue #4854 — in-file base-class EXTENDS for field-membership recursion.
 	entities = attachSwiftExtends(entities)
+	// Issue #6912 arm G — field → declared-type REFERENCES, same-file targets
+	// only. Runs after the walk because the in-file declaration set (and the
+	// enum value-sets the collision scan must see) is complete only then.
+	entities = attachSwiftFieldTypeRefs(entities, file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "swift")
 	extractor.TagEntitiesLanguage(entities, "swift")
