@@ -75,6 +75,13 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// function, the config-change blast radius (parity with go/java/php/python).
 	// Append-only supplemental pass; entities[0] is the file entity.
 	emitConfigConsumerEdges(file.TSTree.RootNode(), file.Content, &entities)
+	// Issue #6912 — field→declared-type REFERENCES edges, for the types
+	// DECLARED IN THIS FILE only. Runs after the walk because the set of
+	// in-file declarations is complete only once every declaration is on the
+	// table; see field_type_refs.go for why the target is addressed
+	// structurally rather than by bare name, and why `impl Order` is not a
+	// declaration.
+	entities = attachRustFieldTypeRefs(entities, file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "rust")
 	extractor.TagEntitiesLanguage(entities, "rust")

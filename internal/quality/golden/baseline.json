@@ -259,7 +259,7 @@
       "relationship_found": 13,
       "relationship_expected": 13,
       "entity_extracted_total": 31,
-      "relationship_extracted_total": 63
+      "relationship_extracted_total": 64
     },
     "scala-play-mini": {
       "entity_found": 30,
