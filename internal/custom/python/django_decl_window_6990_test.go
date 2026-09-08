@@ -265,42 +265,83 @@ func TestIssue6990_TheBoundIsTheSoleGuard(t *testing.T) {
 	}
 }
 
-// TestIssue6990_UnbalancedSourceFallsBackToTheOldByteWindow_NotWider grades the
+// TestIssue6990_UnbalancedSourceFallsBackToTheOldByteWindow grades the
 // `end < 0` branch — the one path where a byte count survives #6990. When
 // `djangoDeclEnd` cannot find the declaration's closer (a truncated or
 // syntactically broken file), the scan reverts to the pre-#6990 400-byte
-// window. That is deliberately EXACTLY the old behaviour: a fallback of
-// `len(body)` would make an unbalanced file read WIDER than the bug this fixes.
+// window, which is deliberately EXACTLY the old behaviour.
 //
-// The distinguishing input: an unterminated declaration, then more than 400
-// bytes of filler, then a parseable target. Under the 400-byte fallback the
-// later target is out of reach; under any wider fallback it is captured.
-func TestIssue6990_UnbalancedSourceFallsBackToTheOldByteWindow_NotWider(t *testing.T) {
+// "Exactly the old behaviour" has TWO halves and this test asserts BOTH,
+// because the fallback's whole reason to exist is that it PRESERVES prior
+// behaviour rather than dropping edges:
+//
+//   - NOT WIDER. A target more than 400 bytes past the field must NOT be
+//     captured — a fallback of `len(body)` would make an unbalanced file read
+//     wider than the bug #6990 fixes.
+//   - NOT NARROWER. A target WITHIN 400 bytes must still BE captured — a
+//     fallback of `fIdx[0]` (an empty window) silently drops every target in
+//     an unbalanced file, and until this half was asserted that build was
+//     indistinguishable from this one.
+//
+// Both halves run on genuinely unbalanced declarations, each with its own
+// `djangoDeclEnd == -1` premise control, so neither is quietly grading the
+// normal path instead.
+func TestIssue6990_UnbalancedSourceFallsBackToTheOldByteWindow(t *testing.T) {
 	filler := strings.Repeat("    # padding to push the next declaration past 400 bytes\n", 10)
 	if len(filler) <= 400 {
 		t.Fatalf("filler is %d bytes, need >400 for this test to distinguish the two fallbacks", len(filler))
 	}
 	src := "from django.conf import settings\nfrom django.db import models\n\n\n" +
+		// FAR: the target the window must NOT reach. Unterminated declaration,
+		// then >400 bytes of filler, then a parseable `ForeignKey(Sentinel`.
 		"class Owner(models.Model):\n" +
 		"    subject = models.ForeignKey(settings.AUTH_USER_MODEL,\n" + // never closed
 		filler +
-		"    sentinel = models.ForeignKey(Sentinel, on_delete=models.CASCADE)\n"
+		"    sentinel = models.ForeignKey(Sentinel, on_delete=models.CASCADE)\n" +
+		"\n\n" +
+		// NEAR: the target the window MUST still reach. Equally unterminated,
+		// so it takes the same fallback branch — but its own target sits
+		// immediately after its own `(`, well inside 400 bytes.
+		"class NearOwner(models.Model):\n" +
+		"    near = models.ForeignKey(Nearby,\n" // never closed
 
-	// Premise control: this really is the unbalanced path.
-	body := src[strings.Index(src, "    subject"):]
-	if got := djangoDeclEnd(body, strings.IndexByte(body, '(')); got != -1 {
-		t.Fatalf("djangoDeclEnd = %d, want -1: the fixture is not exercising the fallback branch", got)
+	// Premise controls, one per half: both declarations really do take the
+	// `end < 0` fallback, so neither assertion is grading the normal path.
+	for _, decl := range []string{"    subject", "    near"} {
+		body := src[strings.Index(src, decl):]
+		if got := djangoDeclEnd(body, strings.IndexByte(body, '(')); got != -1 {
+			t.Fatalf("djangoDeclEnd for %q = %d, want -1: that half of the fixture is not "+
+				"exercising the fallback branch", strings.TrimSpace(decl), got)
+		}
 	}
 
 	rels := djangoEdges6988(t, src)
+
+	// NOT WIDER.
 	if got := fieldTargetEdgesFrom6988(rels, "Owner.subject"); len(got) != 0 {
 		t.Errorf("Owner.subject emitted %d field_target_type edge(s), want 0; first ToID=%q. The "+
-			"unbalanced-source fallback must stay at the pre-#6990 400-byte window, never wider",
+			"unbalanced-source fallback must stay at the pre-#6990 400-byte window, never WIDER",
 			len(got), got[0].ToID)
 	}
+	// NOT NARROWER. Without this row, a fallback of `end = fIdx[0]` — an empty
+	// window that finds nothing at all on any unbalanced file — passes every
+	// other assertion in this package.
+	if got := fieldTargetEdgesFrom6988(rels, "NearOwner.near"); len(got) != 1 ||
+		got[0].ToID != fieldTargetRef6988("Nearby") {
+		ids := make([]string, 0, len(got))
+		for _, r := range got {
+			ids = append(ids, r.ToID)
+		}
+		t.Errorf("NearOwner.near emitted %d field_target_type edge(s) %v, want exactly 1 -> %q. Its "+
+			"own target is inside the 400-byte fallback window, so the fallback must still find it — "+
+			"it exists to PRESERVE the old behaviour, not to drop every target on an unbalanced file",
+			len(got), ids, fieldTargetRef6988("Nearby"))
+	}
+	// Control on the FAR half: the field whose target an over-reading fallback
+	// would steal resolves on its own, so the negative above is not vacuous.
 	if got := fieldTargetEdgesFrom6988(rels, "Owner.sentinel"); len(got) != 1 ||
 		got[0].ToID != fieldTargetRef6988("Sentinel") {
-		t.Fatalf("Owner.sentinel did not resolve to Sentinel (%d edge(s)) — the negative above is vacuous",
-			len(got))
+		t.Fatalf("Owner.sentinel did not resolve to Sentinel (%d edge(s)) — the NOT-WIDER negative "+
+			"above is vacuous", len(got))
 	}
 }
