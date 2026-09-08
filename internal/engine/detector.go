@@ -118,11 +118,84 @@ func (c compiledRuleSet) frameworkPresent(content string) bool {
 //     docker_compose.yaml rules target compose files → `yaml`. The bucket is
 //     indivisible at load time, so it is aliased onto both; non-matching
 //     patterns are inert.)
-var dormantBucketAliases = map[string][]string{
-	"cicd":       {"yaml"},
-	"ansible":    {"yaml"},
-	"kubernetes": {"yaml"},
-	"docker":     {"dockerfile", "yaml"},
+//
+// # This is an ORDERED SLICE, not a map, and the order is load-bearing (#7030)
+//
+// compile() APPENDS each bucket's compiled rule sets onto the shared target
+// key, and Detect's per-file `seenEntities` (see below) lets the FIRST rule set
+// that matches an entity claim it — the later one is silently shadowed. The
+// emitted `framework` property comes from the bucket directory name
+// (`framework: lang`), so for two buckets aliased onto the SAME target the
+// consultation order decides the property that gets stamped.
+//
+// While this was a `map[string][]string`, `range` over it randomised that order
+// per process. `docker/frameworks/docker_compose.yaml`#1 and
+// `kubernetes/frameworks/kubernetes_manifests.yaml`#12 carry the byte-identical
+// pattern `image:\s+(\S+)` (entity_type Dependency) and co-occur on 92 files /
+// 142 entities, so those entities came out `framework=docker` or
+// `framework=kubernetes` depending on the map seed: two indexes of an unchanged
+// tree could disagree.
+//
+// The order below is LEXICAL BY BUCKET NAME, WITH ONE DOCUMENTED EXCEPTION.
+// Two pairs of buckets share the `yaml` target and share a pattern, so the
+// order decides a label for each; they are argued separately on purpose,
+// because one global order has to serve both and no single rule earns both.
+//
+//   - docker vs kubernetes — LEXICAL, and genuinely a non-choice. `image:` in
+//     a compose file is docker and in a manifest is kubernetes, so EITHER fixed
+//     winner is wrong for roughly half the 142 entities. There is no status quo
+//     worth preserving (the winner was random) and no evidence favouring
+//     either, so lexical picks one without smuggling in a claim. All it buys is
+//     that the pair HAS a stable winner, which is the precondition for choosing
+//     one on the merits. #7028 owns that choice and wants a
+//     file_conventions-scoped gate (`docker-compose.yml` vs `k8s/*.yaml`),
+//     NOT a reordering here.
+//
+//   - cicd vs ansible — `cicd` IS OUT OF LEXICAL POSITION, DELIBERATELY.
+//     `ansible/…/ansible_core.yaml`#0 and `cicd/…/github_actions.yaml`#3 differ
+//     only by an anchor (`(?m)^\s+` vs `\s+`) and shadow each other on ~999
+//     entities — 7x the docker/kubernetes pair, and #7028's largest row. Unlike
+//     that pair, ONE label here is simply correct: the measured population is
+//     90 `.github/workflows/*.y*ml` files and ZERO Ansible playbooks, so every
+//     one of those entities is CI, not Ansible. Lexical would pin `ansible` on
+//     all of them, every run — trading a coin-flip mislabel for a permanent
+//     one. Putting `cicd` first is NOT a status-quo reflex (it happened to win
+//     ~86% of the time under the map, and that frequency is noise, not a
+//     property); it is the only label anyone has evidence for.
+//
+//     The correct long-term fix is to disambiguate the two patterns or gate
+//     them on file_conventions, exactly as for docker/kubernetes. Until then a
+//     determinism fix must not ship a new mislabel class as a side effect.
+//
+// So: reordering these entries CHANGES EXTRACTION OUTPUT for any two buckets
+// sharing a target language. Do it deliberately, with a recall measurement, and
+// update TestDormantAliasOrderIsExactAndStable_7030 (which pins this exact
+// sequence) and TestDormantAliasConsultationOrderIsDeterministic_7030 (which
+// pins the observable consequence for BOTH pairs) in the same change.
+var dormantBucketAliases = []dormantBucketAlias{
+	// cicd before ansible: out of lexical order on purpose — see above.
+	{bucket: "cicd", targets: []string{"yaml"}},
+	{bucket: "ansible", targets: []string{"yaml"}},
+	// lexical from here.
+	{bucket: "docker", targets: []string{"dockerfile", "yaml"}},
+	{bucket: "kubernetes", targets: []string{"yaml"}},
+}
+
+// dormantBucketAlias is one bucket→concrete-language(s) alias entry.
+type dormantBucketAlias struct {
+	bucket  string
+	targets []string
+}
+
+// dormantAliasTargets returns the concrete languages a bucket is aliased onto,
+// or nil when the bucket is not aliased at all.
+func dormantAliasTargets(bucket string) []string {
+	for _, a := range dormantBucketAliases {
+		if a.bucket == bucket {
+			return a.targets
+		}
+	}
+	return nil
 }
 
 // Detector applies YAML-driven framework extraction rules to source files.
@@ -312,12 +385,16 @@ func (d *Detector) compile() {
 	// frameworks/*.yaml files carry engine schema keys (source_patterns /
 	// file_conventions / relationship_rules) — they are documentation-only
 	// descriptors — so aliasing it onto `html` would add zero extraction.
-	for bucket, targets := range dormantBucketAliases {
-		sets, ok := d.compiled[bucket]
+	//
+	// Iterated in the fixed slice order declared at dormantBucketAliases — see
+	// the comment there for why the order decides output and must not drift
+	// (#7030).
+	for _, alias := range dormantBucketAliases {
+		sets, ok := d.compiled[alias.bucket]
 		if !ok || len(sets) == 0 {
 			continue
 		}
-		for _, target := range targets {
+		for _, target := range alias.targets {
 			d.compiled[target] = append(d.compiled[target], sets...)
 		}
 	}
