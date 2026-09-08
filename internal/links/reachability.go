@@ -147,6 +147,34 @@ func IsFrameworkEntryKind(kind string) bool { return frameworkEntryKinds[kind] }
 // reachability. Exported for the same reason as IsFrameworkEntryKind (#6909).
 func IsReachabilityEdgeKind(kind string) bool { return reachabilityEdgeKinds[kind] }
 
+// ReachabilityEdgeKinds returns every reachability-propagating edge kind,
+// sorted, for the same reason FrameworkEntryKinds exists: this set cannot be
+// graded by sampling.
+//
+// It is the BFS TRAVERSAL FILTER (see the `if !reachabilityEdgeKinds[e.Kind]`
+// below), so a member leaving it is worse for a user than a missing seed:
+// an entity reachable only through, say, an IMPORTS edge stops being reachable
+// and the dead-code tool reports LIVE code as dead. Under-reporting is a
+// quietly useless tool; over-reporting sends people to delete working code.
+// Deleting "IMPORTS" was scored ALIVE against every test in this repo before
+// the enumeration in internal/mcp existed.
+//
+// NOT to be confused with internal/coverage's identically-named
+// reachabilityEdgeKinds, whose line 208 is syntactically identical to the one
+// below. That set is {TESTS, CALLS} built from types.RelationshipKind*
+// constants and answers "which tests reach this entity" (coverage.PropTestReachable),
+// not "is this dead". It is a name collision, not a copy of this set, and must
+// not be folded in here — the resemblance has already produced one issue filed
+// on a wrong premise (#7012, closed invalid).
+func ReachabilityEdgeKinds() []string {
+	out := make([]string, 0, len(reachabilityEdgeKinds))
+	for k := range reachabilityEdgeKinds {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // FrameworkEntryKinds returns every seed kind, sorted.
 //
 // The predicate above cannot be tested by sampling: a positive/negative list of

@@ -260,6 +260,32 @@ func TestReachabilitySeedSetsAreNotDuplicated_6909(t *testing.T) {
 				"and silences the dead-code tool.", kind)
 		}
 	}
+	// The SECOND exported predicate, enumerated the same way and for a sharper
+	// reason: this set is the BFS TRAVERSAL FILTER, so a member leaving it makes
+	// entities reachable only through that edge kind report as DEAD — the tool
+	// names live code for deletion. Review of this PR scored deleting "IMPORTS"
+	// ALIVE against every test in the repo. Hand-written, not derived from the
+	// map under test, for the same reason as wantSeeds above.
+	wantEdgeKinds := []string{
+		"CALLS", "CONSUMES", "CONTAINS", "DEPENDS_ON", "DISCRIMINATES_ON",
+		"ENTRY_POINT_OF", "EXTENDS", "FETCHES", "HANDLES", "HANDLES_SIGNAL",
+		"IMPLEMENTS", "IMPORTS", "NAVIGATES_TO", "PRODUCES", "REFERENCES",
+		"REGISTERS", "RENDERS", "RESOLVES_TO", "ROUTES_TO", "STEP_IN_PROCESS",
+		"TESTS", "UNRESOLVED_FETCH", "USES", "USES_HOOK",
+	}
+	gotEdgeKinds := links.ReachabilityEdgeKinds()
+	if !slices.Equal(gotEdgeKinds, wantEdgeKinds) {
+		t.Errorf("links.ReachabilityEdgeKinds() has drifted from the set this repo "+
+			"intends to propagate reachability along.\n got:  %q\n want: %q\n"+
+			"A kind REMOVED here makes every entity reachable only via that edge "+
+			"report as dead code — the false-positive direction, which sends users "+
+			"to delete working code. A kind ADDED lights up entities nothing really "+
+			"reaches. If the change is intended, edit wantEdgeKinds in the same "+
+			"commit. (internal/coverage has an identically-named set answering test "+
+			"reachability — it is a name collision, not this set.)",
+			gotEdgeKinds, wantEdgeKinds)
+	}
+
 	if !links.IsReachabilityEdgeKind("CALLS") || !links.IsReachabilityEdgeKind("CONTAINS") {
 		t.Errorf("links.IsReachabilityEdgeKind must accept CALLS and CONTAINS; "+
 			"got CALLS=%v CONTAINS=%v",
