@@ -500,16 +500,20 @@ func (b *bridge) defaultSocketPath() (string, error) {
 func (b *bridge) run(r io.Reader, w io.Writer) error {
 	defer b.closeRPCClient()
 
-	// #5633: guarantee exactly one bridge per daemon socket. Reap an orphaned
-	// prior bridge (e.g. one left attached after a daemon restart) and claim a
-	// per-socket pidfile. Best-effort: a failure here must not stop us serving,
-	// so we log and continue. Skipped when the socket path cannot be resolved.
+	// #5633, rescoped by #6999: record this process as the bridge serving this
+	// socket FOR THIS SESSION, and arm the signal logger so an externally
+	// terminated bridge says so in the daemon log. Nothing here signals another
+	// process. Best-effort: a failure must not stop us serving, so we log and
+	// continue. Skipped when the socket path cannot be resolved.
 	if socketPath, serr := b.defaultSocketPath(); serr == nil && socketPath != "" {
-		if release, aerr := acquireBridgeSingleton(socketPath, b.log); aerr != nil {
+		release, pidfile, aerr := acquireBridgeSingleton(socketPath, b.log)
+		if aerr != nil {
 			b.log("bridge singleton: %v (continuing)", aerr)
 		} else {
 			defer release()
 		}
+		stopSignalLogger := installBridgeSignalLogger(pidfile, socketPath, b.log)
+		defer stopSignalLogger()
 	}
 
 	br := bufio.NewReaderSize(r, 64*1024)

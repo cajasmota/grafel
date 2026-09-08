@@ -8,108 +8,135 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cajasmota/grafel/internal/process"
 )
 
-// mcp_bridge_singleton.go — single-bridge guarantee (#5633).
+// mcp_bridge_singleton.go — per-SESSION bridge ownership record.
 //
-// Claude Code spawns one `grafel mcp-bridge` per session. A daemon restart (or
-// a crashed/abandoned session) can leave a PRIOR bridge orphaned — reparented
-// to init and still attached to the daemon socket — so two bridges race for the
-// same daemon connection. This is the "two mcp-bridge processes at once"
-// symptom in #5633.
+// History. #5633 asked for "exactly one bridge per daemon socket" and this file
+// implemented it by reaping (SIGTERM) whatever pid a per-SOCKET pidfile named.
+// The socket path (internal/daemon.DefaultLayout) has no cwd, repo, worktree or
+// session component: it is per-user, i.e. one pidfile for the whole machine. So
+// every newly started bridge SIGTERMed the incumbent bridge of every OTHER live
+// session — #6999, observed as a tool-agnostic `Transport closed`.
 //
-// We guarantee exactly one bridge per daemon socket with a per-socket pidfile,
-// mirroring the daemon's own AcquirePIDFile reap approach (internal/daemon/
-// pidfile.go) and the watcher-reaping precedent (#5632 / internal/process):
+// #6999: the reap is GONE. This file no longer signals any process, ever.
 //
-//   - On startup the bridge reads the per-socket pidfile. If it names a LIVE
-//     grafel process that is not us, that is an orphaned prior bridge for this
-//     socket — we reap it (SIGTERM via process.Kill) and wait briefly for it to
-//     exit before claiming ownership.
-//   - We then write our own pid into the pidfile and return a release closure
-//     that removes it on clean shutdown.
+// Why deleting it is safe rather than a regression of #5633:
 //
-// A stale pidfile (dead pid, or a recycled pid that is not a grafel process) is
-// overwritten silently — a crashed bridge must never wedge the next session.
+//   - A bridge whose client is gone exits on its own. bridge.run reads stdin
+//     and returns on io.EOF; when the MCP client dies its end of the pipe is
+//     closed and the bridge falls out of its loop. Nothing external is needed to
+//     collect it, and TestBridge_ExitsWhenStdinCloses pins that.
+//   - The orphan #5633 saw therefore had a LIVE client (a daemon restart does
+//     not touch stdin). Such a process is indistinguishable, from the outside,
+//     from a second concurrent session's perfectly healthy bridge — there is no
+//     key that unifies "an orphan and its replacement" while separating "two
+//     concurrent sessions", because they look identical. Choosing to kill in
+//     that ambiguity is exactly what produced #6999.
+//   - The remedy for a bridge that has lost the DAEMON (the real #5633 case) is
+//     owned by that bridge itself: reconnect (#6722) or exit — not a signal from
+//     a stranger.
+//
+// What remains is an ownership RECORD: a per-session pidfile naming the bridge
+// currently serving this socket for this session, plus a log line when a prior
+// record for the same session is still live. It is diagnostic only. Its key
+// includes a session identity so that concurrent sessions cannot overwrite each
+// other's record; a session identity that collides (two bridges whose stdin is
+// /dev/null, say) costs nothing beyond an overwritten record, because no signal
+// is ever derived from it.
 
-// bridgeReapGrace bounds how long we wait for a reaped prior bridge to exit
-// after SIGTERM before claiming the pidfile anyway. Kept short: the prior
-// bridge is a thin stdio proxy with nothing to flush.
-var bridgeReapGrace = 500 * time.Millisecond
+// EnvBridgeSession lets an MCP client name the session explicitly. When unset,
+// bridgeSessionID falls back to the identity of the client's stdin pipe, then
+// to this process's own pid (which is unique by construction).
+const EnvBridgeSession = "GRAFEL_MCP_SESSION"
 
-// bridgeSingletonPath derives the per-socket bridge pidfile path. It lives
+// bridgeSessionID returns an identifier for the client session this bridge
+// serves. It is used only to scope the ownership record's filename; it is never
+// a licence to signal another process.
+func bridgeSessionID() string {
+	if v := strings.TrimSpace(os.Getenv(EnvBridgeSession)); v != "" {
+		return "env:" + v
+	}
+	if id, ok := stdinIdentity(); ok {
+		return "stdin:" + id
+	}
+	return "pid:" + strconv.Itoa(os.Getpid())
+}
+
+// bridgeSingletonPath derives the per-session bridge pidfile path. It lives
 // beside the daemon socket so it shares the socket's per-user directory and
-// lifecycle. The socket basename is hashed into the name so distinct sockets
-// (e.g. a test override) never collide, without embedding a long path.
-func bridgeSingletonPath(socketPath string) string {
+// lifecycle. Both the socket path AND the session id are hashed into the name:
+// keying on the socket alone is #6999, because one file then names the single
+// bridge of an entire machine.
+func bridgeSingletonPath(socketPath, sessionID string) string {
 	dir := filepath.Dir(socketPath)
-	sum := sha256.Sum256([]byte(socketPath))
+	sum := sha256.Sum256([]byte(socketPath + "\x00" + sessionID))
 	name := "mcp-bridge-" + hex.EncodeToString(sum[:6]) + ".pid"
 	return filepath.Join(dir, name)
 }
 
-// acquireBridgeSingleton ensures this is the only live bridge for socketPath.
-// It reaps an orphaned prior bridge (if any) and records our pid. The returned
-// release closure removes the pidfile and must be called on shutdown. Errors
-// are non-fatal by design: a bridge that cannot write its pidfile should still
-// serve (degrading to the pre-#5633 best-effort behavior), so callers log and
-// continue rather than aborting the session.
-func acquireBridgeSingleton(socketPath string, logf func(string, ...any)) (release func(), err error) {
+// acquireBridgeSingleton records this process as the bridge serving socketPath
+// for this session and returns the pidfile path plus a release closure that
+// removes it on clean shutdown.
+//
+// It sends no signal to any process. If a prior record for THIS session still
+// names a live grafel process, that is logged and left alone: it is either an
+// orphan that will exit when its stdin closes, or a bridge that is still
+// serving somebody.
+//
+// Errors are non-fatal by design: a bridge that cannot write its record should
+// still serve, so callers log and continue rather than aborting the session.
+func acquireBridgeSingleton(socketPath string, logf func(string, ...any)) (release func(), pidfile string, err error) {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	path := bridgeSingletonPath(socketPath)
+	path := bridgeSingletonPath(socketPath, bridgeSessionID())
 	self := os.Getpid()
 
-	if prior, ok := readBridgePID(path); ok && prior != self {
-		if isLiveBridge(prior) {
-			logf("reaping orphaned prior mcp-bridge (pid %d) for socket %s", prior, socketPath)
-			reapPriorBridge(prior)
-		}
+	if prior, ok := readBridgePID(path); ok && prior != self && isLiveBridge(prior) {
+		// #6999: log, never signal. A prior bridge is not ours to terminate.
+		logf("mcp-bridge: prior bridge (pid %d) for this session is still live; "+
+			"leaving it alone — grafel never signals another bridge (#6999). pidfile %s",
+			prior, path)
 	}
 
 	if werr := os.WriteFile(path, []byte(strconv.Itoa(self)+"\n"), 0o600); werr != nil {
-		return func() {}, fmt.Errorf("write bridge pidfile %s: %w", path, werr)
+		return func() {}, path, fmt.Errorf("write bridge pidfile %s: %w", path, werr)
 	}
 	return func() {
-		// Only remove the pidfile if it still names us — a newer bridge that
-		// reaped us may already own it.
+		// Only remove the record if it still names us — a newer bridge for the
+		// same session may already own it.
 		if cur, ok := readBridgePID(path); ok && cur == self {
 			_ = os.Remove(path)
 		}
-	}, nil
+	}, path, nil
 }
 
-// reapPriorBridge sends SIGTERM to a confirmed orphaned prior bridge and waits
-// (bounded) for it to exit. Best-effort: a signal/exit failure is non-fatal —
-// the new bridge claims the pidfile regardless so the session proceeds.
-func reapPriorBridge(pid int) {
-	_ = process.Kill(pid)
-	_ = waitForExit(pid, bridgeReapGrace)
-}
-
-// isLiveBridge reports whether pid names a live grafel process (a prior
-// bridge). PidIsGrafel defeats pid reuse: after a bridge dies its pid can be
-// recycled by an unrelated program, and we must not SIGTERM that. On platforms
-// where process enumeration is unavailable we fall back to a bare liveness
-// probe, matching daemon.pidIsLiveDaemon's conservative behavior.
+// isLiveBridge reports whether pid names a live grafel process. It gates a log
+// line only.
+//
+// When the executable behind pid cannot be verified we answer FALSE. The
+// pre-#6999 code answered true ("reaping a live grafel pid is the safe failure
+// mode"), which was the opposite of safe: PidIsGrafel matches ANY grafel
+// process by basename, so a recycled pid belonging to the daemon or the engine
+// satisfied it, and the answer fed a SIGTERM. Nothing signals on this answer
+// any more, and it still must not assert what it cannot verify.
 func isLiveBridge(pid int) bool {
 	if !process.IsAlive(pid) {
 		return false
 	}
-	isGrafel, err := process.PidIsGrafel(pid)
+	isGrafel, err := pidIsGrafel(pid)
 	if err != nil {
-		// Cannot verify the name (unsupported platform / transient scan
-		// failure). The pid is alive; honor it as a bridge to reap rather than
-		// leave a possible duplicate. Reaping a live grafel pid is the safe
-		// failure mode here.
-		return true
+		return false
 	}
 	return isGrafel
 }
+
+// pidIsGrafel is a seam over process.PidIsGrafel so the unverifiable-executable
+// branch of isLiveBridge is reachable from a test.
+var pidIsGrafel = process.PidIsGrafel
 
 func readBridgePID(path string) (int, bool) {
 	b, err := os.ReadFile(path)
