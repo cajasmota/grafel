@@ -99,7 +99,7 @@
       "relationship_found": 19,
       "relationship_expected": 19,
       "entity_extracted_total": 71,
-      "relationship_extracted_total": 207
+      "relationship_extracted_total": 208
     },
     "graphql-schema-mini": {
       "entity_found": 8,
