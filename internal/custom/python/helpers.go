@@ -123,8 +123,23 @@ func containsFieldEdge(ownerClass, memberName, fieldName, framework string) type
 //
 // So this pass is NOT same-file-only the way the C# port (#6984) had to be:
 // a cross-file target still binds when its declaration is globally unique, and
-// an ambiguous or absent target still dangles — never more edges than before,
-// and never a guessed one.
+// an ambiguous or absent target still dangles.
+//
+// EDGE COUNT: the producer emits the SAME NUMBER OF RECORDS as before — one per
+// relational field, unchanged — but the GRAPH gains edges, measured 863 -> 949
+// on django gate-ON. The 86 are not new references: a field whose own entity is
+// an unresolved stub (`Person.friends` exists in four files) used to collapse
+// with its namesakes because their `Class:<Target>` ToIDs were byte-identical,
+// and a file-qualified ToID no longer collapses. So "never more edges" is FALSE
+// under the graph reading and must not be written here; what holds is "never a
+// new reference, and never a guessed one".
+//
+// NEVER A GUESSED ONE is an assertion, not a claim:
+// TestPythonFieldTargetType_NeverBindsToANonDeclaringFile requires that no bound
+// field_target_type edge points at an entity in a file that does not declare
+// that name, and names the case it must refuse — a `shop/models.py` field may
+// not reach the `billing/models.py` `Customer`. Recall cannot detect
+// over-firing, so that forbidden row is the only thing grading this direction.
 func referencesClassEdge(filePath, memberName, targetClass, framework, fieldName string) types.RelationshipRecord {
 	return types.RelationshipRecord{
 		FromID: memberName,
