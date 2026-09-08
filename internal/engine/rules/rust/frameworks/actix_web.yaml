@@ -86,11 +86,19 @@ source_patterns:
     name_group: 0
     scope: file
 
-  # #[actix_web::main] entry point
-  - pattern: "#\\[actix_web\\s*::\\s*main\\s*\\]"
-    entity_type: Config
-    name_group: 0
-    scope: file
+  # #6916 Tier C: the `#[actix_web::main]` attribute-macro marker used to mint a
+  # Config entity literally NAMED "#[actix_web::main]" via `name_group: 0` — a
+  # per-file boolean ("this file has the actix main macro") with no referent for
+  # any edge to point at, and no relationship_rule in the rust bucket names
+  # Config as an endpoint, so it carried zero edges. It was also the THIRD
+  # marker on the same concept: `HttpServer::new(` and `App::new()` below fire
+  # on the same main.rs and mean the same thing ("server entry point"). Those
+  # two are kept (Tier D still owes them a real name); this one is deleted
+  # rather than renamed because a bare attribute macro has no name to capture.
+  # The attribute is not lost as a FACT either: internal/substrate/
+  # entry_points_rust.go lists `actix_web::main` in rustLifecycleAttrs and reads
+  # it for entry-point classification, which is the modelled form of exactly
+  # what this marker gestured at.
 
   # App::new() — application builder (middleware config point)
   - pattern: "App\\s*::\\s*new\\s*\\(\\s*\\)"

@@ -79,11 +79,21 @@ source_patterns:
     name_group: 1
     scope: class
 
-  # kotlin { sourceSets { ... } } — source set configuration block
-  - pattern: "\\bsourceSets\\s*\\{"
-    entity_type: Config
-    name_group: 0
-    scope: file
+  # #6916 Tier C: `sourceSets {` used to mint a Config entity literally NAMED
+  # "sourceSets {" via `name_group: 0` — a Gradle DSL block opener, not a thing
+  # in the repo. 10 entities on the 60-repo corpus, the 7th-biggest name_group:0
+  # producer, all unbound (no relationship_rule in the kotlin bucket names
+  # Config as an endpoint). The named, bindable form of the same information is
+  # the `val <name>Main by getting` rule below (5 Module entities on the same
+  # corpus: backendMain, frontendMain, jsMain).
+  #
+  # Measured limit, recorded rather than glossed: all 10 deleted markers came
+  # from ktor/ktor-samples build.gradle.kts files that spell their source sets
+  # `jvmMain.dependencies { … }`, which the Module rule below does NOT capture —
+  # so those six files are left with no source-set node at all. What is lost
+  # there is a per-file boolean that could not name WHICH source sets exist; a
+  # rule for the property-access spelling is the fix if that fact is wanted, and
+  # it belongs with the other Tier-D captures, not here.
 
   # val commonMain by getting / val androidMain by getting — source set variable
   - pattern: "val\\s+(\\w+Main)\\s+by\\s+(?:getting|creating)"

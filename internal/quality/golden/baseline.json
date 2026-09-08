@@ -246,12 +246,12 @@
       "relationship_extracted_total": 35
     },
     "ruby-sinatra-modular-mini": {
-      "entity_found": 13,
-      "entity_expected": 13,
+      "entity_found": 10,
+      "entity_expected": 10,
       "relationship_found": 3,
       "relationship_expected": 3,
-      "entity_extracted_total": 61,
-      "relationship_extracted_total": 118
+      "entity_extracted_total": 58,
+      "relationship_extracted_total": 115
     },
     "rust-tokio-mini": {
       "entity_found": 16,

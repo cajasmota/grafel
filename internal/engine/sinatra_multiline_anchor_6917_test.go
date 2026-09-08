@@ -157,8 +157,40 @@ func TestIssue6917_ModularSinatraAppYieldsRoutes(t *testing.T) {
 		t.Errorf("configure :production not extracted as Config; Configs: %v",
 			entity6917Names(res, "Config"))
 	}
-	if len(entity6917Names(res, "Service")) == 0 {
-		t.Errorf("expected the `helpers do` block as a Service, got none")
+	// #6916 Tier C deleted the `helpers do` BLOCK rule (a Service named after the
+	// whole matched line), so the Service entities this fixture yields now come
+	// from the `helpers <Module>` INCLUDE rule alone. Naming that expectation is
+	// what keeps the assertion honest: `len(Service) != 0` would have gone on
+	// passing if the include rule had died and the block rule survived.
+	// This fixture carries only the BLOCK form (`helpers do`), not the include
+	// form (`helpers AuthHelpers`), so after the deletion it yields no Service at
+	// all. Both directions are asserted: the name that must not come back, and
+	// the set that must stay empty. The positive controls for "this file is still
+	// being extracted" are the Route / Controller / Config / Middleware
+	// assertions above; the include form's own recall is graded by
+	// internal/quality/golden/ruby-sinatra-modular-mini (Service AuthHelpers,
+	// must_exist) and by tier_c_marker_deletion_6916_test.go.
+	if got := entity6917Names(res, "Service"); len(got) != 0 {
+		t.Errorf("expected no Service entities from a file whose only helpers construct "+
+			"is the deleted `helpers do` block, got %v", got)
+	}
+	if has6917Entity(res, "Service", "helpers do") {
+		t.Errorf("#6916 Tier C: the deleted `helpers do` block rule is back — Service "+
+			"%q is in the graph again; Services: %v", "helpers do",
+			entity6917Names(res, "Service"))
+	}
+	// The same for the two filter rules. `error 404 do` is the Middleware
+	// producer that REMAINS, and it is what the assertion above this one now
+	// rests on, so the deleted names are named explicitly here.
+	for _, gone := range []string{"before '/admin/*' do", "after do"} {
+		if has6917Entity(res, "Middleware", gone) {
+			t.Errorf("#6916 Tier C: the deleted filter rule is back — Middleware %q is "+
+				"in the graph again; Middleware: %v", gone, entity6917Names(res, "Middleware"))
+		}
+	}
+	if !has6917Entity(res, "Middleware", "404") {
+		t.Errorf("`error 404 do` is the filter-family rule Tier C KEPT and it stopped "+
+			"firing; Middleware: %v", entity6917Names(res, "Middleware"))
 	}
 }
 
@@ -249,6 +281,14 @@ func TestIssue6917_MultilinePatternsDoNotOverFire(t *testing.T) {
 		// would accept `Whatever`, so ONLY the line anchor keeps it out — which
 		// is what makes this row grade the anchor rather than the capture.
 		{"Service", "Whatever"},
+		// #6916 Tier C: this row used to sit in the KNOWN-AND-REACHABLE list
+		// below, pinned in the positive direction with the instruction "whoever
+		// teaches the detector about heredocs is told by a red test to come here
+		// and flip these into the forbidden list". The rule it depended on — the
+		// `helpers do` block rule — is deleted instead, so the heredoc's
+		// `helpers do` line can no longer mint anything and the row moves here,
+		// which is the direction that grades the deletion.
+		{"Service", "helpers do"},
 	}
 	for _, f := range forbidden {
 		if has6917Entity(res, f.kind, f.name) {
@@ -271,10 +311,6 @@ func TestIssue6917_MultilinePatternsDoNotOverFire(t *testing.T) {
 	for _, known := range []struct{ kind, name string }{
 		{"Route", "/from-a-heredoc"},
 		{"Config", "from_a_heredoc"},
-		// The heredoc's `helpers do` line mints a Service too. It was the one
-		// YAML-minted heredoc entity the pin did not cover, because the sweeps
-		// below covered Route and Middleware but not Service.
-		{"Service", "helpers do"},
 	} {
 		if !has6917Entity(res, known.kind, known.name) {
 			t.Errorf("heredoc over-firing is no longer happening for %s %q — good news; "+

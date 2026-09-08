@@ -38,11 +38,10 @@ source_patterns:
     entity_type: Operation
     name_group: 1
     scope: file
-  # RunnableSequence.from([...]) — the explicit composition constructor.
-  - pattern: "RunnableSequence\\.from\\s*\\("
-    entity_type: Operation
-    name_group: 0
-    scope: file
+  # #6916 Tier C: `RunnableSequence.from(` used to mint an Operation entity
+  # literally NAMED "RunnableSequence.from(" via `name_group: 0`, trailing
+  # paren included. The `.pipe()` rule above is the bindable form of the same
+  # LCEL composition fact (it captures the upstream runnable variable).
   # --- prompt_template_extraction (#2865) ---------------------------------
   # ChatPromptTemplate.fromMessages(...) / .fromTemplate(...) and the bare
   # PromptTemplate.fromTemplate(...) factory. Captures the template-class +
@@ -63,15 +62,15 @@ source_patterns:
     entity_type: Operation
     name_group: 1
     scope: file
-  - pattern: "\\btool\\s*\\(\\s*(?:async\\s*)?\\("
-    entity_type: Operation
-    name_group: 0
-    scope: file
-  # .bindTools([...]) — attaches a tool set to a model (function-calling).
-  - pattern: "\\.bindTools\\s*\\("
-    entity_type: Operation
-    name_group: 0
-    scope: file
+  # #6916 Tier C: the `tool(async (` and `.bindTools(` rules used to mint
+  # Operation entities literally NAMED "tool(async (" and ".bindTools(" via
+  # `name_group: 0` — call-site fragments with no referent. Both survive
+  # dropStatementNoiseOperations (measured: its noise predicate keys on a
+  # leading "@", a bare "=", or a leading statement keyword, none of which a
+  # trailing-paren fragment has), so this IS a deliberate removal of entities
+  # that reach the graph, not the deletion of an already-suppressed rule. The
+  # `new DynamicTool(...)` / `new DynamicStructuredTool(...)` rule above keeps
+  # the named form of the tool-declaration fact.
   # --- agents -------------------------------------------------------------
   # Agent factory (createReactAgent, createToolCallingAgent, …).
   - pattern: "create\\w+Agent\\s*\\("

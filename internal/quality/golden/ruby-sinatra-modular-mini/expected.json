@@ -1,7 +1,7 @@
 {
   "fixture_name": "ruby-sinatra-modular-mini",
   "language": "ruby",
-  "description": "Modular-style Sinatra app (#6917): routes, filters, error handlers and a configure block all live INDENTED inside `class MyApp < Sinatra::Base`, and every file opens with `require` lines rather than a DSL call. That shape is the whole point — sinatra.yaml's `^\\s*`-anchored patterns were compiled without `(?m)`, so `^` meant start-of-TEXT and every one of them could only fire on a file's opening construct. Against this fixture the pre-fix binary extracted ZERO Route, Middleware, Config and Service entities from the YAML rules; the four http_endpoint_definition entities came from the separate Ruby extractor and are unaffected, which is exactly why the defect could hide. The fixture varies ONE axis — the vertical position of each Sinatra construct (never line 1) — and holds the constructs themselves at their idiomatic spellings.",
+  "description": "Modular-style Sinatra app (#6917): routes, filters, error handlers and a configure block all live INDENTED inside `class MyApp < Sinatra::Base`, and every file opens with `require` lines rather than a DSL call. That shape is the whole point — sinatra.yaml's `^\\s*`-anchored patterns were compiled without `(?m)`, so `^` meant start-of-TEXT and every one of them could only fire on a file's opening construct. Against this fixture the pre-fix binary extracted ZERO Route, Middleware, Config and Service entities from the YAML rules; the four http_endpoint_definition entities came from the separate Ruby extractor and are unaffected, which is exactly why the defect could hide. The fixture varies ONE axis — the vertical position of each Sinatra construct (never line 1) — and holds the constructs themselves at their idiomatic spellings. #6916 Tier C re-baseline: three `name_group: 0` marker rules (`helpers do`, `before ... do`, `after ... do`) were deleted, so their three rows moved from expected_entities to forbidden_entities and must-have recall fell 13 -> 10 by design. The source tree is UNCHANGED — every construct those rules matched is still in src/app.rb, which is what makes the forbidden rows reachable.",
   "expected_entities": [
     { "name": "/invoices", "kind": "Route", "source_file": "app.rb", "must_exist": true,
       "note": "#6917 recall arm. `get '/invoices' do` and `post '/invoices' do` sit indented inside the class body. Extracted ZERO Routes before the fix." },
@@ -15,12 +15,6 @@
       "note": "`configure :production do`, indented." },
     { "name": "404", "kind": "Middleware", "source_file": "app.rb", "must_exist": true,
       "note": "`error 404 do`, indented and near the END of the file — the furthest possible position from start-of-text." },
-    { "name": "before '/admin/*' do", "kind": "Middleware", "source_file": "app.rb", "must_exist": true,
-      "note": "FINDING: the name is the whole matched line because the rule uses `name_group: 0`. Ugly, pre-existing, and pinned so a later cleanup is a deliberate change rather than an accident." },
-    { "name": "after do", "kind": "Middleware", "source_file": "app.rb", "must_exist": true },
-
-    { "name": "helpers do", "kind": "Service", "source_file": "app.rb", "must_exist": true,
-      "note": "The `helpers do ... end` block form." },
     { "name": "AuthHelpers", "kind": "Service", "source_file": "app.rb", "must_exist": true,
       "note": "The `helpers AuthHelpers` include form — a DIFFERENT rule from the block above, and the one whose capture was tightened from `\\w+` to `[A-Z]\\w*`. Present so that tightening is graded rather than assumed." },
 
@@ -31,6 +25,12 @@
     { "name": "http:DELETE:/invoices/{id}", "kind": "http_endpoint_definition", "source_file": "app.rb", "must_exist": true }
   ],
   "forbidden_entities": [
+    { "name": "before '/admin/*' do", "kind": "Middleware", "must_exist": false,
+      "note": "#6916 Tier C. These three rows were `must_exist` until Tier C, with the note \"the name is the whole matched line because the rule uses `name_group: 0`. Ugly, pre-existing, and pinned so a later cleanup is a deliberate change rather than an accident.\" This is that deliberate change: the `before`/`after` filter rules and the `helpers do` block rule are DELETED, because a Middleware named after the matched line has no referent an edge can point at (the only rule targeting Middleware sources on `use <Constant>`; the only rule targeting Service sources on a `<name>_helper` method), and naming them from their optional path group instead would have silently stopped extracting the BARE `before do` / `after do` spellings altogether. Recall falls 13 -> 10 must-haves here, deliberately. The rows are kept in the forbidden direction because a recall gate cannot see a rule coming back — only a forbidden row can." },
+    { "name": "after do", "kind": "Middleware", "must_exist": false,
+      "note": "#6916 Tier C, as above. src/app.rb still contains the bare `after do` filter, so this row is reachable: restoring the deleted rule turns the fixture red." },
+    { "name": "helpers do", "kind": "Service", "must_exist": false,
+      "note": "#6916 Tier C, as above. src/app.rb still contains the `helpers do ... end` block, and `helpers AuthHelpers` above it is the held-constant control: the include form keeps its real name and stays a must-have, so this row grades the deletion of the BLOCK rule specifically rather than the disappearance of sinatra Service extraction." },
     { "name": "do", "kind": "Service", "must_exist": false,
       "note": "#6917 forbidden arm. The `helpers <Module>` include rule used to capture `(\\w+)`, which matched the `do` of `helpers do` and minted a Service entity literally named \"do\" next to the real block entity. It could not fire while the anchor defect kept both patterns dead; restoring `(?m)` made it reachable, so the capture was narrowed to a Ruby constant `([A-Z]\\w*(?:::\\w+)*)`. Reverting that narrowing puts this row back and turns the fixture red." },
     { "name": "Whatever", "kind": "Service", "must_exist": false,
