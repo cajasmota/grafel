@@ -69,11 +69,19 @@ source_patterns:
     name_group: 1
     scope: class
 
-  # Helper block: helpers do ... end
-  - pattern: "(?m)^\\s*helpers\\s+do"
-    entity_type: Service
-    name_group: 0
-    scope: file
+  # #6916 Tier C: `helpers do` used to mint a Service entity literally NAMED
+  # "helpers do" via `name_group: 0` — the matched line, not a helper. Nothing
+  # could bind to it: the only rule targeting Service (Route CALLS Service,
+  # below) takes its target from `(\\w+_helper|authenticate!|authorize!)`, a
+  # method name, which can never equal "helpers do". The helper METHODS inside
+  # the block are already extracted by the Ruby extractor as SCOPE.Operation
+  # (that is what the Route CALLS edge binds to), and the `helpers <Module>`
+  # include form below keeps its real, bindable name. Ruby also has a properly
+  # named producer for the block itself — internal/custom/ruby/sinatra_deep.go
+  # emits SCOPE.Pattern "sinatra_helpers_block" — so this rule was a parallel
+  # shadow population beside it (whether that extractor runs on a given index is
+  # gated separately by GRAFEL_INPROC_CUSTOM_EXTRACTORS; no claim is made here
+  # about which indexes carry it).
 
   # Helper include: helpers HelperModule
   #
@@ -89,17 +97,21 @@ source_patterns:
     name_group: 1
     scope: file
 
-  # Before filter: before "/path" do or before do
-  - pattern: "(?m)^\\s*before\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
-    entity_type: Middleware
-    name_group: 0
-    scope: file
-
-  # After filter: after "/path" do or after do
-  - pattern: "(?m)^\\s*after\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
-    entity_type: Middleware
-    name_group: 0
-    scope: file
+  # #6916 Tier C: the `before`/`after` filter rules used to mint Middleware
+  # entities literally NAMED "before '/admin/*' do" / "after do" via
+  # `name_group: 0` — the whole matched line. Deleted rather than renamed to
+  # the optional path group: `extractGroupFromIndex` returns "" for an
+  # unmatched optional group and the detector then skips the match, so
+  # `name_group: 1` would silently stop extracting bare `before do` / `after
+  # do` altogether — a recall change wearing a rename's clothes. Nothing bound
+  # to either name: the only rule targeting Middleware (Controller
+  # REGISTERED_ON Middleware, below) takes its target from `use
+  # Rack::Session::Cookie`, a module constant. `error <code> do` below is the
+  # one filter-family rule that already carries a real name and it stays. As
+  # with `helpers do` above, Ruby has a properly named producer for the same
+  # construct — internal/custom/ruby/middleware.go emits SCOPE.Pattern
+  # "sinatra_filter:before" / "sinatra_filter:before:/admin/*" — so what is
+  # deleted here is the shadow, not the fact.
 
   # Configure block: configure :production do
   - pattern: "(?m)^\\s*configure\\s*(?::(\\w+))?\\s*do"
@@ -113,11 +125,13 @@ source_patterns:
     name_group: 1
     scope: file
 
-  # Sinatra::Application classic-style app boot
-  - pattern: "Sinatra::Application\\.run!"
-    entity_type: Config
-    name_group: 0
-    scope: file
+  # #6916 Tier C: `Sinatra::Application.run!` used to mint a Config entity
+  # literally NAMED "Sinatra::Application.run!" via `name_group: 0` — a boot
+  # call site, not a configuration object. It made the sinatra `Config
+  # ROUTES_TO Controller` rule dangling BY CONSTRUCTION: that rule sources on
+  # `map "/api" do`, i.e. a mount PATH, so the only Config entity the framework
+  # minted could never be the edge's endpoint. The `configure :<env> do` rule
+  # above is the real, named Config producer and is kept.
 
 # relationship_rules: regex patterns that produce edges between entities.
 relationship_rules:

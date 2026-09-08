@@ -73,34 +73,38 @@ func TestDetect_LangChain_PromptsChainsTools(t *testing.T) {
 		t.Errorf("expected >=2 Schema (prompt) entities, got %d", c)
 	}
 
-	// chain_composition: .pipe() stages (captures upstream runnable name) +
-	// RunnableSequence.from.
+	// chain_composition: .pipe() stages (captures upstream runnable name).
 	if !names["prompt"] {
 		t.Errorf("expected .pipe() chain stage named 'prompt'; got %v", keys(names))
 	}
-	if !names["RunnableSequence.from("] {
-		t.Errorf("expected RunnableSequence.from composition entity; got %v", keys(names))
-	}
 
-	// tool_use_detection: the three tool declaration idioms + bindTools.
+	// tool_use_detection: the two `new`-constructor tool declaration idioms.
 	if !names["DynamicTool"] {
 		t.Errorf("expected DynamicTool entity; got %v", keys(names))
 	}
 	if !names["DynamicStructuredTool"] {
 		t.Errorf("expected DynamicStructuredTool entity; got %v", keys(names))
 	}
-	if !names[".bindTools("] {
-		t.Errorf("expected bindTools entity; got %v", keys(names))
-	}
-	// tool(async (...) factory.
-	var sawToolFactory bool
-	for n := range names {
-		if n == "tool(async (" || n == "tool((" {
-			sawToolFactory = true
+
+	// #6916 Tier C. Three `name_group: 0` rules in this file were DELETED, and
+	// this test used to require the entities they minted:
+	//
+	//	Operation "RunnableSequence.from("   RunnableSequence.from([...])
+	//	Operation "tool(async ("             the tool() factory
+	//	Operation ".bindTools("              model.bindTools([...])
+	//
+	// Each Name was the whole regex match — a call-site fragment, trailing paren
+	// included — so nothing could ever reference it. The assertions are inverted
+	// here rather than deleted: an absence with no assertion behind it is how a
+	// deleted rule comes back unnoticed, and this test drives the same source as
+	// the surviving assertions above, so it is the cheapest place to grade it.
+	// The full site table and the per-site controls live in
+	// tier_c_marker_deletion_6916_test.go.
+	for _, gone := range []string{"RunnableSequence.from(", ".bindTools(", "tool(async (", "tool(("} {
+		if names[gone] {
+			t.Errorf("#6916 Tier C: the deleted marker rule is back — Operation %q "+
+				"is in the graph again; got %v", gone, keys(names))
 		}
-	}
-	if !sawToolFactory {
-		t.Errorf("expected tool() factory entity; got %v", keys(names))
 	}
 }
 

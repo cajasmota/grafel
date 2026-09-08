@@ -279,9 +279,18 @@ func symbolicID(kind, name string) string {
 //
 // This classifier is deliberately NARROW. The codebase legitimately uses
 // non-identifier Operation names for call-idiom detection — e.g.
-// "RunnableSequence.from(", ".bindTools(", "tool(async (", "createTRPCClient<".
-// Those must be KEPT. So we drop ONLY three concrete statement shapes that carry
-// no architectural signal:
+// "createTRPCClient<" (javascript_typescript/frameworks/trpc.yaml). Those must
+// be KEPT. So we drop ONLY three concrete statement shapes that carry no
+// architectural signal:
+//
+// #6916 Tier C note: three of the four examples this comment used to list —
+// "RunnableSequence.from(", ".bindTools(", "tool(async (" — no longer exist.
+// They were `name_group: 0` marker rules in
+// javascript_typescript/frameworks/langchain.yaml and were DELETED at the rule
+// level rather than filtered here. Their presence in this list was also the
+// evidence that #6916's "already dropped downstream as Operation noise" claim
+// about them was wrong: this pass never dropped them, and the langchain site
+// it WAS written for is the python `@tool` decorator, case (1) below.
 //
 //  1. Bare decorator text — name starts with `@` and the remainder is a plain
 //     identifier with no call/args (e.g. "@tool", "@property"). A decorator
