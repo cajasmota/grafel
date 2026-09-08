@@ -29,22 +29,37 @@ source_patterns:
     name_group: 1
     scope: file
 
-  # fiber.New() app init
-  # fiber.New() app init, named after the ASSIGNED VARIABLE (#6916): app := fiber.New()
+  # fiber.New() init, named after the ASSIGNED VARIABLE (#6916): app := fiber.New()
   # name_group 0 named this entity "fiber.New()" — a marker string, one per FILE, that no
-  # edge could ever bind to. Naming the variable is also what makes a PER-ROUTER
-  # anchor possible (#6914): a file building two routers now mints two entities.
+  # edge could ever bind to. Naming the variable is also what makes a PER-APP
+  # anchor possible (#6914): a file building two apps now mints two entities.
   #
-  # The `(?m)^[ \t]*` ANCHOR is load-bearing and graded. Without it the capture is
-  # just "the token left of the `=`", which in Go is reached from inside comments
-  # and doc examples — `// r := fiber.New()` would mint a plausible-looking
-  # `Config:r` in a file that builds no router at all. `(?:\w+\.)?` keeps
-  # `s.router = fiber.New()` naming `router` rather than `s`; the optional
-  # `var` + type group is what lets `var r *fiber.App = fiber.New()` match at all.
-  # Measured: Go puts the type AFTER the name, so deleting that group makes an
-  # explicitly typed declaration mint NOTHING — it does not capture the type the
-  # way the TypeScript sibling did (#6916 Tier B, review ask 2).
-  - pattern: '(?m)^[ \t]*(?:var\s+)?(?:\w+\.)?(\w+)(?:\s+[\w.*\[\]]+)?\s*:?=\s*fiber\.New\s*\(\s*\)'
+  # TWO entries, not one (#7022). A SINGLE entry with an optional `var` AND an
+  # optional trailing type slot let `if app := fiber.New(); …` match with the keyword `if`
+  # in the name slot and the real variable in the type slot — minting `Config:if`,
+  # a node named after a syntax token, which is the exact defect class #6916
+  # exists to remove. Confirmed through the real detector on all four Go sites;
+  # gorm was immune because its comma list takes a different path. Splitting the
+  # forms puts the type slot BEHIND a literal `var`, so nothing but a declared
+  # name can reach the capture.
+  #
+  # The `(?m)^[ \t]*` ANCHOR is load-bearing and graded on BOTH entries. Without it
+  # the capture is just "the token left of the `=`", which in Go is reached from
+  # inside comments and doc examples — `// app := fiber.New()` would mint a
+  # plausible-looking `Config:` in a file that builds nothing at all. `(?:\w+\.)?`
+  # on the short form keeps `s.app = fiber.New()` naming the field rather than the
+  # receiver.
+  - pattern: '(?m)^[ \t]*(?:\w+\.)?(\w+)\s*:?=\s*fiber\.New\s*\(\s*\)'
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+  # Declaration form: `var app *fiber.App = fiber.New()`. Measured: Go puts the
+  # type AFTER the name, so deleting this entry's type slot makes an explicitly
+  # typed declaration mint NOTHING — it does not capture the type the way the
+  # TypeScript sibling did (#6916 Tier B, review ask 2). The type slot lives here
+  # rather than on the short form so it cannot swallow a keyword (#7022).
+  - pattern: '(?m)^[ \t]*var\s+(\w+)(?:\s+[\w.*\[\]]+)?\s*=\s*fiber\.New\s*\(\s*\)'
     entity_type: Config
     name_group: 1
     scope: file

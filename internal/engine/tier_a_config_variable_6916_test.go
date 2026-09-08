@@ -10,10 +10,10 @@ import (
 // #6916 Tier A — the eight `Config` source_patterns whose construction is
 // assigned to a variable on the same line:
 //
-//	go/frameworks/chi.yaml:39        chi.NewRouter()
-//	go/frameworks/echo.yaml:33       echo.New()
-//	go/frameworks/fiber.yaml:33      fiber.New()
-//	go/frameworks/gin.yaml:33        gin.Default() / gin.New()
+//	go/frameworks/chi.yaml:58        chi.NewRouter()
+//	go/frameworks/echo.yaml:52       echo.New()
+//	go/frameworks/fiber.yaml:52      fiber.New()
+//	go/frameworks/gin.yaml:52        gin.Default() / gin.New()
 //	go/frameworks/gorm.yaml:15       gorm.Open(...)
 //	rust/frameworks/axum.yaml:82     Router::new()
 //	csharp/frameworks/asp_net_core.yaml:90  WebApplication.CreateBuilder(...)
@@ -90,6 +90,16 @@ type tierA6916Site struct {
 	nonFrameworkCtl  string
 	nonFrameworkWant string
 
+	// ifInit constructs the object inside Go's if-with-initialiser, where a
+	// KEYWORD sits in the position the pattern reads as the variable name.
+	// Must mint no Config named after the keyword; ifInitWant is the variable
+	// that a correct rule may still name (empty where the shape mints nothing
+	// at all). Go-only: rust's pattern requires a line-initial `let` and C#
+	// has no if-initialiser, and both were probed through the real detector
+	// and mint nothing here — see the test below.
+	ifInit     string
+	ifInitWant string
+
 	// reassigned rebinds an EXISTING variable with no `let`. Only axum carries
 	// one: its pattern requires the declaration keyword, and this is the shape
 	// that grades that requirement. Must mint no Config.
@@ -122,7 +132,7 @@ type tierA6916Site struct {
 // fixture body against the claim its name made.
 var tierA6916Sites = []tierA6916Site{
 	{
-		rule:      "go/frameworks/chi.yaml:39",
+		rule:      "go/frameworks/chi.yaml:58",
 		qualifier: "chi.",
 		lang:      "go",
 		path:      "main.go",
@@ -145,6 +155,23 @@ func main() {
 }
 `,
 		first: "r", second: "api",
+		ifInit: `package main
+
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+)
+
+func listUsers(w http.ResponseWriter, r *http.Request) {}
+
+func main() {
+	if r := chi.NewRouter(); r != nil {
+		_ = r
+	}
+}
+`,
+		ifInitWant: "r",
 		annotated: `package main
 
 import (
@@ -239,7 +266,7 @@ func (s *Server) setup() {
 		fieldTargetWant: "router",
 	},
 	{
-		rule:      "go/frameworks/echo.yaml:33",
+		rule:      "go/frameworks/echo.yaml:52",
 		qualifier: "echo.",
 		lang:      "go",
 		path:      "main.go",
@@ -258,6 +285,19 @@ func main() {
 }
 `,
 		first: "e", second: "admin",
+		ifInit: `package main
+
+import "github.com/labstack/echo/v4"
+
+func listUsers(c echo.Context) error { return nil }
+
+func main() {
+	if e := echo.New(); e != nil {
+		_ = e
+	}
+}
+`,
+		ifInitWant: "e",
 		annotated: `package main
 
 import "github.com/labstack/echo/v4"
@@ -338,7 +378,7 @@ func (s *Server) setup() {
 		fieldTargetWant: "engine",
 	},
 	{
-		rule:      "go/frameworks/fiber.yaml:33",
+		rule:      "go/frameworks/fiber.yaml:52",
 		qualifier: "fiber.",
 		lang:      "go",
 		path:      "main.go",
@@ -357,6 +397,19 @@ func main() {
 }
 `,
 		first: "app", second: "metrics",
+		ifInit: `package main
+
+import "github.com/gofiber/fiber/v2"
+
+func listUsers(c *fiber.Ctx) error { return nil }
+
+func main() {
+	if app := fiber.New(); app != nil {
+		_ = app
+	}
+}
+`,
+		ifInitWant: "app",
 		annotated: `package main
 
 import "github.com/gofiber/fiber/v2"
@@ -437,7 +490,7 @@ func (s *Server) setup() {
 		fieldTargetWant: "app",
 	},
 	{
-		rule:      "go/frameworks/gin.yaml:33",
+		rule:      "go/frameworks/gin.yaml:52",
 		qualifier: "gin.",
 		lang:      "go",
 		path:      "main.go",
@@ -459,6 +512,19 @@ func main() {
 }
 `,
 		first: "r", second: "admin",
+		ifInit: `package main
+
+import "github.com/gin-gonic/gin"
+
+func listUsers(c *gin.Context) {}
+
+func main() {
+	if r := gin.Default(); r != nil {
+		_ = r
+	}
+}
+`,
+		ifInitWant: "r",
 		annotated: `package main
 
 import "github.com/gin-gonic/gin"
@@ -561,6 +627,21 @@ func open() {
 }
 `,
 		first: "primary", second: "replica",
+		ifInit: `package db
+
+import "gorm.io/gorm"
+
+type User struct {
+	gorm.Model
+	Name string
+}
+
+func open() {
+	if db, err := gorm.Open(pgDialector(), &gorm.Config{}); err == nil {
+		_, _ = db, err
+	}
+}
+`,
 		annotated: `package db
 
 import "gorm.io/gorm"
@@ -761,9 +842,17 @@ fn rebuild(mut app: Router) -> Router {
 		// are the one under test plus none other, so "no Config" is exact.
 		control: "/health",
 		// Two builders in one C# file is legal but not idiomatic — a
-		// WebApplication has one entry point per Program.cs — so the
-		// per-variable multiplicity is graded on the six sites where a second
-		// construction is realistic, not here.
+		// WebApplication has one entry point per Program.cs. It is graded here
+		// anyway (#7022): an argument about idiom does not fail a build, and
+		// leaving the multiplicity axis ungraded on two of eight sites is the
+		// asymmetry this PR family keeps filing. Measured through the real
+		// detector before it was pinned: [first second].
+		twoVars: `var first = WebApplication.CreateBuilder(args);
+var second = WebApplication.CreateBuilder(args);
+var app = first.Build();
+app.MapGet("/health", () => "ok");
+`,
+		first: "first", second: "second",
 		annotated: `var _unused = 0;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
@@ -815,6 +904,21 @@ app.MapGet("/health", () => "ok");
 		// `.UseMauiApp<App>()`, which mints a Config of its own and would make
 		// the "no Config" assertions below ambiguous.
 		control: "orderdetail",
+		// As on asp_net_core above: one MauiApp builder per MauiProgram.cs is
+		// the idiom, but the multiplicity is graded anyway (#7022). Measured
+		// through the real detector before it was pinned: [firstApp secondApp].
+		twoVars: `public static class MauiProgram
+{
+    public static MauiApp CreateMauiApp()
+    {
+        var firstApp = MauiApp.CreateBuilder();
+        var secondApp = MauiApp.CreateBuilder();
+        Routing.RegisterRoute("orderdetail", typeof(OrderDetailPage));
+        return firstApp.Build();
+    }
+}
+`,
+		first: "firstApp", second: "secondApp",
 		annotated: `public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
@@ -961,9 +1065,11 @@ func TestIssue6916_TierAConfigIsNamedAfterItsVariable(t *testing.T) {
 // was nothing for a per-router `Middleware REGISTERED_ON <router>` edge to
 // point at, and adding the edge rule would not have created one.
 //
-// The two C# sites are absent on purpose: a WebApplication/MauiApp builder is
-// the single entry point of its file, so a second construction there would be a
-// fixture shaped to the test rather than to the language.
+// All EIGHT sites are graded here. The two C# sites were originally left out on
+// the argument that one builder per Program.cs is the idiom; #7022 put them
+// back, because an idiom argument does not fail a build and a tightening that
+// reintroduced per-file collapsing would have been caught by six sites and
+// missed by two.
 func TestIssue6916_TierAEachConstructionGetsItsOwnEntity(t *testing.T) {
 	for _, s := range tierA6916Sites {
 		if s.twoVars == "" {
@@ -1308,6 +1414,66 @@ func TestIssue6916_TierABareConstructorCallMintsNoConfig(t *testing.T) {
 				t.Errorf("%s: positive control missing — the same file WITH the qualifier no "+
 					"longer mints Config:%s, so the absence above proves nothing. Entities:\n  %s",
 					s.rule, s.nonFrameworkWant, strings.Join(ctl, "\n  "))
+			}
+		})
+	}
+}
+
+// TestIssue6916_TierAIfInitialiserMintsNoKeywordConfig grades the #7022 split.
+//
+// A SINGLE Go entry with an optional `var` AND an optional trailing type slot
+// let `if r := chi.NewRouter(); …` match with the keyword `if` in the name slot
+// and `r` in the type slot, minting `Config:if` — a node named after a syntax
+// token, which is the defect class #6916 exists to remove. Splitting each Go
+// site into a short form (no type slot) and a `var` form (type slot behind a
+// literal `var`) closes it without touching gorm, whose comma list already made
+// it immune.
+//
+// Both directions are scored: the keyword must never be a Name, AND the
+// ordinary `r := chi.NewRouter()` form must still mint its variable — a fix that
+// simply stops minting is not a fix, so every leg re-runs the site's own
+// single-construction control and requires the entity back.
+//
+// The other two language families were probed through the real detector and
+// mint nothing for their nearest shapes — rust `if let Some(app) = Router::new()`
+// (the pattern requires a line-initial `let`) and C# `if (x) builder =
+// WebApplication.CreateBuilder(args)` (no if-initialiser exists) — so they carry
+// no fixture here. One language family is not a population: that is a measured
+// absence for two of them, not an assumption about the rest.
+func TestIssue6916_TierAIfInitialiserMintsNoKeywordConfig(t *testing.T) {
+	for _, s := range tierA6916Sites {
+		if s.ifInit == "" {
+			continue
+		}
+		t.Run(s.rule, func(t *testing.T) {
+			if !strings.Contains(s.ifInit, "if ") {
+				t.Fatalf("%s: fixture bug — the ifInit fixture carries no if-initialiser, so "+
+					"this leg is not testing the shape its name claims.", s.rule)
+			}
+			ids := entityIDs6916(detect6916(t, s.path, s.lang, s.ifInit))
+			names := configNames6916(ids)
+			for _, name := range names {
+				if name != s.ifInitWant {
+					t.Errorf("%s: an if-with-initialiser minted Config:%q. The only names this "+
+						"shape may produce are the declared variable (%q, or none); a keyword in "+
+						"the name slot means the type slot is reachable without `var`.",
+						s.rule, name, s.ifInitWant)
+				}
+			}
+			if s.ifInitWant != "" && !slices.Contains(names, s.ifInitWant) {
+				t.Logf("%s: the if-initialiser mints nothing (names: %v). That is the accepted "+
+					"cost of the split, not a failure.", s.rule, names)
+			}
+			assertControl6916(t, ids, s.control)
+
+			// Positive control: the ORDINARY assignment form on the same site
+			// must still mint its variable. Without this, a rule that stopped
+			// firing altogether would pass every assertion above.
+			ctl := entityIDs6916(detect6916(t, s.path, s.lang, s.nonFrameworkCtl))
+			if !slices.Contains(ctl, "Config:"+s.nonFrameworkWant) {
+				t.Errorf("%s: positive control missing — the plain `x := %s(...)` form no longer "+
+					"mints Config:%s, so the absence above proves nothing. Entities:\n  %s",
+					s.rule, s.qualifier, s.nonFrameworkWant, strings.Join(ctl, "\n  "))
 			}
 		})
 	}
