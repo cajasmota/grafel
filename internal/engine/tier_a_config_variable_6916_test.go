@@ -10,10 +10,12 @@ import (
 // #6916 Tier A — the eight `Config` source_patterns whose construction is
 // assigned to a variable on the same line:
 //
-//	go/frameworks/chi.yaml:58        chi.NewRouter()
-//	go/frameworks/echo.yaml:52       echo.New()
-//	go/frameworks/fiber.yaml:52      fiber.New()
-//	go/frameworks/gin.yaml:52        gin.Default() / gin.New()
+// The four Go sites are THREE entries each after #7022 (short / `var` /
+// grouped); the line below is the short form, the other two follow it.
+//	go/frameworks/chi.yaml:79        chi.NewRouter()
+//	go/frameworks/echo.yaml:73       echo.New()
+//	go/frameworks/fiber.yaml:73      fiber.New()
+//	go/frameworks/gin.yaml:73        gin.Default() / gin.New()
 //	go/frameworks/gorm.yaml:15       gorm.Open(...)
 //	rust/frameworks/axum.yaml:82     Router::new()
 //	csharp/frameworks/asp_net_core.yaml:90  WebApplication.CreateBuilder(...)
@@ -79,9 +81,17 @@ type tierA6916Site struct {
 	// commented is the same construction inside a line comment: the shape that
 	// grades the `(?m)^[ \t]*` anchor. Must mint no Config.
 	// commentedCtl is the SAME file with the comment marker removed.
-	commented     string
-	commentedCtl  string
-	commentedWant string
+	//
+	// On the four Go sites the fixture carries the short, the single-line `var`
+	// and the GROUPED spelling, because #7022 split those sites into three
+	// entries and the anchor has to be graded on each one separately: with the
+	// anchor dropped from the `var` entry alone the whole suite stayed green
+	// while `// var mux *chi.Mux = chi.NewRouter()` minted `Config:mux`.
+	// commentedExtraWant lists the additional names the control must mint.
+	commented          string
+	commentedCtl       string
+	commentedWant      string
+	commentedExtraWant []string
 
 	// nonFramework spells the same call against another package/type; it must
 	// mint nothing. nonFrameworkCtl is the same file with the framework
@@ -90,15 +100,25 @@ type tierA6916Site struct {
 	nonFrameworkCtl  string
 	nonFrameworkWant string
 
-	// ifInit constructs the object inside Go's if-with-initialiser, where a
-	// KEYWORD sits in the position the pattern reads as the variable name.
-	// Must mint no Config named after the keyword; ifInitWant is the variable
-	// that a correct rule may still name (empty where the shape mints nothing
-	// at all). Go-only: rust's pattern requires a line-initial `let` and C#
-	// has no if-initialiser, and both were probed through the real detector
-	// and mint nothing here — see the test below.
-	ifInit     string
-	ifInitWant string
+	// keywordInit puts a KEYWORD where the pattern reads the variable name:
+	// Go's if/switch/go statement heads, in BOTH the `:=` and the plain `=`
+	// spelling. Measured at `87106f12c`, these minted `Config:if`,
+	// `Config:switch` and `Config:go`; the whole fixture must now mint NOTHING.
+	// Go-only: rust's pattern requires a line-initial `let` and C# has no
+	// if-initialiser, and both were probed through the real detector and mint
+	// nothing here — see the test below.
+	keywordInit string
+
+	// groupedVar declares the construction inside a `var (…)` block WITH an
+	// explicit type — the shape that falls between a short form with no type
+	// slot and a `var` form whose type slot sits behind a literal `var`, since
+	// inside the block the `var` is on its own line. It matched before the
+	// split and must keep matching: losing a working binding is worse than the
+	// junk name the split removed. groupedVarWant is asserted; the block also
+	// carries a SECOND declarator, so a per-line entry is graded rather than a
+	// once-per-block one.
+	groupedVar                      string
+	groupedVarWant, groupedVarWant2 string
 
 	// reassigned rebinds an EXISTING variable with no `let`. Only axum carries
 	// one: its pattern requires the declaration keyword, and this is the shape
@@ -132,7 +152,7 @@ type tierA6916Site struct {
 // fixture body against the claim its name made.
 var tierA6916Sites = []tierA6916Site{
 	{
-		rule:      "go/frameworks/chi.yaml:58",
+		rule:      "go/frameworks/chi.yaml:79",
 		qualifier: "chi.",
 		lang:      "go",
 		path:      "main.go",
@@ -155,7 +175,7 @@ func main() {
 }
 `,
 		first: "r", second: "api",
-		ifInit: `package main
+		keywordInit: `package main
 
 import (
 	"net/http"
@@ -169,9 +189,34 @@ func main() {
 	if r := chi.NewRouter(); r != nil {
 		_ = r
 	}
+
+	var api *chi.Mux
+	if api = chi.NewRouter(); api != nil {
+		_ = api
+	}
+
+	switch api = chi.NewRouter(); {
+	default:
+		_ = api
+	}
 }
 `,
-		ifInitWant: "r",
+		groupedVar: `package main
+
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+)
+
+func listUsers(w http.ResponseWriter, r *http.Request) {}
+
+var (
+	grouped *chi.Mux = chi.NewRouter()
+	secondary *chi.Mux = chi.NewRouter()
+)
+`,
+		groupedVarWant: "grouped", groupedVarWant2: "secondary",
 		annotated: `package main
 
 import (
@@ -193,6 +238,10 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
 
 // Historically this file built its own router:
 //	r := chi.NewRouter()
+//	var mux *chi.Mux = chi.NewRouter()
+//	var (
+//		grouped *chi.Mux = chi.NewRouter()
+//	)
 `,
 		commentedCtl: `package main
 
@@ -202,8 +251,12 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
 
 // Historically this file built its own router:
 r := chi.NewRouter()
+var mux *chi.Mux = chi.NewRouter()
+var (
+	grouped *chi.Mux = chi.NewRouter()
+)
 `,
-		commentedWant: "r",
+		commentedWant: "r", commentedExtraWant: []string{"mux", "grouped"},
 		nonFramework: `package main
 
 import (
@@ -266,7 +319,7 @@ func (s *Server) setup() {
 		fieldTargetWant: "router",
 	},
 	{
-		rule:      "go/frameworks/echo.yaml:52",
+		rule:      "go/frameworks/echo.yaml:73",
 		qualifier: "echo.",
 		lang:      "go",
 		path:      "main.go",
@@ -285,7 +338,7 @@ func main() {
 }
 `,
 		first: "e", second: "admin",
-		ifInit: `package main
+		keywordInit: `package main
 
 import "github.com/labstack/echo/v4"
 
@@ -295,9 +348,30 @@ func main() {
 	if e := echo.New(); e != nil {
 		_ = e
 	}
+
+	var admin *echo.Echo
+	if admin = echo.New(); admin != nil {
+		_ = admin
+	}
+
+	switch admin = echo.New(); {
+	default:
+		_ = admin
+	}
 }
 `,
-		ifInitWant: "e",
+		groupedVar: `package main
+
+import "github.com/labstack/echo/v4"
+
+func listUsers(c echo.Context) error { return nil }
+
+var (
+	grouped *echo.Echo = echo.New()
+	secondary *echo.Echo = echo.New()
+)
+`,
+		groupedVarWant: "grouped", groupedVarWant2: "secondary",
 		annotated: `package main
 
 import "github.com/labstack/echo/v4"
@@ -315,6 +389,10 @@ func listUsers(c echo.Context) error { return nil }
 
 // Example from the README:
 //	e := echo.New()
+//	var srv *echo.Echo = echo.New()
+//	var (
+//		grouped *echo.Echo = echo.New()
+//	)
 `,
 		commentedCtl: `package main
 
@@ -324,8 +402,12 @@ func listUsers(c echo.Context) error { return nil }
 
 // Example from the README:
 e := echo.New()
+var srv *echo.Echo = echo.New()
+var (
+	grouped *echo.Echo = echo.New()
+)
 `,
-		commentedWant: "e",
+		commentedWant: "e", commentedExtraWant: []string{"srv", "grouped"},
 		nonFramework: `package main
 
 import (
@@ -378,7 +460,7 @@ func (s *Server) setup() {
 		fieldTargetWant: "engine",
 	},
 	{
-		rule:      "go/frameworks/fiber.yaml:52",
+		rule:      "go/frameworks/fiber.yaml:73",
 		qualifier: "fiber.",
 		lang:      "go",
 		path:      "main.go",
@@ -397,7 +479,7 @@ func main() {
 }
 `,
 		first: "app", second: "metrics",
-		ifInit: `package main
+		keywordInit: `package main
 
 import "github.com/gofiber/fiber/v2"
 
@@ -407,9 +489,30 @@ func main() {
 	if app := fiber.New(); app != nil {
 		_ = app
 	}
+
+	var metrics *fiber.App
+	if metrics = fiber.New(); metrics != nil {
+		_ = metrics
+	}
+
+	switch metrics = fiber.New(); {
+	default:
+		_ = metrics
+	}
 }
 `,
-		ifInitWant: "app",
+		groupedVar: `package main
+
+import "github.com/gofiber/fiber/v2"
+
+func listUsers(c *fiber.Ctx) error { return nil }
+
+var (
+	grouped *fiber.App = fiber.New()
+	secondary *fiber.App = fiber.New()
+)
+`,
+		groupedVarWant: "grouped", groupedVarWant2: "secondary",
 		annotated: `package main
 
 import "github.com/gofiber/fiber/v2"
@@ -427,6 +530,10 @@ func listUsers(c *fiber.Ctx) error { return nil }
 
 // Quickstart:
 //	app := fiber.New()
+//	var srv *fiber.App = fiber.New()
+//	var (
+//		grouped *fiber.App = fiber.New()
+//	)
 `,
 		commentedCtl: `package main
 
@@ -436,8 +543,12 @@ func listUsers(c *fiber.Ctx) error { return nil }
 
 // Quickstart:
 app := fiber.New()
+var srv *fiber.App = fiber.New()
+var (
+	grouped *fiber.App = fiber.New()
+)
 `,
-		commentedWant: "app",
+		commentedWant: "app", commentedExtraWant: []string{"srv", "grouped"},
 		nonFramework: `package main
 
 import (
@@ -490,7 +601,7 @@ func (s *Server) setup() {
 		fieldTargetWant: "app",
 	},
 	{
-		rule:      "go/frameworks/gin.yaml:52",
+		rule:      "go/frameworks/gin.yaml:73",
 		qualifier: "gin.",
 		lang:      "go",
 		path:      "main.go",
@@ -512,7 +623,7 @@ func main() {
 }
 `,
 		first: "r", second: "admin",
-		ifInit: `package main
+		keywordInit: `package main
 
 import "github.com/gin-gonic/gin"
 
@@ -522,9 +633,30 @@ func main() {
 	if r := gin.Default(); r != nil {
 		_ = r
 	}
+
+	var admin *gin.Engine
+	if admin = gin.Default(); admin != nil {
+		_ = admin
+	}
+
+	switch admin = gin.Default(); {
+	default:
+		_ = admin
+	}
 }
 `,
-		ifInitWant: "r",
+		groupedVar: `package main
+
+import "github.com/gin-gonic/gin"
+
+func listUsers(c *gin.Context) {}
+
+var (
+	grouped *gin.Engine = gin.Default()
+	secondary *gin.Engine = gin.Default()
+)
+`,
+		groupedVarWant: "grouped", groupedVarWant2: "secondary",
 		annotated: `package main
 
 import "github.com/gin-gonic/gin"
@@ -542,6 +674,10 @@ func listUsers(c *gin.Context) {}
 
 // The default engine ships with Logger and Recovery:
 //	r := gin.Default()
+//	var engine *gin.Engine = gin.Default()
+//	var (
+//		grouped *gin.Engine = gin.Default()
+//	)
 `,
 		commentedCtl: `package main
 
@@ -551,8 +687,12 @@ func listUsers(c *gin.Context) {}
 
 // The default engine ships with Logger and Recovery:
 r := gin.Default()
+var engine *gin.Engine = gin.Default()
+var (
+	grouped *gin.Engine = gin.Default()
+)
 `,
-		commentedWant: "r",
+		commentedWant: "r", commentedExtraWant: []string{"engine", "grouped"},
 		nonFramework: `package main
 
 import (
@@ -627,7 +767,9 @@ func open() {
 }
 `,
 		first: "primary", second: "replica",
-		ifInit: `package db
+		// gorm is the control for the whole #7022 split: it was NOT split, its
+		// comma list already made it immune, and it must stay immune.
+		keywordInit: `package db
 
 import "gorm.io/gorm"
 
@@ -1147,10 +1289,12 @@ func TestIssue6916_TierACommentedConstructionMintsNoConfig(t *testing.T) {
 			assertControl6916(t, ids, s.control)
 
 			ctl := entityIDs6916(detect6916(t, s.path, s.lang, s.commentedCtl))
-			if !slices.Contains(ctl, "Config:"+s.commentedWant) {
-				t.Errorf("%s: positive control missing — the same file with the comment marker "+
-					"removed no longer mints Config:%s, so the absence above proves nothing about "+
-					"the comment. Entities:\n  %s", s.rule, s.commentedWant, strings.Join(ctl, "\n  "))
+			for _, want := range append([]string{s.commentedWant}, s.commentedExtraWant...) {
+				if !slices.Contains(ctl, "Config:"+want) {
+					t.Errorf("%s: positive control missing — the same file with the comment marker "+
+						"removed no longer mints Config:%s, so the absence above proves nothing about "+
+						"the comment. Entities:\n  %s", s.rule, want, strings.Join(ctl, "\n  "))
+				}
 			}
 		})
 	}
@@ -1419,50 +1563,53 @@ func TestIssue6916_TierABareConstructorCallMintsNoConfig(t *testing.T) {
 	}
 }
 
-// TestIssue6916_TierAIfInitialiserMintsNoKeywordConfig grades the #7022 split.
+// TestIssue6916_TierAKeywordInitialiserMintsNoConfig grades the #7022 split.
 //
 // A SINGLE Go entry with an optional `var` AND an optional trailing type slot
-// let `if r := chi.NewRouter(); …` match with the keyword `if` in the name slot
-// and `r` in the type slot, minting `Config:if` — a node named after a syntax
-// token, which is the defect class #6916 exists to remove. Splitting each Go
-// site into a short form (no type slot) and a `var` form (type slot behind a
-// literal `var`) closes it without touching gorm, whose comma list already made
-// it immune.
+// let a STATEMENT KEYWORD match in the name slot and the real variable in the
+// type slot. Measured at `87106f12c` through the real detector, on all four Go
+// sites:
 //
-// Both directions are scored: the keyword must never be a Name, AND the
-// ordinary `r := chi.NewRouter()` form must still mint its variable — a fix that
-// simply stops minting is not a fix, so every leg re-runs the site's own
-// single-construction control and requires the entity back.
+//	if r := chi.NewRouter(); …      -> Config:if
+//	if r = chi.NewRouter(); …       -> Config:if
+//	switch r = chi.NewRouter(); …   -> Config:switch
+//	go r = chi.NewRouter()          -> Config:go
+//	for r := chi.NewRouter(); …     -> Config:for
+//	const r = chi.NewRouter()       -> Config:const
+//
+// Every one of those is a node named after a syntax token, which is the defect
+// class #6916 exists to remove. The fixture carries BOTH the `:=` and the plain
+// `=` spelling on purpose: a first cut pinned only `:=`, and a mutant making
+// `var` optional on the declaration entry then survived the whole suite while
+// the `=` twins came straight back. Pinning one spelling and leaving its legal
+// sibling open is the failure this PR family keeps repeating.
+//
+// gorm carries the fixture too, as the control for the split itself: it was NOT
+// split, and it must stay immune.
 //
 // The other two language families were probed through the real detector and
 // mint nothing for their nearest shapes — rust `if let Some(app) = Router::new()`
 // (the pattern requires a line-initial `let`) and C# `if (x) builder =
 // WebApplication.CreateBuilder(args)` (no if-initialiser exists) — so they carry
-// no fixture here. One language family is not a population: that is a measured
-// absence for two of them, not an assumption about the rest.
-func TestIssue6916_TierAIfInitialiserMintsNoKeywordConfig(t *testing.T) {
+// no fixture here. Two of three families measured, not assumed.
+func TestIssue6916_TierAKeywordInitialiserMintsNoConfig(t *testing.T) {
 	for _, s := range tierA6916Sites {
-		if s.ifInit == "" {
+		if s.keywordInit == "" {
 			continue
 		}
 		t.Run(s.rule, func(t *testing.T) {
-			if !strings.Contains(s.ifInit, "if ") {
-				t.Fatalf("%s: fixture bug — the ifInit fixture carries no if-initialiser, so "+
-					"this leg is not testing the shape its name claims.", s.rule)
-			}
-			ids := entityIDs6916(detect6916(t, s.path, s.lang, s.ifInit))
-			names := configNames6916(ids)
-			for _, name := range names {
-				if name != s.ifInitWant {
-					t.Errorf("%s: an if-with-initialiser minted Config:%q. The only names this "+
-						"shape may produce are the declared variable (%q, or none); a keyword in "+
-						"the name slot means the type slot is reachable without `var`.",
-						s.rule, name, s.ifInitWant)
+			for _, kw := range []string{"if ", "= "} {
+				if !strings.Contains(s.keywordInit, kw) {
+					t.Fatalf("%s: fixture bug — the keywordInit fixture carries no %q, so it is "+
+						"not testing the shape its name claims.", s.rule, kw)
 				}
 			}
-			if s.ifInitWant != "" && !slices.Contains(names, s.ifInitWant) {
-				t.Logf("%s: the if-initialiser mints nothing (names: %v). That is the accepted "+
-					"cost of the split, not a failure.", s.rule, names)
+			ids := entityIDs6916(detect6916(t, s.path, s.lang, s.keywordInit))
+			if names := configNames6916(ids); len(names) != 0 {
+				t.Errorf("%s: a statement keyword reached the name slot and minted %v. A type "+
+					"slot is only safe BEHIND a literal `var` (or behind a qualified type); an "+
+					"entity named after a keyword is the #6916 defect wearing a new spelling.",
+					s.rule, names)
 			}
 			assertControl6916(t, ids, s.control)
 
@@ -1475,6 +1622,62 @@ func TestIssue6916_TierAIfInitialiserMintsNoKeywordConfig(t *testing.T) {
 					"mints Config:%s, so the absence above proves nothing. Entities:\n  %s",
 					s.rule, s.qualifier, s.nonFrameworkWant, strings.Join(ctl, "\n  "))
 			}
+		})
+	}
+}
+
+// TestIssue6916_TierAGroupedVarDeclarationNamesEachVariable pins the shape that
+// the #7022 split first LOST, and that review caught before it shipped.
+//
+// Splitting one pattern into several is how gaps open. The first cut had two
+// entries — a short form with no type slot, and a `var` form whose type slot sat
+// behind a literal `var` — and a grouped declaration matched NEITHER, because
+// inside `var (…)` the keyword is on its own line:
+//
+//	var (
+//	        r *chi.Mux = chi.NewRouter()
+//	)
+//
+// `Config=[r]` at `87106f12c`, `Config=[]` after the first cut, on all four
+// sites. Losing a binding that worked is worse than the junk name the split was
+// removing, so a third entry restores it — and stays keyword-proof by requiring
+// the type to be package-QUALIFIED, since `if r = chi.NewRouter(); …` cannot
+// spell `r` as `chi.Something`. (Making `var` merely optional, the obvious fix,
+// reopens the whole keyword hole for the plain-`=` forms above; that was
+// measured, not assumed.)
+//
+// The block carries TWO declarators so that a once-per-block entry is graded,
+// not just a once-per-file one.
+//
+// The residual, measured and accepted: a grouped declarator whose type is
+// UNQUALIFIED — `var ( r Mux = chi.NewRouter() )`, reachable only via a
+// dot-import or a local alias — minted `[r]` at the parent and mints nothing
+// now. That is the deliberate price of keeping keywords out, and it is stated
+// here rather than left for the next reader to rediscover.
+func TestIssue6916_TierAGroupedVarDeclarationNamesEachVariable(t *testing.T) {
+	for _, s := range tierA6916Sites {
+		if s.groupedVar == "" {
+			continue
+		}
+		t.Run(s.rule, func(t *testing.T) {
+			if !strings.Contains(s.groupedVar, "var (") {
+				t.Fatalf("%s: fixture bug — the groupedVar fixture has no `var (` block, so it "+
+					"is testing the single-line declaration the `var` entry already covers.", s.rule)
+			}
+			ids := entityIDs6916(detect6916(t, s.path, s.lang, s.groupedVar))
+			names := configNames6916(ids)
+			if s.groupedVarWant == s.groupedVarWant2 {
+				t.Fatalf("%s: fixture bug — the two declarators must differ", s.rule)
+			}
+			for _, want := range []string{s.groupedVarWant, s.groupedVarWant2} {
+				if !slices.Contains(names, want) {
+					t.Errorf("%s: a grouped `var (…)` declaration with an explicit type must name "+
+						"EACH declarator; %q is missing. This shape matched before #7022 split the "+
+						"rule — dropping it is a regression, not a tightening. Config names "+
+						"emitted: %v", s.rule, want, names)
+				}
+			}
+			assertControl6916(t, ids, s.control)
 		})
 	}
 }

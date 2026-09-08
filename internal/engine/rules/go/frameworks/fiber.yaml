@@ -34,32 +34,53 @@ source_patterns:
   # edge could ever bind to. Naming the variable is also what makes a PER-APP
   # anchor possible (#6914): a file building two apps now mints two entities.
   #
-  # TWO entries, not one (#7022). A SINGLE entry with an optional `var` AND an
-  # optional trailing type slot let `if app := fiber.New(); …` match with the keyword `if`
-  # in the name slot and the real variable in the type slot — minting `Config:if`,
-  # a node named after a syntax token, which is the exact defect class #6916
-  # exists to remove. Confirmed through the real detector on all four Go sites;
-  # gorm was immune because its comma list takes a different path. Splitting the
-  # forms puts the type slot BEHIND a literal `var`, so nothing but a declared
-  # name can reach the capture.
+  # THREE entries, not one (#7022). A SINGLE entry with an optional `var` AND an
+  # optional trailing type slot let `if app := fiber.New(); …` match with the keyword
+  # `if` in the name slot and the real variable in the type slot — minting
+  # `Config:if`, a node named after a syntax token, which is the exact defect
+  # class #6916 exists to remove. `for`/`switch`/`go` initialisers minted
+  # `Config:for` / `Config:switch` / `Config:go` the same way. All confirmed
+  # through the real detector; gorm was immune because its comma list takes a
+  # different path, and is deliberately left as one entry.
   #
-  # The `(?m)^[ \t]*` ANCHOR is load-bearing and graded on BOTH entries. Without it
-  # the capture is just "the token left of the `=`", which in Go is reached from
-  # inside comments and doc examples — `// app := fiber.New()` would mint a
-  # plausible-looking `Config:` in a file that builds nothing at all. `(?:\w+\.)?`
-  # on the short form keeps `s.app = fiber.New()` naming the field rather than the
-  # receiver.
+  # The three entries carve the Go declaration forms so that NO entry offers a
+  # free type slot after a bare `\w+` — that slot is what a keyword walks into:
+  #
+  #   1. short form   `app := fiber.New()`, `s.app = fiber.New()` — no type slot at all.
+  #   2. `var` form   `var app *fiber.App = fiber.New()` — the type slot exists
+  #      only BEHIND a literal `var`, which no keyword can spell.
+  #   3. grouped form `var (` … `app *fiber.App = fiber.New()` … `)` — inside a
+  #      grouped declaration the `var` is on its own line, so entry 2 cannot
+  #      reach it and entry 1 has no type slot. This entry restores it (it
+  #      matched the pre-split pattern, and dropping it would have been a
+  #      REGRESSION), and it stays keyword-proof by requiring the type to be
+  #      fiber-QUALIFIED: `if r = fiber.New()` cannot match, because `r` is not
+  #      spelled `fiber.Something`. The cost is a grouped declaration whose type is
+  #      a dot-imported or aliased name; that is narrower than the pre-split
+  #      pattern and is the deliberate price of keeping keywords out.
+  #
+  # The `(?m)^[ \t]*` ANCHOR is load-bearing on ALL THREE entries and graded on
+  # all three by the `commented` fixture, which carries the short, the `var` and
+  # the grouped spelling. Without it the capture is just "the token left of the
+  # `=`", which in Go is reached from inside comments and doc examples — a
+  # commented `app := fiber.New()` would mint a plausible-looking `Config:` in a file
+  # that builds nothing at all. `(?:\w+\.)?` on the short form keeps
+  # `s.app = fiber.New()` naming the field rather than the receiver.
+  #
+  # Measured: Go puts the type AFTER the name, so entries 2 and 3 are what let an
+  # explicitly typed declaration match at all — neither captures the TYPE the way
+  # the TypeScript sibling did (#6916 Tier B, review ask 2).
   - pattern: '(?m)^[ \t]*(?:\w+\.)?(\w+)\s*:?=\s*fiber\.New\s*\(\s*\)'
     entity_type: Config
     name_group: 1
     scope: file
 
-  # Declaration form: `var app *fiber.App = fiber.New()`. Measured: Go puts the
-  # type AFTER the name, so deleting this entry's type slot makes an explicitly
-  # typed declaration mint NOTHING — it does not capture the type the way the
-  # TypeScript sibling did (#6916 Tier B, review ask 2). The type slot lives here
-  # rather than on the short form so it cannot swallow a keyword (#7022).
   - pattern: '(?m)^[ \t]*var\s+(\w+)(?:\s+[\w.*\[\]]+)?\s*=\s*fiber\.New\s*\(\s*\)'
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+  - pattern: '(?m)^[ \t]*(\w+)\s+[*\[\]]*fiber\.\w+\s*=\s*fiber\.New\s*\(\s*\)'
     entity_type: Config
     name_group: 1
     scope: file
