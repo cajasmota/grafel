@@ -40,10 +40,21 @@ source_patterns:
     name_group: 2
     scope: file
   # HTTP method decorators: @app.get("/path"), @app.post("/path"), etc.
+  #
+  # requires_framework (#7013), MANDATORILY IN LOCKSTEP WITH flask.yaml's
+  # identical pattern (#7028). This pattern is byte-identical to flask.yaml's
+  # — same regex, same entity_type, same name_group — and `flask` sorts before
+  # `quart` in the loader's fs.WalkDir order, so with the per-file, cross-rule-
+  # set `seenEntities` dedup (detector.go:367) this twin has never minted
+  # anything on a file flask also matched. Gating flask's copy while leaving
+  # this one open does not remove the 75 Django false positives; it transfers
+  # them here and mislabels 4 real Flask routes as Quart. Gate both or neither.
+  # TestFlaskAndQuartRouteTwinsGatedTogether_7013 fails if they diverge.
   - pattern: "@(\\w+)\\.(get|post|put|patch|delete)\\s*\\(\\s*[\"']([^\"']+)[\"']"
     entity_type: Route
     name_group: 3
     scope: file
+    requires_framework: true
   # Blueprint instantiation: bp = Blueprint("name", __name__)
   - pattern: "(\\w+)\\s*=\\s*Blueprint\\s*\\(\\s*[\"'](\\w+)[\"']"
     entity_type: Controller
@@ -60,10 +71,18 @@ source_patterns:
     name_group: 2
     scope: file
   # Before/after request hooks: @app.before_request
+  #
+  # requires_framework (#7013). `@app.before_request` is Flask's decorator as
+  # much as Quart's; all 43 of this pattern's corpus mints were in Flask repos
+  # and none in a Quart repo. The corpus contains NO Quart user at all, so the
+  # measured zero true-positive loss is "loses nothing here", not "loses
+  # nothing" — recall for real Quart code is untested by that corpus and rests
+  # on the fixture below.
   - pattern: "@(\\w+)\\.(before_request|after_request|teardown_request)\\s*[\\r\\n]+\\s*(?:async\\s+)?def\\s+(\\w+)"
     entity_type: Middleware
     name_group: 3
     scope: file
+    requires_framework: true
 
 # relationship_rules: edges between entities.
 relationship_rules:

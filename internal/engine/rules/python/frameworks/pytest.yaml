@@ -83,10 +83,21 @@ source_patterns:
   # non-test hits). Left as written at that rate rather than narrowed to a
   # spelling pytest itself does not use — recorded so the next reader is not
   # told something untrue about why.
+  #
+  # requires_framework (#7013). The false-positive shape recorded above was
+  # measured corpus-wide and is not rare: 322 of this pattern's 358 mints were
+  # in repos that do not use pytest — `class TestCase(TransactionTestCase):` in
+  # django/django/test/testcases.py is the canonical one. The gate is per FILE
+  # (detector.go:96), so it costs the 4 measured true positives whose pytest
+  # evidence lives in a sibling `conftest.py` rather than in the test module
+  # itself; 3 of those are real classes and structural under per-file
+  # semantics, and the 4th (`conduit/settings.py:54 class TestConfig(Config)`)
+  # is itself a false positive that this gate is right to drop. 322:3.
   - pattern: "(?m)^class\\s+(Test\\w+)\\s*"
     entity_type: TestClass
     name_group: 1
     scope: file
+    requires_framework: true
   # Fixture decorator
   - pattern: "@pytest\\.fixture(?:\\s*\\([^)]*\\))?\\s*\\ndef\\s+(\\w+)\\s*\\("
     entity_type: Fixture

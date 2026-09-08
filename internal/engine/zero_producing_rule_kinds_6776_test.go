@@ -159,10 +159,21 @@ func zeroKindSites() []zeroKindSite {
 			negWhy: "conf.py is not conftest.py",
 		},
 		{
-			label: "TestClass — python/frameworks/pytest.yaml:60 (source_pattern)",
-			lang:  "python", path: "tests/test_orders.py", content: "class TestOrders:\n    pass\n",
-			kind: "TestClass", name: "TestOrders",
-			negPath: "tests/test_orders.py", negBody: "class Orders:\n    pass\n",
+			// Both bodies gained `import pytest` in #7013, when this pattern
+			// took `requires_framework: true`. It is a marker for pytest and
+			// for nothing else.
+			//
+			// The NEGATIVE body carries it too, deliberately: without it the
+			// negative would hold for two reasons at once — wrong class name
+			// AND absent framework marker — and would keep passing if the name
+			// half of the pattern were widened to anything. With the marker
+			// present the only thing separating the two bodies is the class
+			// name, which is what negWhy claims.
+			label: "TestClass — python/frameworks/pytest.yaml:96 (source_pattern)",
+			lang:  "python", path: "tests/test_orders.py",
+			content: "import pytest\n\nclass TestOrders:\n    pass\n",
+			kind:    "TestClass", name: "TestOrders",
+			negPath: "tests/test_orders.py", negBody: "import pytest\n\nclass Orders:\n    pass\n",
 			negWhy: "a class not named Test* is not a pytest test class",
 		},
 		{
