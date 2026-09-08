@@ -47,8 +47,11 @@ source_patterns:
   # `quart` in the loader's fs.WalkDir order, so with the per-file, cross-rule-
   # set `seenEntities` dedup (detector.go:367) this twin has never minted
   # anything on a file flask also matched. Gating flask's copy while leaving
-  # this one open does not remove the 75 Django false positives; it transfers
-  # them here and mislabels 4 real Flask routes as Quart. Gate both or neither.
+  # this one open removes NOTHING: it does not delete the 75 Django false
+  # positives, it transfers them to this pattern, which then mints all 80. No
+  # count moves — and the entity cannot show the move either, because the
+  # emitted `framework` property is the bucket key `python` for both files
+  # (detector.go:171), not the framework name. Gate both or neither.
   # TestFlaskAndQuartRouteTwinsGatedTogether_7013 fails if they diverge.
   - pattern: "@(\\w+)\\.(get|post|put|patch|delete)\\s*\\(\\s*[\"']([^\"']+)[\"']"
     entity_type: Route

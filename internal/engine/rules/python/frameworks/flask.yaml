@@ -82,11 +82,23 @@ source_patterns:
   # the same entity_type and name_group. `seenEntities` (detector.go:367) is per
   # file and shared across rule sets, and rule sets load in fs.WalkDir lexical
   # order (loader.go:103), so `flask` wins every mint and `quart`'s twin has
-  # never produced anything. Gating this one alone removes ZERO entities and
-  # hands all 80 to Quart — measured: before {django: 75, flask: 5}; after
-  # flask {flask: 1} + quart {django: 75, flask: 4}. That relabels 4 genuine
-  # Flask routes as Quart in a repo with no Quart, which is strictly worse than
-  # making no change, and every summary count stays flat while it happens.
+  # never produced anything. Gating this one alone therefore removes ZERO
+  # entities: the mints TRANSFER to quart.yaml's twin rather than disappearing.
+  # Measured: before {django: 75, flask: 5}; after flask {flask: 1} + quart
+  # {django: 75, flask: 4}. Same 80 mints, different producing rule file, no
+  # over-firing removed — strictly worse than making no change, since it is
+  # work that looks like a fix. Every summary count stays flat while it
+  # happens: totals, per-kind totals and the over-fire rate are all identical
+  # before and after.
+  #
+  # The transfer is not visible on the entity either. detector.go:451 sets the
+  # `framework` property from sp.framework, which compile() fills at :171 with
+  # the rule BUCKET key (`python`) and not the rule file; frameworks.name is
+  # parsed by schema.go and read by nothing in the mint path, so both twins
+  # emit framework=python and nothing is relabelled. The only difference the
+  # emitted rows could carry is the `file_convention` annotation — flask.yaml
+  # declares 6 file_conventions and quart.yaml declares none — and nobody has
+  # measured that, so do not rely on it and do not test it.
   # TestFlaskAndQuartRouteTwinsGatedTogether_7013 fails if the two diverge.
   - pattern: "@(\\w+)\\.(get|post|put|patch|delete)\\s*\\(\\s*[\"']([^\"']+)[\"']"
     entity_type: Route

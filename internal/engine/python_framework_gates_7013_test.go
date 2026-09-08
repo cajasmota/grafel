@@ -26,16 +26,29 @@
 //     byte-identical pattern in two rule files. seenEntities (detector.go:367)
 //     is per file and shared ACROSS rule sets, and rule sets load in fs.WalkDir
 //     lexical order (loader.go:103), so `flask` wins every mint and `quart`'s
-//     twin has never produced anything. Gating flask's copy alone removes zero
-//     entities and relabels 4 genuine Flask routes as Quart. Totals, per-kind
-//     counts and the over-fire rate all stay flat while that happens, and the
-//     emitted entity cannot show it either: detector.go:451 sets the
-//     `framework` property from `sp.framework`, which compile() fills with the
-//     LANGUAGE (`python`, detector.go:171) and not the rule file — so a
-//     transfer between two python rule sets is invisible in DetectResult by
-//     construction. It is pinned twice below instead: behaviourally, because a
-//     marker-less file mints a Route if EITHER twin is ungated; and
-//     structurally, because the two files' flags must agree.
+//     twin has never produced anything. Gating flask's copy alone therefore
+//     removes ZERO entities: the mints TRANSFER to quart.yaml's twin rather
+//     than disappearing (before {django: 75, flask: 5}; after flask {flask: 1}
+//
+//   - quart {django: 75, flask: 4} — the same 80 mints from a different rule
+//     file, no over-firing removed). Totals, per-kind counts and the over-fire
+//     rate all stay flat while that happens.
+//
+//     Nor does anything on the entity show the transfer: detector.go:451 sets
+//     the `framework` property from `sp.framework`, which compile() fills at
+//     :171 with the rule BUCKET key (`python`) and not the rule file, and
+//     frameworks.name is parsed by schema.go and read by nothing in the mint
+//     path. Both twins emit framework=python; nothing is relabelled, and there
+//     is no per-framework field for a test to assert on. (The one difference
+//     the rows could carry is the `file_convention` annotation — flask.yaml
+//     declares 6 file_conventions, quart.yaml none — which is unmeasured and
+//     deliberately not tested here.)
+//
+//     So the coupling is pinned twice, by the only two means available:
+//     behaviourally, because a marker-less file mints a Route if EITHER twin
+//     is ungated — the mint SURVIVES, which is exactly the "zero removed"
+//     failure — and structurally, because the two files' flags must agree.
+//
 //   - THE WIDENING, in both of its halves: that it rescues the blueprint-module
 //     case, and that it does not re-open the over-fire it was added alongside.
 //
@@ -376,6 +389,67 @@ func TestGatedPythonPatterns_StillMintWithMarkers_7013(t *testing.T) {
 	}
 }
 
+// pgRouteDecoratorConstruct exercises the OTHER flask/quart twin — the `.route`
+// pair (flask.yaml #0 / quart.yaml #0), #7028's group #3 at 178 mints. It is
+// deliberately a different path string from pgRouteConstruct so the two twins
+// cannot be confused in a failure message.
+const pgRouteDecoratorConstruct = "@pg_probe_bp.route(\"/pg-probe-decorated\")\n" +
+	"def pg_probe_decorated_view():\n    return \"ok\"\n"
+
+// TestRouteDecoratorTwinIsUngated_7013 records the CURRENT state of the second
+// twin rather than changing it.
+//
+// #7013 gates the flask#1/quart#1 HTTP-method pair. The flask#0/quart#0
+// `.route` pair is the identical twin shape one entry over, is still ungated,
+// and still over-fires — 178 mints, unmeasured for recall. Gating it is #7028's
+// call and needs its own recall pass, so this change does NOT gate it.
+//
+// Without this test that state is unobservable: gating BOTH halves of the #0
+// pair passes every other test in this file, so someone could gate it — or
+// un-gate it later — with no test noticing and no recall measurement. Scored as
+// a mutant and it was ALIVE; this is the kill.
+//
+// If you are here because this test went red: you changed the #0 pair. That is
+// allowed, but (1) measure its recall cost first, the way #7013 did for #1,
+// (2) gate BOTH files or neither — see TestFlaskAndQuartRouteTwinsGatedTogether_7013
+// for why one alone removes nothing, and (3) replace this test with a
+// forbidden+recall pair like the #1 rows above, rather than deleting it.
+func TestRouteDecoratorTwinIsUngated_7013(t *testing.T) {
+	// Structural premise: both halves exist and both are ungated on disk.
+	seen := 0
+	for _, fw := range []string{"flask", "quart"} {
+		for _, sp := range pgLoadRuleFile(t, fw).SourcePatterns {
+			if sp.EntityType != "Route" || !strings.Contains(sp.Pattern, "\\.route") {
+				continue
+			}
+			seen++
+			if sp.RequiresFramework {
+				t.Errorf("%s.yaml's `.route` pattern %q now carries requires_framework. The "+
+					"flask#0/quart#0 twin was left ungated by #7013 on purpose: 178 mints, "+
+					"recall cost UNMEASURED. Measure it, gate both halves, and turn this test "+
+					"into a forbidden+recall pair (#7028).", fw, sp.Pattern)
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("found %d `.route` Route patterns across flask.yaml and quart.yaml, want 2: the "+
+			"twin this test tracks was edited away and the test is no longer observing it", seen)
+	}
+
+	// Behavioural half: ungated means it still mints with no marker present.
+	// This is the same marker-free premise the forbidden table uses, so the
+	// only thing separating this row from those is which pattern is gated.
+	pgAssertNoMarkers(t, pgRouteDecoratorConstruct)
+
+	res := pgDetect(t, "pg_probe.py", pgRouteDecoratorConstruct)
+
+	if !pgHas(res, "Route", "/pg-probe-decorated") {
+		t.Errorf("the ungated `.route` twin no longer mints on a marker-free file. Something "+
+			"gated or narrowed flask#0/quart#0 without updating this test — see the doc "+
+			"comment. Emitted: %s", pgDump(res))
+	}
+}
+
 // TestFlaskAndQuartRouteTwinsGatedTogether_7013 is the structural half of the
 // twin coupling (#7028), and the one that speaks to the next person to touch
 // either file.
@@ -438,9 +512,9 @@ func TestFlaskAndQuartRouteTwinsGatedTogether_7013(t *testing.T) {
 				"across rule files %v. Dedup (seenEntities, detector.go:367) is per file and "+
 				"SHARED across rule sets, and rule sets load in lexical order (loader.go:103), "+
 				"so the first file wins every mint: gating only one of these removes ZERO "+
-				"entities and relabels the survivors with the other framework — measured on "+
-				"flask#1/quart#1 as 0 removed and 4 real Flask routes reported as Quart. "+
-				"Gate both or neither (#7028).", k.pattern, k.entityType, k.nameGroup, sites)
+				"entities — the mints TRANSFER to the other file's identical pattern instead "+
+				"of disappearing, and no count moves. Measured on flask#1/quart#1 as 80 mints "+
+				"before, 80 after, 0 over-firing removed. Gate both or neither (#7028).", k.pattern, k.entityType, k.nameGroup, sites)
 			break
 		}
 	}
