@@ -100,6 +100,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	emitPHPTestScopeOwner(root, file, &entities)
 	// Issue #4854 — in-file base-class EXTENDS for field-membership recursion.
 	entities = attachPhpExtends(entities)
+	// Issue #6912 arm H — field → declared-type REFERENCES edges. Runs on the
+	// fully assembled slice so it sees every record this file produced; see the
+	// CALL PLACEMENT note on attachPhpFieldTypeRefs for why that is an invariant
+	// to preserve rather than a load-bearing claim about today's passes.
+	entities = attachPhpFieldTypeRefs(entities, file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")
