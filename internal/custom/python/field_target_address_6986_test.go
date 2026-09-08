@@ -547,4 +547,16 @@ class ContentType(models.Model):
 		t.Fatal("LogEntry.content_type emitted no field_target_type edge at all — the positive control " +
 			"is gone, so the LogEntry.user negative above proves nothing (#6990)")
 	}
+	// The field under the NEGATIVE must still exist. A negative row that passes
+	// because the field vanished entirely is passing for the wrong reason.
+	var sawUserField bool
+	for i := range ents {
+		if ents[i].Name == "LogEntry.user" {
+			sawUserField = true
+		}
+	}
+	if !sawUserField {
+		t.Error("no LogEntry.user entity — the negative above passed because the FIELD is gone, not " +
+			"because its target scan was bounded (#6990)")
+	}
 }

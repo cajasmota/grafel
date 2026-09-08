@@ -44,7 +44,8 @@ func TestIssue6990_DeclEnd_FindsTheCallsOwnCloser(t *testing.T) {
 		body string // `|` marks the expected end (one past the closing paren)
 	}{
 		{"flat", `f(A)|`},
-		{"nested call", `f(A, on_delete=models.CASCADE)|`},
+		{"nested call", `f(A, default=make())|`},
+		{"call with a dotted kwarg, no nesting", `f(A, on_delete=models.CASCADE)|`},
 		{"double nested", `f(A, default=(1, (2, 3)))|`},
 		{"paren in double-quoted string", `f(A, help_text="see (the docs)")|`},
 		{"paren in single-quoted string", `f(A, help_text='see (the docs)')|`},
@@ -87,6 +88,13 @@ func TestIssue6990_DeclEnd_RefusesToGuess(t *testing.T) {
 		{"unterminated string", `f(A, help_text="oops)`},
 		{"unterminated triple-quoted string", `f(A, help_text="""oops)`},
 		{"unterminated trailing comment", `f(A,  # oops`},
+		// Grades `case '\n': return -1` in skipPyStringLiteral on its own. The
+		// quote is closed, but only on a LATER line — a Python string literal
+		// cannot span a newline unless it is triple-quoted, so this one is
+		// unterminated and the scan must refuse. Without the newline rule the
+		// skipper runs to the second line's quote and then reports the `)`
+		// after it as this call's closer.
+		{"quote closed only on a later line", "f(A, x=\"oops\ny = \")"},
 		{"depth never returns to zero", `f((A)`},
 	}
 	for _, c := range cases {
@@ -174,6 +182,12 @@ func TestIssue6990_TargetFormsSurviveEveryDeclarationLayout(t *testing.T) {
 							"A target here is the scan reading past this declaration's own `)` (#6990)",
 							len(got), got[0].ToID)
 					}
+					// The field must still EXIST. A negative that passes
+					// because the field vanished passes for the wrong reason.
+					if !hasEdge6988(rels, pyClassRef("Owner"), "Owner.subject", string(types.RelationshipKindContains)) {
+						t.Error("Owner CONTAINS subject missing — the negative above passed because the " +
+							"FIELD is gone, not because its target scan was bounded (#6990)")
+					}
 				} else {
 					if len(got) != 1 {
 						t.Fatalf("Owner.subject emitted %d field_target_type edge(s), want exactly 1 "+
@@ -222,6 +236,11 @@ class Note(models.Model):
 		t.Errorf("Note.user emitted %d field_target_type edge(s), want 0; first ToID=%q. Its own "+
 			"declaration names settings.AUTH_USER_MODEL and nothing else (#6990 residue 2)",
 			len(got), got[0].ToID)
+	}
+	// Both negatives in this test need the field to still exist, or they pass
+	// for the wrong reason.
+	if !hasEdge6988(rels, pyClassRef("Note"), "Note.user", string(types.RelationshipKindContains)) {
+		t.Error("Note CONTAINS user missing — the negative above passed because the FIELD is gone (#6990)")
 	}
 	// #6988's row, restated here because #6990 must not reopen it.
 	if got := fieldTargetEdgesFrom6988(rels, "Note.content_object"); len(got) != 0 {
@@ -275,57 +294,110 @@ func TestIssue6990_TheBoundIsTheSoleGuard(t *testing.T) {
 // because the fallback's whole reason to exist is that it PRESERVES prior
 // behaviour rather than dropping edges:
 //
-//   - NOT WIDER. A target more than 400 bytes past the field must NOT be
-//     captured — a fallback of `len(body)` would make an unbalanced file read
-//     wider than the bug #6990 fixes.
-//   - NOT NARROWER. A target WITHIN 400 bytes must still BE captured — a
-//     fallback of `fIdx[0]` (an empty window) silently drops every target in
-//     an unbalanced file, and until this half was asserted that build was
-//     indistinguishable from this one.
+//   - NOT WIDER. A target 401 bytes past the field must NOT be captured — a
+//     fallback of `len(body)` would make an unbalanced file read wider than
+//     the bug #6990 fixes.
+//   - NOT NARROWER. A target 400 bytes past the field MUST be captured, and so
+//     must a field's own target sitting right after its own `(` — a fallback
+//     of `fIdx[0]` (an empty window) silently drops every target in an
+//     unbalanced file.
 //
-// Both halves run on genuinely unbalanced declarations, each with its own
-// `djangoDeclEnd == -1` premise control, so neither is quietly grading the
-// normal path instead.
+// The two byte-exact rows pin the constant by MAGNITUDE, not just by sign:
+// together they admit exactly one window width. Grading only the direction
+// left ~300 bytes of slack either side (`+120` and `+600` both survived), so
+// "exactly the old behaviour" — the fallback's entire justification — was not
+// what was being asserted.
+//
+// WHY THE FALLBACK IS KEPT AT ALL. On every `-1` input it is byte-identical to
+// main, so it cannot regress anything; and one `-1` path is reachable from
+// VALID Python, because `extractClassBody`'s indent cut can truncate a body
+// mid-declaration. That is a pre-existing condition and preserving the old
+// window is the correct behaviour there.
+//
+// Every row runs on a genuinely unbalanced declaration and carries its own
+// `djangoDeclEnd == -1` premise control, so none is quietly grading the normal
+// path instead.
 func TestIssue6990_UnbalancedSourceFallsBackToTheOldByteWindow(t *testing.T) {
-	filler := strings.Repeat("    # padding to push the next declaration past 400 bytes\n", 10)
-	if len(filler) <= 400 {
-		t.Fatalf("filler is %d bytes, need >400 for this test to distinguish the two fallbacks", len(filler))
+	// boundaryClass renders a class whose FIRST field is UNTERMINATED — so its
+	// scan takes the `end < 0` fallback — followed by padding and a second,
+	// well-formed field whose target ends EXACTLY matchEnd bytes after the
+	// start of the first field's line.
+	//
+	// The target is the single character `Q` on purpose. A longer name would
+	// still match as a TRUNCATED PREFIX when the window cuts through it
+	// (`[A-Z][A-Za-z0-9_]*` is happy with `Boundar`), which would make the
+	// boundary fuzzy by the length of the name. One character makes "the match
+	// fits" and "the match does not fit" adjacent.
+	boundaryClass := func(class, field string, matchEnd int) string {
+		head := "    " + field + " = models.ForeignKey(settings.AUTH_USER_MODEL,\n" // never closed
+		tail := "    following = models.ForeignKey(Q, on_delete=models.CASCADE)\n"
+		targetEnd := strings.Index(tail, "(Q") + len("(Q") // one past `Q`
+		padLen := matchEnd - len(head) - targetEnd
+		if padLen < 6 {
+			t.Fatalf("matchEnd %d leaves no room for padding (need >= 6, got %d)", matchEnd, padLen)
+		}
+		pad := "    #" + strings.Repeat("p", padLen-6) + "\n"
+		if len(pad) != padLen {
+			t.Fatalf("padding is %d bytes, want %d — the byte-exact boundary is not what it claims",
+				len(pad), padLen)
+		}
+		return "class " + class + "(models.Model):\n" + head + pad + tail
 	}
+
 	src := "from django.conf import settings\nfrom django.db import models\n\n\n" +
-		// FAR: the target the window must NOT reach. Unterminated declaration,
-		// then >400 bytes of filler, then a parseable `ForeignKey(Sentinel`.
-		"class Owner(models.Model):\n" +
-		"    subject = models.ForeignKey(settings.AUTH_USER_MODEL,\n" + // never closed
-		filler +
-		"    sentinel = models.ForeignKey(Sentinel, on_delete=models.CASCADE)\n" +
-		"\n\n" +
-		// NEAR: the target the window MUST still reach. Equally unterminated,
-		// so it takes the same fallback branch — but its own target sits
-		// immediately after its own `(`, well inside 400 bytes.
+		// JUST OUTSIDE: `Q` ends 401 bytes in. Must NOT be captured.
+		boundaryClass("FarOwner", "subject", 401) + "\n\n" +
+		// JUST INSIDE: `Q` ends exactly 400 bytes in. MUST be captured — this
+		// is the pre-#6990 window preserved verbatim, which is the whole point
+		// of the fallback.
+		boundaryClass("EdgeOwner", "subject", 400) + "\n\n" +
+		// A field's OWN target, right after its own `(`, on an equally
+		// unterminated declaration. Simplest form of "not narrower".
 		"class NearOwner(models.Model):\n" +
 		"    near = models.ForeignKey(Nearby,\n" // never closed
 
-	// Premise controls, one per half: both declarations really do take the
-	// `end < 0` fallback, so neither assertion is grading the normal path.
-	for _, decl := range []string{"    subject", "    near"} {
-		body := src[strings.Index(src, decl):]
-		if got := djangoDeclEnd(body, strings.IndexByte(body, '(')); got != -1 {
-			t.Fatalf("djangoDeclEnd for %q = %d, want -1: that half of the fixture is not "+
-				"exercising the fallback branch", strings.TrimSpace(decl), got)
+	// Premise controls, one per row: each really does take the `end < 0`
+	// fallback, so none is quietly grading the normal path.
+	for _, decl := range []string{"    subject = models.ForeignKey(settings", "    near"} {
+		for from := 0; ; {
+			i := strings.Index(src[from:], decl)
+			if i < 0 {
+				break
+			}
+			body := src[from+i:]
+			if got := djangoDeclEnd(body, strings.IndexByte(body, '(')); got != -1 {
+				t.Fatalf("djangoDeclEnd for %q = %d, want -1: that row of the fixture is not "+
+					"exercising the fallback branch", strings.TrimSpace(decl), got)
+			}
+			from += i + len(decl)
 		}
 	}
 
 	rels := djangoEdges6988(t, src)
 
-	// NOT WIDER.
-	if got := fieldTargetEdgesFrom6988(rels, "Owner.subject"); len(got) != 0 {
-		t.Errorf("Owner.subject emitted %d field_target_type edge(s), want 0; first ToID=%q. The "+
-			"unbalanced-source fallback must stay at the pre-#6990 400-byte window, never WIDER",
-			len(got), got[0].ToID)
+	// NOT WIDER — by exactly one byte.
+	if got := fieldTargetEdgesFrom6988(rels, "FarOwner.subject"); len(got) != 0 {
+		t.Errorf("FarOwner.subject emitted %d field_target_type edge(s), want 0; first ToID=%q. Its "+
+			"following field's target ends 401 bytes in, one past the pre-#6990 window: the "+
+			"unbalanced-source fallback must never read WIDER than 400", len(got), got[0].ToID)
 	}
-	// NOT NARROWER. Without this row, a fallback of `end = fIdx[0]` — an empty
-	// window that finds nothing at all on any unbalanced file — passes every
-	// other assertion in this package.
+	// The field must still EXIST. A negative row that passes because the field
+	// vanished is passing for the wrong reason.
+	if !hasEdge6988(rels, pyClassRef("FarOwner"), "FarOwner.subject", string(types.RelationshipKindContains)) {
+		t.Error("FarOwner CONTAINS subject missing — the negative above passed because the FIELD is " +
+			"gone, not because its target scan was bounded (#6990)")
+	}
+	// NOT NARROWER — by exactly one byte, and this row is the pre-#6990
+	// behaviour the fallback exists to preserve.
+	if got := fieldTargetEdgesFrom6988(rels, "EdgeOwner.subject"); len(got) != 1 ||
+		got[0].ToID != fieldTargetRef6988("Q") {
+		t.Errorf("EdgeOwner.subject emitted %d field_target_type edge(s), want exactly 1 -> %q. Its "+
+			"following field's target ends exactly 400 bytes in, INSIDE the pre-#6990 window: the "+
+			"fallback must be that window exactly, not a narrower one", len(got), fieldTargetRef6988("Q"))
+	}
+	// NOT NARROWER, simplest form. Without this row a fallback of
+	// `end = fIdx[0]` — an empty window finding nothing on any unbalanced file
+	// — passes every other assertion in this package.
 	if got := fieldTargetEdgesFrom6988(rels, "NearOwner.near"); len(got) != 1 ||
 		got[0].ToID != fieldTargetRef6988("Nearby") {
 		ids := make([]string, 0, len(got))
@@ -333,15 +405,16 @@ func TestIssue6990_UnbalancedSourceFallsBackToTheOldByteWindow(t *testing.T) {
 			ids = append(ids, r.ToID)
 		}
 		t.Errorf("NearOwner.near emitted %d field_target_type edge(s) %v, want exactly 1 -> %q. Its "+
-			"own target is inside the 400-byte fallback window, so the fallback must still find it — "+
-			"it exists to PRESERVE the old behaviour, not to drop every target on an unbalanced file",
+			"own target sits right after its own `(`, so the fallback must still find it — it exists "+
+			"to PRESERVE the old behaviour, not to drop every target on an unbalanced file",
 			len(got), ids, fieldTargetRef6988("Nearby"))
 	}
-	// Control on the FAR half: the field whose target an over-reading fallback
-	// would steal resolves on its own, so the negative above is not vacuous.
-	if got := fieldTargetEdgesFrom6988(rels, "Owner.sentinel"); len(got) != 1 ||
-		got[0].ToID != fieldTargetRef6988("Sentinel") {
-		t.Fatalf("Owner.sentinel did not resolve to Sentinel (%d edge(s)) — the NOT-WIDER negative "+
-			"above is vacuous", len(got))
+	// Control: the following fields, whose targets the rows above are measured
+	// against, resolve on their own.
+	for _, owner := range []string{"FarOwner.following", "EdgeOwner.following"} {
+		if got := fieldTargetEdgesFrom6988(rels, owner); len(got) != 1 ||
+			got[0].ToID != fieldTargetRef6988("Q") {
+			t.Fatalf("%s did not resolve to Q (%d edge(s)) — the boundary rows above are vacuous", owner, len(got))
+		}
 	}
 }
