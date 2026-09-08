@@ -3,6 +3,7 @@ package python_test
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
@@ -117,6 +118,17 @@ func fieldTargetEdges6986(ents []types.EntityRecord) []struct {
 	return out
 }
 
+// edgeKey6986 identifies a field_target_type edge in a way that SURVIVES
+// resolution. `resolve.ReferencesEmbedded` rewrites FromID in place once the
+// source endpoint binds, so matching a post-resolution edge on
+// `FromID == "Order.buyer"` silently matches NOTHING and every assertion under
+// it passes vacuously — which is exactly what the first draft of this file did.
+// The `field_name` property and the owning entity's Name are both untouched by
+// resolution, so the pair is a stable key.
+func edgeKey6986(owner types.EntityRecord, r types.RelationshipRecord) string {
+	return owner.Name + "." + propOf6986(r.Properties, "field_name")
+}
+
 func propOf6986(props types.Props, k string) string {
 	for _, p := range props {
 		if p.K == k {
@@ -167,10 +179,12 @@ func TestPythonFieldTargetType_BindsWhenTheNameIsDeclaredInTwoFiles(t *testing.T
 	}
 
 	resolve.ReferencesEmbedded(ents, idx)
+	checked := 0
 	for _, e := range fieldTargetEdges6986(ents) {
-		if e.Rel.FromID != "Order.buyer" {
+		if edgeKey6986(e.Owner, e.Rel) != "Order.buyer" {
 			continue
 		}
+		checked++
 		target, ok := byID[e.Rel.ToID]
 		if !ok {
 			t.Fatalf("Order.buyer -> %q did NOT bind (dangling stub)", e.Rel.ToID)
@@ -179,6 +193,9 @@ func TestPythonFieldTargetType_BindsWhenTheNameIsDeclaredInTwoFiles(t *testing.T
 			t.Fatalf("Order.buyer bound to %s@%s, want Customer@%s — #6369's wrong-node hazard",
 				target.Name, target.SourceFile, modelsPath6986)
 		}
+	}
+	if checked == 0 {
+		t.Fatal("no Order.buyer edge survived to the post-resolution check: this half is vacuous")
 	}
 }
 
@@ -221,7 +238,7 @@ func TestPythonFieldTargetType_NeverBindsToANonDeclaringFile(t *testing.T) {
 				e.Rel.FromID, target.Name, target.SourceFile)
 		}
 		// Nothing in shop/models.py may reach billing's Customer.
-		if e.Rel.FromID == "Order.buyer" && target.SourceFile == rivalPath6986 {
+		if edgeKey6986(e.Owner, e.Rel) == "Order.buyer" && target.SourceFile == rivalPath6986 {
 			t.Errorf("Order.buyer (shop/models.py) bound to the billing/models.py Customer")
 		}
 		checked++
@@ -249,19 +266,20 @@ func TestPythonFieldTargetType_CarriesTheRelationShapeProperties(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, e := range fieldTargetEdges6986(ents) {
-		w, ok := want[e.Rel.FromID]
+		key := edgeKey6986(e.Owner, e.Rel)
+		w, ok := want[key]
 		if !ok {
 			continue
 		}
-		seen[e.Rel.FromID] = true
+		seen[key] = true
 		if got := propOf6986(e.Rel.Properties, "django_rel"); got != w.rel {
-			t.Errorf("%s django_rel = %q, want %q", e.Rel.FromID, got, w.rel)
+			t.Errorf("%s django_rel = %q, want %q", key, got, w.rel)
 		}
 		if got := propOf6986(e.Rel.Properties, "self_ref"); got != w.self {
-			t.Errorf("%s self_ref = %q, want %q", e.Rel.FromID, got, w.self)
+			t.Errorf("%s self_ref = %q, want %q", key, got, w.self)
 		}
 		if got := propOf6986(e.Rel.Properties, "django_fk_string"); got != w.fkString {
-			t.Errorf("%s django_fk_string = %q, want %q", e.Rel.FromID, got, w.fkString)
+			t.Errorf("%s django_fk_string = %q, want %q", key, got, w.fkString)
 		}
 	}
 	for k := range want {
@@ -288,7 +306,7 @@ class Node(models.Model):
 	ents := mergedFor6986(t, map[string]string{modelsPath6986: src})
 	got := map[string]string{}
 	for _, e := range fieldTargetEdges6986(ents) {
-		got[e.Rel.FromID] = propOf6986(e.Rel.Properties, "self_ref")
+		got[edgeKey6986(e.Owner, e.Rel)] = propOf6986(e.Rel.Properties, "self_ref")
 	}
 	if got["Node.parent"] != "false" {
 		t.Errorf("Node.parent self_ref = %q, want \"false\" — a SYMBOL target naming the "+
@@ -298,4 +316,246 @@ class Node(models.Model):
 		t.Errorf("Node.sibling self_ref = %q, want \"true\" — the literal string 'self' IS one",
 			got["Node.sibling"])
 	}
+}
+
+// ---------------------------------------------------------------------------
+// The CROSS-FILE tier — the entire difference between this arm and #6984/#6991.
+// ---------------------------------------------------------------------------
+
+// TestPythonFieldTargetType_CrossFileTier_BindsUniqueRefusesAmbiguous grades the
+// tier this pass newly depends on and that nothing in this package graded
+// before: `lookupUniqueRealComponentByName`, reached when the CONSUMER's file
+// declares nothing by that name.
+//
+// Why the existing negative does not cover it: in
+// TestPythonFieldTargetType_NeverBindsToANonDeclaringFile the consumer file
+// declares `Customer` itself, so the same-file `lookupLocationKind` tier
+// resolves FIRST and the cross-file tier never fires. The two claims — "never
+// binds to a non-declaring file" and "never binds a cross-file AMBIGUOUS name"
+// — are different, and only the first was asserted. A mutant that makes
+// lookupUniqueRealComponentByName accept an ambiguous name leaves this package
+// GREEN without this case (scored on review as M3).
+//
+// Here `orders/models.py` declares NEITHER target, so every edge must travel
+// the cross-file tier. All three outcomes are asserted together, because
+// asserting only the bind would leave the refusal — the direction that matters
+// for #6369 — ungraded, and asserting only the refusal could pass vacuously on
+// a tier that binds nothing at all.
+func TestPythonFieldTargetType_CrossFileTier_BindsUniqueRefusesAmbiguous(t *testing.T) {
+	const consumerPath = "orders/models.py"
+	files := map[string]string{
+		// Consumer: declares Order and nothing else. Ambiguous target,
+		// unique target and absent target, side by side.
+		consumerPath: `from django.db import models
+
+
+class Order(models.Model):
+    buyer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    carrier = models.ForeignKey(Vendor, on_delete=models.CASCADE)
+    coupon = models.ForeignKey(Ghost, on_delete=models.CASCADE)
+`,
+		// AMBIGUOUS: Customer declared in two other files.
+		"shop/models.py": `from django.db import models
+
+
+class Customer(models.Model):
+    name = models.CharField(max_length=100)
+`,
+		"billing/models.py": `from django.db import models
+
+
+class Customer(models.Model):
+    vat_id = models.CharField(max_length=32)
+`,
+		// UNIQUE: Vendor declared in exactly one other file.
+		"vendors/models.py": `from django.db import models
+
+
+class Vendor(models.Model):
+    code = models.CharField(max_length=8)
+`,
+		// Ghost is declared nowhere at all.
+	}
+	ents := mergedFor6986(t, files)
+	byID := map[string]types.EntityRecord{}
+	for i := range ents {
+		byID[ents[i].ID] = ents[i]
+	}
+
+	// Preconditions, or the three outcomes below are not the outcomes named.
+	declCount := map[string]int{}
+	for i := range ents {
+		if ents[i].SourceFile == consumerPath {
+			continue
+		}
+		switch ents[i].Name {
+		case "Customer", "Vendor":
+			if ents[i].Kind == "SCOPE.Component" || ents[i].Kind == "SCOPE.Schema" {
+				declCount[ents[i].Name+"@"+ents[i].SourceFile] = 1
+			}
+		}
+	}
+	custFiles, vendFiles := 0, 0
+	for k := range declCount {
+		if strings.HasPrefix(k, "Customer@") {
+			custFiles++
+		}
+		if strings.HasPrefix(k, "Vendor@") {
+			vendFiles++
+		}
+	}
+	if custFiles < 2 {
+		t.Fatalf("fixture precondition: Customer must be declared outside %s in >=2 files, got %d — "+
+			"the ambiguity this test grades is not present", consumerPath, custFiles)
+	}
+	if vendFiles != 1 {
+		t.Fatalf("fixture precondition: Vendor must be declared outside %s in exactly 1 file, got %d",
+			consumerPath, vendFiles)
+	}
+
+	idx := resolve.BuildIndex(ents)
+	resolve.ReferencesEmbedded(ents, idx)
+
+	got := map[string]types.RelationshipRecord{}
+	for _, e := range fieldTargetEdges6986(ents) {
+		got[edgeKey6986(e.Owner, e.Rel)] = e.Rel
+	}
+	for _, from := range []string{"Order.buyer", "Order.carrier", "Order.coupon"} {
+		if _, ok := got[from]; !ok {
+			t.Fatalf("%s emitted no field_target_type edge — every assertion below would be vacuous", from)
+		}
+	}
+
+	// AMBIGUOUS -> must DANGLE. Refusing to guess is the #6369 direction.
+	if target, bound := byID[got["Order.buyer"].ToID]; bound {
+		t.Errorf("Order.buyer bound to %s@%s, want DANGLING: `Customer` is declared in two files "+
+			"and %s declares neither, so the cross-file tier must refuse rather than pick one",
+			target.Name, target.SourceFile, consumerPath)
+	}
+
+	// UNIQUE -> must BIND, and to the one declaring file.
+	target, bound := byID[got["Order.carrier"].ToID]
+	if !bound {
+		t.Errorf("Order.carrier did NOT bind (ToID %q): `Vendor` has exactly one declaration, which is "+
+			"the case the python cross-file tier exists to serve — this is the recall #6984 could not have",
+			got["Order.carrier"].ToID)
+	} else if target.Name != "Vendor" || target.SourceFile != "vendors/models.py" {
+		t.Errorf("Order.carrier bound to %s@%s, want Vendor@vendors/models.py",
+			target.Name, target.SourceFile)
+	}
+
+	// ABSENT -> must DANGLE.
+	if target, bound := byID[got["Order.coupon"].ToID]; bound {
+		t.Errorf("Order.coupon bound to %s@%s, want DANGLING: `Ghost` is declared nowhere in the fixture",
+			target.Name, target.SourceFile)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// KNOWN-WRONG, pinned deliberately. A fix to #6990 is EXPECTED to break this.
+// ---------------------------------------------------------------------------
+
+// TestPythonFieldTargetType_KnownWrong_6990_OverReadBindsToTheNextFieldsTarget
+// pins a wrong BOUND edge that this address change creates, and that the PR
+// body originally denied existed.
+//
+// #6990's mechanism: `djangoModelRelTargetRe` has no left word boundary and the
+// producer hands it a 400-char `fullRHS` window. For
+// `user = models.ForeignKey(settings.AUTH_USER_MODEL, …)` the dotted target is
+// correctly REJECTED by the `[A-Z]` symbol alternative — and the window then
+// runs on into the NEXT field's `ForeignKey(ContentType`, capturing that. The
+// field's target_type becomes a class it does not reference.
+//
+// Under the old `Class:<Target>` address that wrong edge could not bind, so it
+// surfaced as one more dangling stub. Under the structural address it binds
+// whenever the wrong name has a unique in-tree declaration — which is exactly
+// #6369's hazard, a confident wrong edge that no dangling count can see.
+//
+// THIS IS NOT COVERED BY THE OVER-FIRE CONTROLS IN THIS FILE, and that is the
+// point of pinning it separately: `NeverBindsToANonDeclaringFile` and the
+// corpus "0 bound to a non-declaring file" figure both grade the FILE the
+// resolver picked. Here the file is right — `ContentType` really is declared
+// there. The wrongness is in the NAME the extractor chose, a dimension neither
+// control observes.
+//
+// On the django corpus this particular edge stays dangling, but for a reason
+// that lives elsewhere: the `ext:django:` external-synthesis pass intercepts
+// first. The guarantee is that pass's, not this address's. Fixing #6990 (either
+// anchoring the regex or bounding the window at the field's own call) should
+// make this test fail with `Class:` / no edge at all — delete it then.
+func TestPythonFieldTargetType_KnownWrong_6990_OverReadBindsToTheNextFieldsTarget(t *testing.T) {
+	files := map[string]string{
+		"admin/models.py": `from django.conf import settings
+from django.db import models
+
+
+class LogEntry(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+`,
+		"contenttypes/models.py": `from django.db import models
+
+
+class ContentType(models.Model):
+    app_label = models.CharField(max_length=100)
+`,
+	}
+	ents := mergedFor6986(t, files)
+	byID := map[string]types.EntityRecord{}
+	for i := range ents {
+		byID[ents[i].ID] = ents[i]
+	}
+
+	// Control on the premise, through the production path: the SAME field with
+	// no sibling behind it emits NO edge at all. So the capture below is the
+	// 400-char window running on into the next field, not the symbol
+	// alternative accepting `settings.AUTH_USER_MODEL`.
+	lone := mergedFor6986(t, map[string]string{
+		"admin/models.py": `from django.conf import settings
+from django.db import models
+
+
+class LogEntry(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+`,
+	})
+	for _, e := range fieldTargetEdges6986(lone) {
+		if edgeKey6986(e.Owner, e.Rel) == "LogEntry.user" {
+			t.Fatalf("LogEntry.user emits a target edge (%q) with NO sibling field behind it — this "+
+				"test's premise (the window over-reads into the NEXT field) is not what is happening",
+				propOf6986(e.Rel.Properties, "target_type"))
+		}
+	}
+
+	idx := resolve.BuildIndex(ents)
+	resolve.ReferencesEmbedded(ents, idx)
+
+	var userEdge *types.RelationshipRecord
+	for _, e := range fieldTargetEdges6986(ents) {
+		if edgeKey6986(e.Owner, e.Rel) == "LogEntry.user" {
+			r := e.Rel
+			userEdge = &r
+		}
+	}
+	if userEdge == nil {
+		t.Skip("LogEntry.user emits no target edge — #6990 appears fixed; delete this known-wrong pin")
+	}
+	if got := propOf6986(userEdge.Properties, "target_type"); got != "ContentType" {
+		t.Fatalf("LogEntry.user target_type = %q, want \"ContentType\" — #6990's over-read shape has "+
+			"changed and this pin no longer describes it", got)
+	}
+	target, bound := byID[userEdge.ToID]
+	if !bound {
+		t.Fatalf("LogEntry.user did NOT bind (ToID %q). If #6990 or the address changed so this "+
+			"wrong edge can no longer bind, that is an improvement — delete this known-wrong pin",
+			userEdge.ToID)
+	}
+	if target.Name != "ContentType" || target.SourceFile != "contenttypes/models.py" {
+		t.Fatalf("LogEntry.user bound to %s@%s, want the known-wrong ContentType@contenttypes/models.py",
+			target.Name, target.SourceFile)
+	}
+	t.Logf("KNOWN WRONG (#6990, pinned by #6986): LogEntry.user -[REFERENCES field_target_type]-> "+
+		"%s@%s. The field references settings.AUTH_USER_MODEL; the 400-char window captured the "+
+		"NEXT field's target. Dangling under the old address, BOUND under this one.",
+		target.Name, target.SourceFile)
 }

@@ -982,17 +982,21 @@ func isDjangoRelationalField(rhs string) bool {
 		strings.HasSuffix(ctor, "ManyToManyField")
 }
 
-// djangoRelTarget extracts the bare target-model class name from a relational
-// field declaration's argument blob. Handles the string form
-// (`ForeignKey('app.Model', ...)` / `ForeignKey('self', ...)`) and the symbol
-// form (`ForeignKey(Model, ...)` / `ForeignKey(to=Model, ...)`). For 'self' it
-// returns the enclosing model class so the edge self-references the owner.
-// Returns "" when no recognizable target is present (e.g. lazy callables).
 // djangoRelCtorLeaf returns the leaf constructor name of a relational field's
 // RHS — `models.ForeignKey` → `ForeignKey`. Mirrors the leaf-stripping
-// isDjangoRelationalField already performs, so the `django_rel` property this
-// pass stamps carries the same vocabulary as the core extractor's
-// `djangoFieldTypes` key (#6986).
+// isDjangoRelationalField already performs.
+//
+// The resulting `django_rel` vocabulary is a strict SUPERSET of the core
+// extractor's, not the same set (#6986). Core gates on
+// `djangoRelationalFieldTypes`, an exact three-name allow-list; this lane gates
+// on `isDjangoRelationalField`, a `*ForeignKey` / `*OneToOneField` /
+// `*ManyToManyField` SUFFIX rule. So a third-party subclass such as
+// `TreeForeignKey` reaches here and is stamped `django_rel: TreeForeignKey`, a
+// value core never emits — because core emits no edge for that field at all.
+// That direction is a gain and is what keeps the property-preservation claim
+// safe: this lane can only ADD a `django_rel`-carrying edge where core had
+// none, never rename one core already produced. Pinned by
+// TestIssue6988_LegitimateRelationalFieldsSurvive's `Book.category` row.
 func djangoRelCtorLeaf(rhs string) string {
 	ctor := rhs
 	if dot := strings.LastIndexByte(ctor, '.'); dot >= 0 {
@@ -1029,6 +1033,12 @@ func djangoRelTargetDetail(rhs, ownerClass string) (target, rawFKString string, 
 	return m[2], "", false // symbol form
 }
 
+// djangoRelTarget extracts the bare target-model class name from a relational
+// field declaration's argument blob. Handles the string form
+// (`ForeignKey('app.Model', ...)` / `ForeignKey('self', ...)`) and the symbol
+// form (`ForeignKey(Model, ...)` / `ForeignKey(to=Model, ...)`). For 'self' it
+// returns the enclosing model class so the edge self-references the owner.
+// Returns "" when no recognizable target is present (e.g. lazy callables).
 func djangoRelTarget(rhs, ownerClass string) string {
 	target, _, _ := djangoRelTargetDetail(rhs, ownerClass)
 	return target
