@@ -86,27 +86,50 @@ import (
 //     SCOPE.Component + interface  → admitted (type T interface{…})
 //     SCOPE.Schema    + type_alias → admitted (type T U / type T = U)
 //
-//     Everything else is refused. Being HONEST about what that refusal is worth:
-//     the excluded records are refused by NAME SHAPE before the subtype check
-//     ever sees them, so the subtype conjunct is a belt-and-braces guard rather
-//     than a live filter, and the PR body reports it as such rather than
-//     claiming a kill it does not have.
+//     Everything else is refused, and THE ALLOW-LIST IS A LIVE FILTER WITH A
+//     REAL KILL. An earlier draft of this comment claimed the opposite — that
+//     the excluded records were refused by name shape before the subtype check
+//     saw them, making it belt-and-braces — and offered a compound mutant
+//     (allow-list removed TOGETHER with rule 2) as evidence. That experiment
+//     established nothing: rule 2's mutant is independently lethal, so the
+//     compound killed exactly the tests rule 2 alone kills and carried no
+//     information about the allow-list. Recorded because the reasoning error is
+//     more portable than the fix: a compound mutant grades its second half only
+//     if its first half is NOT lethal on its own.
+//
+//     The distinguishing input, and the reason the claim was false:
 //
 //     - IMPORT ENTITIES are SCOPE.Component with an EMPTY Subtype and Name set
 //     to the whole import path (extractImportEntities), never truncated to a
 //     segment. A single-segment path IS a bare name sharing this file's
-//     namespace, and it is reachable — `import _ "embed"` does not bind the
-//     identifier, so a file may legally BLANK-import "embed" and also declare
-//     `type embed struct{…}`. But both records are SCOPE.Component/embed in this
-//     file, hence ONE graph node under rule 2, so admitting the import record
-//     would address the same node by the same ToID and change no output. The
-//     case is still pinned — TestGoFieldTypeRefs_BlankImportSharingATypeNameBinds
-//     — because it is the case that proves rule 2 must count KINDS and not
-//     records: under a record count this edge disappears.
-//     - SCOPE.Schema + field is refused so a field never targets a field. Also
-//     unreachable by name shape: a field entity's Name is dotted
+//     namespace, and it is reachable twice over, because `import _ "embed"`
+//     does not bind the identifier:
+//
+//     SAME-FILE (`type embed struct{…}` here too): two records, both
+//     SCOPE.Component/embed, hence ONE graph node under rule 2 — so admitting
+//     the import would address the same node by the same ToID and change no
+//     output. Pinned by TestGoFieldTypeRefs_BlankImportSharingATypeNameBinds,
+//     which is really rule 2's test: it proves the count must be over KINDS,
+//     since under a record count this edge disappears.
+//
+//     SIBLING-FILE (`type embed struct{…}` in another file of the package —
+//     the ORDINARY case, since a Go package is a directory): the import
+//     placeholder is then the ONLY record named `embed` in this file. One node,
+//     so rule 2 is silent; a bare name, so "refused by name shape" does not
+//     apply. Without the allow-list the field binds TO THE IMPORT PLACEHOLDER —
+//     a wrong binding, and wrong bindings never reach bug-extractor precisely
+//     because they bind. This is the case the allow-list exists for, and it is
+//     graded by TestGoFieldTypeRefs_ImportPlaceholderIsNeverATarget.
+//
+//     Enumerated rather than hand-picked: of the records emitted before this
+//     pass runs that carry a bare (non-dotted, non-path) Name, package-level
+//     funcs are excluded by Go's own package-scope uniqueness, enum value-sets
+//     always present a second kind (they require a same-file named type), and
+//     the import placeholder is the only one that can stand alone.
+//     - SCOPE.Schema + field is refused so a field never targets a field. This
+//     one IS unreachable by name shape: a field entity's Name is dotted
 //     (`Order.Buyer`) and a candidate is a single type_identifier, which cannot
-//     contain a dot.
+//     contain a dot. Refused anyway, but claimed as nothing more.
 //     - SCOPE.Component + file (#577) is refused; its Name is the file path.
 //
 //  3. THE CANDIDATE COLLECTOR IS NOT resolveTypeReferences, and this is the one
@@ -299,6 +322,20 @@ type goFieldTypeTarget struct {
 //     NON-target node — a SCOPE.Enum value-set over a `type Status int`, the
 //     overwhelmingly common Go enum idiom — cannot bind either. Counting only
 //     admitted records (arm C's rule) would emit a stub guaranteed to dangle.
+//
+//     "EVERY same-file record" means every record that exists AT STEP 4b-bis,
+//     which is where this pass runs — not every record Extract eventually
+//     returns. Steps 4c-6b append more (SCOPE.Pattern, SCOPE.ExceptionType,
+//     config keys, constant sets) and buildSymbolIndex sees those too, so a
+//     collision invisible here would reach the resolver as a dangling edge.
+//     It holds today only because every one of those producers emits a PREFIXED
+//     name (`error_handling:…`, `exception:…`, `config:…`), which no bare
+//     type_identifier candidate can equal; verified empirically at review, with
+//     all 168 corpus edges re-checked against the POST-Extract record set —
+//     0 target names carrying more than one kind, 0 targets without a same-file
+//     declaration. A future producer emitting a BARE-named entity would
+//     silently reintroduce dangling here, so that is the invariant to preserve
+//     rather than an accident to rely on.
 //     The unit is the KIND rather than the record, mirroring the resolver
 //     exactly; see the comment on nameKinds below for why, and why counting
 //     records instead would refuse edges that bind.

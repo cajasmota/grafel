@@ -33,6 +33,15 @@ func TestGoFieldTypeRefs_TargetsAreScopedToTheRequestedFile(t *testing.T) {
 		// for a.go merely because some other file declares it.
 		{Name: "Shipper", Kind: "SCOPE.Component", Subtype: "interface", SourceFile: "b.go"},
 		{Name: "Meters", Kind: "SCOPE.Schema", Subtype: "type_alias", SourceFile: "b.go"},
+		// A DIFFERENT-KINDED record in b.go sharing a name with an a.go type.
+		// This row grades the SourceFile conjunct in goInFileTypeTargets' FIRST
+		// loop — the one that builds nameKinds — which the rows above cannot:
+		// they share no name with a.go, so a cross-file leak there changes
+		// nothing. With that conjunct removed, nameKinds["Customer"] gains a
+		// second kind from b.go and the ambiguity rule wrongly suppresses a.go's
+		// perfectly unambiguous Customer. Both loops carry the conjunct, so both
+		// are graded rather than one being paid for and its twin left open.
+		{Name: "Customer", Kind: "SCOPE.Enum", Subtype: "enum", SourceFile: "b.go"},
 	}
 
 	got := goInFileTypeTargets(records, "a.go")
@@ -69,7 +78,13 @@ func TestGoFieldTypeRefs_TargetsAreScopedToTheRequestedFile(t *testing.T) {
 			"would pass even if the function returned nothing", keysOf(gotB))
 	}
 	if _, ok := gotB["Customer"]; ok {
-		t.Errorf("Customer is declared in a.go and must not be a target for b.go")
+		// TWO reasons this name must be absent from b.go's set, and the row
+		// added above means they are no longer the same reason: a.go's
+		// Customer is in another file, and b.go's OWN Customer is a
+		// SCOPE.Enum, which the allow-list refuses. Either one alone is
+		// sufficient; asserting the absence covers both.
+		t.Errorf("Customer must not be a target for b.go: a.go's is cross-file " +
+			"and b.go's own is a SCOPE.Enum, which is not a type declaration")
 	}
 }
 

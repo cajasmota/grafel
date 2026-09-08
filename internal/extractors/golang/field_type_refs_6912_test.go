@@ -66,6 +66,7 @@ type Order struct {
 	Watchers []Customer
 	Hist     [3]Customer
 	ByName   map[Tier]Customer
+	Both     map[Customer]Customer
 	Ch       chan Customer
 	Cb       func(Customer) error
 	Wrapped  Holder[Customer]
@@ -74,7 +75,7 @@ type Order struct {
 	St       Status
 	Foreign  other.Order
 	Nested   struct{ A Customer }
-	Anon     interface{ Do() }
+	Anon     interface{ Get() Customer }
 	Self     *Order
 	Qty      int
 	Label    string
@@ -213,6 +214,12 @@ func TestGoFieldTypeRefs_EdgeSetIsExact(t *testing.T) {
 		// here, so this field carries TWO edges. The key is not skipped.
 		"Order.ByName -> " + c + "Tier",
 		"Order.ByName -> " + c + "Customer",
+		// map[Customer]Customer names the SAME declared type in both halves.
+		// Exactly ONE row: the per-field dedup on ToID is what makes it one,
+		// and a second identical row here would be counted twice by
+		// ReferencesTotal and by relationship_extracted_total, neither of
+		// which dedups edges (audit.go:355-388).
+		"Order.Both -> " + c + "Customer",
 		// Holder[Customer] — the generic constructor is a legitimate target
 		// (it is declared here) AND so is the argument.
 		"Order.Wrapped -> " + c + "Holder",
@@ -641,6 +648,7 @@ func TestGoFieldTypeRefs_ResolvesToEntityIDs(t *testing.T) {
 		m + "Order.Buyer => " + m + "SCOPE.Component:Customer [struct]",
 		m + "Order.ByName => " + m + "SCOPE.Component:Customer [struct]",
 		m + "Order.ByName => " + m + "SCOPE.Schema:Tier [type_alias]",
+		m + "Order.Both => " + m + "SCOPE.Component:Customer [struct]",
 		m + "Order.Cb => " + m + "SCOPE.Component:Customer [struct]",
 		m + "Order.Ch => " + m + "SCOPE.Component:Customer [struct]",
 		m + "Order.Emb => " + m + "SCOPE.Component:embed [+struct]",
@@ -687,5 +695,76 @@ func TestGoFieldTypeRefs_PropertiesAgreeWithTheEndpoints(t *testing.T) {
 		t.Errorf("json-renamed field carries field_name=%q, want %q — the "+
 			"json-tag axis is the one that can disagree with the Name, so it "+
 			"must be the one asserted", seen["Order.renamed_wire"], "renamed_wire")
+	}
+}
+
+// TestGoFieldTypeRefs_ImportPlaceholderIsNeverATarget grades the ALLOW-LIST,
+// and it exists because the first version of this arm claimed the allow-list had
+// no kill and offered a compound mutant as proof. The compound proved nothing —
+// its other half was independently lethal — and the claim was false.
+//
+// This is the input that separates them, and the axis it varies is the ONE that
+// TestGoFieldTypeRefs_BlankImportSharingATypeNameBinds holds constant: WHERE the
+// type is declared.
+//
+// `import _ "embed"` emits a SCOPE.Component with an EMPTY Subtype whose Name is
+// the whole import path — here the bare name `embed`. A blank import does not
+// bind the identifier, and a Go package is a DIRECTORY of files, so declaring
+// `type embed struct{…}` in a sibling file is ordinary, legal Go. In THIS file
+// the only record named `embed` is therefore the import placeholder:
+//
+//   - one node, so the ambiguity rule (rule 2) does not fire;
+//   - a bare name, so the "refused by name shape" argument does not apply;
+//   - and the real type is in another file, so the same-file rule already
+//     refuses the edge for an unrelated reason.
+//
+// The allow-list is the ONLY thing standing between this field and an edge bound
+// to an import placeholder. With it, no edge. Without it, `Order.Blob` binds to
+// the import — a wrong binding, which never reaches bug-extractor precisely
+// because it binds. That is the failure class this whole arm exists to avoid.
+func TestGoFieldTypeRefs_ImportPlaceholderIsNeverATarget(t *testing.T) {
+	recs := extractGoFiles(t, map[string]string{
+		"a.go": `package models
+
+import _ "embed"
+
+type Order struct {
+	Blob  embed
+	Local Local
+}
+
+type Local struct{ X int }
+`,
+		// The real type, in a sibling file of the same package.
+		"b.go": `package models
+
+type embed struct{ Data []byte }
+`,
+	})
+
+	// Premise: a.go really does carry a bare-named import placeholder, and it
+	// is the ONLY record named `embed` there. If either stops holding, the
+	// absence asserted below would be vacuous.
+	var aKinds []string
+	for i := range recs {
+		if recs[i].SourceFile == "a.go" && recs[i].Name == "embed" {
+			aKinds = append(aKinds, recs[i].Kind+"/"+recs[i].Subtype)
+		}
+	}
+	goFTWantEqual(t, aKinds, []string{"SCOPE.Component/"},
+		"premise: a.go must carry exactly one record named `embed`, the "+
+			"import placeholder with an empty Subtype")
+
+	if got := goFTTargetsOf(recs, "Order.Blob"); len(got) != 0 {
+		t.Errorf("Order.Blob targets %v; the only same-file record named `embed` "+
+			"is an IMPORT PLACEHOLDER, and binding a field to one is a wrong "+
+			"binding that never reaches bug-extractor because it binds", got)
+	}
+	// Positive control in the same struct: a legitimate same-file target still
+	// binds, so the absence above is about the allow-list and not about the
+	// pass being inert in this fixture.
+	if got := goFTTargetsOf(recs, "Order.Local"); !contains(got, "Local") {
+		t.Fatalf("Order.Local targets %v, want Local — without this control the "+
+			"assertion above grades nothing", got)
 	}
 }
