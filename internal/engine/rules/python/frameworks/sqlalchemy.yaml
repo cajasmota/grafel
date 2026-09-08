@@ -103,10 +103,24 @@ source_patterns:
     name_group: 1
     scope: file
   # ForeignKey: ForeignKey("table.id")
+  #
+  # requires_framework (#7013). `ForeignKey("…")` is Django's spelling too, and
+  # Peewee's, and every other Python ORM's: the token names no library. It was
+  # the single worst over-firing pattern measured on the corpus — 246 of its
+  # 251 mints (98.0%) were in repos that do not use SQLAlchemy, led by
+  # django/.../inspectdb.py.
+  #
+  # The 4 true positives it costs are NOT a marker gap and adding markers does
+  # not recover them. `flask-realworld`'s conduit/database.py re-exports
+  # `Column = db.Column` and imports `relationship` centrally, so the model
+  # modules contain no sqlalchemy token of any kind; adding `flask_sqlalchemy`
+  # as a marker was tried and rescued ZERO. Under the per-file gate this is
+  # structural. Accepted at 246:4.
   - pattern: "ForeignKey\\s*\\(\\s*[\"']([^\"']+)[\"']"
     entity_type: Constraint
     name_group: 1
     scope: file
+    requires_framework: true
 
 # relationship_rules: intentionally empty (#6809).
 #

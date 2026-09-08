@@ -22,6 +22,15 @@ frameworks:
     import_markers:
     - from flask import Flask
     - Flask(__name__)
+    # Widened for #7013. `frameworkPresent` is per FILE (detector.go:96, called
+    # at :402 with this file's own content), so a blueprint module that writes
+    # `from flask import Blueprint` and never constructs the app carried NO
+    # marker and lost every gated match below. Measured on the 60-repo corpus:
+    # these two rescue 5 true positives (4 Routes from pattern #1, 1 Model from
+    # pattern #6) at ZERO cost to bad-removal — the gated patterns still removed
+    # the same 762 over-fired entities with these markers in place.
+    - from flask import
+    - import flask
     structural_markers:
     - .flaskenv
     - templates/ directory
@@ -63,10 +72,39 @@ source_patterns:
     name_group: 2
     scope: file
   # HTTP method decorators: @app.get("/path"), @app.post("/path"), etc.
+  #
+  # requires_framework (#7013). `@x.get("/…")` is not a Flask construct: it is
+  # the shape of a decorator call on any object with a `get` method, and on the
+  # corpus 75 of this pattern's 80 mints were Django, not Flask.
+  #
+  # THIS GATE IS COUPLED TO quart.yaml's identical pattern — do not gate one
+  # without the other (#7028). quart.yaml carries a BYTE-IDENTICAL pattern with
+  # the same entity_type and name_group. `seenEntities` (detector.go:367) is per
+  # file and shared across rule sets, and rule sets load in fs.WalkDir lexical
+  # order (loader.go:103), so `flask` wins every mint and `quart`'s twin has
+  # never produced anything. Gating this one alone therefore removes ZERO
+  # entities: the mints TRANSFER to quart.yaml's twin rather than disappearing.
+  # Measured: before {django: 75, flask: 5}; after flask {flask: 1} + quart
+  # {django: 75, flask: 4}. Same 80 mints, different producing rule file, no
+  # over-firing removed — strictly worse than making no change, since it is
+  # work that looks like a fix. Every summary count stays flat while it
+  # happens: totals, per-kind totals and the over-fire rate are all identical
+  # before and after.
+  #
+  # The transfer is not visible on the entity either. detector.go:451 sets the
+  # `framework` property from sp.framework, which compile() fills at :171 with
+  # the rule BUCKET key (`python`) and not the rule file; frameworks.name is
+  # parsed by schema.go and read by nothing in the mint path, so both twins
+  # emit framework=python and nothing is relabelled. The only difference the
+  # emitted rows could carry is the `file_convention` annotation — flask.yaml
+  # declares 6 file_conventions and quart.yaml declares none — and nobody has
+  # measured that, so do not rely on it and do not test it.
+  # TestFlaskAndQuartRouteTwinsGatedTogether_7013 fails if the two diverge.
   - pattern: "@(\\w+)\\.(get|post|put|patch|delete)\\s*\\(\\s*[\"']([^\"']+)[\"']"
     entity_type: Route
     name_group: 3
     scope: file
+    requires_framework: true
   # Blueprint instantiation: bp = Blueprint("name", __name__)
   - pattern: "(\\w+)\\s*=\\s*Blueprint\\s*\\(\\s*[\"'](\\w+)[\"']"
     entity_type: Controller
@@ -88,10 +126,16 @@ source_patterns:
     name_group: 3
     scope: file
   # SQLAlchemy model base class
+  #
+  # requires_framework (#7013). A bare `Model` alternative in the base list is
+  # not Flask-specific — `class Foo(Model)` is how Django-adjacent and plain
+  # ORM code spells it too, and 76 of this pattern's 78 corpus mints were in
+  # repos that do not use Flask at all.
   - pattern: "class\\s+(\\w+)\\s*\\(\\s*(?:db\\.Model|Model)\\s*\\)"
     entity_type: Model
     name_group: 1
     scope: class
+    requires_framework: true
 
 # relationship_rules: regex patterns that produce edges between entities.
 relationship_rules:
