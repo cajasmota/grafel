@@ -506,11 +506,20 @@ func (b *bridge) run(r io.Reader, w io.Writer) error {
 	// process. Best-effort: a failure must not stop us serving, so we log and
 	// continue. Skipped when the socket path cannot be resolved.
 	if socketPath, serr := b.defaultSocketPath(); serr == nil && socketPath != "" {
-		release, pidfile, aerr := acquireBridgeSingleton(socketPath, b.log)
-		if aerr != nil {
-			b.log("bridge singleton: %v (continuing)", aerr)
+		// The record dir comes from the layout ROOT, never from the socket's
+		// own directory: on Windows the socket is a named pipe and has no
+		// directory, which is why no record was ever written there (#6999).
+		var pidfile string
+		if recordDir, derr := bridgeRecordDir(); derr != nil {
+			b.log("bridge singleton: %v (continuing)", derr)
 		} else {
-			defer release()
+			release, path, aerr := acquireBridgeSingleton(recordDir, socketPath, b.log)
+			pidfile = path
+			if aerr != nil {
+				b.log("bridge singleton: %v (continuing)", aerr)
+			} else {
+				defer release()
+			}
 		}
 		stopSignalLogger := installBridgeSignalLogger(pidfile, socketPath, b.log)
 		defer stopSignalLogger()

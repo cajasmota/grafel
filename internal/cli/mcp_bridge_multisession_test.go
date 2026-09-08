@@ -250,17 +250,27 @@ func TestBridge_ConcurrentSessionsAllSurviveAndServe(t *testing.T) {
 	// Every session must own a DISTINCT ownership record naming its own pid.
 	// Under the pre-#6999 per-socket key there is exactly one such file for the
 	// whole machine.
-	socketDir := filepath.Join(root, "sockets")
-	entries, err := os.ReadDir(socketDir)
+	// Enumerate the PRODUCTION record dir, not a fabricated one: deriving it
+	// here the same way the bridge does is what exposed the Windows gap, where
+	// filepath.Dir(SocketPath) is the named pipe `\\.\pipe` and no record was
+	// ever written at all.
+	recordDir, err := bridgeRecordDir()
 	if err != nil {
-		t.Fatalf("read socket dir: %v", err)
+		t.Fatalf("bridge record dir: %v", err)
+	}
+	if want := filepath.Join(root, "sockets"); recordDir != want {
+		t.Fatalf("record dir = %q, want %q", recordDir, want)
+	}
+	entries, err := os.ReadDir(recordDir)
+	if err != nil {
+		t.Fatalf("read bridge record dir %s: %v", recordDir, err)
 	}
 	recorded := map[int]string{}
 	for _, e := range entries {
 		if !strings.HasPrefix(e.Name(), "mcp-bridge-") || !strings.HasSuffix(e.Name(), ".pid") {
 			continue
 		}
-		p := filepath.Join(socketDir, e.Name())
+		p := filepath.Join(recordDir, e.Name())
 		pid, ok := readBridgePID(p)
 		if !ok {
 			t.Fatalf("unreadable bridge record %s", p)
@@ -304,7 +314,7 @@ func TestBridge_DoesNotSignalAnotherLiveGrafelProcess(t *testing.T) {
 	socket := filepath.Join(root, "sockets", "daemon.sock")
 	seed := []string{
 		legacyPerSocketPidfilePath(socket),
-		bridgeSingletonPath(socket, bridgeSessionID()),
+		bridgeSingletonPath(filepath.Join(root, "sockets"), socket, bridgeSessionID()),
 	}
 	for _, p := range seed {
 		if err := os.WriteFile(p, []byte(strconv.Itoa(victim.pid)+"\n"), 0o600); err != nil {

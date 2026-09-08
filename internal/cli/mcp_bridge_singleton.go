@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/process"
 )
 
@@ -25,10 +26,21 @@ import (
 //
 // Why deleting it is safe rather than a regression of #5633:
 //
-//   - A bridge whose client is gone exits on its own. bridge.run reads stdin
-//     and returns on io.EOF; when the MCP client dies its end of the pipe is
-//     closed and the bridge falls out of its loop. Nothing external is needed to
-//     collect it, and TestBridge_ExitsWhenStdinCloses pins that.
+//   - A bridge that is IDLE when its client goes collects itself. bridge.run
+//     reads stdin and returns on io.EOF; when the client's end of the pipe is
+//     closed the bridge falls out of its loop and nothing external is needed to
+//     collect it. Verified with real processes on three shapes: client SIGKILL,
+//     client SIGTERM, and a live client that closes the bridge's stdin.
+//     TestBridge_ExitsWhenStdinCloses pins the EOF-while-idle case in process.
+//
+//     It is NOT true of every client-less bridge, and the comment must not say
+//     so. A bridge BLOCKED in a daemon call is not in its read loop and never
+//     observes the EOF: callDaemon → net/rpc Call has no deadline, so against a
+//     daemon that accepts and never replies (wedged or swapping — on record for
+//     this project) the bridge stays alive indefinitely after its client dies.
+//     That residual is #7003. It is not an argument for the reap: the old reap
+//     only collected such a bridge when a NEW bridge started, which is the
+//     #6999 event itself, and it collected healthy concurrent bridges with it.
 //   - The orphan #5633 saw therefore had a LIVE client (a daemon restart does
 //     not touch stdin). Such a process is indistinguishable, from the outside,
 //     from a second concurrent session's perfectly healthy bridge — there is no
@@ -65,13 +77,43 @@ func bridgeSessionID() string {
 	return "pid:" + strconv.Itoa(os.Getpid())
 }
 
-// bridgeSingletonPath derives the per-session bridge pidfile path. It lives
-// beside the daemon socket so it shares the socket's per-user directory and
-// lifecycle. Both the socket path AND the session id are hashed into the name:
-// keying on the socket alone is #6999, because one file then names the single
-// bridge of an entire machine.
-func bridgeSingletonPath(socketPath, sessionID string) string {
-	dir := filepath.Dir(socketPath)
+// bridgeRecordDir returns the directory the ownership records live in:
+// <Layout.Root>/sockets, on every platform.
+//
+// It is derived from the LAYOUT ROOT, not from filepath.Dir(SocketPath), and
+// that is the whole point. SocketPath is not a filesystem path everywhere: on
+// Windows it is a named pipe (`\\.\pipe\grafel-<hash>`, see
+// internal/daemon/paths_windows.go, where SocketDir is deliberately ""), so
+// filepath.Dir of it is `\\.\pipe` — not a directory anything can write into.
+// The pre-#6999 code keyed off filepath.Dir(SocketPath) too, so on Windows the
+// pidfile write ALWAYS failed and the record never existed at all: readBridgePID
+// therefore never returned a prior pid and the reap never fired there. Windows
+// users were never hit by #6999, and they also never got the diagnostic record
+// this file exists to leave behind. Layout.Root is a real directory on both
+// platforms, so deriving from it fixes the diagnostic everywhere.
+//
+// On unix this keeps the record in the same <root>/sockets it already used
+// under GRAFEL_DAEMON_ROOT; it also pins it there when the socket itself lives
+// in XDG_RUNTIME_DIR, which is a per-boot tmpfs rather than grafel's own state.
+// sockets/ is already one of grafel's scratch dirs (internal/install:
+// grafelScratchDirs), so uninstall --purge still cleans these up.
+func bridgeRecordDir() (string, error) {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return "", fmt.Errorf("resolve grafel layout for bridge record: %w", err)
+	}
+	if strings.TrimSpace(layout.Root) == "" {
+		return "", fmt.Errorf("grafel layout has no root; cannot place bridge record")
+	}
+	return filepath.Join(layout.Root, "sockets"), nil
+}
+
+// bridgeSingletonPath derives the per-session bridge pidfile path inside dir.
+// Both the socket path AND the session id are hashed into the name: keying on
+// the socket alone is #6999, because one file then names the single bridge of
+// an entire machine. The socket stays in the hash so two daemons (two roots,
+// two sockets) never share a record even if a session id repeats.
+func bridgeSingletonPath(dir, socketPath, sessionID string) string {
 	sum := sha256.Sum256([]byte(socketPath + "\x00" + sessionID))
 	name := "mcp-bridge-" + hex.EncodeToString(sum[:6]) + ".pid"
 	return filepath.Join(dir, name)
@@ -88,12 +130,18 @@ func bridgeSingletonPath(socketPath, sessionID string) string {
 //
 // Errors are non-fatal by design: a bridge that cannot write its record should
 // still serve, so callers log and continue rather than aborting the session.
-func acquireBridgeSingleton(socketPath string, logf func(string, ...any)) (release func(), pidfile string, err error) {
+func acquireBridgeSingleton(recordDir, socketPath string, logf func(string, ...any)) (release func(), pidfile string, err error) {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	path := bridgeSingletonPath(socketPath, bridgeSessionID())
+	path := bridgeSingletonPath(recordDir, socketPath, bridgeSessionID())
 	self := os.Getpid()
+
+	// The record dir is grafel's own scratch dir, and nothing else guarantees
+	// it exists: on Windows no socket is ever bound inside it.
+	if merr := os.MkdirAll(recordDir, 0o700); merr != nil {
+		return func() {}, path, fmt.Errorf("create bridge record dir %s: %w", recordDir, merr)
+	}
 
 	if prior, ok := readBridgePID(path); ok && prior != self && isLiveBridge(prior) {
 		// #6999: log, never signal. A prior bridge is not ours to terminate.
