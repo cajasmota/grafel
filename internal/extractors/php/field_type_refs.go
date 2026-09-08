@@ -116,15 +116,29 @@ import (
 // under the rule (#7038); its rule is not copied and neither is its stated
 // reason.
 //
-// AND THE HONEST PART: SCOPE.Component IS THE ONLY componentKindFamily KIND ANY
-// PHP PRODUCER EMITS. Core (internal/extractors/php) and custom
-// (internal/custom/php) were both enumerated: neither emits SCOPE.Model,
-// SCOPE.View, SCOPE.Class, nor a bare Component/Class/View/Model. So
-// len(nameKinds[name]) can never exceed 1 from PHP source today and rule 2 is
-// VACUOUS AS SHIPPED. It is kept as a mirror of the resolver for the producer
-// that adds an in-family kind later — exactly the shape arm F's SCOPE.Class hole
-// was — and because it is unreachable from Extract it is graded by a direct-call
-// unit test (TestPhpFieldTypeRefs_Unit_InFamilyRivalSuppresses...) rather than
+// AND THE HONEST PART: RULE 2 IS VACUOUS AS SHIPPED, for a STRONGER reason than
+// an earlier draft of this comment gave.
+//
+// The draft's reason was that core (internal/extractors/php) and custom
+// (internal/custom/php) were both enumerated and neither emits SCOPE.Model,
+// SCOPE.View, SCOPE.Class, nor a bare Component/Class/View/Model — true, and
+// confirmed independently over 390 corpus files, where the only kinds the
+// extractor ever emits are {SCOPE.Component, SCOPE.Config, SCOPE.Enum,
+// SCOPE.ExceptionType, SCOPE.Operation, SCOPE.Schema, SCOPE.Template}. But the
+// custom half of that enumeration is not what makes the claim hold: THIS PASS
+// RUNS INSIDE CORE Extract, BEFORE MergeWithCustom, so no internal/custom/php
+// record ever reaches it at all. The core half alone settles it, a fortiori.
+//
+// Enumerating the custom lane was still the right check — it is where the
+// FUTURE producer would live, and an Eloquent-model detector re-kinding a PHP
+// class to SCOPE.Model is the concrete shape rule 2 is kept for. But the next
+// arm should not inherit a weaker argument than it is entitled to.
+//
+// So len(nameKinds[name]) can never exceed 1 from PHP source today. Rule 2 is
+// kept as a mirror of the resolver for that future producer — exactly the shape
+// arm F's SCOPE.Class hole was — and because it is unreachable from Extract it
+// is graded by a direct-call unit test
+// (TestPhpFieldTypeRefs_Unit_InFamilyRivalSuppressesTheTarget) rather than
 // claimed to be covered by the fixture suite.
 //
 // The counterfactual of ARM D's rule (count ALL same-file kinds) is not vacuous
@@ -364,6 +378,20 @@ var phpComponentAddressFamily = map[string]bool{
 //     declaration (phpTypeDeclSubtypes). This is a check on the EMITTED RECORD,
 //     not on the AST, so a declaration the extractor chose not to emit can never
 //     be addressed.
+//
+//     IT IS TWO GUARDS, AND THEY ARE MUTUALLY MASKED. No core PHP producer mints
+//     a record with Subtype ∈ {class, interface, trait} under any Kind but
+//     SCOPE.Component, so through Extract the Kind test and the subtype
+//     allow-list only ever fire together and the allow-list alone carries every
+//     refusal the fixture suite observes — including the enum one. An
+//     independent review found both a deletion of the Kind test and a widening
+//     of it to admit SCOPE.Schema ALIVE for exactly that reason. Two guards that
+//     only fire together grade neither, so they are now scored part by part:
+//     TestPhpFieldTypeRefs_Unit_OnlyComponentsAreTargets drives seven
+//     non-Component Kinds carrying an ADMITTED subtype (so the allow-list cannot
+//     be what refuses them), and the distinguishing input is
+//     {Kind: "SCOPE.Model", Subtype: "class"} — the SAME future producer rule 2
+//     below is kept for.
 //
 //  2. A name carried by MORE THAN ONE DISTINCT KIND IN THE COMPONENT ADDRESS
 //     FAMILY is dropped. Restricted to that family — not to every same-file kind

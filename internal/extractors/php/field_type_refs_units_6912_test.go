@@ -141,6 +141,77 @@ func TestPhpFieldTypeRefs_Unit_InFamilyRivalSuppressesTheTarget(t *testing.T) {
 	}
 }
 
+// TestPhpFieldTypeRefs_Unit_OnlyComponentsAreTargets grades pass 2's
+// `r.Kind != "SCOPE.Component"` conjunct, which an independent review found
+// ALIVE under two mutants (delete it; widen it to admit SCOPE.Schema).
+//
+// It is MUTUALLY MASKED by the subtype allow-list: no core PHP producer mints a
+// record with Subtype ∈ {class, interface, trait} under any Kind but
+// SCOPE.Component, so through Extract the two guards only ever fire together and
+// the allow-list alone carries every refusal — including the enum one, which
+// TestPhpFieldTypeRefs_EnumIsNotATarget therefore grades through the allow-list
+// rather than through this conjunct. Two guards that only fire together grade
+// neither, so they are scored part by part here.
+//
+// The distinguishing input is `{Kind: "SCOPE.Model", Subtype: "class"}` — which
+// is EXACTLY the future producer this arm cites to justify keeping rule 2 (an
+// Eloquent-model detector re-kinding a PHP class). Rule 2 is graded against that
+// producer by direct call; leaving the conjunct the same producer would exercise
+// ungraded was an inconsistency, not a considered scope.
+//
+// The kinds are ENUMERATED rather than hand-picked: every Kind this package or
+// its custom lane can plausibly grow, both in and out of the address family,
+// each paired with an ADMITTED subtype so the allow-list cannot be what refuses
+// it. A positive control in the same input keeps the assertions from passing
+// because the function returned nothing.
+func TestPhpFieldTypeRefs_Unit_OnlyComponentsAreTargets(t *testing.T) {
+	// Each row: a record with an ADMITTED subtype under a NON-Component Kind.
+	// None may become a target.
+	kinds := []string{
+		"SCOPE.Model",   // in-family — the Eloquent-detector shape
+		"SCOPE.View",    // in-family
+		"SCOPE.Class",   // in-family via the index's trim alias
+		"SCOPE.Schema",  // out-of-family — the reviewer's N8 widening
+		"SCOPE.Enum",    // out-of-family — the parallel value-set population
+		"SCOPE.Pattern", // out-of-family — emitted by internal/custom/php
+		"SCOPE.Service", // out-of-family — emitted by internal/custom/php
+	}
+	for _, kind := range kinds {
+		records := []types.EntityRecord{
+			// The positive control: a real Component target, distinct name.
+			{Name: "Money", Kind: "SCOPE.Component", Subtype: "class", SourceFile: "a.php"},
+			// The row under test. A DISTINCT name, so rule 2 cannot be what
+			// refuses it — this test grades the Kind conjunct alone.
+			{Name: "Ghost", Kind: kind, Subtype: "class", SourceFile: "a.php"},
+		}
+		got := phpInFileTypeTargets(records, "a.php")
+		if _, ok := got["money"]; !ok {
+			t.Fatalf("kind %q: the control target is missing (%v) — every "+
+				"assertion in this row would be vacuous", kind, phpFTKeys(got))
+		}
+		if _, ok := got["ghost"]; ok {
+			t.Errorf("a record kinded %q with Subtype \"class\" became a target. "+
+				"Only SCOPE.Component records are type declarations this package "+
+				"emits; the allow-list is a subtype filter and cannot refuse this "+
+				"on its own.", kind)
+		}
+	}
+
+	// The mirror, so "refused" is not "the subtype was wrong": the SAME
+	// non-Component kinds with a REFUSED subtype are also absent — i.e. the two
+	// guards are independent rather than one standing in for the other.
+	for _, kind := range kinds {
+		records := []types.EntityRecord{
+			{Name: "Money", Kind: "SCOPE.Component", Subtype: "class", SourceFile: "a.php"},
+			{Name: "Ghost", Kind: kind, Subtype: "", SourceFile: "a.php"},
+		}
+		if got := phpInFileTypeTargets(records, "a.php"); len(got) != 1 {
+			t.Errorf("kind %q with an empty subtype: targets = %v, want only the "+
+				"control", kind, phpFTKeys(got))
+		}
+	}
+}
+
 // TestPhpFieldTypeRefs_Unit_ScopeClassParticipatesViaTheTrimAlias grades the one
 // entry of phpComponentAddressFamily that is NOT a literal member of
 // componentKindFamily.

@@ -14,18 +14,40 @@ import (
 
 // #6912 arm H — PHP field→declared-type REFERENCES edges.
 //
-// The fixture below is the arm's shape-space enumeration and every row in it is
-// legal PHP 8.1 (checked shape by shape against the grammar, not eyeballed).
+// The fixture below is the arm's shape-space enumeration. Every row is a
+// property declaration PHP will actually compile — which is a WEAKER and more
+// honest claim than the one this comment carried in the first revision.
+//
+// That revision said every row was "legal PHP 8.1, checked shape by shape
+// against the grammar". It was neither: `public callable $cb;` was in it, and
+// **`callable` is not permitted as a property type in any PHP version** (typed
+// properties exclude `void` and `callable`, the latter because it is
+// context-dependent), so that row was a fatal error rather than a program. It
+// has been replaced by `public object $obj;`, which exercises the same axis —
+// a builtin refused by the declaration gate — and is legal. The version label
+// was wrong too: `(Customer&Shipper)|null` is a PHP **8.2** DNF type, not 8.1.
+// Recorded rather than quietly corrected, because a fixture row that the
+// language does not permit is the third instance of this defect on this board
+// (an F# arm shipped `Mut: mutable Customer`), and the pattern is that the
+// CLAIM of having checked is what goes unchecked.
 //
 // AXES VARIED, one per property, holding the others constant:
 //   - type composition: bare, nullable `?T`, union `A|B`, intersection `A&B`,
-//     union-with-primitive, DNF `(A&B)|null`
+//     union-with-primitive, DNF `(A&B)|null` (PHP 8.2)
 //   - name qualification: bare, relative `Ns\T`, fully-qualified `\Ns\T`,
 //     leading-separator-only `\T`
 //   - target existence: declared in THIS file / declared in ANOTHER file /
 //     declared nowhere
-//   - target kind: class, interface, trait, enum, import placeholder, namespace
-//   - PHP builtin: int, string, array, iterable, callable, mixed, self, static
+//   - target kind: class, interface, trait, enum, import placeholder, file
+//     carrier, AND — the case that is both refused and admitted at once — a
+//     name carried by an admitted class AND a refused import placeholder in the
+//     same file (`Order2.carrier`, see
+//     TestPhpFieldTypeRefs_ImportPlaceholderSharingAClassNameIsOneNode).
+//     The `namespace` row lives in the imports.php fixture instead, because
+//     `namespace App;` puts its record in whichever file declares it and
+//     TestPhpFieldTypeRefs_ImportPlaceholderIsNeverATarget is where the
+//     empty-Subtype refusal is graded.
+//   - PHP builtin: int, string, array, iterable, object, mixed, self
 //   - declaration site: class property, promoted constructor parameter,
 //     multi-declarator property, untyped property
 //   - identifier case: declared spelling vs. lower-cased use
@@ -68,8 +90,9 @@ class Order2 {
     public string $label;
     public array $rows;
     public iterable $it;
-    public callable $cb;
+    public object $obj;
     public mixed $any;
+    public Ship $carrier;
     public self $me;
     public static $untyped;
     public Money $m1, $m2;
@@ -205,6 +228,12 @@ func TestPhpFieldTypeRefs_ShapeSpace(t *testing.T) {
 		"Order2.m2":         {"Money"},    // multi-declarator, second
 		"Order2.owner":      {"Customer"}, // promoted ctor parameter
 		"Order2.amount":     {"Money"},    // promoted + nullable
+		// The one case where the allow-list must ADMIT rather than refuse: this
+		// file declares BOTH `class Ship {}` and `use Ship\Thing;`, so the name
+		// is carried by an admitted target AND a refused placeholder at once.
+		// Safe only because graph.EntityID omits Subtype — pinned by
+		// TestPhpFieldTypeRefs_ImportPlaceholderSharingAClassNameIsOneNode.
+		"Order2.carrier": {"Ship"},
 
 		// --- refused: qualified names are never reduced to a segment ---
 		"Order2.imported":    nil, // `use Other\Order` — Order is NOT declared here
@@ -220,7 +249,7 @@ func TestPhpFieldTypeRefs_ShapeSpace(t *testing.T) {
 		"Order2.label":   nil,
 		"Order2.rows":    nil,
 		"Order2.it":      nil,
-		"Order2.cb":      nil,
+		"Order2.obj":     nil,
 		"Order2.any":     nil,
 		"Order2.count":   nil,
 		"Order2.me":      nil, // `self` names the owner; refused twice over
@@ -251,14 +280,15 @@ func TestPhpFieldTypeRefs_ShapeSpace(t *testing.T) {
 }
 
 // TestPhpFieldTypeRefs_DNFTypeIsAKnownCaptureCeiling pins a gap this arm found
-// and deliberately did NOT close.
+// and deliberately did NOT close. It is filed as **#7044** — see that issue for
+// the description; this test exists only to make the ceiling fail loudly when it
+// is closed.
 //
-// PHP 8.2's disjunctive-normal-form type `(A&B)|null` is not one of the node
-// types phpDeclaredType (field_members.go:135) switches on, so it captures
-// NOTHING: field_type is "" and the Signature drops the type as well. That is a
-// capture defect in the property producer, not an edge defect — it degrades the
-// Signature for every DNF-typed property whether or not this arm exists — so it
-// belongs to its own change with its own grading rather than riding along here.
+// In one line: PHP 8.2's disjunctive-normal-form type `(A&B)|null` is not one of
+// the node types phpDeclaredType (field_members.go:135) switches on, so it
+// captures NOTHING — field_type is "" and the Signature drops the type too. A
+// capture defect in the property producer, not an edge defect, which is why it
+// is a separate issue rather than a rider on this arm.
 //
 // The test asserts the CURRENT behaviour so the ceiling is visible and so that
 // fixing the capture makes this test fail loudly, at which point the shape-space
@@ -315,6 +345,7 @@ class Money {}
 
 class Order {
     public Ship $carrier;
+    public App $ns;
     public Money $price;
 }
 `
@@ -345,8 +376,27 @@ class Order {
 		}
 	}
 
+	// The NAMESPACE row of the target-kind axis. buildNamespace (php.go:483)
+	// mints its own bare SCOPE.Component named after the namespace ROOT with an
+	// empty Subtype — the same shape as an import placeholder but a different
+	// producer — and the axis previously claimed this row while no test drove a
+	// field at it. Premise asserted first, again so the refusal is doing work.
+	ns := false
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Component" && recs[i].Name == "App" &&
+			recs[i].SourceFile == "imports.php" && recs[i].Subtype == "" {
+			ns = true
+		}
+	}
+	if !ns {
+		t.Fatal("no bare-named namespace record in this file — buildNamespace's " +
+			"shape has changed and the namespace row of the axis is vacuous")
+	}
+
 	phpFTEqual(t, phpFTTargetsOf(recs, "Order.carrier"), nil,
 		"a field typed after an import placeholder")
+	phpFTEqual(t, phpFTTargetsOf(recs, "Order.ns"), nil,
+		"a field typed after the file's own namespace root")
 	// Positive control in the SAME file: the pass works here.
 	phpFTEqual(t, phpFTTargetsOf(recs, "Order.price"), []string{"Money"},
 		"the control field in the same class")
@@ -405,6 +455,56 @@ class Middleware
 		"a promoted parameter typed after an unqualified `use` import")
 	phpFTEqual(t, phpFTTargetsOf(recs, "Middleware.price"), []string{"Money"},
 		"the promoted-parameter control in the same constructor")
+}
+
+// TestPhpFieldTypeRefs_ImportPlaceholderSharingAClassNameIsOneNode pins the
+// premise that makes the two tests above SAFE, and which nothing pinned before.
+//
+// `models.php` declares BOTH `class Ship {}` and `use Ship\Thing;`, so the name
+// `Ship` is carried by an admitted target AND a refused placeholder in ONE file.
+// This is the case where the allow-list must ADMIT — and the edge only binds
+// because `graph.EntityID` hashes `(repo, Kind, Name, SourceFile)` with
+// **Subtype excluded**, so the two records collapse to ONE node rather than
+// tripping tier 2's kind-agnostic `ambigLocation` (`refs.go:1302-1315`), which
+// is what a two-node collision at one (file, name) would do.
+//
+// The premise is asserted FIRST — two distinct records, one computed ID — so the
+// binding assertion cannot pass because the second record silently stopped being
+// emitted. If `EntityID` ever starts hashing Subtype, this test fails here
+// rather than the arm quietly beginning to dangle.
+func TestPhpFieldTypeRefs_ImportPlaceholderSharingAClassNameIsOneNode(t *testing.T) {
+	recs := phpFTOne(t, phpFTPath, phpFTSrc)
+
+	var placeholder, class *types.EntityRecord
+	for i := range recs {
+		r := &recs[i]
+		if r.Kind != "SCOPE.Component" || r.Name != "Ship" || r.SourceFile != phpFTPath {
+			continue
+		}
+		switch r.Subtype {
+		case "":
+			placeholder = r
+		case "class":
+			class = r
+		}
+	}
+	if placeholder == nil || class == nil {
+		t.Fatalf("the two-record premise is gone (placeholder=%v class=%v) — "+
+			"models.php must declare BOTH `use Ship\\Thing;` and `class Ship {}` "+
+			"or this test grades nothing", placeholder != nil, class != nil)
+	}
+	pid := graph.EntityID("issue6912", placeholder.Kind, placeholder.Name, placeholder.SourceFile)
+	cid := graph.EntityID("issue6912", class.Kind, class.Name, class.SourceFile)
+	if pid != cid {
+		t.Fatalf("the import placeholder and the class no longer collapse to one "+
+			"node (%s vs %s). graph.EntityID must exclude Subtype for the "+
+			"admitted-and-refused-at-once case to bind rather than dangle.", pid, cid)
+	}
+
+	// One edge, to the class, and it binds.
+	phpFTEqual(t, phpFTTargetsOf(recs, "Order2.carrier"), []string{"Ship"},
+		"a field typed at a name carried by both an admitted class and a placeholder")
+	phpFTAssertAllBind(t, recs)
 }
 
 // TestPhpFieldTypeRefs_EnumIsNotATarget records a MEASUREMENT, not a preference.
@@ -726,6 +826,7 @@ class Shipper {}
 		"Order2.both => " + m + "Customer",
 		"Order2.both => " + m + "Shipper",
 		"Order2.buyer => " + m + "Customer",
+		"Order2.carrier => " + m + "Ship",
 		"Order2.either => " + m + "Customer",
 		"Order2.either => " + m + "Money",
 		"Order2.folded => " + m + "Customer",
