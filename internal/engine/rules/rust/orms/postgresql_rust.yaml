@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: PostgreSQL Rust Drivers (tokio-postgres, deadpool-postgres, sqlx)
   category: postgres_driver
   crates:

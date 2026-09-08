@@ -1,4 +1,4 @@
-frameworks_and_dialects:
+frameworks:
   name: dbt (data build tool)
   category: sql_transformation
   config_markers:

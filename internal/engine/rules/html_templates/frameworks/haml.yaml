@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: HAML
   full_name: HTML Abstraction Markup Language
   language: ruby

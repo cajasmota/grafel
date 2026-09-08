@@ -1,4 +1,4 @@
-orms_and_database:
+frameworks:
   name: mongodb (official Node.js driver)
   npm_packages:
     - mongodb

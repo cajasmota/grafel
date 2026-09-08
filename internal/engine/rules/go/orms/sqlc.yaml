@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: sqlc
   module_path: github.com/sqlc-dev/sqlc
   category: sql_code_gen

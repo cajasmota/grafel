@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: JPA (Jakarta Persistence API)
   maven_coordinates: jakarta.persistence:jakarta.persistence-api
   gradle_dependency: compileOnly 'jakarta.persistence:jakarta.persistence-api'

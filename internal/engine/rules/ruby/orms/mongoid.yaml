@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Mongoid
   gem_name: mongoid
   category: document_orm

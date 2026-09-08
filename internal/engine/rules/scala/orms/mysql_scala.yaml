@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Scala Drivers (MySQL Connector/J via JDBC, Slick MySQL profile)
   category: relational_database
   maven_coordinates: com.mysql:mysql-connector-j

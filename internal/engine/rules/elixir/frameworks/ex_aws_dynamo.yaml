@@ -1,4 +1,4 @@
-framework:
+frameworks:
   name: ex_aws_dynamo (ExAws.Dynamo)
   category: nosql_database
   hex_package: ex_aws_dynamo

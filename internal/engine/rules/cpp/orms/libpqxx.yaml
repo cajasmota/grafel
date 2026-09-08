@@ -1,4 +1,4 @@
-orm_db:
+frameworks:
   name: libpqxx
   category: postgresql_client
   github_stars_2025: 1100+

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: cassandra-driver (DataStax Ruby Driver)
   category: nosql_database
   gem: cassandra-driver

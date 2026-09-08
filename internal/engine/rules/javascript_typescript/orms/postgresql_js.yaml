@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: PostgreSQL JavaScript/TypeScript Drivers (pg/node-postgres, postgres.js)
   category: postgres_driver
   npm_packages:

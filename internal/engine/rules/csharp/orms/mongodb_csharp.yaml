@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MongoDB.Driver (C# official driver)
   nuget_package: MongoDB.Driver
   category: nosql_driver

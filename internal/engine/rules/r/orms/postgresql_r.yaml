@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: RPostgres / RPostgreSQL (R PostgreSQL Drivers)
   category: postgres_driver
   cran_packages:

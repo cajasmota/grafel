@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Peewee
   pypi_package: peewee
   category: sql_orm

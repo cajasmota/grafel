@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Firebase (iOS)
   category: backend_as_a_service_client
   spm_coordinates:

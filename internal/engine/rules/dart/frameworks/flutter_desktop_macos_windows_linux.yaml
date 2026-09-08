@@ -1,4 +1,4 @@
-mobile:
+frameworks:
   name: Flutter Desktop (macOS / Windows / Linux)
   category: desktop
   detection:

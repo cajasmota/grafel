@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Scala SQLite (slick-sqlite / sqlite-jdbc via JDBC)
   category: sqlite_driver
   sbt_dependencies:

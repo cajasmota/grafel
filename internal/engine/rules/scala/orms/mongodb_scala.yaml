@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: mongo-scala-driver / ReactiveMongo
   maven_coordinates: org.mongodb.scala:mongo-scala-driver_2.13
   category: nosql_driver

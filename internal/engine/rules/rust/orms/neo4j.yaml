@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: neo4rs (Neo4j Rust Driver)
   category: graph_database
   crate: neo4rs

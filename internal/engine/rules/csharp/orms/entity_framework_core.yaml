@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Entity Framework Core
   nuget_package: Microsoft.EntityFrameworkCore
   category: full_orm

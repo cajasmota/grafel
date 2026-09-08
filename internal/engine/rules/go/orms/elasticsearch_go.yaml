@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: go-elasticsearch
   module_path: github.com/elastic/go-elasticsearch/v8
   detection:

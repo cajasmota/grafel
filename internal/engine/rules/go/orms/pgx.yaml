@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: pgx
   module_path: github.com/jackc/pgx/v5
   category: postgres_driver

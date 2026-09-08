@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: Nunjucks
   full_name: Nunjucks (Mozilla)
   language: javascript

@@ -1,4 +1,4 @@
-framework_templates:
+frameworks:
   name: React JSX/TSX Templates
   framework: React / Next.js / Remix
   extensions:

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Hibernate (Core)
   maven_coordinates: org.hibernate.orm:hibernate-core
   gradle_dependency: implementation 'org.hibernate.orm:hibernate-core'

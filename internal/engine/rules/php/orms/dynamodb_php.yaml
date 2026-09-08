@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: AWS DynamoDB PHP SDK (aws/aws-sdk-php)
   category: nosql_database
   composer_package: aws/aws-sdk-php

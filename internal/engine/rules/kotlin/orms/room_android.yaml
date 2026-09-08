@@ -1,4 +1,4 @@
-orms_databases:
+frameworks:
   name: Room (Android)
   gradle_coordinates:
   - androidx.room:room-runtime

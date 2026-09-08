@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Python SQLite Drivers (sqlite3 / aiosqlite)
   category: sqlite_driver
   pypi_packages:

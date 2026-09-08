@@ -1,4 +1,4 @@
-orm_database:
+frameworks:
   name: sqlite (via C FFI)
   type: c_ffi_binding
   detection:

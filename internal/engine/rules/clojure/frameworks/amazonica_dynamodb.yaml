@@ -1,4 +1,4 @@
-framework:
+frameworks:
   name: Amazonica / cognitect-labs aws-api (DynamoDB)
   category: nosql_database
   clojars_package: amazonica

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Neo4j Java Driver / Spring Data Neo4j / Neo4j OGM
   category: graph_database
   maven_coordinates: org.neo4j.driver:neo4j-java-driver

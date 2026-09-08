@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: PostgreSQL Haskell Drivers (postgresql-simple, hasql)
   category: postgres_driver
   hackage_packages:

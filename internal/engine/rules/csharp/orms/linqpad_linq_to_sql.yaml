@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: LINQPad / LINQ-to-SQL
   nuget_package: null
   category: query_language_orm

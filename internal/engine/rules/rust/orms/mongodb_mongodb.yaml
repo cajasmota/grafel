@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: MongoDB (mongodb)
   crate: mongodb
   category: nosql

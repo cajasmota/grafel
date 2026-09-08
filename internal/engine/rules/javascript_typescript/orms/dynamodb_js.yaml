@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: AWS DynamoDB JavaScript/TypeScript SDK v3
   category: nosql_database
   npm_package: "@aws-sdk/client-dynamodb"

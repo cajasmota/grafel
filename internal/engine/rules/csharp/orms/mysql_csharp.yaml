@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL .NET Drivers (MySqlConnector, MySql.Data)
   category: relational_database
   nuget_package: MySqlConnector

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Rust SQLite Drivers (rusqlite / sqlx sqlite)
   category: sqlite_driver
   crates:

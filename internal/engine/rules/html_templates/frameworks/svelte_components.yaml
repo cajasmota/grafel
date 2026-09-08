@@ -1,4 +1,4 @@
-framework_templates:
+frameworks:
   name: Svelte Components
   framework: Svelte / SvelteKit
   extensions:

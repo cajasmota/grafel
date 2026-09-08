@@ -1,4 +1,4 @@
-template_engines:
+frameworks:
   name: EJS
   full_name: Embedded JavaScript
   language: javascript

@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: sqlx
   module_path: github.com/jmoiron/sqlx
   category: sql_toolkit

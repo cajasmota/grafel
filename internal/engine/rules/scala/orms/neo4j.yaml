@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: neotypes (Neo4j Scala Driver)
   category: graph_database
   sbt_dependency: "com.dimafeng %% neotypes-core"

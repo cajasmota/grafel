@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: gocql (Go Cassandra Driver)
   category: nosql_database
   go_module: github.com/gocql/gocql

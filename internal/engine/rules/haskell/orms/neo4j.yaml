@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: hasbolt (Neo4j Haskell Driver)
   category: graph_database
   hackage_package: hasbolt

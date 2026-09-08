@@ -1,4 +1,4 @@
-orms_databases:
+frameworks:
   name: Hibernate (Kotlin)
   gradle_coordinates:
   - org.hibernate.orm:hibernate-core

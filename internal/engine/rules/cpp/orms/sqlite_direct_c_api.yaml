@@ -1,4 +1,4 @@
-orm_db:
+frameworks:
   name: SQLite (direct C API)
   category: embedded_db
   detection:

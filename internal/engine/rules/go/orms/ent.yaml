@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: ent
   module_path: entgo.io/ent
   category: orm_code_gen

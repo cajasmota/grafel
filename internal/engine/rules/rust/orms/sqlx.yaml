@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: SQLx
   crate: sqlx
   category: async_sql_toolkit

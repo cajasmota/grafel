@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Postgrex (Elixir PostgreSQL Driver)
   category: postgres_driver
   hex_package: postgrex

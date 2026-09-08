@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: PostgreSQL Scala Drivers (doobie, Slick)
   category: postgres_driver
   sbt_dependencies:

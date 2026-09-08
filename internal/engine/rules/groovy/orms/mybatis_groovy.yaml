@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: MyBatis (Groovy)
   category: orm_sql_mapper
   gradle_coordinates:

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: elasticsearch-py
   package: elasticsearch
   pypi_name: elasticsearch

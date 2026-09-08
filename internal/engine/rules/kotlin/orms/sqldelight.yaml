@@ -1,4 +1,4 @@
-orms_databases:
+frameworks:
   name: SQLDelight
   gradle_coordinates:
   - app.cash.sqldelight:android-driver

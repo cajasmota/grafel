@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: GORM (Grails Object Relational Mapping)
   category: orm_active_record
   gradle_coordinates:

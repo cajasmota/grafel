@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: ROM-rb (as ORM)
   gem_name: rom
   category: data_mapper

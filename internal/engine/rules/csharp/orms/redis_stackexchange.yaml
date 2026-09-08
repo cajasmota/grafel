@@ -2,7 +2,7 @@
 #
 # Top-level `orms:` key is consumed by the modular_loader (detection).
 
-orms:
+frameworks:
   name: StackExchange.Redis
   nuget_package: StackExchange.Redis
   category: cache_client

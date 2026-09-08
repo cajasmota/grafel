@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: redis (redis-rs)
   crate: redis
   category: cache_kv

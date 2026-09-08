@@ -1,4 +1,4 @@
-orms_databases:
+frameworks:
   name: Exposed
   vendor: JetBrains
   gradle_coordinates:

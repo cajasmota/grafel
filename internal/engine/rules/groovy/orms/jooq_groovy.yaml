@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: JOOQ (Groovy)
   category: orm_sql_dsl
   gradle_coordinates:

@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: NHibernate
   nuget_package: NHibernate
   category: full_orm

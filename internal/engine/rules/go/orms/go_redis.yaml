@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: go-redis
   module_path: github.com/redis/go-redis/v9
   category: cache_client

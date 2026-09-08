@@ -1,4 +1,4 @@
-database:
+frameworks:
   name: lsqlite3
   luarocks_package: lsqlite3
   category: sqlite_driver

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Kotlin SQLite (SQLDelight / Android Room)
   category: sqlite_driver
   gradle_dependencies:

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Spring Data Cassandra / DataStax Java Driver
   category: nosql_database
   maven_coordinates: org.springframework.data:spring-data-cassandra

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: cql-io (Haskell Cassandra Driver)
   category: nosql_database
   hackage_package: cql-io

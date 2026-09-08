@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: clojure.java.jdbc (legacy)
   clojars_artifact: org.clojure/java.jdbc
   category: sql_jdbc_legacy

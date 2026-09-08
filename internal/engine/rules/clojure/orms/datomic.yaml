@@ -1,4 +1,4 @@
-database_libraries:
+frameworks:
   name: Datomic
   clojars_artifact: com.datomic/datomic-free
   category: database_immutable_graph

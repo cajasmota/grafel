@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Go SQLite Drivers (mattn/go-sqlite3 / modernc.org/sqlite)
   category: sqlite_driver
   go_modules:

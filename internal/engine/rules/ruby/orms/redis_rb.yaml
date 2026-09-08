@@ -2,7 +2,7 @@
 #
 # Top-level `orms:` key is consumed by the modular_loader (detection).
 
-orms:
+frameworks:
   name: redis-rb
   gem: redis
   category: cache_client

@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: AWS DynamoDB Go SDK v2
   category: nosql_database
   go_module: github.com/aws/aws-sdk-go-v2/service/dynamodb

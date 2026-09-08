@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: Spring Data Elasticsearch
   maven_coordinates: org.springframework.data:spring-data-elasticsearch
   gradle_dependency: implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'

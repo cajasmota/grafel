@@ -1,4 +1,4 @@
-orms_databases:
+frameworks:
   name: ktorm
   gradle_coordinates:
   - org.ktorm:ktorm-core

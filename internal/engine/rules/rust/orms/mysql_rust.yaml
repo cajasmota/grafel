@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: MySQL Rust Drivers (mysql_async, sqlx mysql feature)
   category: relational_database
   crate_name: mysql_async

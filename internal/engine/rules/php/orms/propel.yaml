@@ -1,4 +1,4 @@
-orms:
+frameworks:
   name: Propel
   package_name: propel/propel
   category: active_record_orm

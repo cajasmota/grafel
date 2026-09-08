@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: AWS DynamoDB Kotlin SDK (aws.sdk.kotlin:dynamodb)
   category: nosql_database
   gradle_dependency: implementation("aws.sdk.kotlin:dynamodb")

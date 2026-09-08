@@ -1,4 +1,4 @@
-database:
+frameworks:
   name: Core Data
   type: object_graph_orm
   pod_coordinates:

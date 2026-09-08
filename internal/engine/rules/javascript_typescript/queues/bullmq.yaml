@@ -2,7 +2,7 @@
 # Covers: bull (v3/v4), bullmq (v1+), bull-board (producer detection only)
 # NPM: bull, bullmq
 
-queues:
+frameworks:
   name: bullmq
   category: job_queue
   npm_packages:

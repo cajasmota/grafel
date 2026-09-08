@@ -1,4 +1,4 @@
-orms_database:
+frameworks:
   name: bolt_sips (Neo4j Elixir Driver)
   category: graph_database
   hex_package: bolt_sips
