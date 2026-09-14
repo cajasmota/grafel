@@ -3,6 +3,8 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/rpc/jsonrpc"
 	"os"
 	"strconv"
@@ -91,7 +93,10 @@ func socketIsHealthy(socketPath string) bool {
 // We deliberately do NOT use flock here: the goal is to detect another
 // daemon, and pid+syscall.Kill(pid,0) is portable across darwin/linux
 // without a new dependency.
-func AcquirePIDFile(pidPath, socketPath string) (release func(), err error) {
+func AcquirePIDFile(pidPath, socketPath string, logger *slog.Logger) (release func(), err error) {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	if existing, ok := readPID(pidPath); ok && pidIsLiveDaemonFunc(existing) {
 		if socketIsHealthy(socketPath) {
 			return nil, fmt.Errorf("%w (pid %d)", ErrAlreadyRunning, existing)
@@ -100,7 +105,20 @@ func AcquirePIDFile(pidPath, socketPath string) (release func(), err error) {
 		// answer a Ping within the bounded retry window — the daemon is wedged
 		// (e.g. stuck in graceful shutdown behind a stalled Rebuild RPC, #5710)
 		// and can never again serve a request. Reclaim rather than refuse.
-		_ = forceKillFunc(existing)
+		//
+		// #7050: this kill is SIGKILL/TerminateProcess — the victim runs no
+		// defers and writes no log line, so from its side it simply vanishes.
+		// Until this line the kill was recorded nowhere at all: a user whose
+		// daemon disappeared had nothing to find on either side of it. The
+		// killer is the only party that can leave the trace, so it does, with
+		// the pid it killed and the probe budget that condemned it.
+		killErr := forceKillFunc(existing)
+		logger.Warn("pidfile reclaim: force-killed the recorded daemon owner — its socket did not answer Ping (#5710/#7050)",
+			"reclaimed_pid", existing,
+			"socket", socketPath,
+			"probe_attempts", socketHealthProbeRetries+1,
+			"probe_timeout", socketHealthProbeTimeout.String(),
+			"kill_err", killErr)
 	}
 	pid := os.Getpid()
 	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(pid)+"\n"), 0o600); err != nil {

@@ -616,7 +616,7 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	// wedged startup step (the isolated selftest daemon hangs here). Cheap +
 	// helps all platforms; does NOT change startup order/behavior.
 	logger.Info("startup: pidfile-acquire begin")
-	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath, cfg.Layout.SocketPath)
+	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath, cfg.Layout.SocketPath, logger)
 	if err != nil {
 		return err
 	}

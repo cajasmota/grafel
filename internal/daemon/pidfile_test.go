@@ -41,7 +41,7 @@ func TestAcquirePIDFile_StaleDeadPID_Proceeds(t *testing.T) {
 	dead := reapedChildPID(t)
 	writePIDFile(t, path, dead)
 
-	release, err := AcquirePIDFile(path, "")
+	release, err := AcquirePIDFile(path, "", nil)
 	if err != nil {
 		t.Fatalf("expected stale dead-pid pidfile to be overwritten, got error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestAcquirePIDFile_LiveNonGrafelPID_TreatedStale(t *testing.T) {
 	// os.Getpid() here is the test binary ("daemon.test"), not "grafel".
 	writePIDFile(t, path, os.Getpid())
 
-	release, err := AcquirePIDFile(path, "")
+	release, err := AcquirePIDFile(path, "", nil)
 	if err != nil {
 		t.Fatalf("expected live non-grafel pid to be treated as stale, got: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestAcquirePIDFile_NoExistingFile_Succeeds(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.pid")
 
-	release, err := AcquirePIDFile(path, "")
+	release, err := AcquirePIDFile(path, "", nil)
 	if err != nil {
 		t.Fatalf("AcquirePIDFile on empty dir: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestAcquirePIDFile_NoExistingFile_Succeeds(t *testing.T) {
 func TestAcquirePIDFile_ReleaseRemovesFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.pid")
-	release, err := AcquirePIDFile(path, "")
+	release, err := AcquirePIDFile(path, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestAcquirePIDFile_LiveGrafelPID_UnhealthySocket_Reclaims(t *testing.T) {
 	withFakePidIsLiveDaemon(t, oldPID)
 	withFakeSocketHealth(t, false)
 
-	release, err := AcquirePIDFile(path, "/nonexistent/socket/for/probe")
+	release, err := AcquirePIDFile(path, "/nonexistent/socket/for/probe", nil)
 	if err != nil {
 		t.Fatalf("expected unhealthy-socket pidfile to be reclaimed, got error: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestAcquirePIDFile_LiveGrafelPID_HealthySocket_RefusesNoReclaim(t *testing.
 	withFakePidIsLiveDaemon(t, oldPID)
 	withFakeSocketHealth(t, true)
 
-	_, err := AcquirePIDFile(path, "/nonexistent/socket/for/probe")
+	_, err := AcquirePIDFile(path, "/nonexistent/socket/for/probe", nil)
 	if !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("expected ErrAlreadyRunning for a healthy daemon, got: %v", err)
 	}
