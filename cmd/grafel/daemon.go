@@ -738,7 +738,11 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 		return fmt.Errorf("open log %s: %w", layout.LogPath, err)
 	}
 	defer logFile.Close()
-	logger := buildDaemonSlogLogger(io.MultiWriter(os.Stderr, logFile))
+	// NOT io.MultiWriter: it stops at the first sink that errors and never
+	// reaches the rest, so a detached/invalid stderr handle (FreeConsole above,
+	// or a daemon spawned with DETACHED_PROCESS) silences daemon.log for the
+	// entire run while the daemon serves normally — see fanoutWriter and #7050.
+	logger := buildDaemonSlogLogger(os.Stderr, logFile)
 	// ADR-0016 flip-day (#808): log the active graph format mode so users
 	// can confirm the daemon is running in the expected configuration.
 	logger.Info("graph format: fb-default (json-fallback enabled) — graph.fb written on every index; --skip-json opt-in drops graph.json")
@@ -2840,7 +2844,13 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 
 // buildDaemonSlogLogger constructs a *slog.Logger for the daemon process.
 // Handler selection follows GRAFEL_DAEMON_LOG_JSON (same as daemon.buildSlogLogger).
-func buildDaemonSlogLogger(w io.Writer) *slog.Logger {
+// Sinks are combined with newFanoutWriter, NOT io.MultiWriter: the daemon's
+// console sink can be dead (FreeConsole / a detached spawn on Windows), and
+// io.MultiWriter would let that one failure silence daemon.log for the whole
+// run. Combining them HERE rather than at the call site keeps that decision in
+// the one place a test can hold it (#7050).
+func buildDaemonSlogLogger(sinks ...io.Writer) *slog.Logger {
+	w := newFanoutWriter(sinks...)
 	v := strings.TrimSpace(os.Getenv("GRAFEL_DAEMON_LOG_JSON"))
 	if v == "1" || strings.EqualFold(v, "true") {
 		return slog.New(slog.NewJSONHandler(w, nil))
