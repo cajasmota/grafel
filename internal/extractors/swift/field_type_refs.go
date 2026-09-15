@@ -115,15 +115,25 @@ import (
 // WHAT THIS PASS IS NOT
 // ==========================================================================
 //
-//   - SAME FILE ONLY. A field whose type is declared in another file gets
-//     nothing. Binding a bare type name across files is the #6976/#6369
-//     hazard and every arm on this issue rests on refusing it. For Swift this
-//     is the dominant miss: a Swift module is a directory of files and
+//   - SAME FILE ONLY, AND "SAME FILE" MEANS DECLARED THERE — an `extension` of
+//     the type does not count. Binding a bare type name across files is the
+//     #6976/#6369 hazard and every arm on this issue rests on refusing it. For
+//     Swift this is the dominant miss: a module is a directory of files and
 //     one-type-per-file IS the convention, so the recall ceiling here is lower
-//     than C#'s or Java's. Both directions of the same-file conjuncts are
-//     graded — a foreign-file record must not SUPPRESS an edge (pass 1) and
-//     must not BECOME one (pass 2) — because grading one is precisely what
-//     makes the other look covered.
+//     than C#'s or Java's.
+//
+//     THREE CONJUNCTS CARRY THIS PROMISE AND EACH FAILS IN A DIFFERENT
+//     DIRECTION, so each is graded on its own and at their INTERSECTIONS:
+//     a foreign-file record must not SUPPRESS an edge (pass 1); a foreign-file
+//     declaration must not BECOME a target (pass 2); and a same-file EXTENSION
+//     of a foreign type must not become one either. The first cut of this arm
+//     graded the first two and got the third wrong for half its edges,
+//     precisely because the cross-file axis and the extension axis were each
+//     varied while the other was held constant. Their intersection is now a
+//     fixture in both cardinal directions:
+//     TestSwiftFieldTypeRefs_ForeignFileTypeIsNeverATarget (extension present,
+//     declaration elsewhere) and
+//     TestSwiftFieldTypeRefs_ExtensionOfAStdlibTypeIsNeverATarget.
 //
 //   - A DOTTED TYPE GETS NO EDGE AT ALL, head or tail. tree-sitter-swift gives
 //     `Foundation.Data` and `Order.Inner` and the metatype `Order.Type` one
@@ -154,12 +164,26 @@ import (
 //     extractor has built, which is every record `Extract` returns. It does NOT
 //     span the custom lane: internal/custom/swift/swiftui.go:288 mints a
 //     BARE-NAMED SCOPE.Component from an @ObservedObject/@StateObject property
-//     NAME in the same file. That kind IS in the component address family, so a
-//     property named after a same-file type would make the target ambiguous at
-//     the resolver and dangle an edge this pass believed safe. Measured
-//     incidence on the corpus is in the PR body; the invariant to preserve is
-//     that the custom lane does not mint a bare Component sharing a declared
-//     type's name, not that today's corpus happens not to.
+//     NAME in the same file.
+//
+//     THE HAZARD IS CONFLATION, NOT AMBIGUITY, and an earlier draft of this
+//     comment had the mechanism wrong. That site emits SCOPE.Component — the
+//     SAME kind as the declaration it could collide with — and entity IDs are
+//     re-derived downstream as graph.EntityID(repo, Kind, Name, SourceFile)
+//     (internal/extractors/incremental.go:2068, which deliberately ignores the
+//     emitted r.ID). So a same-file, same-name SCOPE.Component from the custom
+//     lane carries the IDENTICAL id; buildSymbolIndex marks a collision only on
+//     `existing != e.ID` (refs.go:1308), so there is no ambigLocation entry, no
+//     blanked .base key and no dangle. The two records MERGE into one node —
+//     which means a property and a type would share a node, not that an edge
+//     would fail to bind.
+//
+//     The genuine unseen hazard is therefore a custom-lane record carrying a
+//     SECOND component-family KIND under a declared type's name, which no Swift
+//     custom emitter produces today. That is also why no source-level fixture
+//     for the component-family collider exists: writing Swift that "would"
+//     produce one is fabricating an example. Measured incidence of the
+//     conflation shape on the corpus: 0.
 //
 // A NON-BINDING EDGE IS WORSE THAN NO EDGE (#6912's hard requirement): an
 // unresolved stub is kept verbatim, dangles, and is classified bug-extractor,
@@ -178,6 +202,58 @@ import (
 // in-file declaration set is complete only once the walk has finished, and the
 // enum value-sets the collision scan must see are appended as the walk goes.
 const swiftFieldTypeRefsMetaKey = "field_type_refs"
+
+// swiftExtensionCarrierMetaKey marks a SCOPE.Component record that came from an
+// `extension Foo` rather than from a declaration of Foo. Written by walkNode,
+// read by swiftInFileTypeTargets, and deleted by attachSwiftFieldTypeRefs.
+//
+// ==========================================================================
+// WHY THIS MARKER EXISTS, AND WHY THE SUBTYPE IS NOT FIXED INSTEAD
+// ==========================================================================
+//
+// tree-sitter-swift routes `extension` through `class_declaration` — the same
+// node type as class/struct/enum/actor — and swiftDeclSubtype has NO CASE for
+// the `extension` keyword, so it falls through to its `return "class"` default.
+// `extension String { … }` in DirectoryConfiguration.swift therefore mints
+//
+//	SCOPE.Component / class / String @ Sources/Vapor/Utilities/DirectoryConfiguration.swift
+//
+// which pass 2's allow-list cannot tell from a real `class String` declared
+// there. That is not a theoretical shape: it is the reason vapor is in the
+// corpus. The FIRST cut of this arm emitted 38 edges of which 19 — half —
+// targeted a name with no declaration in that file, only an extension:
+// six `-> String`, one `-> tm` (`extension tm: @retroactive`, a libc struct),
+// plus BaseNEncoding, Request, HTTPClient, PasswordHasher, RoutesBuilder. Each
+// bound to the per-file extension carrier, a DIFFERENT entity ID from the real
+// declaration, which got no inbound edge at all.
+//
+// It BINDS, so bug-extractor never sees it — the exact direction this arm
+// refuses for type parameters, and the same argument decides it here.
+//
+// THE SUBTYPE FALLTHROUGH IS PRE-EXISTING AND IS NOT FIXED HERE. That is a
+// deliberate choice, not an oversight:
+//
+//  1. Minting Subtype "extension" changes an ENTITY FIELD on every Swift
+//     extension in every indexed repo. entityTupleKey hashes Subtype, so it
+//     moves the cmd/grafel digest, and golden expectations that name a subtype
+//     move with it. That is a graph-wide change riding on an edge PR — the same
+//     thing arm D declined for resolveTypeReferences ("a separate fix with its
+//     own blast radius, not a rider on this one").
+//  2. This pass needs the DISTINCTION regardless of how the subtype is
+//     eventually spelled, and the deciding datum — the anonymous `extension`
+//     keyword — is already in hand at the emit site. That is the same "it is in
+//     hand, so refuse it for free" argument used for type parameters.
+//  3. THE TWO FIXES COMPOSE. If swiftDeclSubtype later mints "extension", pass
+//     2's allow-list (class|struct|enum|actor|protocol) already refuses it and
+//     this marker becomes redundant rather than wrong. Pinned by
+//     TestSwiftFieldTypeRefs_ExtensionSubtypeWouldAlsoBeRefused, so the day the
+//     fallthrough is fixed there is a test saying this pass still holds.
+//
+// The marker is read ONLY by pass 2. An extension carrier is a REAL GRAPH NODE
+// — same Kind and Name as the declaration when both are in one file, hence the
+// same EntityID — so it stays in pass 1's node counts. Removing it from those
+// would mis-model what the resolver sees.
+const swiftExtensionCarrierMetaKey = "field_type_refs_extension_carrier"
 
 // swiftFieldTargetRefKind is the value of the `ref_kind` edge property. It
 // matches arm A's csFieldTargetRefKind, arm B's protoFieldTargetRefKind, arm
@@ -215,6 +291,31 @@ func swiftInComponentAddressFamily(kind string) bool {
 	}
 	if t := strings.TrimPrefix(kind, "SCOPE."); t != kind && swiftComponentFamilyKeys[t] {
 		return true
+	}
+	return false
+}
+
+// swiftIsExtensionDecl reports whether a class_declaration node is really an
+// `extension`.
+//
+// The declaration keyword is an ANONYMOUS direct child — confirmed by CST probe
+// for `extension Foo`, `public extension Foo`, `fileprivate extension Foo` and
+// `extension tm: @retroactive Sendable`, all four of which put the `extension`
+// token directly under class_declaration with any access modifier in a
+// preceding named `modifiers` node. This is the same scan swiftDeclSubtype
+// performs, restricted to the one keyword it has no case for.
+func swiftIsExtensionDecl(node ts.Node, src []byte) bool {
+	if node == nil {
+		return false
+	}
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch == nil || ch.IsNamed() {
+			continue
+		}
+		if string(src[ch.StartByte():ch.EndByte()]) == "extension" {
+			return true
+		}
 	}
 	return false
 }
@@ -278,11 +379,20 @@ func swiftTypeParameterNames(node ts.Node, src []byte) map[string]bool {
 // blocklist would be actively wrong. `Int`, `String` and `Bool` are ordinary
 // stdlib nominal types, not grammar keywords: the parser gives them the same
 // `user_type > type_identifier` shape as a user type. They are refused by the
-// in-file declaration check instead, which is the correct order of operations,
+// in-file DECLARATION check instead, which is the correct order of operations,
 // because a file that declares `struct Int` genuinely does mean THAT type in
-// field position. Both directions graded:
-// TestSwiftFieldTypeRefs_PrimitiveFieldsProduceNoEdge and
-// TestSwiftFieldTypeRefs_ShadowedStdlibNameIsATarget.
+// field position.
+//
+// THAT JUSTIFICATION ONLY REACHES A DECLARATION, and the first cut of this arm
+// leaned on it for a case it does not cover: `extension String` is not a
+// declaration of String, and six of the first cut's 38 edges were `-> String`
+// on exactly that path. So the guard the primitives rest on is the
+// declaration check TOGETHER with the extension refusal above, and all three
+// directions are graded rather than two:
+// TestSwiftFieldTypeRefs_PrimitiveFieldsProduceNoEdge (no declaration),
+// TestSwiftFieldTypeRefs_ExtensionOfAStdlibTypeIsNeverATarget (extension but no
+// declaration — the cell the old fixtures left empty) and
+// TestSwiftFieldTypeRefs_ShadowedStdlibNameIsATarget (a real declaration).
 func swiftFieldTypeCandidates(ta ts.Node, src []byte, typeParams map[string]bool) []string {
 	var out []string
 	var walkType func(n ts.Node)
@@ -421,6 +531,16 @@ func swiftInFileTypeTargets(records []types.EntityRecord, filePath string) map[s
 			default:
 				continue
 			}
+			// An `extension Foo` carrier is NOT a declaration of Foo. Refusing
+			// it is what makes "same-file targets only" true rather than
+			// nearly-true: without this, `extension String` in a file gives
+			// every `var x: String` in that file an edge to a per-file carrier
+			// node, and it BINDS, so nothing surfaces it.
+			if r.Metadata != nil {
+				if ext, _ := r.Metadata[swiftExtensionCarrierMetaKey].(bool); ext {
+					continue
+				}
+			}
 			// Component tier: only a rival IN THE SAME ADDRESS FAMILY can
 			// break uniqueMatchInFamily. A SCOPE.Enum value-set cannot.
 			if len(famKinds[r.Name]) > 1 {
@@ -475,6 +595,10 @@ func attachSwiftFieldTypeRefs(records []types.EntityRecord, filePath string) []t
 		}
 		cands, _ := r.Metadata[swiftFieldTypeRefsMetaKey].([]string)
 		delete(r.Metadata, swiftFieldTypeRefsMetaKey)
+		// Both keys are this pass's scratch state and neither may reach the
+		// graph as entity metadata. The target set was computed above, while
+		// the marker was still present.
+		delete(r.Metadata, swiftExtensionCarrierMetaKey)
 		if len(cands) == 0 || r.Kind != "SCOPE.Schema" || r.Subtype != "field" {
 			continue
 		}

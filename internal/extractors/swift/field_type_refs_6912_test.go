@@ -19,8 +19,22 @@
 //     COMPONENT-FAMILY kind, which must suppress a Component — has no
 //     source-level fixture, because no Swift emit site produces one today; it is
 //     graded in field_type_refs_scope_6912_test.go instead.
-//   - OWNER DECLARATION FORM: `struct` and `class` (Node), plus a generic
-//     `struct Box<T>`.
+//   - OWNER DECLARATION FORM: `struct` and `class` (Node), plus generic
+//     `struct Box<T>` / `Bag<Element>` / `Pair<A, B>`.
+//   - TYPE-PARAMETER NAME LENGTH: 1 char (`T`) AND multi-char (`Element`), and
+//     parameter POSITION (first and second of `Pair<A, B>`). Held at one
+//     character, a refusal restricted to short names survives the suite.
+//   - **PRESENCE OF AN `extension` IN THE FIELD'S FILE, CROSSED WITH WHERE THE
+//     TYPE IS DECLARED.** This is the cell the first cut left empty and where
+//     half its edges were wrong. All four combinations are now fixtures:
+//     declared here + no extension (most tests); declared here + extension here
+//     (ExtensionBesideItsTypeIsStillOneNode — must still bind); declared
+//     ELSEWHERE + extension here (ForeignFileTypeIsNeverATarget — must NOT
+//     bind); declared in the STDLIB + extension here
+//     (ExtensionOfAStdlibTypeIsNeverATarget — must NOT bind).
+//   - DUPLICATE-RECORD ORIGIN: `extension Foo` beside `struct Foo`, and a
+//     `#if`/`#else` `typealias` pair — two records, one kind, one graph node, on
+//     the Component branch and on the alias branch respectively.
 //
 // HELD CONSTANT
 //   - FILE OF THE RIVAL: every fixture here is single-file except
@@ -36,7 +50,9 @@
 //     `let`, `weak`, `lazy` and access modifiers are NOT varied here: none of
 //     them reaches a decision this pass makes, since candidates come from the
 //     type_annotation subtree only — but that is an argument, and the fixtures
-//     do not demonstrate it.
+//     do not demonstrate it. (An independent reviewer did demonstrate it on
+//     `let` / `private` / `public private(set)` / `weak` / `lazy` /
+//     `static let`; that evidence lives in the PR, not in this package.)
 //   - NESTING: no nested type declarations. walkBody emits no entity for a type
 //     declared inside a class body, so a nested type is not a candidate target
 //     in any of these fixtures — that is a property of #4854's walk, not of
@@ -93,6 +109,8 @@ struct Order {
     var res: Result<Customer, Shipper>
     var deep: [Dictionary<String, Customer>]
     var both: (Customer, Customer)
+    var qualified: Foundation.Data
+    var meta: Order.Type
     var boxed: any Shipper
     var ship: Shipper
     var status: Status
@@ -195,10 +213,15 @@ func TestSwiftFieldTypeRefs_FieldTypePropertyIsLossyForGenerics(t *testing.T) {
 		t.Fatalf("no field entity %q", dotted)
 		return ""
 	}
+	// BOTH loss directions the header claims, not just the generic one. The
+	// qualified-name direction was asserted nowhere in the first cut while
+	// being cited twice in prose.
 	for _, c := range []struct{ field, want string }{
-		{"Order.dict", "Dictionary"},
-		{"Order.res", "Result"},
-		{"Order.buyer", "Customer"},
+		{"Order.dict", "Dictionary"},      // generic wrapper: the ARGUMENT is gone
+		{"Order.res", "Result"},           // two arguments, both gone
+		{"Order.qualified", "Foundation"}, // module-qualified: the MODULE, not the type
+		{"Order.meta", "Order"},           // metatype: the head, not the metatype
+		{"Order.buyer", "Customer"},       // the one shape it does not lose
 	} {
 		if got := prop(c.field); got != c.want {
 			t.Errorf("field_type[%s] = %q, want %q — the premise of this arm's "+
@@ -206,9 +229,14 @@ func TestSwiftFieldTypeRefs_FieldTypePropertyIsLossyForGenerics(t *testing.T) {
 				"editing this test", c.field, got, c.want)
 		}
 	}
-	// And the consequence: the edge is NOT to the wrapper.
+	// And the consequence in every direction: the edge is NOT to the wrapper,
+	// NOT to the module, and NOT to the metatype's head. `Foundation`, `Data`
+	// and `Order` are all names this fixture could bind to — `Order` is
+	// declared right here — so these are live refusals, not absences.
 	swFTWant(t, recs, "Order.dict", "Customer")
 	swFTWant(t, recs, "Order.res", "Customer", "Shipper")
+	swFTWant(t, recs, "Order.qualified")
+	swFTWant(t, recs, "Order.meta")
 }
 
 // ---------------------------------------------------------------------------
@@ -478,10 +506,28 @@ func TestSwiftFieldTypeRefs_UnshadowedAliasIsATarget(t *testing.T) {
 // TestSwiftFieldTypeRefs_ForeignFileTypeIsNeverATarget — a type declared only in
 // another file yields nothing, with a same-file control in the same fixture.
 // This is the honest floor of a same-file rule, asserted rather than described.
+//
+// THE `extension Customer {}` LINE IS THE POINT OF THIS FIXTURE, not scenery.
+// The first cut of this arm passed this test with the extension absent, and
+// FAILED the moment it was added: `swiftDeclSubtype` has no `extension` case and
+// falls through to "class", so the carrier was minted SCOPE.Component/class
+// named Customer in THIS file and pass 2 could not tell it from a declaration.
+// Half the corpus edges were that shape. The cross-file axis and the extension
+// axis were each varied elsewhere while the other was held constant; this is
+// their intersection, and it is where the defect lived.
+//
+// The two assertions are deliberately different failures: `buyer` must get
+// nothing DESPITE a same-file extension, and `ship` must still get its edge, so
+// a fix that simply stopped emitting cannot pass.
 func TestSwiftFieldTypeRefs_ForeignFileTypeIsNeverATarget(t *testing.T) {
 	src := `struct Order {
     var buyer: Customer
     var ship: Shipper
+}
+
+extension Customer {
+    func describe() {
+    }
 }
 
 protocol Shipper {
@@ -492,8 +538,94 @@ protocol Shipper {
 		swFTPath:      src,
 		swFTRivalPath: swFTRivalSrc, // declares Customer, other file
 	})
-	swFTWant(t, recs, "Order.buyer")           // cross-file: nothing
-	swFTWant(t, recs, "Order.ship", "Shipper") // same-file control
+
+	// Premise: the extension really does mint a same-file Component record for
+	// Customer. Without this the assertion below passes for the trivial reason
+	// that nothing named Customer exists in this file at all.
+	carrier := false
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Component" && recs[i].Name == "Customer" &&
+			recs[i].SourceFile == swFTPath {
+			carrier = true
+		}
+	}
+	if !carrier {
+		t.Fatalf("premise broken: `extension Customer` in %s minted no same-file "+
+			"SCOPE.Component record, so this fixture no longer covers the "+
+			"cross-file × extension intersection it exists for", swFTPath)
+	}
+
+	swFTWant(t, recs, "Order.buyer")           // extended here, declared elsewhere
+	swFTWant(t, recs, "Order.ship", "Shipper") // same-file declaration control
+}
+
+// TestSwiftFieldTypeRefs_ExtensionOfAStdlibTypeIsNeverATarget is the other
+// cardinal direction of the same intersection, and it is the single largest
+// shape in the corpus: `extension String` / `extension Int` in a file whose
+// fields are typed `String` / `Int`. Six of the first cut's 38 edges were
+// `-> String` on this path, plus one `-> tm` from `extension tm: @retroactive`
+// (a libc struct).
+//
+// It also fixes the reasoning, not just the outcome. The "a Swift primitive
+// needs no blocklist" argument says a file that DECLARES `struct Int` means
+// that type — true, and it does not reach an extension. So the three cells are
+// now graded separately: no declaration (PrimitiveFieldsProduceNoEdge), an
+// extension but no declaration (here), a real declaration
+// (ShadowedStdlibNameIsATarget).
+func TestSwiftFieldTypeRefs_ExtensionOfAStdlibTypeIsNeverATarget(t *testing.T) {
+	src := `public extension String {
+    static let blank = ""
+}
+
+extension Int {
+    var doubled: Int { return self * 2 }
+}
+
+struct Customer {
+    var v: Int
+}
+
+struct Order {
+    var name: String
+    var count: Int
+    var buyer: Customer
+}
+`
+	recs := swFTOne(t, src)
+	swFTWant(t, recs, "Order.name")
+	swFTWant(t, recs, "Order.count")
+	swFTWant(t, recs, "Order.buyer", "Customer") // control, same file, real declaration
+}
+
+// TestSwiftFieldTypeRefs_ExtensionCarrierMarkerIsClearedFromMetadata — the
+// extension marker is scratch state of this pass, exactly like the candidate
+// stash, and must not ship as entity metadata.
+func TestSwiftFieldTypeRefs_ExtensionCarrierMarkerIsClearedFromMetadata(t *testing.T) {
+	src := `extension String {
+    static let blank = ""
+}
+
+struct Order {
+    var name: String
+}
+`
+	recs := swFTOne(t, src)
+	saw := false
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Component" && recs[i].Name == "String" {
+			saw = true
+		}
+		if recs[i].Metadata == nil {
+			continue
+		}
+		if v, ok := recs[i].Metadata["field_type_refs_extension_carrier"]; ok {
+			t.Errorf("%s still carries the extension marker: %v", recs[i].Name, v)
+		}
+	}
+	if !saw {
+		t.Fatal("premise broken: no extension carrier record — the absence of a " +
+			"marker is vacuous")
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -503,8 +635,27 @@ protocol Shipper {
 // TestSwiftFieldTypeRefs_TypeParameterShadowedByASameFileTypeGetsNoEdge — arms
 // A and D both ship this as a KNOWN-WRONG over-fire. Swift refuses it, because
 // the owning declaration node is already in hand at the collection site.
+//
+// PARAMETER-NAME LENGTH IS VARIED, not held at one character. With only `T` in
+// the fixture, a regression that restricted the refusal to short names — or to
+// a single-letter heuristic, the obvious wrong way to write this — survives the
+// whole suite. `Element` is also the name Swift's own stdlib uses, so it is the
+// realistic collision rather than a padded row. `Pair<A, B>` adds the
+// second-parameter position, which a loop that only reads the first would drop.
 func TestSwiftFieldTypeRefs_TypeParameterShadowedByASameFileTypeGetsNoEdge(t *testing.T) {
 	src := `struct T {
+    var v: Int
+}
+
+struct Element {
+    var v: Int
+}
+
+struct A {
+    var v: Int
+}
+
+struct B {
     var v: Int
 }
 
@@ -516,10 +667,37 @@ struct Box<T> {
     var item: T
     var owner: Customer
 }
+
+struct Bag<Element> {
+    var item: Element
+    var owner: Customer
+}
+
+struct Pair<A, B> {
+    var first: A
+    var second: B
+    var owner: Customer
+}
+
+struct NotGeneric {
+    var e: Element
+    var a: A
+}
 `
 	recs := swFTOne(t, src)
-	swFTWant(t, recs, "Box.item")              // T is the parameter, not the struct
+	swFTWant(t, recs, "Box.item")              // single-char parameter
+	swFTWant(t, recs, "Bag.item")              // multi-char parameter
+	swFTWant(t, recs, "Pair.first")            // first of two
+	swFTWant(t, recs, "Pair.second")           // second of two
 	swFTWant(t, recs, "Box.owner", "Customer") // control: same owner, real type
+	swFTWant(t, recs, "Bag.owner", "Customer")
+	swFTWant(t, recs, "Pair.owner", "Customer")
+	// The refusal is scoped to the OWNER's parameters and does not leak: a
+	// sibling struct with no parameters still targets the very same names.
+	// Without these two rows, "no edge" above is also satisfied by a pass that
+	// blacklists `T`/`Element`/`A` globally.
+	swFTWant(t, recs, "NotGeneric.e", "Element")
+	swFTWant(t, recs, "NotGeneric.a", "A")
 }
 
 // TestSwiftFieldTypeRefs_PropertyWrapperTypeIsNotACandidate — `@Published var s:
@@ -624,6 +802,95 @@ struct Order {
 			"records under ONE kind", records, kinds)
 	}
 	swFTWant(t, recs, "Order.buyer", "Customer")
+}
+
+// TestSwiftFieldTypeRefs_AliasExtendedInItsOwnFileGetsNoEdge grades the exact
+// SCOPE of the extension refusal: the marker is read by pass 2 ONLY, and the
+// carrier stays in pass 1's node counts. Over-correcting — hiding the carrier
+// from the collision scans too, which reads as the tidier change — produces a
+// WRONG BINDING here.
+//
+// `typealias Money = Int` beside `extension Money { … }` is legal, ordinary
+// Swift. It puts a SCOPE.Schema and a SCOPE.Component under one name in one
+// file, so `Money` denotes TWO graph nodes and the alias tier must refuse. If
+// the carrier were excluded from allKinds, the alias would be admitted and its
+// component-space address would resolve — through lookupLocationKind, which
+// finds the Component — to the EXTENSION CARRIER rather than to the alias. It
+// binds, so nothing would surface it.
+//
+// The positive control is the same declaration form with no extension.
+func TestSwiftFieldTypeRefs_AliasExtendedInItsOwnFileGetsNoEdge(t *testing.T) {
+	src := `typealias Money = Int
+
+extension Money {
+    func format() {
+    }
+}
+
+typealias Grade = Int
+
+struct Order {
+    var total: Money
+    var mark: Grade
+}
+`
+	recs := swFTOne(t, src)
+	kinds := map[string]bool{}
+	for i := range recs {
+		if recs[i].Name == "Money" && recs[i].SourceFile == swFTPath {
+			kinds[recs[i].Kind] = true
+		}
+	}
+	if !kinds["SCOPE.Schema"] || !kinds["SCOPE.Component"] {
+		t.Fatalf("premise broken: Money carries kinds %v; this test only grades the "+
+			"scope of the extension marker when the alias and the extension carrier "+
+			"are BOTH present", kinds)
+	}
+	swFTWant(t, recs, "Order.total")         // two nodes under one name: refuse
+	swFTWant(t, recs, "Order.mark", "Grade") // same form, no extension: emit
+}
+
+// TestSwiftFieldTypeRefs_ConditionalTypealiasIsStillOneNode is the ALIAS-branch
+// twin of the extension test above, and it exists because I got its
+// reachability wrong. I wrote that two SCOPE.Schema records under one name in
+// one file needs a duplicate `typealias` "which swiftc rejects". False:
+// vapor's Sources/Vapor/Utilities/VaporSendableMetadataType.swift declares
+// `typealias VaporSendableMetatype` twice under `#if` / `#else`, which swiftc
+// accepts and the extractor sees as two records. Conditional compilation is
+// ordinary Swift.
+//
+// EntityID hashes (repo, Kind, Name, SourceFile), so the two records are ONE
+// graph node and the alias must remain a target. A record-counting alias scan
+// (arm C's rule on the alias branch) refuses it.
+func TestSwiftFieldTypeRefs_ConditionalTypealiasIsStillOneNode(t *testing.T) {
+	src := `#if compiler(>=6.2)
+public typealias Money = Int
+#else
+public typealias Money = Double
+#endif
+
+struct Order {
+    var total: Money
+}
+`
+	recs := swFTOne(t, src)
+	records, kinds := 0, map[string]bool{}
+	for i := range recs {
+		if recs[i].Name == "Money" && recs[i].SourceFile == swFTPath {
+			records++
+			kinds[recs[i].Kind] = true
+		}
+	}
+	if records < 2 || len(kinds) != 1 {
+		t.Fatalf("premise broken: Money has %d records across kinds %v; this test "+
+			"only grades the record-vs-kind distinction on the alias branch when "+
+			"there are TWO records under ONE kind. If the extractor now emits one "+
+			"record per #if branch-set, re-derive before deleting this test — the "+
+			"corpus file it is modelled on is "+
+			"vapor/Sources/Vapor/Utilities/VaporSendableMetadataType.swift",
+			records, kinds)
+	}
+	swFTWant(t, recs, "Order.total", "Money")
 }
 
 // TestSwiftFieldTypeRefs_StashIsClearedFromMetadata — the candidate stash is an

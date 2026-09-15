@@ -125,6 +125,35 @@ func TestSwiftFieldTypeRefs_TheTwoCollisionScansAreIndependent(t *testing.T) {
 		t.Error("the alias was suppressed by a collider that does not touch it")
 	}
 
+	// THE `SCOPE.`-TRIM DERIVATION, exercised rather than merely asserted in
+	// prose. swiftInComponentAddressFamily trims a "SCOPE." prefix before
+	// testing membership, because buildSymbolIndex indexes every entity under
+	// its Kind AND its trimmed Kind (refs.go:1207-1210) — so a "SCOPE.Class"
+	// entity lands under the key "Class", which componentKindFamily lists,
+	// while the literal string "SCOPE.Class" is NOT in that family.
+	//
+	// Nothing in Swift emits SCOPE.Class today, so without this row the trim is
+	// dead code and the header's claim that deriving membership beats arm F's
+	// hand-list is an unexercised one. A hand-list of the literal family
+	// spellings passes every other test in this package and fails here.
+	trimmed := []types.EntityRecord{
+		{Name: "Customer", Kind: "SCOPE.Component", Subtype: "struct", SourceFile: a},
+		{Name: "Customer", Kind: "SCOPE.Class", Subtype: "class", SourceFile: a},
+		{Name: "Order", Kind: "SCOPE.Component", Subtype: "struct", SourceFile: a},
+	}
+	got = swiftInFileTypeTargets(trimmed, a)
+	if _, ok := got["Customer"]; ok {
+		t.Error("a same-file SCOPE.Class did not suppress the SCOPE.Component target — " +
+			"SCOPE.Class is indexed under the key \"Class\", which IS in " +
+			"componentKindFamily, so the resolver sees two ids and the edge would " +
+			"dangle; the SCOPE.-trim in swiftInComponentAddressFamily is what " +
+			"catches this and a literal-spelling hand-list does not")
+	}
+	if _, ok := got["Order"]; !ok {
+		t.Error("the uncollided Component was dropped — the assertion above would " +
+			"then pass for the wrong reason")
+	}
+
 	// A NON-family collider suppresses the alias and leaves the Component. This
 	// is the whole reason the two scans are separate: SCOPE.Enum and
 	// SCOPE.Operation are invisible to the component family, and an alias is
@@ -168,14 +197,28 @@ func TestSwiftFieldTypeRefs_TwoRecordsOneKindAreOneNodeUnit(t *testing.T) {
 			"deletes a legitimate edge")
 	}
 
-	// The SAME contract on the ALIAS branch, which counts a different map. The
-	// component branch's version above is reachable from Swift source
-	// (TestSwiftFieldTypeRefs_ExtensionBesideItsTypeIsStillOneNode); this one is
-	// not — the only Swift that produces two SCOPE.Schema records under one name
-	// in one file is a duplicate `typealias`, which swiftc rejects. It is graded
-	// anyway because the two maps are two pieces of code and "the component one
-	// is right" says nothing about the alias one: a record-counting alias scan
-	// survives every other test in this package.
+	// The SAME contract on the ALIAS branch, which counts a different map.
+	//
+	// AN EARLIER VERSION OF THIS COMMENT CLAIMED THIS SHAPE WAS UNREACHABLE —
+	// "the only Swift that produces two SCOPE.Schema records under one name in
+	// one file is a duplicate typealias, which swiftc rejects". THAT IS FALSE,
+	// and the corpus this arm measures falsifies it:
+	// vapor's Sources/Vapor/Utilities/VaporSendableMetadataType.swift is
+	//
+	//	#if compiler(>=6.2)
+	//	public typealias VaporSendableMetatype = SendableMetatype
+	//	#else
+	//	public typealias VaporSendableMetatype = Any
+	//	#endif
+	//
+	// which swiftc accepts (one branch is active) while the EXTRACTOR sees both
+	// and emits two SCOPE.Schema/type_alias records for one name in one file.
+	// Conditional compilation is ordinary Swift, so this branch is
+	// source-reachable, not contract-only — which makes grading it more
+	// important than the old comment implied, not less. The source-level form is
+	// TestSwiftFieldTypeRefs_ConditionalTypealiasIsStillOneNode; this row keeps
+	// the function-level contract, because the two maps are two pieces of code
+	// and "the component one is right" says nothing about the alias one.
 	alias := []types.EntityRecord{
 		{Name: "Tier", Kind: "SCOPE.Schema", Subtype: "type_alias", SourceFile: a},
 		{Name: "Tier", Kind: "SCOPE.Schema", Subtype: "field", SourceFile: a},
@@ -200,8 +243,21 @@ func TestSwiftFieldTypeRefs_OnlyFieldRecordsCarryTheEdge(t *testing.T) {
 	stash := func() map[string]interface{} {
 		return map[string]interface{}{swiftFieldTypeRefsMetaKey: []string{"Customer"}}
 	}
+	// THE IMPOSTORS DIFFER FROM A FIELD RECORD ON EXACTLY ONE HALF EACH.
+	//
+	// The first revision used a single `{SCOPE.Component, class}` impostor,
+	// which differs on BOTH halves of `Kind != "SCOPE.Schema" || Subtype !=
+	// "field"` — so each half masked the other and NEITHER was graded. Deleting
+	// the whole guard died; deleting either half alone survived. Two impostors,
+	// one per half, is the fix (mutually-masking guards, the #6912-era finding:
+	// score a compound guard part by part).
 	records := []types.EntityRecord{
 		{Name: "Customer", Kind: "SCOPE.Component", Subtype: "struct", SourceFile: a},
+		// Right Kind, wrong Subtype — grades the Subtype half alone.
+		{Name: "AliasImpostor", Kind: "SCOPE.Schema", Subtype: "type_alias", SourceFile: a, Metadata: stash()},
+		// Right Subtype, wrong Kind — grades the Kind half alone.
+		{Name: "KindImpostor", Kind: "SCOPE.Component", Subtype: "field", SourceFile: a, Metadata: stash()},
+		// Wrong on both, the original row, kept so the conjunction stays graded.
 		{Name: "Impostor", Kind: "SCOPE.Component", Subtype: "class", SourceFile: a, Metadata: stash()},
 		{Name: "Order.buyer", Kind: "SCOPE.Schema", Subtype: "field", SourceFile: a, Metadata: stash()},
 	}
@@ -224,9 +280,12 @@ func TestSwiftFieldTypeRefs_OnlyFieldRecordsCarryTheEdge(t *testing.T) {
 		t.Fatalf("the field record got %d field-type edges, want 1 — the positive "+
 			"control is broken and the assertion below is vacuous", got)
 	}
-	if got := count("Impostor"); got != 0 {
-		t.Errorf("a SCOPE.Component carrying the stash got %d field-type edges; this "+
-			"pass must anchor on the field record only", got)
+	for _, imp := range []string{"Impostor", "AliasImpostor", "KindImpostor"} {
+		if got := count(imp); got != 0 {
+			t.Errorf("%s carried the stash and got %d field-type edges; this pass "+
+				"must anchor on SCOPE.Schema/field records only, and BOTH halves of "+
+				"that guard must hold on their own", imp, got)
+		}
 	}
 }
 
@@ -270,6 +329,54 @@ func TestSwiftFieldTypeRefs_AllowListRefusesNonTypeComponents(t *testing.T) {
 		if _, ok := got[n]; ok {
 			t.Errorf("%q was admitted as a field-type target; the subtype allow-list "+
 				"is not filtering", n)
+		}
+	}
+}
+
+// TestSwiftFieldTypeRefs_ExtensionCarrierIsNeverATarget grades the extension
+// refusal at the function level, in both directions and by BOTH mechanisms that
+// can express it.
+//
+// The marker row is today's mechanism: swiftDeclSubtype has no `extension` case
+// and falls through to "class" (a pre-existing defect, filed separately and NOT
+// fixed here), so walkNode marks the carrier instead.
+//
+// The `Subtype: "extension"` row is the FORWARD-COMPATIBILITY half: on the day
+// that fallthrough is fixed, the allow-list must already refuse the carrier
+// without the marker, so the two fixes compose rather than conflict. That row
+// fails today only if someone widens the allow-list, which is exactly when a
+// reader needs to be stopped.
+func TestSwiftFieldTypeRefs_ExtensionCarrierIsNeverATarget(t *testing.T) {
+	const a = "Sources/App/Models.swift"
+	marker := func() map[string]interface{} {
+		return map[string]interface{}{swiftExtensionCarrierMetaKey: true}
+	}
+	records := []types.EntityRecord{
+		// The declaration lives in ANOTHER file; only the extension is here.
+		{Name: "String", Kind: "SCOPE.Component", Subtype: "class", SourceFile: a, Metadata: marker()},
+		// Same, spelled the way a fixed swiftDeclSubtype would spell it.
+		{Name: "Request", Kind: "SCOPE.Component", Subtype: "extension", SourceFile: a},
+		// Positive control: a real declaration in this file.
+		{Name: "Customer", Kind: "SCOPE.Component", Subtype: "struct", SourceFile: a},
+		// A declaration that ALSO has an extension here must survive: the
+		// refusal is per-record, and the struct record is still admitted. Both
+		// records carry one Kind and one Name, so they are one graph node and
+		// the ToID is identical either way.
+		{Name: "Order", Kind: "SCOPE.Component", Subtype: "struct", SourceFile: a},
+		{Name: "Order", Kind: "SCOPE.Component", Subtype: "class", SourceFile: a, Metadata: marker()},
+	}
+	got := swiftInFileTypeTargets(records, a)
+	for _, n := range []string{"String", "Request"} {
+		if _, ok := got[n]; ok {
+			t.Errorf("%q is only EXTENDED in this file, never declared here, and was "+
+				"admitted as a target; the edge binds to a per-file extension carrier "+
+				"rather than to the type, and binding is why nothing surfaces it", n)
+		}
+	}
+	for _, n := range []string{"Customer", "Order"} {
+		if _, ok := got[n]; !ok {
+			t.Errorf("%q IS declared in this file and was refused — the assertions "+
+				"above would then pass for the wrong reason", n)
 		}
 	}
 }
