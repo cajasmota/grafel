@@ -56,8 +56,76 @@ func TestFanoutWriter_FailingSinkLast_StillReportsSuccess(t *testing.T) {
 	if _, err := w.Write([]byte("line\n")); err != nil {
 		t.Fatalf("one failing sink of two must not fail the write: %v", err)
 	}
-	if file.String() != "line\n" {
-		t.Fatalf("file sink = %q, want the line", file.String())
+	// Contains, not equality: the surviving sink also carries the one-shot
+	// notice about the failed sink (see
+	// TestFanoutWriter_FailedSinkIsAnnouncedOnTheSurvivors_Once).
+	if !strings.HasPrefix(file.String(), "line\n") {
+		t.Fatalf("file sink = %q, want it to start with the line", file.String())
+	}
+}
+
+// #7050 review round 2 (N2 — BLOCKER): every test above has a FAILING first
+// sink, so `break` after the first SUCCESSFUL sink survived all of them. In
+// production the sinks are (os.Stderr, logFile) in that order, so on any
+// healthy machine stderr would succeed, the loop would stop, and daemon.log
+// would never be written for the entire run — the exact symptom this type was
+// written to prevent, reachable everywhere rather than only after FreeConsole.
+//
+// The type's whole promise is "every sink gets the bytes". This is the test
+// that holds it: a first sink that SUCCEEDS, and a later sink whose content is
+// then verified.
+func TestFanoutWriter_EverySinkReceivesTheBytes(t *testing.T) {
+	var console, file, third bytes.Buffer
+
+	w := newFanoutWriter(&console, &file, &third)
+	if _, err := w.Write([]byte("startup: pidfile-acquire begin\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	for name, sink := range map[string]*bytes.Buffer{"console": &console, "file": &file, "third": &third} {
+		if got := sink.String(); got != "startup: pidfile-acquire begin\n" {
+			t.Fatalf("%s sink = %q, want the line — a successful sink must not stop the fanout", name, got)
+		}
+	}
+}
+
+// #7050 review round 2 (N1): errNoSinks was asserted in prose and observed by
+// nothing. newFanoutWriter is variadic precisely so a future caller can pass
+// none, and a silently-successful write to zero sinks is the same lie this
+// type exists to stop telling.
+func TestFanoutWriter_NoSinks_ReportsError(t *testing.T) {
+	n, err := newFanoutWriter().Write([]byte("line\n"))
+	if !errors.Is(err, errNoSinks) {
+		t.Fatalf("zero-sink write returned (%d, %v), want errNoSinks", n, err)
+	}
+	if n != 0 {
+		t.Fatalf("zero-sink write reported %d bytes written, want 0", n)
+	}
+}
+
+// The inverse of #7050 must not be silent either: if daemon.log dies while the
+// console lives, the durable record just stops, and a later reader cannot tell
+// an empty log from a quiet daemon. The surviving sinks say so — once, not
+// once per record, or a dead sink would drown the log it is reporting on.
+func TestFanoutWriter_FailedSinkIsAnnouncedOnTheSurvivors_Once(t *testing.T) {
+	var console bytes.Buffer
+	w := newFanoutWriter(&console, &errWriter{})
+
+	for i := 0; i < 3; i++ {
+		if _, err := w.Write([]byte("record\n")); err != nil {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+
+	got := console.String()
+	if n := strings.Count(got, "log fanout: a log sink failed"); n != 1 {
+		t.Fatalf("failure notice appeared %d times across 3 records, want exactly 1:\n%s", n, got)
+	}
+	if !strings.Contains(got, "The handle is invalid") {
+		t.Fatalf("notice does not carry the underlying error (which is what names the sink):\n%s", got)
+	}
+	if n := strings.Count(got, "record\n"); n != 3 {
+		t.Fatalf("surviving sink got %d records, want 3 — the notice must not displace the log", n)
 	}
 }
 

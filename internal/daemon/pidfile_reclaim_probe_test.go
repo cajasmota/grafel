@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,12 +25,16 @@ func TestAcquirePIDFile_ReclaimKillFails_RefusesAndLogsKillErr(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.pid")
 
-	const ownerPID = 424242
+	// A genuinely live process: the refusal is conditional on the owner still
+	// being there after the failed kill (round-2 BLOCKER 1), so a fake pid
+	// would exercise the "it beat us to it" branch instead of this one.
+	ownerPID, cleanupChild := spawnLiveChild(t)
+	defer cleanupChild()
 	writePIDFile(t, path, ownerPID)
 	withFakePidIsLiveDaemon(t, ownerPID)
 	withFakeSocketHealth(t, false)
 
-	killErr := errors.New("OpenProcess(424242): Access is denied.")
+	killErr := errors.New("OpenProcess: Access is denied.")
 	origKill := forceKillFunc
 	forceKillFunc = func(int) error { return killErr }
 	t.Cleanup(func() { forceKillFunc = origKill })
@@ -67,6 +72,57 @@ func TestAcquirePIDFile_ReclaimKillFails_RefusesAndLogsKillErr(t *testing.T) {
 	if ke, _ := found["kill_err"].(string); !strings.Contains(ke, "Access is denied") {
 		t.Fatalf("kill_err = %q, want the underlying failure", ke)
 	}
+	if alive, _ := found["owner_still_alive"].(bool); !alive {
+		t.Fatalf("owner_still_alive = false for an owner that is still running — this is the field that tells a refusal apart from a lost race")
+	}
+}
+
+// #7050 review round 2 (BLOCKER 1): "the kill failed" and "the owner is still
+// there" are NOT the same claim, and conflating them refused startup in
+// exactly the scenario the reclaim exists for.
+//
+// pidIsLiveDaemonFunc sees the owner alive, socketIsHealthy then spends ~900ms
+// probing and sleeping, and an incumbent finishing its graceful shutdown in
+// that window makes the REAL process.ForceKill return
+// "os: process already finished" (ESRCH) — on darwin and linux as much as on
+// Windows. There is nothing left to protect at that point and nothing retries
+// a refused acquire, so refusing leaves the daemon down until a human notices.
+//
+// Deliberately uses the real forceKillFunc against a reaped pid: a stub would
+// only re-pin the test's own opinion of what failure means.
+func TestAcquirePIDFile_ReclaimKillFailsBecauseOwnerAlreadyExited_Proceeds(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.pid")
+
+	deadPID := reapedChildPID(t)
+	writePIDFile(t, path, deadPID)
+	// Fake only the liveness *decision*, reproducing the race: the check that
+	// gated the reclaim saw a live owner, and by the time the kill lands it is
+	// gone. forceKillFunc is NOT stubbed.
+	withFakePidIsLiveDaemon(t, deadPID)
+	withFakeSocketHealth(t, false)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	release, err := AcquirePIDFile(path, "/nonexistent/socket/for/probe", logger)
+	if err != nil {
+		t.Fatalf("an owner that exited before the kill landed must not block startup, got: %v", err)
+	}
+	defer release()
+	if got := ReadPIDFile(path); got != os.Getpid() {
+		t.Fatalf("pidfile = %d, want this process %d", got, os.Getpid())
+	}
+
+	for _, rec := range decodeRecords(t, &buf) {
+		if pid, ok := rec["reclaimed_pid"]; ok && int(pid.(float64)) == deadPID {
+			if alive, _ := rec["owner_still_alive"].(bool); alive {
+				t.Fatalf("owner_still_alive = true for a reaped pid")
+			}
+			return
+		}
+	}
+	t.Fatalf("no reclaim record for pid %d — the attempt must still be logged", deadPID)
 }
 
 // #7050 review (M8/M9): of the WARN's five fields only reclaimed_pid was

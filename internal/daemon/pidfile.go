@@ -120,12 +120,25 @@ func AcquirePIDFile(pidPath, socketPath string, logger *slog.Logger) (release fu
 		// killer is the only party that can leave the trace, so it does, with
 		// the pid it killed and the probe budget that condemned it.
 		killErr := forceKillFunc(existing)
+		// #7050 review round 2 (BLOCKER 1): a non-nil killErr does NOT mean the
+		// owner is still there. The liveness check above and this kill are
+		// separated by socketIsHealthy's ~900 ms of probes plus its sleeps, and
+		// an incumbent that finishes its graceful shutdown inside that window
+		// makes ForceKill return ESRCH / os.ErrProcessDone — on every platform,
+		// since darwin and linux go through Signal(SIGKILL) too. Re-probing
+		// liveness is what separates "we could not kill it" (refuse: it is still
+		// serving) from "it beat us to it" (proceed: there is nothing left to
+		// protect). Treating both as failure refused startup in exactly #5710's
+		// own scenario — a daemon stuck in graceful shutdown — with nothing in
+		// ensureLoaded to retry it.
+		ownerStillAlive := killErr != nil && pidAlive(existing)
 		logger.Warn("pidfile reclaim: force-killed the recorded daemon owner — its socket did not answer Ping (#5710/#7050)",
 			"reclaimed_pid", existing,
 			"socket", socketPath,
 			"probe_attempts", attempts,
 			"probe_timeout", socketHealthProbeTimeout.String(),
-			"kill_err", killErr)
+			"kill_err", killErr,
+			"owner_still_alive", ownerStillAlive)
 		// #7050 review (M7): a FAILED kill must not be followed by taking the
 		// pidfile. process.ForceKill is OpenProcess(PROCESS_TERMINATE) +
 		// TerminateProcess on Windows, and the open can fail with
@@ -136,8 +149,8 @@ func AcquirePIDFile(pidPath, socketPath string, logger *slog.Logger) (release fu
 		// not the one serving. Refusing is the only safe answer — the incumbent
 		// survives, and the caller gets an error naming the pid it could not
 		// clear instead of a silently divergent state.
-		if killErr != nil {
-			return nil, fmt.Errorf("pidfile reclaim: force-kill of unresponsive owner pid %d failed, refusing to take the pidfile: %w", existing, killErr)
+		if ownerStillAlive {
+			return nil, fmt.Errorf("pidfile reclaim: force-kill of unresponsive owner pid %d failed and it is still alive, refusing to take the pidfile: %w", existing, killErr)
 		}
 	}
 	pid := os.Getpid()
