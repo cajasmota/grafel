@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -197,6 +199,130 @@ func TestCppFieldTypeRefs_Unit_InFamilyRivalSuppressesTheTarget(t *testing.T) {
 	got = attachCppFieldTypeRefs(recs, f, "cpp")
 	wantTargets(t, targetsOf(got, "Holder.o"), []string{"Order"},
 		"a field whose target name is carried by two records of ONE kind")
+}
+
+// TestCppFieldTypeRefs_Unit_EveryAddressFamilyEntryIsGraded closes a hole an
+// independent review found: the first revision's rival test sampled ONE kind
+// (SCOPE.Model), so six of the eight cppComponentAddressFamily entries could be
+// deleted with the whole suite still green — in the very table whose comment
+// promises not to re-introduce arm F's missing-SCOPE.Class hole.
+//
+// Every entry is now driven individually: a rival kinded K must suppress the
+// target, for each K in the table. Removing any single entry turns exactly this
+// test red. The NEGATIVE half is enumerated too, because a test that only
+// asserts suppression is satisfied by a table containing every kind there is.
+func TestCppFieldTypeRefs_Unit_EveryAddressFamilyEntryIsGraded(t *testing.T) {
+	const f = "a.cpp"
+	suppresses := func(kind string) bool {
+		recs := []types.EntityRecord{
+			comp("Order", f, "class"),
+			{Name: "Order", Kind: kind, Subtype: "whatever", SourceFile: f},
+			fieldRec("Holder", "o", f, "Order"),
+		}
+		return len(targetsOf(attachCppFieldTypeRefs(recs, f, "cpp"), "Holder.o")) == 0
+	}
+
+	// The table's own entries, listed here as an INDEPENDENT literal rather than
+	// ranged over from the map under test — ranging over it would make the test
+	// agree with the table by construction and grade nothing.
+	//
+	// SCOPE.Component is graded DIFFERENTLY from the other seven and the reason
+	// is structural, not a gap: the TARGET is itself a SCOPE.Component, so a
+	// rival of that kind is the same (Kind, Name, SourceFile) — ONE graph node,
+	// which is exactly what the kind-not-record rule says must not suppress. Its
+	// entry is instead what makes the target's OWN kind countable, so every one
+	// of the seven rows below needs it and all seven fail without it. That is
+	// stated rather than left implicit, and it is verified by mutation.
+	rivalGraded := []string{
+		"Component", "Class", "View", "Model",
+		"SCOPE.Class", "SCOPE.View", "SCOPE.Model",
+	}
+	if len(cppComponentAddressFamily) != len(rivalGraded)+1 {
+		t.Fatalf("the address family has %d entries, this test grades %d + "+
+			"SCOPE.Component — add the new kind here rather than leaving it "+
+			"ungraded", len(cppComponentAddressFamily), len(rivalGraded))
+	}
+	if !cppComponentAddressFamily["SCOPE.Component"] {
+		t.Error("SCOPE.Component is absent from cppComponentAddressFamily; the " +
+			"target's own kind is then uncountable and NO rival can ever " +
+			"suppress anything")
+	}
+	for _, k := range rivalGraded {
+		if !cppComponentAddressFamily[k] {
+			t.Errorf("%q is graded here but absent from cppComponentAddressFamily", k)
+			continue
+		}
+		if !suppresses(k) {
+			t.Errorf("a same-file rival kinded %q did NOT suppress the target; "+
+				"that entry of the address family is not doing its job", k)
+		}
+	}
+	// The kind-not-record rule, restated as the reason SCOPE.Component is not in
+	// the loop: a rival of the TARGET'S OWN kind is one node and must not
+	// suppress. (Also graded from cpp source by
+	// TestCppFieldTypeRefs_ForwardDeclarationBesideItsDefinitionStillBinds.)
+	if suppresses("SCOPE.Component") {
+		t.Error("a same-KIND rival suppressed the target; the ambiguity rule is " +
+			"counting records rather than kinds (#7038)")
+	}
+
+	// Kinds OUTSIDE the family must NOT suppress — this is what keeps the table
+	// from degenerating into "every kind", which would be arm D's rule wearing
+	// this table's name.
+	for _, k := range []string{
+		"SCOPE.Schema", "SCOPE.Operation", "SCOPE.Enum", "SCOPE.Pattern",
+		"SCOPE.Config", "SCOPE.ExceptionType", "Schema", "Operation",
+	} {
+		if suppresses(k) {
+			t.Errorf("a same-file rival kinded %q suppressed the target, but that "+
+				"kind never enters the tier which resolves a component-space ref", k)
+		}
+	}
+}
+
+// TestCppFieldTypeRefs_Unit_TrimAliasEntriesAreWeighedByTheResolver proves the
+// half of the table that is easiest to get wrong and hardest to see: the
+// SCOPE-trimmed aliases. BuildIndex writes every entity under its raw Kind AND
+// its SCOPE-trimmed alias, so a `SCOPE.Class`-kinded rival is keyed under
+// "Class" — which IS in componentKindFamily even though "SCOPE.Class" is not.
+// Arm F shipped this table with "SCOPE.Class" missing.
+//
+// Driven through the REAL resolver rather than argued: with the rival present
+// the component-space ref must NOT resolve to the class, which is exactly why
+// the pass refuses to emit it.
+func TestCppFieldTypeRefs_Unit_TrimAliasEntriesAreWeighedByTheResolver(t *testing.T) {
+	const f = "a.cpp"
+	for _, kind := range []string{"SCOPE.Class", "Class"} {
+		recs := []types.EntityRecord{
+			comp("Order", f, "class"),
+			{Name: "Order", Kind: kind, Subtype: "class", SourceFile: f},
+		}
+		for i := range recs {
+			recs[i].ID = graph.EntityID("issue6912", recs[i].Kind, recs[i].Name, recs[i].SourceFile)
+		}
+		// Premise: the two records really are two distinct graph nodes, or the
+		// rival could not make anything ambiguous and the row is vacuous.
+		if recs[0].ID == recs[1].ID {
+			t.Fatalf("a %q rival collapses onto the class — this row is vacuous", kind)
+		}
+		probe := []types.EntityRecord{{
+			Name: "probe", Kind: "SCOPE.Schema", Subtype: "field", SourceFile: f,
+			ID: "probe-id",
+			Relationships: []types.RelationshipRecord{{
+				ToID: extractor.BuildComponentStructuralRef("cpp", f, "Order"),
+				Kind: "REFERENCES",
+			}},
+		}}
+		all := append(append([]types.EntityRecord{}, recs...), probe...)
+		idx := resolve.BuildIndex(all)
+		resolve.ReferencesEmbedded(all, idx)
+		got := all[len(all)-1].Relationships[0].ToID
+		if got == recs[0].ID {
+			t.Errorf("with a %q rival present the component-space ref still bound "+
+				"to the class; the suppression this table encodes is unnecessary "+
+				"for that kind and the comment overclaims", kind)
+		}
+	}
 }
 
 // TestCppFieldTypeRefs_Unit_TargetsAreScopedToTheRequestedFile grades the

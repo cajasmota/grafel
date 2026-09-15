@@ -129,6 +129,40 @@ import (
 // the TARGET SET, diffed row for row with the refusal toggled off (PR body).
 //
 // ============================================================================
+// 3b. THE SOURCE ENDPOINT — THE SAME AUDIT, ON THE OTHER END OF THE EDGE
+// ============================================================================
+//
+// The audit above is exhaustive about what an edge may point AT and said nothing
+// about what it may hang OFF. That asymmetry is #7056's blindness mirrored, and
+// on the first revision of this arm it was live. The SCOPE.Schema/field record a
+// cpp field edge hangs off is minted for two constructs that are not plain data
+// members:
+//
+//	virtual const VideoInfo& GetVideoInfo() = 0;   a pure virtual MEMBER FUNCTION
+//	AVSMap& (VideoFrame::* getProperties)();       a POINTER-TO-MEMBER-FUNCTION
+//	                                               data member
+//
+// In both, the record's `field_type` is the RETURN type, so the edge asserted
+// `field_name=GetVideoInfo, ref_kind=field_target_type` about a member whose
+// declared type is not that type at all — a confidently wrong edge that BINDS,
+// which is the direction `bug-extractor` cannot flag.
+//
+// MEASURED, on the corpus's C++-parsed headers: 68 of 254 field entities (26.8%)
+// are function-shaped, and refusing them as sources takes this arm from 23 edges
+// to 6. The per-shape split of those 17 is NOT re-derived here; an independent
+// review counted 8 member functions and 8 pointer-to-member-function members,
+// which accounts for 16 of the 17, and the aggregate is what this pass measured.
+//
+// The CAPTURE defect is pre-existing (#4854) and is NOT fixed here: correcting
+// it changes entity counts, the #6118 digest and the #4854 contract. It is filed
+// as #7061. What this arm does is stop propagating it — emitClassFieldMembers
+// now marks such records Metadata["function_shaped"], and this pass refuses them
+// as edge SOURCES (cppIsFunctionShaped). The marker is also why the false claim
+// in cppFieldNames' doc comment — "Returns nil for a member function
+// declaration", true only for a BARE `void f();` — has been corrected rather
+// than left to mislead the next reader.
+//
+// ============================================================================
 // 4. THE AMBIGUITY RULE — DERIVED FROM THE TIER, NOT COPIED FROM AN ARM
 // ============================================================================
 //
@@ -177,13 +211,27 @@ import (
 // ============================================================================
 //
 //   - ENUMS are not targets. See cppTypeDeclSubtypes.
-//   - TEMPLATES are not targets (SCOPE.Schema/template), and a TEMPLATED class's
-//     members emit no field entity at all (walkStructural's template arm walks
-//     the body for Operations only), so `template<typename T> struct Box { T v; }`
-//     beside a real `struct T` cannot over-fire — go ships that shape as a
-//     known-wrong over-fire (#7041) and swift fixed it; in cpp it is unreachable,
-//     which is asserted rather than assumed
-//     (..._TemplatedClassMembersEmitNoFieldEntity).
+//   - TEMPLATES are not targets (SCOPE.Schema/template).
+//
+//   - TEMPLATE PARAMETERS are refused by name, and the first revision of this
+//     comment was WRONG to call the over-fire unreachable. Two shapes, and only
+//     the first is genuinely out of reach:
+//
+//     A templated class's DIRECT members emit no field entity at all
+//     (walkStructural's template arm walks the body for Operations only), so
+//     `template<typename T> struct Box { T v; };` has nothing to over-fire —
+//     asserted by ..._TemplatedClassMembersEmitNoFieldEntity.
+//
+//     A class NESTED inside a template does get field entities, because that arm
+//     recurses into the inner class body. `template<typename T> struct Outer {
+//     struct Inner { T val; }; };` beside a real `struct T` is four lines away
+//     and WOULD have bound `Inner.val` to `struct T`. Go ships exactly that as a
+//     known-wrong over-fire (#7041); swift fixed it; this arm fixes it, by
+//     recording the parameter names in scope on each field
+//     (stampCppTemplateParams) and refusing a candidate that matches one. The
+//     refusal is scoped to the fields actually inside the template, so a real
+//     `struct T` member of an ordinary class elsewhere in the file still binds —
+//     both directions graded by ..._TemplateParameterIsNeverATarget.
 //   - ALIASES and TYPEDEFS name nothing in the graph (section 3).
 //   - QUALIFIED names are refused whole (see cppFieldTypeCandidates).
 //   - Two types with the SAME bare name in one file — `Ns::Order` beside a global
@@ -484,6 +532,38 @@ func cppIsTypeDefinition(r *types.EntityRecord) bool {
 	return def
 }
 
+// cppIsFunctionShaped reports whether a SCOPE.Schema/field record was minted
+// from a construct carrying a function declarator — a member function
+// declaration wrapped in pointer/reference decoration, or a
+// pointer-to-member-function data member. emitClassFieldMembers stamps
+// Metadata["function_shaped"] on exactly those; see cppFunctionShapedNames for
+// why both shapes are marked and why the capture itself is not fixed here.
+func cppIsFunctionShaped(r *types.EntityRecord) bool {
+	if r.Metadata == nil {
+		return false
+	}
+	fs, _ := r.Metadata["function_shaped"].(bool)
+	return fs
+}
+
+// cppTemplateParamsOf returns the template parameter names in scope where a
+// field was declared, as a set. stampCppTemplateParams (extractor.go) records
+// them on every field emitted inside a template_declaration's nested classes.
+func cppTemplateParamsOf(r *types.EntityRecord) map[string]bool {
+	if r.Metadata == nil {
+		return nil
+	}
+	names, _ := r.Metadata["template_params"].([]string)
+	if len(names) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		set[n] = true
+	}
+	return set
+}
+
 // attachCppFieldTypeRefs appends one REFERENCES edge per (field, in-file defined
 // type) pair, reading the declared type from the field record's own `field_type`
 // property.
@@ -520,10 +600,24 @@ func attachCppFieldTypeRefs(records []types.EntityRecord, filePath, lang string)
 		if declared == "" {
 			continue
 		}
+		// §3b — the SOURCE endpoint must be a plain data member. A field record
+		// marked function_shaped came from a member function declaration or a
+		// pointer-to-member-function member, and its `field_type` is the RETURN
+		// type, so an edge from it would assert that the member's declared type
+		// is something it is not.
+		if cppIsFunctionShaped(r) {
+			continue
+		}
 		owner := r.Properties["parent_class"]
 		fieldName := r.Properties["field_name"]
+		params := cppTemplateParamsOf(r)
 		emitted := make(map[string]bool)
 		for _, cand := range cppFieldTypeCandidates(declared) {
+			// §6 — a TEMPLATE PARAMETER in scope is not a reference to the
+			// same-named type declared in this file.
+			if params[cand] {
+				continue
+			}
 			t, ok := targets[cand]
 			if !ok || emitted[t.toID] {
 				continue

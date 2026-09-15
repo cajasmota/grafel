@@ -339,6 +339,7 @@ func walkStructural(n ts.Node, src []byte, path, lang, container string, out *[]
 			*out = append(*out, r)
 			// Also recurse into the template's inner class/struct so
 			// nested class members get emitted.
+			before := len(*out)
 			for i := 0; i < int(n.ChildCount()); i++ {
 				inner := n.Child(i)
 				switch inner.Type() {
@@ -355,6 +356,16 @@ func walkStructural(n ts.Node, src []byte, path, lang, container string, out *[]
 					}
 				}
 			}
+			// #6912 — a class NESTED inside a template gets real field
+			// entities (the templated class's own members do not), and those
+			// members may be typed by a TEMPLATE PARAMETER. `template<typename
+			// T> struct Outer { struct Inner { T val; }; };` beside a real
+			// `struct T` would otherwise let a field→declared-type edge bind
+			// `Inner.val` to `struct T` — two unrelated things that share a
+			// spelling. Go ships that shape as a known-wrong over-fire (#7041);
+			// here the parameter names in scope are recorded on each field so
+			// field_type_refs.go can refuse them by name.
+			stampCppTemplateParams(out, before, cppTemplateParams(n, src))
 		}
 		return
 
@@ -387,6 +398,32 @@ func walkStructural(n ts.Node, src []byte, path, lang, container string, out *[]
 	// Default: recurse into children.
 	for i := 0; i < int(n.ChildCount()); i++ {
 		walkStructural(n.Child(i), src, path, lang, container, out)
+	}
+}
+
+// stampCppTemplateParams records, on every SCOPE.Schema/field appended at or
+// after index `from`, the template parameter names that were in scope where the
+// field was declared.
+//
+// It APPENDS rather than overwrites, so a class nested two templates deep
+// carries both parameter lists: the inner template stamps its own names first,
+// then the outer template's call — whose `from` covers the inner one's output —
+// adds its names on top. Overwriting would silently drop the inner list and
+// re-open the collision for the inner parameter.
+func stampCppTemplateParams(out *[]types.EntityRecord, from int, params []string) {
+	if len(params) == 0 || out == nil {
+		return
+	}
+	for i := from; i < len(*out); i++ {
+		r := &(*out)[i]
+		if r.Kind != "SCOPE.Schema" || r.Subtype != "field" {
+			continue
+		}
+		if r.Metadata == nil {
+			r.Metadata = map[string]interface{}{}
+		}
+		existing, _ := r.Metadata["template_params"].([]string)
+		r.Metadata["template_params"] = append(append([]string{}, existing...), params...)
 	}
 }
 

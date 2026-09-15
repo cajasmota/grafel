@@ -32,11 +32,28 @@ import (
 // The class→field CONTAINS edge is attached by the caller via
 // extractor.BuildSchemaFieldStructuralRef keyed on the same dotted Name + file.
 //
-// Member functions (field_declaration carrying a function_declarator) are NOT
-// fields and are excluded — cppMemberFieldName returns "" for them. A data
-// member whose declarator is wrapped in pointer/array/reference decoration
-// (`int* p;`, `char buf[8];`, `T& ref;`) still resolves to its inner
+// A data member whose declarator is wrapped in pointer/array/reference
+// decoration (`int* p;`, `char buf[8];`, `T& ref;`) still resolves to its inner
 // field_identifier.
+//
+// MEMBER FUNCTIONS ARE ONLY PARTLY EXCLUDED, AND THE LIMIT IS NOT WHERE THIS
+// COMMENT USED TO CLAIM IT WAS. The guard below skips a field_declaration whose
+// DIRECT child is a function_declarator, which covers `void greet();`. It does
+// NOT cover a function declarator wrapped in pointer/reference decoration —
+// `virtual const VideoInfo& GetVideoInfo() = 0;` is a reference_declarator
+// around a function_declarator, so cppFieldNames descends straight through to
+// the function's NAME and mints a SCOPE.Schema/field entity for a pure virtual
+// member function whose `field_type` is its RETURN type. The same holds for a
+// pointer-to-member-function data member (`AVSMap& (C::* p)();`), whose
+// field_type is likewise the return type rather than the member's own type.
+//
+// Both shapes are live in real headers (avisynth.h in our corpus) and both are
+// a CAPTURE defect predating this comment — filed as #7061, NOT fixed here,
+// because correcting the capture changes entity counts, the #6118 digest and
+// the #4854 contract. What IS done here is to mark them: every such record
+// carries Metadata["function_shaped"], so a downstream pass can refuse to treat
+// it as a plain data member. #6912's field→declared-type pass
+// (field_type_refs.go) is the first consumer and refuses them as edge SOURCES.
 func emitClassFieldMembers(
 	body ts.Node,
 	src []byte,
@@ -66,6 +83,7 @@ func emitClassFieldMembers(
 		// A field_declaration may declare several members sharing one type
 		// (`int a, b;`). Collect every field_identifier reachable through the
 		// declarator decoration.
+		fnShaped := cppFunctionShapedNames(ch, src)
 		for _, fname := range cppFieldNames(ch, src) {
 			fname = strings.TrimSpace(fname)
 			if fname == "" || seen[fname] {
@@ -78,6 +96,10 @@ func emitClassFieldMembers(
 			sig := fname
 			if typeText != "" {
 				sig = typeText + " " + fname
+			}
+			meta := map[string]interface{}{"subtype": "field", "owner": ownerName}
+			if fnShaped[fname] {
+				meta["function_shaped"] = true
 			}
 			fields = append(fields, types.EntityRecord{
 				Name:          dotted,
@@ -95,7 +117,7 @@ func emitClassFieldMembers(
 					"field_type":   typeText,
 					"parent_class": ownerName,
 				},
-				Metadata:           map[string]interface{}{"subtype": "field", "owner": ownerName},
+				Metadata:           meta,
 				EnrichmentRequired: false,
 			})
 		}
@@ -122,6 +144,66 @@ func cppFieldNames(fieldDecl ts.Node, src []byte) []string {
 		}
 	}
 	return names
+}
+
+// cppFunctionShapedNames returns the subset of a field_declaration's member
+// names whose declarator subtree contains a function_declarator — i.e. the names
+// this package mints a SCOPE.Schema/field for even though the construct is not a
+// plain data member.
+//
+// TWO distinct source shapes land here and both matter, because in BOTH the
+// `type` field holds the RETURN type rather than the member's own type, so a
+// field→declared-type edge built from them asserts something false:
+//
+//	virtual const VideoInfo& GetVideoInfo() = 0;   a pure virtual MEMBER FUNCTION
+//	AVSMap& (VideoFrame::* getProperties)();       a POINTER-TO-MEMBER-FUNCTION
+//	                                               data member
+//
+// The first is not a data member at all; the second is, but its declared type is
+// a function type, not `AVSMap`. Callers that need "plain data member" must test
+// this marker; callers that only need "a name the class declares" need not.
+//
+// A bare `void greet();` never reaches here — emitClassFieldMembers' direct-child
+// guard already skips it, and this function only inspects the DECORATED
+// declarator children, which is exactly the set that guard misses.
+func cppFunctionShapedNames(fieldDecl ts.Node, src []byte) map[string]bool {
+	var out map[string]bool
+	for i := 0; i < int(fieldDecl.ChildCount()); i++ {
+		ch := fieldDecl.Child(i)
+		switch ch.Type() {
+		case "pointer_declarator", "array_declarator", "reference_declarator",
+			"init_declarator":
+			if !cppHasDescendantOfType(ch, "function_declarator") {
+				continue
+			}
+			id := cppDescendantFieldIdentifier(ch)
+			if id == nil {
+				continue
+			}
+			if out == nil {
+				out = make(map[string]bool)
+			}
+			out[nodeText(id, src)] = true
+		}
+	}
+	return out
+}
+
+// cppHasDescendantOfType reports whether n or any of its descendants has the
+// given node type.
+func cppHasDescendantOfType(n ts.Node, typ string) bool {
+	if n == nil {
+		return false
+	}
+	if n.Type() == typ {
+		return true
+	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		if cppHasDescendantOfType(n.Child(i), typ) {
+			return true
+		}
+	}
+	return false
 }
 
 // cppDescendantFieldIdentifier returns the first field_identifier reachable

@@ -726,6 +726,227 @@ struct Holder {
 	}
 }
 
+// TestCppFieldTypeRefs_FunctionShapedMemberIsNeverASource is the SOURCE-endpoint
+// half of the #7047/#7056 audit, and it is reproduced from the corpus rather
+// than invented.
+//
+// emitClassFieldMembers' guard skips a field_declaration whose DIRECT child is a
+// function_declarator (`void greet();`). It does not skip one wrapped in
+// pointer/reference decoration, so `virtual const VideoInfo& GetVideoInfo() = 0;`
+// mints a SCOPE.Schema/field named after the FUNCTION whose `field_type` is its
+// RETURN type — as does a pointer-to-member-function data member
+// (`AVSMap& (C::* p)();`). On the first revision of this arm, 16 of 23 corpus
+// edges hung off one of those two shapes, asserting
+// `ref_kind=field_target_type` about a member whose declared type is not that
+// type. Both rows below are taken verbatim in shape from
+// `staxrip/Source/FrameServer/avisynth.h`.
+//
+// The capture defect is pre-existing (#4854) and is not fixed here; the records
+// still exist. What is asserted is that this pass refuses them as SOURCES — and
+// the premise (the bogus field entity exists, with the return type in
+// field_type) is asserted FIRST so the test cannot pass because the capture was
+// quietly fixed underneath it.
+func TestCppFieldTypeRefs_FunctionShapedMemberIsNeverASource(t *testing.T) {
+	src := `
+struct VideoInfo { int w; };
+struct AVSMap { int n; };
+struct Item { int n; };
+
+class IClip {
+public:
+  virtual const VideoInfo& GetVideoInfo() = 0;
+  virtual AVSMap* GetMap() = 0;
+  void plain();
+  AVSMap& (IClip::* getProperties)();
+  Item data;
+};
+`
+	recs := cppFTExtract(t, src, "clip.cpp")
+
+	// Premise 1: the bogus field entities exist, named after the FUNCTION, with
+	// the RETURN type in field_type.
+	prem := map[string]string{
+		"IClip.GetVideoInfo":  "VideoInfo",
+		"IClip.GetMap":        "AVSMap",
+		"IClip.getProperties": "AVSMap",
+	}
+	got := map[string]string{}
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Schema" && recs[i].Subtype == "field" {
+			got[recs[i].Name] = recs[i].Properties["field_type"]
+		}
+	}
+	for name, typ := range prem {
+		g, ok := got[name]
+		if !ok {
+			t.Fatalf("no field entity %q — the #4854 capture defect this refusal "+
+				"exists for has been fixed. Delete the refusal rather than "+
+				"leaving a test that passes for a new reason.", name)
+		}
+		if g != typ {
+			t.Fatalf("%s field_type = %q, want the RETURN type %q — the premise "+
+				"of this test has moved", name, g, typ)
+		}
+	}
+	// Premise 2: a BARE member function declaration still mints nothing, so the
+	// two halves of the guard are not confused with each other.
+	if _, ok := got["IClip.plain"]; ok {
+		t.Fatal("`void plain();` now mints a field entity — the direct-child " +
+			"guard in emitClassFieldMembers has changed")
+	}
+
+	for name := range prem {
+		cppFTEqual(t, cppFTTargetsOf(recs, name), nil,
+			"a field-type edge hanging off "+name)
+	}
+	// Positive control: a plain data member in the SAME class still binds, so
+	// the refusal is not simply switching the pass off.
+	cppFTEqual(t, cppFTTargetsOf(recs, "IClip.data"), []string{"Item"},
+		"the plain data member in the same class")
+}
+
+// TestCppFieldTypeRefs_TemplateParameterIsNeverATarget replaces a claim of
+// UNREACHABILITY that was false.
+//
+// The first revision asserted that go's #7041 template-parameter over-fire has
+// no cpp analogue because a templated class's members emit no field entity. That
+// is true of DIRECT members and false four lines further in: walkStructural's
+// template arm recurses into the body, so a class NESTED in a template does get
+// field entities, and `T val;` there would have bound to a same-file `struct T`.
+//
+// Three directions, because refusing by name is exactly the kind of rule that
+// over-reaches:
+//
+//	Inner.val    typed by the PARAMETER                     -> no edge
+//	Inner.other  typed by a real type, INSIDE the template  -> edge
+//	Early.tp     typed `T` BEFORE the template              -> edge
+//	Holder.tp    typed `T` AFTER  the template              -> edge
+//
+// BOTH sides of the template are exercised on purpose. The stamp applies to a
+// RANGE of the record slice, so a range that started at 0 rather than at the
+// template's own first record would silently refuse `Early.tp` — a class that
+// merely happens to be declared earlier in the file. A fixture with only the
+// AFTER row cannot see that, and left the range bound ungraded.
+func TestCppFieldTypeRefs_TemplateParameterIsNeverATarget(t *testing.T) {
+	src := `
+struct T { int x; };
+struct Item { int n; };
+
+struct Early {
+  T tp;
+};
+
+template<typename T> struct Outer4 {
+  struct Inner4 {
+    T val;
+    Item other;
+  };
+};
+
+class Holder {
+public:
+  T tp;
+};
+`
+	recs := cppFTExtract(t, src, "tparam.cpp")
+
+	// Premise: the nested class really does emit field entities, and the real
+	// `struct T` really is a target-eligible declaration in this file.
+	if _, ok := cppFTFieldType(recs, "Inner4.val"); !ok {
+		t.Fatal("no field entity Inner4.val — a class nested in a template no " +
+			"longer emits members and this test is vacuous")
+	}
+	real := false
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Component" && recs[i].Name == "T" {
+			real = true
+		}
+	}
+	if !real {
+		t.Fatal("no SCOPE.Component named T — there is nothing for the parameter " +
+			"to collide with and this test is vacuous")
+	}
+
+	cppFTEqual(t, cppFTTargetsOf(recs, "Inner4.val"), nil,
+		"a nested-class member typed by the enclosing template's PARAMETER")
+	cppFTEqual(t, cppFTTargetsOf(recs, "Inner4.other"), []string{"Item"},
+		"a nested-class member typed by a real same-file type")
+	cppFTEqual(t, cppFTTargetsOf(recs, "Early.tp"), []string{"T"},
+		"a member typed `T` in a class declared BEFORE the template")
+	cppFTEqual(t, cppFTTargetsOf(recs, "Holder.tp"), []string{"T"},
+		"a member typed `T` in a class declared AFTER the template")
+}
+
+// TestCppFieldTypeRefs_NestedTemplateParametersAreAllRefused grades the reason
+// stampCppTemplateParams APPENDS rather than overwrites. A class nested two
+// templates deep is in scope of BOTH parameter lists; the inner template stamps
+// first and the outer's call covers the inner's output, so an overwrite would
+// silently drop the inner list and re-open the collision for `U` alone.
+//
+// Both parameters have a same-named real struct in the file, so each row fails
+// on its own rather than one masking the other, and a real type is bound in the
+// same nested class as a positive control.
+func TestCppFieldTypeRefs_NestedTemplateParametersAreAllRefused(t *testing.T) {
+	src := `
+struct T { int x; };
+struct U { int y; };
+struct Item { int n; };
+
+template<typename T> struct Outer5 {
+  template<typename U> struct Middle5 {
+    struct Inner5 {
+      T fromOuter;
+      U fromInner;
+      Item real;
+    };
+  };
+};
+`
+	recs := cppFTExtract(t, src, "nested.cpp")
+	for _, n := range []string{"Inner5.fromOuter", "Inner5.fromInner", "Inner5.real"} {
+		if _, ok := cppFTFieldType(recs, n); !ok {
+			t.Fatalf("no field entity %q — the nesting premise of this test is gone", n)
+		}
+	}
+	cppFTEqual(t, cppFTTargetsOf(recs, "Inner5.fromOuter"), nil,
+		"a member typed by the OUTER template's parameter")
+	cppFTEqual(t, cppFTTargetsOf(recs, "Inner5.fromInner"), nil,
+		"a member typed by the INNER template's parameter")
+	cppFTEqual(t, cppFTTargetsOf(recs, "Inner5.real"), []string{"Item"},
+		"a member of the same nested class typed by a real same-file type")
+}
+
+// cppFTFieldType returns a field entity's declared type and whether it exists.
+func cppFTFieldType(recs []types.EntityRecord, name string) (string, bool) {
+	for i := range recs {
+		if recs[i].Name == name && recs[i].Kind == "SCOPE.Schema" && recs[i].Subtype == "field" {
+			return recs[i].Properties["field_type"], true
+		}
+	}
+	return "", false
+}
+
+// TestCppFieldTypeRefs_SelfReferenceComparisonIsCaseSensitive grades the ONE
+// axis the self-reference rule was untested on. C++ identifiers are
+// case-sensitive, so `struct money {};` and `struct Money {};` are two different
+// types and a field of the first inside the second is NOT a self-reference. A
+// case-INSENSITIVE comparison (arm H folds, because PHP class names fold) would
+// silently delete this edge.
+func TestCppFieldTypeRefs_SelfReferenceComparisonIsCaseSensitive(t *testing.T) {
+	src := `
+struct money { int cents; };
+struct Money {
+  money m;
+  Money* self;
+};
+`
+	recs := cppFTExtract(t, src, "case.cpp")
+	cppFTEqual(t, cppFTTargetsOf(recs, "Money.m"), []string{"money"},
+		"a field whose type differs from its owner ONLY in case")
+	cppFTEqual(t, cppFTTargetsOf(recs, "Money.self"), nil,
+		"the genuine self-reference in the same struct")
+}
+
 // TestCppFieldTypeRefs_ConstructorDoesNotSuppressItsClass is the measured reason
 // this arm does NOT inherit arm D's all-kinds ambiguity rule, and it is a
 // property of C++ rather than a corpus accident.
