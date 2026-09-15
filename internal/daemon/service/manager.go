@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -55,6 +56,27 @@ type ServiceManager interface {
 
 	// Status returns the current StatusInfo (installed / running / pid).
 	Status() (StatusInfo, error)
+}
+
+// loadDiagnostics is an OPTIONAL ServiceManager capability. A backend whose
+// Load() returns nil while a sub-step it considers non-fatal actually failed
+// implements this to say so. Optional because only the Windows backend has
+// such a sub-step today (`schtasks /run`), and a backend that cannot partially
+// fail should not be forced to declare that it never does.
+type loadDiagnostics interface {
+	// LoadWarnings returns human-readable descriptions of the non-fatal
+	// failures from the most recent Load(). Empty means the load was clean.
+	LoadWarnings() []string
+}
+
+// loadWarningsOf returns sm's load warnings, or nil for a backend that does
+// not report any.
+func loadWarningsOf(sm ServiceManager) []string {
+	d, ok := sm.(loadDiagnostics)
+	if !ok {
+		return nil
+	}
+	return d.LoadWarnings()
 }
 
 // readinessConfig controls the socket-readiness poll loop. These replace the
@@ -217,9 +239,23 @@ func ensureLoaded(ctx context.Context, sm ServiceManager, cfg readinessConfig, o
 		return StatusInfo{}, fmt.Errorf("load service: %w", err)
 	}
 
+	// A backend's Load can succeed overall while a sub-step it treats as
+	// non-fatal failed (#7051: `schtasks /run`, which only pre-empts the logon
+	// trigger). Those failures used to be recorded nowhere at all, which is the
+	// reporter's actual complaint — the daemon was down and every diagnostic
+	// said only "not running".
+	warnings := loadWarningsOf(sm)
+	for _, w := range warnings {
+		onProgress.emit("  warning: %s", w)
+	}
+
 	if err := waitReady(ctx, sm.Probe, cfg, onProgress); err != nil {
 		st, _ := sm.Status()
 		st.Installed = true
+		if len(warnings) > 0 {
+			return st, fmt.Errorf("service loaded but socket not ready: %w (%s)",
+				err, strings.Join(warnings, "; "))
+		}
 		return st, fmt.Errorf("service loaded but socket not ready: %w", err)
 	}
 

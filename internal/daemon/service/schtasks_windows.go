@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"encoding/csv"
-	"encoding/xml"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/transport"
@@ -25,65 +23,6 @@ const (
 	// taskName is the Windows Task Scheduler task name.
 	taskName = `com.grafel.daemon`
 )
-
-// daemonTaskXMLTemplate is the Windows Task Scheduler XML definition for
-// the grafel daemon. The task runs at logon for the registering user,
-// restarts on failure (up to 3 times with a 1-minute interval), and is
-// hidden from the Task Scheduler UI so it doesn't clutter the user's view.
-//
-// Key semantics that mirror the macOS LaunchAgent and Linux systemd unit:
-//   - LogonTrigger — starts at user login (equivalent to RunAtLoad + KeepAlive)
-//   - RestartOnFailure — crash-restart (equivalent to KeepAlive)
-//   - Hidden — keeps the Task Scheduler UI tidy
-//   - wscript wrapper — launches grafel without a console, waits for it, and
-//     propagates its exit code so Task Scheduler remains the process supervisor
-//   - RunLevel LeastPrivilege — no UAC elevation required (user-level service)
-const daemonTaskXMLTemplate = `<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>grafel knowledge-graph daemon — managed by grafel install/uninstall</Description>
-    <URI>\{{.TaskName}}</URI>
-  </RegistrationInfo>
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-      {{if .UserSID}}<UserId>{{.UserSID}}</UserId>{{end}}
-    </LogonTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      {{if .UserSID}}<UserId>{{.UserSID}}</UserId>{{end}}
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <Hidden>true</Hidden>
-    <RestartOnFailure>
-      <Interval>PT1M</Interval>
-      <Count>3</Count>
-    </RestartOnFailure>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions>
-    <Exec>
-      <Command>{{xml .WrapperHost}}</Command>
-      <Arguments>//B //NoLogo &quot;{{xml .WrapperPath}}&quot;</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-`
-
-type daemonTaskVars struct {
-	TaskName    string
-	UserSID     string
-	WrapperHost string
-	WrapperPath string
-}
 
 // taskXMLPath returns the path where the task XML is staged before being
 // imported by schtasks. We use %LOCALAPPDATA%\grafel\tasks\ which is
@@ -115,12 +54,6 @@ func wscriptPath() string {
 	return filepath.Join(systemRoot, "System32", "wscript.exe")
 }
 
-func xmlText(value string) string {
-	var buf strings.Builder
-	_ = xml.EscapeText(&buf, []byte(value))
-	return buf.String()
-}
-
 // currentUserSID returns the SID string for the running user.
 // On failure it returns an empty string — the task template degrades a missing
 // UserId to "fire on any logon" rather than emitting invalid XML.
@@ -150,6 +83,19 @@ func schtasksCmd(args ...string) *exec.Cmd {
 	return cmd
 }
 
+// schtasksCmdContext is schtasksCmd with a deadline. Used for `/run`, whose
+// exit code we now act on (#7051): an invocation that never returned would
+// turn a transient failure into a hang — strictly worse than the bug being
+// fixed — so every attempt carries its own bound.
+func schtasksCmdContext(ctx context.Context, args ...string) *exec.Cmd {
+	if watchers.GuardServiceCall("schtasks", args) != nil {
+		return exec.CommandContext(ctx, "cmd", "/c", "exit", "1")
+	}
+	cmd := exec.CommandContext(ctx, "schtasks", args...)
+	executil.NoWindow(cmd)
+	return cmd
+}
+
 // GenerateTaskXML renders the Task Scheduler XML for the given options and
 // wrapper path. Exported for testing; production code calls WriteUnit, which
 // calls generateTaskXML with the path the manager already resolved.
@@ -161,29 +107,20 @@ func GenerateTaskXML(opts Options, wrapperPath string) ([]byte, error) {
 	return generateTaskXML(opts, wrapperPath)
 }
 
+// generateTaskXML resolves the environment-dependent fields (user SID, wscript
+// location) and hands them to the pure renderer in schtasks_policy.go.
 func generateTaskXML(opts Options, wrapperPath string) ([]byte, error) {
-	sid := currentUserSID()
-	tmpl, err := template.New("task").Funcs(template.FuncMap{"xml": xmlText}).Parse(daemonTaskXMLTemplate)
-	if err != nil {
-		return nil, err
-	}
-	var buf strings.Builder
-	if err := tmpl.Execute(&buf, daemonTaskVars{
+	return renderTaskXML(daemonTaskVars{
 		TaskName:    taskName,
-		UserSID:     sid,
+		UserSID:     currentUserSID(),
 		WrapperHost: wscriptPath(),
 		WrapperPath: wrapperPath,
-	}); err != nil {
-		return nil, err
-	}
-	// Task Scheduler requires UTF-16 LE for XML files referenced by /xml.
-	// We write the XML via a temp file; schtasks on modern Windows (>=10)
-	// also accepts UTF-8 when the BOM is absent, but the spec calls for
-	// UTF-16. We store the rendered UTF-8 bytes — callers that need UTF-16
-	// can transcode; the schtasks invocation in install() handles this via
-	// PowerShell if needed. For simplicity we write UTF-8 and rely on the
-	// fact that modern schtasks handles it fine.
-	return []byte(buf.String()), nil
+		// Injected, never written as a literal in the template: the readiness
+		// budget schtasksReadiness is derived from this same constant, and the
+		// two silently desynchronising is the whole of #7051.
+		RestartInterval: restartOnFailureIntervalXML(),
+		RestartCount:    restartOnFailureCount,
+	})
 }
 
 // schtasksManager is the Windows ServiceManager implementation. It is a thin
@@ -192,6 +129,10 @@ type schtasksManager struct {
 	opts        Options
 	xmlPath     string
 	wrapperPath string
+
+	// loadWarnings collects the non-fatal failures Load() swallowed — today,
+	// a `schtasks /run` that never succeeded. See LoadWarnings (#7051).
+	loadWarnings []string
 }
 
 func newServiceManager(opts Options) (ServiceManager, error) {
@@ -278,17 +219,59 @@ func (m *schtasksManager) Unload() error {
 }
 
 func (m *schtasksManager) Load() error {
+	// Each Load reports on its own attempt, not on a previous one's.
+	m.loadWarnings = nil
 	// /f forces overwrite of any existing task (callers Unload first, but /f
 	// keeps Load itself idempotent against a leftover registration).
 	if out, err := schtasksCmd("/create", "/tn", taskName, "/xml", m.xmlPath, "/f").CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks /create: %w\n%s", err, out)
 	}
-	// Start now; it would otherwise fire at next logon. A /run failure is
-	// non-fatal — the readiness poll is the real success signal, and the task
-	// will start at next logon regardless.
-	_ = schtasksCmd("/run", "/tn", taskName).Run()
+	// Start now; it would otherwise fire only at next logon.
+	//
+	// The exit code used to be discarded outright, on the reasoning that the
+	// readiness poll is the real success signal. #7051 showed what that costs:
+	// the first /run immediately after /create can fail, write nothing
+	// anywhere, and leave the daemon down indefinitely — while a plain retry of
+	// the same unmodified task succeeds at once. So we retry it ourselves,
+	// bounded (runAttemptPolicy), rather than relying on Task Scheduler's
+	// RestartOnFailure, which is a whole minute away.
+	//
+	// It stays NON-FATAL after the last attempt: the LogonTrigger is still
+	// armed and RestartOnFailure is still registered, so a failed /run is a
+	// degraded start, not a failed install. What changes is that it is no
+	// longer SILENT — the failure is recorded on the manager and surfaced by
+	// ensureLoaded through LoadWarnings.
+	if err := m.runTaskNow(context.Background()); err != nil {
+		m.noteLoadWarning(err.Error())
+	}
 	return nil
 }
+
+// runTaskNow fires the registered task and, unlike its predecessor, reports
+// what happened.
+func (m *schtasksManager) runTaskNow(ctx context.Context) error {
+	return retryRun(ctx, defaultRunAttempts, time.Sleep, func(attemptCtx context.Context, n int) error {
+		out, err := schtasksCmdContext(attemptCtx, "/run", "/tn", taskName).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		if trimmed := strings.TrimSpace(string(out)); trimmed != "" {
+			return fmt.Errorf("schtasks /run attempt %d: %w: %s", n, err, trimmed)
+		}
+		return fmt.Errorf("schtasks /run attempt %d: %w", n, err)
+	})
+}
+
+// noteLoadWarning records a non-fatal failure from Load for LoadWarnings.
+func (m *schtasksManager) noteLoadWarning(msg string) {
+	m.loadWarnings = append(m.loadWarnings, msg)
+}
+
+// LoadWarnings implements the loadDiagnostics optional interface (see
+// manager.go): it reports the sub-step failures Load deliberately swallowed,
+// so install/start can say what went wrong instead of only that the socket
+// never appeared.
+func (m *schtasksManager) LoadWarnings() []string { return m.loadWarnings }
 
 func (m *schtasksManager) RemoveArtifacts() error {
 	if err := os.Remove(m.xmlPath); err != nil && !os.IsNotExist(err) {
@@ -320,7 +303,10 @@ func install(opts Options) (StatusInfo, error) {
 	if st, serr := sm.Status(); serr == nil && st.Running && sm.Probe() {
 		return st, nil
 	}
-	return ensureLoaded(context.Background(), sm, defaultReadiness, nil)
+	// schtasksReadiness rather than the platform-neutral budget: on Windows the
+	// wait has to outlast RestartOnFailure, or the safety net covering a failed
+	// launch lands after we have already reported failure (#7051).
+	return ensureLoaded(context.Background(), sm, schtasksReadiness, nil)
 }
 
 // restartService is the Windows implementation of Restart: always converges
@@ -331,7 +317,7 @@ func restartService(opts Options) (StatusInfo, error) {
 	if err != nil {
 		return StatusInfo{}, err
 	}
-	return restart(context.Background(), sm, defaultReadiness, nil)
+	return restart(context.Background(), sm, schtasksReadiness, nil)
 }
 
 // stopService is the Windows implementation of Stop: schtasks task deletion

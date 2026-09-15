@@ -5,36 +5,36 @@ package service
 import (
 	"strings"
 	"testing"
-	"text/template"
 )
 
-// renderTaskXML renders the daemon task template with a caller-controlled SID so
+// renderTaskXMLWithSID renders the daemon task with a caller-controlled SID so
 // the conditional <UserId> logic can be exercised deterministically (the
-// production GenerateTaskXML derives the SID from the live user). Internal test
-// (package service) so it can reach the unexported template + vars type.
-func renderTaskXML(t *testing.T, sid string) string {
+// production GenerateTaskXML derives the SID from the live user).
+//
+// It goes through the production renderer (renderTaskXML, schtasks_policy.go)
+// rather than re-executing the template itself: a helper that parsed the
+// template on its own would keep passing after production stopped using it.
+func renderTaskXMLWithSID(t *testing.T, sid string) string {
 	t.Helper()
-	tmpl, err := template.New("task").Funcs(template.FuncMap{"xml": xmlText}).Parse(daemonTaskXMLTemplate)
+	out, err := renderTaskXML(daemonTaskVars{
+		TaskName:        "com.grafel.daemon",
+		UserSID:         sid,
+		WrapperHost:     `C:\Windows\System32\wscript.exe`,
+		WrapperPath:     `C:\Users\testuser\wrapper.vbs`,
+		RestartInterval: restartOnFailureIntervalXML(),
+		RestartCount:    restartOnFailureCount,
+	})
 	if err != nil {
-		t.Fatalf("parse template: %v", err)
+		t.Fatalf("render task XML: %v", err)
 	}
-	var buf strings.Builder
-	if err := tmpl.Execute(&buf, daemonTaskVars{
-		TaskName:    "com.grafel.daemon",
-		UserSID:     sid,
-		WrapperHost: `C:\Windows\System32\wscript.exe`,
-		WrapperPath: `C:\Users\testuser\wrapper.vbs`,
-	}); err != nil {
-		t.Fatalf("execute template: %v", err)
-	}
-	return buf.String()
+	return string(out)
 }
 
 // TestTaskXML_UserIDPresentWhenSIDKnown verifies a non-empty SID renders a
 // <UserId> element carrying that SID (bug 3).
 func TestTaskXML_UserIDPresentWhenSIDKnown(t *testing.T) {
 	const sid = "S-1-5-21-1111111111-2222222222-3333333333-1001"
-	out := renderTaskXML(t, sid)
+	out := renderTaskXMLWithSID(t, sid)
 	want := "<UserId>" + sid + "</UserId>"
 	if !strings.Contains(out, want) {
 		t.Errorf("expected %q in rendered XML:\n%s", want, out)
@@ -45,7 +45,7 @@ func TestTaskXML_UserIDPresentWhenSIDKnown(t *testing.T) {
 // <UserId>" (fire on any logon) instead of invalid <UserId></UserId>, which
 // Task Scheduler rejects (bug 3).
 func TestTaskXML_UserIDOmittedWhenSIDEmpty(t *testing.T) {
-	out := renderTaskXML(t, "")
+	out := renderTaskXMLWithSID(t, "")
 	if strings.Contains(out, "<UserId>") {
 		t.Errorf("expected no <UserId> element when SID is empty, got:\n%s", out)
 	}
