@@ -151,17 +151,27 @@ func cppFieldNames(fieldDecl ts.Node, src []byte) []string {
 // this package mints a SCOPE.Schema/field for even though the construct is not a
 // plain data member.
 //
-// TWO distinct source shapes land here and both matter, because in BOTH the
-// `type` field holds the RETURN type rather than the member's own type, so a
-// field→declared-type edge built from them asserts something false:
+// THREE distinct source shapes land here — the count was stated as two and the
+// third is a different node kind, not a restatement — and all three matter,
+// because in every one the `type` field holds the RETURN type rather than the
+// member's own type, so a field→declared-type edge built from them asserts
+// something false:
 //
-//	virtual const VideoInfo& GetVideoInfo() = 0;   a pure virtual MEMBER FUNCTION
-//	AVSMap& (VideoFrame::* getProperties)();       a POINTER-TO-MEMBER-FUNCTION
-//	                                               data member
+//	virtual const VideoInfo& GetVideoInfo() = 0;   MEMBER FUNCTION, reference_declarator
+//	virtual AVSMap* GetMap() = 0;                  MEMBER FUNCTION, pointer_declarator
+//	AVSMap& (VideoFrame::* getProperties)();       POINTER-TO-MEMBER-FUNCTION member
 //
-// The first is not a data member at all; the second is, but its declared type is
-// a function type, not `AVSMap`. Callers that need "plain data member" must test
-// this marker; callers that only need "a name the class declares" need not.
+// The first two are not data members at all; the third is, but its declared type
+// is a function type, not `AVSMap`. Callers that need "plain data member" must
+// test this marker; callers that only need "a name the class declares" need not.
+//
+// THE SCAN IS RECURSIVE AND THE RECURSION IS LOAD-BEARING, not defensive. The
+// decoration nests without limit and each extra layer is ordinary C++:
+// `Order** getPP();` puts the function_declarator at depth 2, `Order*** getPPP()`
+// at depth 3, and `Order*& getPR()` mixes the two. A scan of the node plus its
+// direct children answers the depth-1 cases and lets every deeper one through to
+// emit a wrong edge. Graded as its own mutant rather than inside a compound —
+// see TestCppFieldTypeRefs_FunctionShapedMemberIsNeverASource.
 //
 // A bare `void greet();` never reaches here — emitClassFieldMembers' direct-child
 // guard already skips it, and this function only inspects the DECORATED

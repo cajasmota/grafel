@@ -156,6 +156,44 @@ func TestCppFieldTypeRefs_Unit_ADefinitionMarkerIsRequired(t *testing.T) {
 	wantTargets(t, targetsOf(got, "Holder.o"), []string{"Order"}, "the definition control")
 }
 
+// TestCppFieldTypeRefs_Unit_FunctionShapedMarkerIsGradedOnBothValues closes an
+// ASYMMETRY rather than a row.
+//
+// This pass reads three markers off a record — `definition`, `function_shaped`
+// and `template_params`. The first was graded on both of its values from the
+// start (..._Unit_ADefinitionMarkerIsRequired drives nil, empty, a foreign key
+// and an explicit `false`), and `function_shaped` was graded only on `true`: a
+// reader that treated ANY presence of the key as "refuse" — `_, ok :=
+// r.Metadata["function_shaped"]` — would pass every test. Two markers of the
+// same shape, one graded on both values and one on one.
+//
+// The distinguishing input is an explicit `false`, which is what a future
+// producer stamping the key unconditionally would write.
+func TestCppFieldTypeRefs_Unit_FunctionShapedMarkerIsGradedOnBothValues(t *testing.T) {
+	const f = "a.cpp"
+	build := func(meta map[string]interface{}) []types.EntityRecord {
+		fld := fieldRec("Holder", "o", f, "Order")
+		fld.Metadata = meta
+		return []types.EntityRecord{comp("Order", f, "class"), fld}
+	}
+	// EMITS: the marker is absent, or present and false.
+	for _, meta := range []map[string]interface{}{
+		nil,
+		{},
+		{"subtype": "field", "owner": "Holder"},
+		{"function_shaped": false},
+		{"function_shaped": "true"}, // a non-bool value is not a refusal
+	} {
+		got := attachCppFieldTypeRefs(build(meta), f, "cpp")
+		wantTargets(t, targetsOf(got, "Holder.o"), []string{"Order"},
+			"a field whose function_shaped marker is absent or false")
+	}
+	// REFUSES: only an explicit true.
+	got := attachCppFieldTypeRefs(build(map[string]interface{}{"function_shaped": true}), f, "cpp")
+	wantTargets(t, targetsOf(got, "Holder.o"), nil,
+		"a field marked function_shaped")
+}
+
 // TestCppFieldTypeRefs_Unit_InFamilyRivalSuppressesTheTarget grades rule 3, which
 // is VACUOUS AS SHIPPED: no cpp producer emits SCOPE.Model / SCOPE.View /
 // SCOPE.Class / a bare Component, so len(nameKinds[name]) can never exceed 1

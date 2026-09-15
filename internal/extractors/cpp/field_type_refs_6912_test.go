@@ -741,11 +741,19 @@ struct Holder {
 // type. Both rows below are taken verbatim in shape from
 // `staxrip/Source/FrameServer/avisynth.h`.
 //
-// The capture defect is pre-existing (#4854) and is not fixed here; the records
-// still exist. What is asserted is that this pass refuses them as SOURCES — and
-// the premise (the bogus field entity exists, with the return type in
-// field_type) is asserted FIRST so the test cannot pass because the capture was
-// quietly fixed underneath it.
+// The capture defect is pre-existing (#4854, filed as #7061) and is not fixed
+// here; the records still exist. What is asserted is that this pass refuses them
+// as SOURCES — and the premise (the bogus field entity exists, with the return
+// type in field_type) is asserted FIRST so the test cannot pass because the
+// capture was quietly fixed underneath it.
+//
+// THE DEPTH ROWS EXIST BECAUSE A COMPOUND MUTANT HID THE RECURSION. The first
+// revision scored one mutant that narrowed the declarator scan "to the node
+// itself", which deleted the child loop AND the recursion at once; the first
+// half is lethal alone, so the recursion was never graded, and removing only the
+// recursion was ALIVE against both suite and corpus. A compound grades its
+// second half only if its first half is not lethal alone — the rule this arm
+// applied to M3 and to the three markers, and then broke here.
 func TestCppFieldTypeRefs_FunctionShapedMemberIsNeverASource(t *testing.T) {
 	src := `
 struct VideoInfo { int w; };
@@ -758,6 +766,10 @@ public:
   virtual AVSMap* GetMap() = 0;
   void plain();
   AVSMap& (IClip::* getProperties)();
+  Item** getPP();
+  Item*** getPPP();
+  Item*& getPR();
+  Item** (*fpp)(int);
   Item data;
 };
 `
@@ -769,6 +781,15 @@ public:
 		"IClip.GetVideoInfo":  "VideoInfo",
 		"IClip.GetMap":        "AVSMap",
 		"IClip.getProperties": "AVSMap",
+		// DEPTH. The decoration nests without limit and every layer is
+		// ordinary C++, so a scan of the node plus its DIRECT children
+		// answers depth 1 and lets all of these through. Each row puts the
+		// function_declarator one layer deeper than the last, and the final
+		// one mixes pointer and function nesting.
+		"IClip.getPP":  "Item", // depth 2
+		"IClip.getPPP": "Item", // depth 3
+		"IClip.getPR":  "Item", // depth 2, pointer under reference
+		"IClip.fpp":    "Item", // function pointer RETURNING a pointer
 	}
 	got := map[string]string{}
 	for i := range recs {
@@ -875,6 +896,148 @@ public:
 		"a member typed `T` in a class declared BEFORE the template")
 	cppFTEqual(t, cppFTTargetsOf(recs, "Holder.tp"), []string{"T"},
 		"a member typed `T` in a class declared AFTER the template")
+}
+
+// TestCppTemplateParams_EnumeratesTheParameterFormSpace ENUMERATES the template
+// parameter forms rather than sampling them.
+//
+// The round-2 fixture varied the POSITIONAL axis four ways — outside any
+// template, before it, inside it, two deep — and held the parameter-list
+// CONTENTS constant at a single bare `typename T`. An independent review found
+// five forms the collector got wrong behind that constant: three that bound
+// NOTHING (so #7041's wrong binding stayed live) and two that bound the DEFAULT
+// ARGUMENT or the parameter's own TYPE/CONSTRAINT (so a correct edge was
+// silently deleted). Same varied/held-constant defect as the round-1 findings,
+// one level down.
+//
+// NONE OF THESE FORMS OCCURS IN OUR CORPUS. That is a corpus-relative zero, not
+// a bound on the language, and it is not a reason to leave any of them wrong.
+//
+// The names are read from the field metadata #6912 actually consumes, so this
+// grades the whole path rather than the helper in isolation. Every row is legal
+// C++ and the parameter is deliberately named `Order`, the name of a real
+// declaration in the same file, so a miss is a wrong binding and an over-collect
+// is a deleted edge.
+func TestCppTemplateParams_EnumeratesTheParameterFormSpace(t *testing.T) {
+	cases := []struct {
+		label string
+		param string
+		want  []string
+	}{
+		{"type parameter, typename", "typename Order", []string{"Order"}},
+		{"type parameter, class", "class Order", []string{"Order"}},
+		{"type parameter with a DEFAULT naming a real type",
+			"typename Order = Item", []string{"Order"}},
+		{"non-type parameter", "int Order", []string{"Order"}},
+		{"non-type parameter with a default", "int Order = 4", []string{"Order"}},
+		{"non-type parameter whose TYPE is a real same-file type",
+			"Item* Order", []string{"Order"}},
+		{"constrained type parameter (the CONSTRAINT is a real name)",
+			"Cc Order", []string{"Order"}},
+		{"template-template parameter",
+			"template<typename> class Order", []string{"Order"}},
+		{"template-template parameter with a default",
+			"template<typename> class Order = Tmpl", []string{"Order"}},
+		{"type parameter pack", "typename... Order", []string{"Order"}},
+		{"non-type parameter pack", "int... Order", []string{"Order"}},
+		{"TWO parameters, both with defaults naming real types",
+			"typename Order = Item, typename Second = Money", []string{"Order", "Second"}},
+		{"unnamed parameter binds nothing", "typename", nil},
+		// The row that grades the NESTED-LIST SKIP on its own. With the outer
+		// template-template parameter left unnamed, the only name anywhere in
+		// the declaration is the INNER list's — which is not in scope for the
+		// outer template's body. A walk that did not skip the inner list would
+		// bind `Order` here and refuse a correct edge to `struct Order`.
+		// Not named by the review; found by enumerating the forms.
+		{"unnamed template-template parameter with a NAMED inner parameter",
+			"template<typename Order> class", nil},
+	}
+	for _, c := range cases {
+		src := `
+struct Order { int id; };
+struct Item { int n; };
+struct Money { int cents; };
+template<class Z> concept Cc = true;
+template<typename Y> struct Tmpl { int y; };
+
+template<` + c.param + `> struct Outer6 {
+  struct Inner6 { int x; };
+};
+`
+		recs := cppFTExtract(t, src, "forms.cpp")
+		var got []string
+		found := false
+		for i := range recs {
+			if recs[i].Name != "Inner6.x" {
+				continue
+			}
+			found = true
+			if recs[i].Metadata != nil {
+				got, _ = recs[i].Metadata["template_params"].([]string)
+			}
+		}
+		if !found {
+			t.Errorf("%s: no Inner6.x field entity — the row is vacuous", c.label)
+			continue
+		}
+		cppFTEqual(t, got, c.want, "template<"+c.param+"> binds")
+	}
+}
+
+// TestCppFieldTypeRefs_TemplateParameterFormsAreAllRefused is the EDGE-level
+// half of the enumeration above: for every form whose parameter name can appear
+// in a member's type TEXT, the parameter must produce no edge while a real
+// same-file type in the same class still does.
+//
+// The member expressions differ per form because C++ requires it — a type
+// parameter can be written bare, a non-type parameter only inside a template
+// argument, a template-template parameter only when applied — and getting that
+// wrong is how a row ends up grading nothing. Each is legal as written.
+func TestCppFieldTypeRefs_TemplateParameterFormsAreAllRefused(t *testing.T) {
+	cases := []struct {
+		label  string
+		param  string
+		member string
+	}{
+		{"type parameter", "typename Order", "Order v;"},
+		{"type parameter with a default", "typename Order = Item", "Order v;"},
+		{"constrained type parameter", "Cc Order", "Order v;"},
+		{"non-type parameter", "int Order", "std::array<int, Order> v;"},
+		{"non-type parameter with a default", "int Order = 4", "std::array<int, Order> v;"},
+		{"template-template parameter", "template<typename> class Order", "Order<int> v;"},
+		{"template-template parameter with a default",
+			"template<typename> class Order = Tmpl", "Order<int> v;"},
+		{"type parameter pack", "typename... Order", "std::tuple<Order...> v;"},
+		{"non-type parameter pack", "int... Order",
+			"std::array<int, sizeof...(Order)> v;"},
+	}
+	for _, c := range cases {
+		src := `
+#include <array>
+#include <tuple>
+
+struct Order { int id; };
+struct Item { int n; };
+template<class Z> concept Cc = true;
+template<typename Y> struct Tmpl { int y; };
+
+template<` + c.param + `> struct Outer7 {
+  struct Inner7 {
+    ` + c.member + `
+    Item real;
+  };
+};
+`
+		recs := cppFTExtract(t, src, "forms2.cpp")
+		if _, ok := cppFTFieldType(recs, "Inner7.v"); !ok {
+			t.Errorf("%s: no Inner7.v field entity — the row is vacuous", c.label)
+			continue
+		}
+		cppFTEqual(t, cppFTTargetsOf(recs, "Inner7.v"), nil,
+			c.label+": a member whose type names the PARAMETER")
+		cppFTEqual(t, cppFTTargetsOf(recs, "Inner7.real"), []string{"Item"},
+			c.label+": the real-type control in the same nested class")
+	}
 }
 
 // TestCppFieldTypeRefs_NestedTemplateParametersAreAllRefused grades the reason
