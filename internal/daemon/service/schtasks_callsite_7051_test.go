@@ -12,7 +12,7 @@ import (
 
 func TestTaskXMLCarriesWhateverIntervalItIsGiven(t *testing.T) {
 	// TestTaskXMLRestartIntervalComesFromTheConstant compares the rendered
-	// value against restartOnFailureIntervalXML(), which today is "PT1M" —
+	// value against intervalXML(restartOnFailureInterval), which today is "PT1M" —
 	// exactly what the template used to hardcode. So on its own it survives a
 	// revert to the literal. Varying the interval while holding every other
 	// field constant is what actually distinguishes "injected" from "hardcoded".
@@ -64,9 +64,32 @@ func TestLoadNoLongerDiscardsTheRunExitCode(t *testing.T) {
 	if !strings.Contains(body, "m.runTaskNow(") {
 		t.Fatalf("Load does not go through runTaskNow, so the /run retry is not on this path\n%s", body)
 	}
-	if !strings.Contains(body, "noteLoadWarning(") {
+	if !strings.Contains(body, "m.note(") {
 		t.Fatalf("Load swallows the /run failure without recording it, and the reporter's "+
 			"complaint is precisely that this failure is written down nowhere (#7051)\n%s", body)
+	}
+	if !strings.Contains(body, "m.reset()") {
+		t.Fatalf("Load does not clear the previous load's warnings first\n%s", body)
+	}
+}
+
+func TestGenerateTaskXMLInjectsTheConstantsRatherThanLiterals(t *testing.T) {
+	// The INJECTION SITE, which is a different seam from the template.
+	// TestTaskXMLCarriesWhateverIntervalItIsGiven proves renderTaskXML honours
+	// the parameter it is handed; it says nothing about the caller that fills
+	// that parameter, and putting `RestartInterval: "PT1M", RestartCount: 3`
+	// back at this call site left the entire suite green (#7058 review, R3).
+	// Grading a template is not grading its caller.
+	body := funcBodySource6325svc(t, "schtasks_windows.go", "generateTaskXML")
+	if !strings.Contains(body, "RestartInterval: intervalXML(restartOnFailureInterval)") {
+		t.Errorf("generateTaskXML does not inject the interval from restartOnFailureInterval, "+
+			"so the XML can drift away from the budget derived from that same constant (#7051)\n%s", body)
+	}
+	if !strings.Contains(body, "RestartCount:    restartOnFailureCount") {
+		t.Errorf("generateTaskXML does not inject restartOnFailureCount\n%s", body)
+	}
+	if strings.Contains(body, `"PT1M"`) {
+		t.Errorf("generateTaskXML has a hardcoded PT1M back in it\n%s", body)
 	}
 }
 
@@ -94,5 +117,31 @@ func TestWindowsEntryPointsUseTheDerivedReadinessBudget(t *testing.T) {
 			t.Errorf("%s still passes the platform-neutral defaultReadiness, which is shorter than "+
 				"the RestartOnFailure interval meant to cover a failed launch (#7051)\n%s", fn, body)
 		}
+	}
+}
+
+func TestSchtasksReadinessIsAssignedFromTheDerivation(t *testing.T) {
+	// The last seam, and it cannot be closed by any value assertion.
+	//
+	// TestDerivedReadinessIsAFunctionOfItsInputs proves derivedReadiness
+	// computes its answer from its arguments, and
+	// TestSchtasksReadinessGoesThroughTheDerivation proves the production value
+	// EQUALS the derivation applied to the production inputs. Neither notices a
+	// literal `readinessConfig{budget: 120 * time.Second, …}` at the assignment,
+	// because that literal IS the correct value — re-scored ALIVE after the
+	// first two were added (#7058 review, R1). Comparing a value against the
+	// function that should have produced it cannot distinguish "was produced by
+	// it" from "happens to match it"; only the assignment itself can say that.
+	//
+	// So this pins the assignment, the same instrument that closes R3 at the
+	// XML injection site, and with the same honest limit: it proves the call is
+	// written, and the two tests above prove the call does the right thing.
+	const want = "var schtasksReadiness = derivedReadiness(restartOnFailureInterval, defaultReadiness)"
+	src := readSourceFile6325(t, "schtasks_policy.go")
+	if !strings.Contains(src, want) {
+		t.Fatalf("schtasksReadiness is not assigned as %q.\n"+
+			"A literal there is indistinguishable by value (restartOnFailureInterval and "+
+			"defaultReadiness.budget are both 60s, so 120*time.Second matches exactly), which "+
+			"is how the two constants desynchronised in the first place (#7051)", want)
 	}
 }

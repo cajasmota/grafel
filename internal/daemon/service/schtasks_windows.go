@@ -118,7 +118,7 @@ func generateTaskXML(opts Options, wrapperPath string) ([]byte, error) {
 		// Injected, never written as a literal in the template: the readiness
 		// budget schtasksReadiness is derived from this same constant, and the
 		// two silently desynchronising is the whole of #7051.
-		RestartInterval: restartOnFailureIntervalXML(),
+		RestartInterval: intervalXML(restartOnFailureInterval),
 		RestartCount:    restartOnFailureCount,
 	})
 }
@@ -130,9 +130,12 @@ type schtasksManager struct {
 	xmlPath     string
 	wrapperPath string
 
-	// loadWarnings collects the non-fatal failures Load() swallowed — today,
-	// a `schtasks /run` that never succeeded. See LoadWarnings (#7051).
-	loadWarnings []string
+	// loadWarningLog collects the non-fatal failures Load() swallowed — today,
+	// a `schtasks /run` that never succeeded. Embedded rather than inlined as
+	// a []string so the recording behaviour is executed by an untagged test
+	// (#7051; #7058 review R5). It supplies LoadWarnings, satisfying
+	// loadDiagnostics.
+	loadWarningLog
 }
 
 func newServiceManager(opts Options) (ServiceManager, error) {
@@ -220,7 +223,7 @@ func (m *schtasksManager) Unload() error {
 
 func (m *schtasksManager) Load() error {
 	// Each Load reports on its own attempt, not on a previous one's.
-	m.loadWarnings = nil
+	m.reset()
 	// /f forces overwrite of any existing task (callers Unload first, but /f
 	// keeps Load itself idempotent against a leftover registration).
 	if out, err := schtasksCmd("/create", "/tn", taskName, "/xml", m.xmlPath, "/f").CombinedOutput(); err != nil {
@@ -242,7 +245,7 @@ func (m *schtasksManager) Load() error {
 	// longer SILENT — the failure is recorded on the manager and surfaced by
 	// ensureLoaded through LoadWarnings.
 	if err := m.runTaskNow(context.Background()); err != nil {
-		m.noteLoadWarning(err.Error())
+		m.note(err.Error())
 	}
 	return nil
 }
@@ -261,17 +264,6 @@ func (m *schtasksManager) runTaskNow(ctx context.Context) error {
 		return fmt.Errorf("schtasks /run attempt %d: %w", n, err)
 	})
 }
-
-// noteLoadWarning records a non-fatal failure from Load for LoadWarnings.
-func (m *schtasksManager) noteLoadWarning(msg string) {
-	m.loadWarnings = append(m.loadWarnings, msg)
-}
-
-// LoadWarnings implements the loadDiagnostics optional interface (see
-// manager.go): it reports the sub-step failures Load deliberately swallowed,
-// so install/start can say what went wrong instead of only that the socket
-// never appeared.
-func (m *schtasksManager) LoadWarnings() []string { return m.loadWarnings }
 
 func (m *schtasksManager) RemoveArtifacts() error {
 	if err := os.Remove(m.xmlPath); err != nil && !os.IsNotExist(err) {

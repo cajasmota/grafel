@@ -39,12 +39,18 @@ const restartOnFailureInterval = time.Minute
 // restartOnFailureCount is the <Count> inside <RestartOnFailure>.
 const restartOnFailureCount = 3
 
-// restartOnFailureIntervalXML renders restartOnFailureInterval as the ISO-8601
-// duration the task XML schema requires. Whole minutes only — the schema's
-// minimum is a minute, so sub-minute precision would be unrepresentable
-// anyway, and rounding down could silently produce PT0S.
-func restartOnFailureIntervalXML() string {
-	minutes := int(restartOnFailureInterval / time.Minute)
+// intervalXML renders a duration as the ISO-8601 duration the task XML schema
+// requires. Whole minutes only — the schema's minimum is a minute, so
+// sub-minute precision would be unrepresentable anyway, and rounding down could
+// silently produce PT0S.
+//
+// It takes the duration as a PARAMETER rather than reading
+// restartOnFailureInterval directly: a zero-argument renderer can only be
+// asserted against the one string a correct implementation happens to produce
+// today ("PT1M"), which a body of `return "PT1M"` satisfies just as well. With
+// an input it can be driven with a sentinel no literal coincides with.
+func intervalXML(d time.Duration) string {
+	minutes := int(d / time.Minute)
 	if minutes < 1 {
 		minutes = 1
 	}
@@ -66,9 +72,22 @@ func restartOnFailureIntervalXML() string {
 // land inside the window we are waiting on) PLUS the platform-neutral
 // cold-start allowance from #4458 (because once that retry finally launches
 // the daemon, the daemon still needs its usual time to open a large store).
-var schtasksReadiness = readinessConfig{
-	budget:   restartOnFailureInterval + defaultReadiness.budget,
-	interval: defaultReadiness.interval,
+var schtasksReadiness = derivedReadiness(restartOnFailureInterval, defaultReadiness)
+
+// derivedReadiness computes that budget from its two inputs.
+//
+// It exists to be gradeable. As a bare expression over two package constants
+// the derivation could not be distinguished from a literal, because
+// restartOnFailureInterval and defaultReadiness.budget are both 60s today and
+// every plausible hardcoding (120 * time.Second, 2 * defaultReadiness.budget)
+// produces the identical value. As a function it can be driven with an
+// interval and a base that are equal neither to each other nor to 60s, which no
+// literal can coincide with. See TestDerivedReadinessIsAFunctionOfItsInputs.
+func derivedReadiness(interval time.Duration, base readinessConfig) readinessConfig {
+	return readinessConfig{
+		budget:   interval + base.budget,
+		interval: base.interval,
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +192,42 @@ func retryRun(ctx context.Context, policy runAttemptPolicy, sleep func(time.Dura
 	}
 	return fmt.Errorf("after %d attempt(s): %w", p.attempts, lastErr)
 }
+
+// ---------------------------------------------------------------------------
+// Recording the failures Load() swallows.
+// ---------------------------------------------------------------------------
+
+// maxLoadWarningLen caps a single recorded warning. A /run warning carries the
+// full retryRun error, which wraps up to maxRunAttempts untruncated schtasks
+// CombinedOutput blobs, and that string ends up inside an error a caller may
+// print. The text was never unbounded, but it was unbudgeted (#7058 review).
+const maxLoadWarningLen = 512
+
+// loadWarningLog records the non-fatal failures a backend's Load() swallowed.
+//
+// It is a separate, untagged type rather than three methods on the Windows
+// manager for one reason: a source-level pin proves only that Load CONTAINS a
+// call to a recorder, not that the recorder records anything — gutting the
+// method body left the whole suite green (#7058 review, R5). Here the
+// recording itself is executed by a test on every platform.
+type loadWarningLog struct {
+	warnings []string
+}
+
+// note records one warning, truncating an over-long one.
+func (l *loadWarningLog) note(msg string) {
+	if len(msg) > maxLoadWarningLen {
+		msg = msg[:maxLoadWarningLen] + "… (truncated)"
+	}
+	l.warnings = append(l.warnings, msg)
+}
+
+// reset drops warnings from a previous Load, so each load reports on its own
+// attempt rather than on an earlier one's.
+func (l *loadWarningLog) reset() { l.warnings = nil }
+
+// LoadWarnings implements the loadDiagnostics optional interface (manager.go).
+func (l *loadWarningLog) LoadWarnings() []string { return l.warnings }
 
 // ---------------------------------------------------------------------------
 // Task XML.

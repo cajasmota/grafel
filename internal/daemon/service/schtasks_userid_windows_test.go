@@ -21,7 +21,7 @@ func renderTaskXMLWithSID(t *testing.T, sid string) string {
 		UserSID:         sid,
 		WrapperHost:     `C:\Windows\System32\wscript.exe`,
 		WrapperPath:     `C:\Users\testuser\wrapper.vbs`,
-		RestartInterval: restartOnFailureIntervalXML(),
+		RestartInterval: intervalXML(restartOnFailureInterval),
 		RestartCount:    restartOnFailureCount,
 	})
 	if err != nil {

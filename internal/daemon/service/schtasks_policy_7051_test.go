@@ -41,18 +41,49 @@ func TestSchtasksReadinessOutlastsRestartOnFailure(t *testing.T) {
 	}
 }
 
-func TestSchtasksReadinessIsDerivedNotChosen(t *testing.T) {
-	// A comment is not a mechanism. If the budget is a literal, a future edit
-	// to restartOnFailureInterval silently desynchronises them again — which is
-	// precisely how this bug was born.
-	want := restartOnFailureInterval + defaultReadiness.budget
-	if schtasksReadiness.budget != want {
-		t.Fatalf("schtasksReadiness.budget = %s, want %s (restartOnFailureInterval + cold-start allowance)",
-			schtasksReadiness.budget, want)
+func TestDerivedReadinessIsAFunctionOfItsInputs(t *testing.T) {
+	// THE SENTINEL TEST. A comment is not a mechanism, and neither is a
+	// value-equality assertion over two constants that happen to be equal.
+	//
+	// restartOnFailureInterval and defaultReadiness.budget are BOTH 60s today,
+	// so comparing schtasksReadiness.budget against their sum cannot tell a
+	// derivation from a literal: `120 * time.Second`,
+	// `2 * defaultReadiness.budget` and `defaultReadiness.budget * 2` all
+	// satisfy it. That is the same tautology
+	// TestTaskXMLCarriesWhateverIntervalItIsGiven exists to escape, and it was
+	// sitting on this PR's headline claim (#7058 review, R1).
+	//
+	// The cure is to drive the derivation with inputs that are equal neither to
+	// each other nor to any constant in the package, so no literal can
+	// coincide with the answer. 7m and 13s are not 60s, not each other, and
+	// 7m13s is not a value anything else here produces.
+	base := readinessConfig{budget: 13 * time.Second, interval: 41 * time.Millisecond}
+	got := derivedReadiness(7*time.Minute, base)
+	if want := 7*time.Minute + 13*time.Second; got.budget != want {
+		t.Fatalf("derivedReadiness(7m, 13s).budget = %s, want %s — the budget is not "+
+			"actually computed from the interval it is meant to outlast (#7051)", got.budget, want)
 	}
-	if schtasksReadiness.interval != defaultReadiness.interval {
-		t.Fatalf("poll interval = %s, want the shared default %s",
-			schtasksReadiness.interval, defaultReadiness.interval)
+	if got.interval != base.interval {
+		t.Fatalf("poll interval = %s, want the base's %s", got.interval, base.interval)
+	}
+
+	// A second, unrelated pair: one point can be hit by a coincidence, two
+	// cannot be hit by any constant.
+	base2 := readinessConfig{budget: 2 * time.Second, interval: time.Millisecond}
+	if want := 3*time.Minute + 2*time.Second; derivedReadiness(3*time.Minute, base2).budget != want {
+		t.Fatalf("derivedReadiness(3m, 2s).budget = %s, want %s",
+			derivedReadiness(3*time.Minute, base2).budget, want)
+	}
+}
+
+func TestSchtasksReadinessGoesThroughTheDerivation(t *testing.T) {
+	// And the production value is the derivation applied to the production
+	// inputs. Together with the sentinel test above, a literal cannot survive:
+	// this pins WHICH inputs, that pins WHAT the function does with them.
+	want := derivedReadiness(restartOnFailureInterval, defaultReadiness)
+	if schtasksReadiness != want {
+		t.Fatalf("schtasksReadiness = %+v, want derivedReadiness(restartOnFailureInterval, defaultReadiness) = %+v",
+			schtasksReadiness, want)
 	}
 }
 
@@ -74,7 +105,7 @@ func renderTestTaskXML(t *testing.T) parsedTaskSettings {
 		TaskName:        "com.grafel.daemon",
 		WrapperHost:     `C:\Windows\System32\wscript.exe`,
 		WrapperPath:     `C:\Users\u\AppData\Local\grafel\tasks\com.grafel.daemon.vbs`,
-		RestartInterval: restartOnFailureIntervalXML(),
+		RestartInterval: intervalXML(restartOnFailureInterval),
 		RestartCount:    restartOnFailureCount,
 	})
 	if err != nil {
@@ -95,7 +126,7 @@ func renderTestTaskXML(t *testing.T) parsedTaskSettings {
 
 func TestTaskXMLRestartIntervalComesFromTheConstant(t *testing.T) {
 	got := renderTestTaskXML(t)
-	if want := restartOnFailureIntervalXML(); got.RestartOnFailure.Interval != want {
+	if want := intervalXML(restartOnFailureInterval); got.RestartOnFailure.Interval != want {
 		t.Fatalf("<Interval> = %q, want %q — the XML must not carry its own literal, "+
 			"or it can drift away from the budget derived from it (#7051)",
 			got.RestartOnFailure.Interval, want)
@@ -113,12 +144,27 @@ func TestRestartOnFailureIntervalXMLIsValidISO8601(t *testing.T) {
 		t.Fatalf("restartOnFailureInterval = %s, below Task Scheduler's documented 1-minute minimum",
 			restartOnFailureInterval)
 	}
-	got := restartOnFailureIntervalXML()
-	if !strings.HasPrefix(got, "PT") {
-		t.Fatalf("restartOnFailureIntervalXML() = %q, want an ISO-8601 PTnM duration", got)
+	// Graded as a FUNCTION OF ITS INPUT, not against "PT1M". Asserting only
+	// that the production call returns "PT1M" pins the output to the literal a
+	// correct implementation happens to produce today, so a body of
+	// `return "PT1M"` — one that ignores restartOnFailureInterval entirely —
+	// passes it (#7058 review, R2).
+	for _, tc := range []struct {
+		in   time.Duration
+		want string
+	}{
+		{7 * time.Minute, "PT7M"},   // sentinel: no literal in the package
+		{23 * time.Minute, "PT23M"}, // two digits
+		{time.Minute, "PT1M"},       // the production value
+		{30 * time.Second, "PT1M"},  // floor: never round down to PT0S
+		{0, "PT1M"},                 // floor
+	} {
+		if got := intervalXML(tc.in); got != tc.want {
+			t.Errorf("intervalXML(%s) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
-	if got != "PT1M" {
-		t.Fatalf("restartOnFailureIntervalXML() = %q, want %q for a %s interval", got, "PT1M", restartOnFailureInterval)
+	if got := intervalXML(restartOnFailureInterval); !strings.HasPrefix(got, "PT") {
+		t.Fatalf("intervalXML(restartOnFailureInterval) = %q, want an ISO-8601 PTnM duration", got)
 	}
 }
 
@@ -328,5 +374,78 @@ func TestEnsureLoadedIsSilentWhenLoadHadNothingToReport(t *testing.T) {
 		if strings.Contains(line, "warning") {
 			t.Fatalf("emitted a warning line %q for a clean load", line)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The recorder itself, executed rather than text-matched (#7058 review, R5).
+// ---------------------------------------------------------------------------
+
+func TestLoadWarningLogActuallyRecords(t *testing.T) {
+	// M11 asserts that Load's SOURCE contains a call to the recorder. That
+	// survives emptying the recorder's body — the call stays written, records
+	// nothing, and the whole observability deliverable is defeated silently.
+	// This runs the recorder.
+	var l loadWarningLog
+	if got := l.LoadWarnings(); len(got) != 0 {
+		t.Fatalf("a fresh log reports %v, want nothing", got)
+	}
+	l.note("schtasks /run failed: access is denied")
+	l.note("second")
+	got := l.LoadWarnings()
+	if len(got) != 2 {
+		t.Fatalf("recorded %d warnings, want 2 — note() is not recording anything", len(got))
+	}
+	if got[0] != "schtasks /run failed: access is denied" || got[1] != "second" {
+		t.Fatalf("recorded %q, want the messages as given, in order", got)
+	}
+}
+
+func TestLoadWarningLogResetDropsThePreviousLoad(t *testing.T) {
+	var l loadWarningLog
+	l.note("from an earlier load")
+	l.reset()
+	if got := l.LoadWarnings(); len(got) != 0 {
+		t.Fatalf("after reset the log still reports %v — a later load would inherit "+
+			"an earlier one's failures", got)
+	}
+	l.note("from this load")
+	if got := l.LoadWarnings(); len(got) != 1 || got[0] != "from this load" {
+		t.Fatalf("after reset the log recorded %q, want exactly the new warning", got)
+	}
+}
+
+func TestLoadWarningLogCapsAnOverlongWarning(t *testing.T) {
+	// A /run warning carries up to maxRunAttempts untruncated schtasks
+	// CombinedOutput blobs and ends up inside an error a caller may print.
+	var l loadWarningLog
+	l.note(strings.Repeat("x", maxLoadWarningLen*3))
+	got := l.LoadWarnings()[0]
+	if len(got) > maxLoadWarningLen+len("… (truncated)") {
+		t.Fatalf("recorded a %d-byte warning, cap is %d", len(got), maxLoadWarningLen)
+	}
+	if !strings.HasSuffix(got, "(truncated)") {
+		t.Fatalf("a truncated warning does not say so: %q", got)
+	}
+	// And a warning inside the cap is passed through untouched — otherwise the
+	// assertion above is satisfied by a recorder that mangles everything.
+	short := "schtasks /run attempt 1: exit status 1"
+	l.note(short)
+	if got := l.LoadWarnings()[1]; got != short {
+		t.Fatalf("a short warning was altered: %q, want %q", got, short)
+	}
+}
+
+func TestEnsureLoadedDoesNotDecorateACleanNotReadyError(t *testing.T) {
+	// R7: `if len(warnings) > 0` made permissive appends an empty parenthesis
+	// to every "socket not ready" error on every platform.
+	f := &fakeManager{neverReady: true}
+	_, err := ensureLoaded(context.Background(), f,
+		readinessConfig{budget: 20 * time.Millisecond, interval: 5 * time.Millisecond}, nil)
+	if err == nil {
+		t.Fatal("expected a not-ready failure")
+	}
+	if strings.Contains(err.Error(), "()") {
+		t.Fatalf("a load with no warnings still decorated its error: %q", err)
 	}
 }
