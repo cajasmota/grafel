@@ -116,6 +116,12 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// gate classifies them ExternalKnown directly. In-tree imports are
 	// untouched — the existing ResolveDottedImportTarget path binds them
 	// via source_module / imported_name properties.
+	// #6912 — turn each field's captured declared type into a REFERENCES edge.
+	// Runs LAST of the entity-producing passes so the in-file target index and
+	// the ambiguity count see every record this extractor will emit, including
+	// the value-sets and the Spring stereotype twins that are same-name rivals.
+	attachKotlinFieldTypeRefs(entities, file.Path)
+
 	resolveImportToIDs(entities)
 
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
@@ -219,6 +225,9 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		}
 		classIdx := len(*out)
 		*out = append(*out, rec)
+		// #6912 — the type parameters this declaration introduces, so a field
+		// typed `T` never binds to a same-file `class T`.
+		classTypeParams := kotlinTypeParameterNames(node, file.Content)
 		// emit Spring stereotype service entity alongside the class.
 		if svc, ok := buildSpringService(node, file, rec.Name); ok {
 			*out = append(*out, svc)
@@ -227,7 +236,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		// val/var parameters (data class pattern: `data class Foo(val x: T)`).
 		// These are structural properties, not just formal parameters, so they
 		// must appear as field entities with CONTAINS edges to the class.
-		emitPrimaryConstructorFields(node, file, rec.Name, classIdx, out)
+		emitPrimaryConstructorFields(node, file, rec.Name, classIdx, out, classTypeParams)
 		// #4687 — Kotest spec classes carry their example logic in an anonymous
 		// constructor lambda (`class FooSpec : StringSpec({ … })`), not in
 		// `@Test fun` methods, so emit a test_scope owner for the receiver-typed
@@ -260,7 +269,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 					if vs, ok := emitMapValueSet(ch, file); ok {
 						*out = append(*out, vs)
 					}
-					if propRec, ok := buildProperty(ch, file, rec.Name); ok {
+					if propRec, ok := buildProperty(ch, file, rec.Name, classTypeParams); ok {
 						*out = append(*out, propRec)
 					}
 					continue
@@ -318,6 +327,9 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		}
 		classIdx := len(*out)
 		*out = append(*out, rec)
+		// An object declaration takes no type parameters (Kotlin forbids it),
+		// so the #6912 shadow set is empty here.
+		var classTypeParams map[string]bool
 		body := findClassBody(node)
 		if body != nil {
 			before := len(*out)
@@ -330,7 +342,7 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 					if vs, ok := emitMapValueSet(ch, file); ok {
 						*out = append(*out, vs)
 					}
-					if propRec, ok := buildProperty(ch, file, rec.Name); ok {
+					if propRec, ok := buildProperty(ch, file, rec.Name, classTypeParams); ok {
 						*out = append(*out, propRec)
 					}
 					continue
@@ -915,7 +927,9 @@ func findSpringStereotype(header string) string {
 // the CONTAINS stub to the field entity.
 //
 // Issue #690 — closes the Kotlin analog of the Python field orphan gap (#689).
-func buildProperty(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+// typeParams carries the enclosing declaration's type-parameter names so
+// #6912's capture never mistakes `T` for a same-file `class T`; nil is fine.
+func buildProperty(node ts.Node, file extractor.FileInput, parentType string, typeParams map[string]bool) (types.EntityRecord, bool) {
 	// property_declaration structure:
 	//   binding_pattern_kind (val|var)
 	//   variable_declaration
@@ -923,6 +937,12 @@ func buildProperty(node ts.Node, file extractor.FileInput, parentType string) (t
 	//     ":" type?
 	//   ["=" initializer]
 	name := ""
+	// #6912 — the declared type, captured from the SAME variable_declaration
+	// the name comes from. Scoping it here rather than to the whole
+	// property_declaration is what excludes an extension property's RECEIVER
+	// (`val Recv.p: Order`), which is a SIBLING of this node; see
+	// field_type_refs.go.
+	var typeCands []string
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() != "variable_declaration" {
@@ -936,6 +956,7 @@ func buildProperty(node ts.Node, file extractor.FileInput, parentType string) (t
 				break
 			}
 		}
+		typeCands = kotlinDeclaredTypeCandidates(ch, file.Content, typeParams)
 		break
 	}
 	if name == "" {
@@ -945,7 +966,7 @@ func buildProperty(node ts.Node, file extractor.FileInput, parentType string) (t
 	if parentType != "" {
 		emittedName = parentType + "." + name
 	}
-	return types.EntityRecord{
+	rec := types.EntityRecord{
 		Name:       emittedName,
 		Kind:       "SCOPE.Schema",
 		Subtype:    "field",
@@ -953,7 +974,9 @@ func buildProperty(node ts.Node, file extractor.FileInput, parentType string) (t
 		Language:   "kotlin",
 		StartLine:  int(node.StartPoint().Row) + 1,
 		EndLine:    int(node.EndPoint().Row) + 1,
-	}, true
+	}
+	stashKotlinFieldTypeRefs(&rec, typeCands, parentType) // #6912
+	return rec, true
 }
 
 // emitPrimaryConstructorFields scans a class_declaration's primary_constructor
@@ -976,6 +999,7 @@ func emitPrimaryConstructorFields(
 	className string,
 	classIdx int,
 	out *[]types.EntityRecord,
+	typeParams map[string]bool,
 ) {
 	for i := 0; i < int(classNode.ChildCount()); i++ {
 		ch := classNode.Child(i)
@@ -1015,6 +1039,9 @@ func emitPrimaryConstructorFields(
 				StartLine:  int(param.StartPoint().Row) + 1,
 				EndLine:    int(param.EndPoint().Row) + 1,
 			}
+			// #6912 — the declared type sits between ":" and any "=" default.
+			stashKotlinFieldTypeRefs(&rec,
+				kotlinDeclaredTypeCandidates(param, file.Content, typeParams), className)
 			fieldIdx := len(*out)
 			*out = append(*out, rec)
 			_ = fieldIdx
