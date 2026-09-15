@@ -152,6 +152,11 @@ func (e *CppExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 	// SCOPE.Schema/field members emitted in the structural walk.
 	records = attachCppFieldMembership(records, file.Path, lang)
 
+	// Issue #6912 (arm I) — field→declared-type REFERENCES edges, same-file
+	// targets only. Runs on the assembled record slice so every in-file type
+	// definition is visible. See field_type_refs.go for the target rules.
+	records = attachCppFieldTypeRefs(records, file.Path, lang)
+
 	// Issue #3628 — error-flow: scan throw / typed-catch sites and emit
 	// THROWS / CATCHES edges to a shared SCOPE.ExceptionType convergence node
 	// (records[0] is the file entity required by EmitExceptionEdges).
@@ -847,6 +852,16 @@ func extractClassLike(n ts.Node, src []byte, path, lang, subtype string) (types.
 	// (class/struct/union) entity carries its field schema.
 	body := findClassBody(n)
 	if body != nil {
+		// #6912 — a class/struct/union specifier WITH a body DEFINES the type
+		// here; one without a body (`class Order;`, `struct Item i;`,
+		// `extern struct Foo x;`) merely names a type defined elsewhere, and
+		// extractClassLike emits a Component for both. The field→declared-type
+		// pass (field_type_refs.go) refuses non-definitions as targets so a
+		// field does not bind to a forward declaration that has the right name,
+		// the right file, an admissible Kind and an admissible Subtype — the
+		// shape that cost arm G half its edges (#7047/#7056). Metadata is not
+		// hashed by the #6118 semantic digest, so this marker moves no baseline.
+		meta["definition"] = true
 		fields, isAbstract := cppClassMembers(body, src)
 		if len(fields) > 0 {
 			meta["fields"] = fields
