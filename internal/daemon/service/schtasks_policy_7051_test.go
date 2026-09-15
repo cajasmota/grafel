@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // This file is deliberately free of a //go:build tag, for the same reason
@@ -415,24 +416,151 @@ func TestLoadWarningLogResetDropsThePreviousLoad(t *testing.T) {
 	}
 }
 
-func TestLoadWarningLogCapsAnOverlongWarning(t *testing.T) {
-	// A /run warning carries up to maxRunAttempts untruncated schtasks
-	// CombinedOutput blobs and ends up inside an error a caller may print.
-	var l loadWarningLog
-	l.note(strings.Repeat("x", maxLoadWarningLen*3))
-	got := l.LoadWarnings()[0]
-	if len(got) > maxLoadWarningLen+len("… (truncated)") {
-		t.Fatalf("recorded a %d-byte warning, cap is %d", len(got), maxLoadWarningLen)
+func TestLoadWarningLogCapIsActuallyABudget(t *testing.T) {
+	// CN-2. The previous version of this test scaled BOTH its input
+	// (maxLoadWarningLen*3) and its ceiling (maxLoadWarningLen+marker) with the
+	// constant, so no value of the cap could fail it — raising it to 1<<30 left
+	// the suite green. That is the R1 tautology again: a constant compared
+	// against itself proves nothing about its value.
+	//
+	// So the cap is pinned against LITERALS. 4096 is not a second opinion about
+	// the right value; it is the outer bound past which "capped" stops meaning
+	// anything for a string appended to a user-facing error.
+	if maxLoadWarningLen < 64 {
+		t.Fatalf("maxLoadWarningLen = %d, too small to carry a usable schtasks message", maxLoadWarningLen)
 	}
-	if !strings.HasSuffix(got, "(truncated)") {
+	if maxLoadWarningLen > 4096 {
+		t.Fatalf("maxLoadWarningLen = %d: a warning that large is not budgeted, and up to "+
+			"maxRunAttempts of them are appended to the \"socket not ready\" error a stuck "+
+			"user is trying to read (#7058 review, CN-2)", maxLoadWarningLen)
+	}
+}
+
+func TestLoadWarningLogTruncatesAnOverlongWarning(t *testing.T) {
+	// The direction the cap exists for, asserted against fixed literals so it
+	// stays meaningful however the constant moves.
+	const oversized = 100_000
+	const ceiling = 4096 + len(truncationMarker)
+	// The head and the tail are DISTINGUISHABLE. A homogeneous filler cannot
+	// tell "kept the front" from "kept the back" — every assertion over it is
+	// satisfied by either, and a tail-keeping mutant survived exactly that
+	// (#7058 round 4, CN-2f). The front is the half that names the failure.
+	const headMark = "SCHTASKS-RUN-FAILED-HEAD:"
+	const tailMark = ":TAIL-OF-A-VERY-LONG-DUMP"
+
+	var l loadWarningLog
+	l.note(headMark + strings.Repeat("x", oversized) + tailMark)
+	got := l.LoadWarnings()[0]
+
+	if len(got) >= oversized {
+		t.Fatalf("a %d-byte warning was recorded whole (%d bytes) — nothing truncated it",
+			oversized, len(got))
+	}
+	if len(got) > ceiling {
+		t.Fatalf("recorded %d bytes, which is past the %d-byte ceiling this cap exists to hold",
+			len(got), ceiling)
+	}
+	// Exact, for an all-ASCII input: cut at the cap, plus the marker.
+	if want := maxLoadWarningLen + len(truncationMarker); len(got) != want {
+		t.Fatalf("recorded %d bytes, want exactly %d (cap %d + marker)", len(got), want, maxLoadWarningLen)
+	}
+	if !strings.HasSuffix(got, truncationMarker) {
 		t.Fatalf("a truncated warning does not say so: %q", got)
 	}
-	// And a warning inside the cap is passed through untouched — otherwise the
-	// assertion above is satisfied by a recorder that mangles everything.
+	if !strings.HasPrefix(got, headMark) {
+		t.Fatalf("truncation did not preserve the start of the message, which is the part that "+
+			"names the failure: %q…", got[:64])
+	}
+	if strings.Contains(got, tailMark) {
+		t.Fatalf("truncation kept the TAIL of the message instead of the head: %q", got)
+	}
+}
+
+func TestLoadWarningLogBoundsTheBackoffOnInvalidUTF8(t *testing.T) {
+	// schtasks writes to a console in the OEM codepage, so what reaches Go is
+	// not guaranteed to be valid UTF-8 at all. In a blob of raw high bytes,
+	// EVERY byte can look like a UTF-8 continuation byte, and an unbounded
+	// "walk back to a rune start" would unwind arbitrarily far — discarding
+	// good text to fix an encoding that was never UTF-8.
+	//
+	// This is the case the utf8.UTFMax-1 bound exists for, and it is the only
+	// fixture that grades it: on VALID UTF-8 the bounded and unbounded loops
+	// stop in the same place, so the rune-boundary test above cannot see the
+	// difference (#7058 round 4, RUNE-2).
+	const runOfContinuationBytes = 20
+	var l loadWarningLog
+	msg := strings.Repeat("x", maxLoadWarningLen-runOfContinuationBytes/2) +
+		strings.Repeat("\x80", runOfContinuationBytes)
+	if utf8.RuneStart(msg[maxLoadWarningLen]) {
+		t.Fatalf("fixture byte at the cap is a rune start, so it grades nothing")
+	}
+	l.note(msg)
+
+	body := strings.TrimSuffix(l.LoadWarnings()[0], truncationMarker)
+	if short := maxLoadWarningLen - len(body); short > utf8.UTFMax-1 {
+		t.Fatalf("backoff discarded %d bytes to reach a rune start; the bound is %d. "+
+			"On input that is not UTF-8 at all an unbounded walk keeps going",
+			short, utf8.UTFMax-1)
+	}
+	if len(body) > maxLoadWarningLen {
+		t.Fatalf("kept %d bytes, past the %d-byte cap", len(body), maxLoadWarningLen)
+	}
+}
+
+func TestLoadWarningLogLeavesAShortWarningAlone(t *testing.T) {
+	// The over-aggressive direction: without this, "truncates" is satisfied by
+	// a recorder that mangles everything.
+	var l loadWarningLog
 	short := "schtasks /run attempt 1: exit status 1"
 	l.note(short)
-	if got := l.LoadWarnings()[1]; got != short {
+	if got := l.LoadWarnings()[0]; got != short {
 		t.Fatalf("a short warning was altered: %q, want %q", got, short)
+	}
+	// Exactly at the cap is still short enough to pass through untouched.
+	atCap := strings.Repeat("y", maxLoadWarningLen)
+	l.note(atCap)
+	if got := l.LoadWarnings()[1]; got != atCap {
+		t.Fatalf("a warning exactly at the cap was truncated (%d bytes in, %d out)", len(atCap), len(got))
+	}
+}
+
+func TestLoadWarningLogTruncatesOnARuneBoundary(t *testing.T) {
+	// maxLoadWarningLen counts BYTES. This input is built so the byte at the
+	// cap is a CONTINUATION byte whatever the cap is: (cap-1) ASCII bytes, then
+	// three-byte runes. A plain msg[:cap] therefore ends mid-sequence.
+	//
+	// The input is synthetic and is NOT a claim about what schtasks emits. What
+	// real schtasks output looks like on a non-English Windows locale is
+	// UNRESOLVED from here; this only asserts the recorder is correct if it is
+	// ever handed multi-byte text.
+	var l loadWarningLog
+	msg := strings.Repeat("x", maxLoadWarningLen-1) + strings.Repeat("€", 100)
+	if utf8.RuneStart(msg[maxLoadWarningLen]) {
+		t.Fatalf("fixture does not straddle a rune boundary at byte %d, so it grades nothing",
+			maxLoadWarningLen)
+	}
+	l.note(msg)
+
+	got := l.LoadWarnings()[0]
+	body := strings.TrimSuffix(got, truncationMarker)
+	if body == got {
+		t.Fatalf("no truncation marker on a %d-byte input: %q", len(msg), got[len(got)-32:])
+	}
+	if !utf8.ValidString(body) {
+		t.Fatalf("truncation split a UTF-8 sequence: the kept text is not valid UTF-8 (%d bytes, "+
+			"last bytes %x)", len(body), body[len(body)-4:])
+	}
+	if strings.ContainsRune(body, utf8.RuneError) {
+		t.Fatalf("truncation left a replacement character in the kept text")
+	}
+	// It backed off, and it backed off by the minimum: never past the cap, and
+	// never more than one rune's worth short of it.
+	if len(body) > maxLoadWarningLen {
+		t.Fatalf("kept %d bytes, past the %d-byte cap", len(body), maxLoadWarningLen)
+	}
+	if len(body) < maxLoadWarningLen-(utf8.UTFMax-1) {
+		t.Fatalf("kept only %d bytes, more than %d short of the cap — the backoff is unwinding "+
+			"further than one rune", len(body), utf8.UTFMax-1)
 	}
 }
 

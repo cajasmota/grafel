@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"unicode/utf8"
 )
 
 // This file holds the Windows scheduled-task POLICY: the task XML renderer,
@@ -214,10 +215,32 @@ type loadWarningLog struct {
 	warnings []string
 }
 
+// truncationMarker is appended to a warning that was cut short, so a reader
+// knows the text is incomplete rather than that schtasks stopped there.
+const truncationMarker = "… (truncated)"
+
 // note records one warning, truncating an over-long one.
+//
+// The cut lands on a UTF-8 rune boundary. maxLoadWarningLen counts BYTES, and
+// the string being cut is schtasks' own CombinedOutput: this repo already
+// documents that schtasks speaks the user's locale (the //nolint:localematch
+// English text-match in Unload) and that a non-ASCII %USERPROFILE% is routine
+// enough to have caused #6325. A byte slice through a multi-byte sequence would
+// append the marker to a broken rune. Whether that arises in practice is
+// UNRESOLVED — it depends on whether Windows hands Go valid UTF-8 for schtasks
+// output on a non-English locale, which cannot be determined from macOS — but
+// backing off is three lines and cannot make any input worse.
+//
+// The backoff is bounded by utf8.UTFMax-1 so that input which is not valid
+// UTF-8 at all (a raw OEM-codepage blob, where continuation-shaped bytes are
+// common) loses at most three bytes rather than unwinding arbitrarily far.
 func (l *loadWarningLog) note(msg string) {
 	if len(msg) > maxLoadWarningLen {
-		msg = msg[:maxLoadWarningLen] + "… (truncated)"
+		cut := maxLoadWarningLen
+		for i := 0; i < utf8.UTFMax-1 && cut > 0 && !utf8.RuneStart(msg[cut]); i++ {
+			cut--
+		}
+		msg = msg[:cut] + truncationMarker
 	}
 	l.warnings = append(l.warnings, msg)
 }
