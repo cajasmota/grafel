@@ -355,14 +355,37 @@ import json, glob, sys, os
 tmp = sys.argv[1]
 paths = sorted(glob.glob(os.path.join(tmp, "run*.json")))
 recalls = []
+hits = []
 for p in paths:
     try:
         with open(p) as fh:
             d = json.load(fh)
         recalls.append((d.get("entity_recall", 0.0), d.get("relationship_recall", 0.0)))
+        # Both keys, read separately: they are separate fields and a veto
+        # watching only one would leave the runs of the other key truncated
+        # exactly as before. (No apostrophes in this heredoc: bash 3.2 scans
+        # command-substitution bodies for quotes even inside a <<'PY' heredoc,
+        # and one lone quote makes the whole script unparseable.)
+        hits.append(int(d.get("forbidden_hits", 0)) > 0
+                    or int(d.get("forbidden_entity_hits", 0)) > 0)
     except Exception:
         pass
 if len(recalls) < 3:
+    print("no"); sys.exit(0)
+# #7084. A forbidden hit in ANY completed run vetoes the short-circuit.
+#
+# This predicate used to look at recall alone, and the loop it controls is the
+# one that produces the evidence the forbidden gate reads. Most fixtures ARE
+# recall-stable, so QUALITY_RUNS=5 was in practice 3, and a row firing with
+# p~0.4 went unseen 21.6% of the time rather than 7.8%. Aggregating the counts
+# with max fixes what happens to the runs that were taken; it cannot recover a
+# run the loop decided not to take.
+#
+# Recall stability is unchanged: the veto can only make the loop run LONGER.
+# Cheap in the case that matters — a fixture with a forbidden hit is already
+# failing, so the extra runs buy offenders for the union at no cost to a green
+# run, which never has a hit to veto with.
+if any(hits):
     print("no"); sys.exit(0)
 er = [r[0] for r in recalls]
 rr = [r[1] for r in recalls]
@@ -417,10 +440,44 @@ def med_int(key, default=0):
 # canonical sample for human inspection; median scalars are the gate metrics.
 base = reports[-1]
 
+def max_int(key, default=0):
+    return max(int(r.get(key, default)) for r in reports)
+
+def firing_runs(key):
+    """How many of this fixture's runs saw the row fire at all."""
+    return sum(1 for r in reports if int(r.get(key, 0)) > 0)
+
+def union_offenders(key):
+    """Every distinct offender named by ANY run, first-seen order.
+
+    A flaky offender is more interesting than a stable one, not less, and the
+    detail arrays are inherited from `base` (one arbitrary run), so a row that
+    did not fire in that run would otherwise be counted by the scalar and named
+    by nothing.
+    """
+    seen, out = set(), []
+    for r in reports:
+        for item in r.get(key) or []:
+            fp = json.dumps(item, sort_keys=True)
+            if fp not in seen:
+                seen.add(fp)
+                out.append(item)
+    return out
+
 median_entity_recall       = med("entity_recall")
 median_relationship_recall = med("relationship_recall")
-median_forbidden_hits      = med_int("forbidden_hits")
-median_forbidden_ent_hits  = med_int("forbidden_entity_hits")
+# #7084. The forbidden counts are aggregated with MAX, not the median every
+# other gated scalar uses. The median is right for RECALL: entity_found jitters
+# run to run and smoothing it stops the ratchet flapping on noise. Precision is
+# not symmetric — forbidden_hits has exactly one good value (0) and any
+# non-zero value is a positive observation that the graph contained an edge a
+# human wrote down as wrong. There is no jitter to suppress, so a median of
+# positive observations discards evidence: a row firing in 2 of the default 5
+# runs medianed to 0 and ratchet.py, which fails only on `> 0`, never saw it.
+# That made "forbidden is always fatal" silently conditional on the defect
+# being deterministic, which is the property the flakiest producers do not have.
+max_forbidden_hits         = max_int("forbidden_hits")
+max_forbidden_ent_hits     = max_int("forbidden_entity_hits")
 runs_executed              = len(reports)
 
 merged = dict(base)
@@ -432,8 +489,19 @@ merged["relationship_recall"]            = median_relationship_recall
 merged["relationship_recall_min"]        = min(float(r.get("relationship_recall", 0)) for r in reports)
 merged["relationship_recall_max"]        = max(float(r.get("relationship_recall", 0)) for r in reports)
 merged["relationship_found"]             = med_int("relationship_found")
-merged["forbidden_hits"]                 = median_forbidden_hits
-merged["forbidden_entity_hits"]          = median_forbidden_ent_hits
+merged["forbidden_hits"]                 = max_forbidden_hits
+merged["forbidden_entity_hits"]          = max_forbidden_ent_hits
+# Legible in the same idiom as entity_recall_min/max: the aggregate alone
+# cannot tell a row that fired in every run from one that fired once, and an
+# intermittent row is the one a reader most needs to see named.
+merged["forbidden_hits_runs"]            = firing_runs("forbidden_hits")
+merged["forbidden_entity_hits_runs"]     = firing_runs("forbidden_entity_hits")
+for _key in ("forbidden", "forbidden_entities"):
+    _union = union_offenders(_key)
+    if _union:
+        merged[_key] = _union
+    else:
+        merged.pop(_key, None)
 merged["runs_executed"]                  = runs_executed
 # #6488 arm D. The extracted totals are GATE metrics now (ratchet.py compares
 # them against a recorded ceiling), so they are medianed like every other gated
@@ -460,8 +528,9 @@ with open(out_path, "w") as fh:
     json.dump(merged, fh, indent=2)
     fh.write("\n")
 
-# Gate on median — any must-have miss OR any forbidden hit (edge or entity)
-# fails the fixture.
+# Gate on the median recall figures and on the MAX forbidden counts — any
+# must-have miss OR any forbidden hit (edge or entity) in ANY run fails the
+# fixture (#7084).
 entity_expected = int(base.get("entity_expected", 0))
 rel_expected    = int(base.get("relationship_expected", 0))
 regressed = False
@@ -469,12 +538,12 @@ if entity_expected > 0 and med_int("entity_found") < entity_expected:
     regressed = True
 if rel_expected > 0 and med_int("relationship_found") < rel_expected:
     regressed = True
-if median_forbidden_hits > 0:
+if max_forbidden_hits > 0:
     regressed = True
 # #6488 arm B: a forbidden ENTITY hit is fatal on the same terms as a forbidden
 # edge. It is checked separately because it is a separate key — folding it into
 # forbidden_hits would move the meaning of a number every baseline records.
-if median_forbidden_ent_hits > 0:
+if max_forbidden_ent_hits > 0:
     regressed = True
 if regressed:
     sys.exit(2)
