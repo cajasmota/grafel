@@ -964,29 +964,60 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 		}
 	}
 	// `foreach (T x in xs)` — bind loop variable.
-	for _, fr := range findAllNodes(body, "for_each_statement") {
+	//
+	// #7068: this loop used to match `for_each_statement`, a node type
+	// tree-sitter-c-sharp does not have (the grammar spells it
+	// `foreach_statement`), and the literal was UNPAIRED — no arm anywhere
+	// matched the real name — so the whole loop had NEVER EXECUTED. Its body
+	// was therefore not known to be correct either, and an audit against real
+	// CST dumps found two things wrong with it beyond the label:
+	//
+	//   1. `implicit_type` ("var") reaches leafTypeName's last-resort branch,
+	//      which returns the raw text "var" because it IS a well-formed C#
+	//      identifier. Correcting the label alone would have bound the loop
+	//      variable to a pseudo-type and emitted `var.Process` — a FABRICATED
+	//      receiver type, the emit-wrong direction. isImplicitVarType now
+	//      refuses it, matching the local_declaration_statement path above
+	//      (#4685). A `foreach`'s `right` field is the COLLECTION, not the
+	//      element, so RHS inference of the kind inferImplicitLocalType does
+	//      for locals cannot be reused here: it would need the collection's
+	//      generic argument. `foreach (var o in …)` therefore stays untyped
+	//      and its calls keep their bare leaf — a known limit, not a bug.
+	//
+	//   2. The deleted "first identifier child" name fallback was reachable —
+	//      and wrong. The only form that reaches it is a deconstructing
+	//      `foreach (var (a, b) in pairs)`, whose `type` field is present
+	//      (implicit_type) while `left` is a tuple_pattern. On that input the
+	//      fallback scanned the statement's direct children and found `pairs`
+	//      — the COLLECTION — binding it to "var". The implicit guard above
+	//      now refuses that input before the name is looked at, and for every
+	//      form with a real `type` field the CST gives `left` as an identifier
+	//      (see foreach_localvar_7068_test.go for the enumerated dump), so the
+	//      fallback is both unreachable and known-wrong. It is gone.
+	//
+	// Forms that DO bind, confirmed by CST dump: identifier (`Order o`),
+	// predefined_type (`string s`), generic_name (`List<Order> g`), array_type
+	// (`Order[] a`), nullable_type (`Order? o`) and qualified_name
+	// (`Ns.Order o`) — plus `await foreach`, which is the same node.
+	// findAllNodes is a full descendant walk, so nested loops bind too.
+	//
+	// Forms that deliberately bind NOTHING, each pinned by a test: an
+	// explicitly typed deconstruction `foreach ((Order a, Order b) in xs)`
+	// (no `type` field at all), `foreach (var o in xs)` and
+	// `foreach (var (a, b) in xs)` (implicit guard above), and
+	// `foreach (ref Order o in span)` — ref_type has no leafTypeName case, so
+	// its raw text "ref Order" fails the identifier allow-list and yields "".
+	// The ref form is an unfixed gap, not a decision; it is out of scope here.
+	for _, fr := range findAllNodes(body, "foreach_statement") {
 		typ := leafTypeName(fr.ChildByFieldName("type"), src)
-		if typ == "" {
+		if typ == "" || isImplicitVarType(typ) {
 			continue
 		}
-		name := ""
-		// tree-sitter-c-sharp uses the field "left" or a direct identifier.
-		if l := fr.ChildByFieldName("left"); l != nil && l.Type() == "identifier" {
-			name = string(src[l.StartByte():l.EndByte()])
+		l := fr.ChildByFieldName("left")
+		if l == nil || l.Type() != "identifier" {
+			continue
 		}
-		if name == "" {
-			// Fallback: first identifier child after the type.
-			for j := 0; j < int(fr.ChildCount()); j++ {
-				ch := fr.Child(j)
-				if ch != nil && ch.Type() == "identifier" {
-					name = string(src[ch.StartByte():ch.EndByte()])
-					break
-				}
-			}
-		}
-		if name != "" {
-			out[name] = typ
-		}
+		out[string(src[l.StartByte():l.EndByte()])] = typ
 	}
 	return out
 }
