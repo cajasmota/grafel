@@ -311,10 +311,50 @@ func TestKotlinFieldTypeRefs_NestingFormSpace(t *testing.T) {
 	// positive control: a row asserting only an absence would pass if the
 	// pass emitted nothing at all.
 	//
-	// VARIED: the nesting form and whether the enclosing declaration is
-	// generic. HELD CONSTANT: the shadow name (`T`), the rival declaration
-	// (`class T`), the anchor (primary-constructor `val`, except the two rows
-	// that say otherwise), and the file.
+	// VARIED:
+	//   - the nesting RELATIONSHIP (inner / plain nested / object / local, and
+	//     what sits between a declaration and the generic class above it);
+	//   - whether the enclosing declaration is GENERIC;
+	//   - the nested declaration's own **`class_modifier`**. `inner` is one
+	//     member of that node type; PROBED against the grammar, the others
+	//     that a nested declaration can carry are exactly `data`, `sealed`,
+	//     `annotation` and `value` — all four are rows. This axis was HELD
+	//     CONSTANT in the first cut of this table (every row was bare `class`
+	//     or `inner class`) and a mutant that treated ANY `class_modifier` as
+	//     `inner` survived the whole suite while silently deleting `data class
+	//     M(val y: T)`'s correct edge — CK-1. Enumerating one axis thoroughly
+	//     is what makes its sibling look covered.
+	//   - the nested declaration's SUBTYPE where it is not a modifier at all:
+	//     `enum class` puts a bare `enum` node directly under
+	//     class_declaration, NOT under `modifiers`, so it is OUTSIDE CK-1's
+	//     blast radius and does not kill it. Probed rather than assumed — the
+	//     first draft of this comment listed `enum` as a class_modifier
+	//     sibling and it is not one. The row stays because it varies the
+	//     nested subtype and is the only nested row whose target mints TWO
+	//     records, but it is not part of the CK-1 enumeration.
+	//   - the ENCLOSING declaration's modifier, one row, in the refuse
+	//     direction. The code never READS it (a `sealed class` is still a
+	//     `class_declaration`), so no mutant distinguishes that row; it is
+	//     here because the held-constant list is what made CK-1 invisible on
+	//     reading, and "bare `class` outer" was on it.
+	//
+	// HELD CONSTANT: the shadow name (`T`), the rival declaration (`class T`),
+	// the file, and the anchor — primary-constructor `val`, except the rows
+	// that say otherwise, which are the body-property anchor and the two
+	// modifier rows (`value`, `enum`) whose form cannot carry two constructor
+	// properties.
+	//
+	// NOT ROWS, having been checked rather than assumed: `abstract` / `open`
+	// are an `inheritance_modifier` and `private` a `visibility_modifier` —
+	// different CST node types, outside CK-1's blast radius, and nothing in
+	// this pass reads them.
+	//
+	// Two fixtures could not be written the way the others are, and both
+	// would have asserted NOTHING if they had been: a bare
+	// `enum class M { A, B }` mints no field at all, and a `value class`
+	// takes exactly one constructor property. Both rows use body properties
+	// instead, which moves the anchor — said here rather than left to be
+	// noticed.
 	cases := []struct {
 		name string
 		src  string
@@ -477,6 +517,115 @@ class A<T> {
     inner class B<T, W>(val x: T, val w: W, val real: Order)
 }`,
 			want: []string{"B.real -> scope:component:class:kotlin:N.kt:Order"},
+		},
+
+		// ------------------------------------------------------------------
+		// The nested declaration's own class_modifier. `inner` is ONE member
+		// of that node type; the four rows below are the other members a
+		// nested declaration can carry, probed against the grammar, and NONE
+		// of them captures — `data class M` inside `class A<T>` cannot see
+		// `T`, so `val y: T` names the same-file `class T` and the edge is
+		// CORRECT. Every row is therefore in the KEPT direction, which is the
+		// direction with no symptom when it breaks. CK-1 — "treat any
+		// class_modifier as inner" — dies on all four.
+		//
+		// The set is enumerated rather than represented by `data` alone: a
+		// hand-picked representative is how the first cut of this table came
+		// to hold the whole axis constant, and each row costs four lines.
+		// ------------------------------------------------------------------
+		{
+			name: "data class nested in a generic outer",
+			src: `class T
+class Order
+class A<T> {
+    data class M(val y: T, val real: Order)
+}`,
+			want: []string{
+				"M.real -> scope:component:class:kotlin:N.kt:Order",
+				"M.y -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			name: "sealed class nested in a generic outer",
+			src: `class T
+class Order
+class A<T> {
+    sealed class M(val y: T, val real: Order)
+}`,
+			want: []string{
+				"M.real -> scope:component:class:kotlin:N.kt:Order",
+				"M.y -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			name: "annotation class nested in a generic outer",
+			src: `class T
+class Order
+class A<T> {
+    annotation class M(val y: T, val real: Order)
+}`,
+			want: []string{
+				"M.real -> scope:component:class:kotlin:N.kt:Order",
+				"M.y -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// A value class takes exactly ONE constructor property, so its
+			// positive control has to be a body property. The anchor moves
+			// with it, and that is said rather than left to be noticed.
+			name: "value class nested in a generic outer",
+			src: `class T
+class Order
+class A<T> {
+    value class M(val y: T) {
+        val real: Order get() = z
+    }
+}`,
+			want: []string{
+				"M.real -> scope:component:class:kotlin:N.kt:Order",
+				"M.y -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// NOT a class_modifier row: `enum class` puts a bare `enum` node
+			// directly under class_declaration rather than under `modifiers`,
+			// so this row does NOT kill CK-1 and is not claimed to. It earns
+			// its place on a different axis — it is the only nested row whose
+			// target mints TWO records (a SCOPE.Enum value-set and a
+			// SCOPE.Component), so it shows the component-family half of the
+			// ambiguity rule holding up under a nested declaration.
+			//
+			// A bare `enum class M { A, B }` mints NO field, so this fixture
+			// uses body properties; without them the row would assert nothing.
+			name: "enum class nested in a generic outer",
+			src: `class T
+class Order
+class A<T> {
+    enum class M {
+        A, B;
+        val y: T get() = q
+        val real: Order get() = z
+    }
+}`,
+			want: []string{
+				"M.real -> scope:component:class:kotlin:N.kt:Order",
+				"M.y -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// The ENCLOSING declaration's modifier, in the refuse direction.
+			// A `sealed class` is still a class_declaration carrying a
+			// type_parameters list, so `N` captures `T` exactly as it does
+			// under a bare `class` — asserted rather than assumed, because
+			// "the outer is always a bare class" was on the held-constant
+			// list that hid CK-1.
+			name: "inner class in a generic SEALED outer",
+			src: `class T
+class Order
+sealed class A<T> {
+    inner class N(val y: T, val real: Order)
+}`,
+			want: []string{"N.real -> scope:component:class:kotlin:N.kt:Order"},
 		},
 	}
 	for _, c := range cases {
