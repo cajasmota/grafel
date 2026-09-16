@@ -3,6 +3,8 @@
 // Extracted entities:
 //   - class_declaration       → Kind="SCOPE.Component", Subtype="class"
 //   - interface_declaration   → Kind="SCOPE.Component", Subtype="interface"
+//   - annotation_type_declaration          → Kind="SCOPE.Component", Subtype="annotation" (#7073)
+//   - annotation_type_element_declaration  → Kind="SCOPE.Schema",    Subtype="field"      (#7073)
 //   - method_declaration      → Kind="SCOPE.Operation", Subtype="method"
 //   - constructor_declaration → Kind="SCOPE.Operation", Subtype="constructor"
 //   - import_declaration      → IMPORTS relationship on file entity (issue #681)
@@ -357,11 +359,30 @@ func walk(
 	}
 
 	switch node.Type() {
-	case "class_declaration", "interface_declaration", "enum_declaration", "record_declaration":
+	case "class_declaration", "interface_declaration", "enum_declaration", "record_declaration",
+		"annotation_type_declaration":
 		subtype := "class"
 		switch node.Type() {
 		case "interface_declaration":
 			subtype = "interface"
+		case "annotation_type_declaration":
+			// Issue #7073 — a Java annotation type (`public @interface Audited`)
+			// previously minted NO entity at all, so a project's own annotations
+			// were structurally invisible: nothing to find, nothing to point an
+			// edge at.
+			//
+			// Kind is SCOPE.Component with its OWN subtype rather than reusing
+			// "interface". At the JVM level `@interface` IS an interface (it
+			// implicitly extends java.lang.annotation.Annotation), but a
+			// consumer never queries it as one: an annotation is never
+			// implemented, never injected, never dispatched to. Collapsing it
+			// into "interface" would put a row into every "who implements this
+			// interface" / "which interfaces does this service depend on" answer
+			// that can never have an implementer. A distinct subtype keeps
+			// "list this project's annotations" answerable and keeps the
+			// interface answers clean, while staying inside the existing Kind
+			// vocabulary (no SCOPE.* bump) exactly as enum/record already do.
+			subtype = "annotation"
 		case "enum_declaration":
 			subtype = "enum"
 		case "record_declaration":
@@ -779,6 +800,27 @@ func walk(
 			*out = append(*out, rec)
 		}
 		return
+
+	case "annotation_type_element_declaration":
+		// Issue #7073 — an annotation ELEMENT (`String value() default "";`)
+		// parses as its own node kind, not as method_declaration, which is why
+		// nothing downstream ever saw one. It is modelled as SCOPE.Schema/field,
+		// the same shape this extractor already gives a record component
+		// (#1935): a named, typed, defaultable attribute that carries data.
+		//
+		// It is deliberately NOT a SCOPE.Operation. An annotation element is
+		// never a call target — no CALLS edge can ever reach it — so emitting it
+		// as an operation would seed the call graph and every dead-code /
+		// uncalled-operation query with rows that are uncallable by
+		// construction.
+		//
+		// The grammar exposes `name` and `type` fields on this node exactly as
+		// interface_declaration exposes `name` / `body`, so buildField's sibling
+		// helpers apply unchanged. The enclosing CONTAINS edge is emitted by the
+		// generic SCOPE.Schema/field arm of the body loop above.
+		if rec, ok := buildAnnotationElement(node, file, parentType); ok {
+			*out = append(*out, rec)
+		}
 
 	case "field_declaration":
 		// Issue #690 — pass parentType so the field name is qualified as
@@ -1526,6 +1568,59 @@ func buildField(node ts.Node, file extractor.FileInput, parentType string) (type
 	// lossy shape arm C refused).
 	stashJavaFieldTypeRefs(&rec, node.ChildByFieldName("type"), file.Content, parentType)
 	return rec, true
+}
+
+// buildAnnotationElement creates a SCOPE.Schema/field entity for one
+// annotation_type_element_declaration (issue #7073).
+//
+// The node's `name` field is the element identifier and its `type` field is the
+// declared type; both are the same field names interface/class declarations and
+// field_declaration use, so the signature and field-type-ref helpers are shared
+// rather than duplicated. Like every other member of a Java type, the emitted
+// Name is qualified by the immediate enclosing type ("<Annotation>.<element>")
+// so ComputeID separates same-named elements on sibling annotations.
+func buildAnnotationElement(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+	name := childFieldText(node, "name", file.Content)
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+
+	emittedName := name
+	if parentType != "" {
+		emittedName = parentType + "." + name
+	}
+
+	rec := types.EntityRecord{
+		Name:       emittedName,
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: file.Path,
+		Language:   "java",
+		StartLine:  int(node.StartPoint().Row) + 1,
+		EndLine:    int(node.EndPoint().Row) + 1,
+		Signature:  buildAnnotationElementSignature(node, file.Content),
+	}
+	// Issue #6912 arm E — same contract as buildField: stash the declared
+	// type's AST node so attachJavaFieldTypeRefs can emit the element -> type
+	// REFERENCES edge once the file's full record set exists. This is what makes
+	// `Level level();` on an annotation reach the project's own Level enum.
+	stashJavaFieldTypeRefs(&rec, node.ChildByFieldName("type"), file.Content, parentType)
+	return rec, true
+}
+
+// buildAnnotationElementSignature renders an annotation element as
+// "Type name()" plus any `default <value>` clause, stripping visibility. The
+// trailing "()" is kept deliberately: it is how the element is written at its
+// declaration and how a reader recognises it as an annotation element rather
+// than a plain field.
+func buildAnnotationElementSignature(node ts.Node, src []byte) string {
+	raw := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
+	raw = strings.TrimSuffix(raw, ";")
+	raw = strings.Join(strings.Fields(raw), " ")
+	for _, mod := range []string{"public ", "abstract "} {
+		raw = strings.ReplaceAll(raw, mod, "")
+	}
+	return strings.TrimSpace(raw)
 }
 
 // buildFieldSignature produces "Type name" for a Java field, stripping visibility.

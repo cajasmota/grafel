@@ -55,14 +55,20 @@ import (
 // guard dropping 19% of Go's edges because a Go type_alias is a SCOPE.Schema.
 // Java's shape is the opposite: EVERY declared type this package emits as a
 // nameable target is a SCOPE.Component, because walk's single
-// class/interface/enum/record arm routes all four through buildComponent with
-// only the Subtype varying (java.go:324-355, :1374-1396). So the allow-list is
-// a SUBTYPE list, and it admits all four:
+// class/interface/enum/record/annotation arm routes all five through
+// buildComponent with only the Subtype varying (java.go, :buildComponent). So
+// the allow-list is a SUBTYPE list, and it admits all five:
 //
 //	SCOPE.Component + class      → admitted (class Order {…})
 //	SCOPE.Component + interface  → admitted (interface Shipper {…})
 //	SCOPE.Component + enum       → admitted (enum Status {…}) — see below
 //	SCOPE.Component + record     → admitted (record Money(…) {…})
+//	SCOPE.Component + annotation → admitted (@interface Audited {…}) — #7073.
+//	  An annotation type is a legal declared type: `Audited a =
+//	  clazz.getAnnotation(Audited.class)` is the ordinary reflection idiom, and
+//	  an annotation ELEMENT may itself be typed by another annotation
+//	  (`Tag tag();`). Admitting it is what keeps #7073's new entity reachable by
+//	  the one edge family that points AT a type.
 //
 // Refused, and each for a reason that is stated at the strength it has:
 //
@@ -521,7 +527,12 @@ func javaInFileTypeTargets(records []types.EntityRecord, filePath string) map[st
 			continue
 		}
 		switch r.Subtype {
-		case "class", "interface", "enum", "record":
+		// Issue #7073 — "annotation" joins the admit list. A field or annotation
+		// element CAN be declared with an annotation type as its type
+		// (`Audited a = clazz.getAnnotation(Audited.class);` is the ordinary
+		// reflection idiom), so omitting it would mint the declaration and then
+		// leave it unreachable by the one edge family that points AT a type.
+		case "class", "interface", "enum", "record", "annotation":
 		default:
 			continue
 		}
