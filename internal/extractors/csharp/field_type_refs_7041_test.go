@@ -34,12 +34,16 @@ import (
 //	                  (G7, G11, PlainR.X); CANDIDATE MULTIPLICITY — one
 //	                  candidate (G1.Shadowed), refused-first (G12.Pair),
 //	                  refused-middle (G10.M, G11.M), refused-last (G10.R,
-//	                  G11.R); REFUSAL COUNT — how MANY candidates of one field
-//	                  are refused, which is a DIFFERENT axis from where the
+//	                  G11.R); REFUSAL COUNT — how MANY DISTINCT names of one
+//	                  field are refused, which is a DIFFERENT axis from where the
 //	                  refused one sits: one refusal at every row above, TWO at
 //	                  G2.M (`Dict<Order, Real>` inside `G2<Order, Real>`, both
-//	                  parameters shadowed, only `Dict` surviving); and the
-//	                  field-type SYNTAX the candidate sits in —
+//	                  parameters shadowed, only `Dict` surviving); OCCURRENCES OF
+//	                  ONE NAME — how many TIMES a single shadowed name appears in
+//	                  one field type, which is a THIRD axis, distinct from both
+//	                  count and position: one occurrence at every row above, TWO
+//	                  at G1.Mo (`Dict<Order, Order>`); and the field-type SYNTAX
+//	                  the candidate sits in —
 //	                  bare (G1), nullable (G8), array (G12.Arr), tuple
 //	                  (G12.Pair), generic argument (G10, G11).
 //	  HELD CONSTANT   nesting depth — every declaration in this file is
@@ -64,10 +68,13 @@ import (
 //	                  Inner1.Mm (refused MIDDLE, property, depth 1), Inner1.Pf
 //	                  (refused FIRST, field, depth 1), Deep2.Ml (refused LAST,
 //	                  property, depth 2) and R6.Mr (refused MIDDLE, RECORD
-//	                  anchor, depth 1); and REFUSAL COUNT at Inner3.Md, whose
-//	                  two refusals come from TWO DIFFERENT LEVELS — `Order` from
-//	                  the ancestor `N3<Order>` and `Real` from Inner3's own
-//	                  `<Real>` — with `Dict` surviving.
+//	                  anchor, depth 1); REFUSAL COUNT at Inner3.Md, whose two
+//	                  refusals come from TWO DIFFERENT LEVELS — `Order` from the
+//	                  ancestor `N3<Order>` and `Real` from Inner3's own `<Real>`
+//	                  — with `Dict` surviving; and OCCURRENCES OF ONE NAME at
+//	                  Inner1.Mo (`Dict<Order, Order>`), where BOTH occurrences
+//	                  are bound by the ANCESTOR `N1<Order>` rather than by any
+//	                  list of Inner1's own.
 //	  HELD CONSTANT   parameter form — every list in this file is plain and
 //	                  unconstrained, which is the previous table's axis.
 //
@@ -91,6 +98,19 @@ import (
 // the whole package and leaked `G2.M -> Real`: a wrong edge that BINDS, which
 // is the symptomless class this entire issue exists for. POSITION and COUNT are
 // two axes, and naming one does not grade the other.
+//
+// ROUND 4 FOUND THE NEXT ONE IN, and the progression is the point. Round 1:
+// one candidate per field. Round 2: position of the refusal. Round 3: COUNT of
+// refusals. Every row round 3 added counted DISTINCT shadowed names —
+// `Dict<Order, Real>` is two names with one occurrence each, `Inner3.Md` two
+// names from two levels — so NO row anywhere had one shadowed name appearing
+// TWICE in a single field type. Mutant CY-1 (refuse only the FIRST occurrence
+// of each shadowed name, let repeats through) was ALIVE on the whole package
+// and leaked `G.M -> Order` from `Dict<Order, Order>`: again a wrong edge that
+// BINDS. Three rounds have each found the successor axis one step in, which is
+// why this list now names FOUR separate multiplicity axes rather than one:
+// how many candidates a field has, WHERE the refused one sits, how many
+// DISTINCT names are refused, and how many TIMES one refused name occurs.
 //
 // EVERY row is classified below by WHAT IT VARIES, under three kinds:
 //
@@ -173,7 +193,7 @@ public interface IThing { }
 public class Keep { public string N { get; set; } }
 public class Dict<A, B> { }
 
-public class G1<Order> { public Order Shadowed { get; set; } public Real Ok { get; set; } }
+public class G1<Order> { public Order Shadowed { get; set; } public Real Ok { get; set; } public Dict<Order, Order> Mo { get; set; } }
 
 public class G2<Order, Real> { public Order A { get; set; } public Real B { get; set; } public IThing C { get; set; } public Dict<Order, Real> M { get; set; } }
 
@@ -219,6 +239,21 @@ public record PlainR(Order X, Keep Y);
 //
 //	EDGE                     KIND     VARIES
 //	G1.Ok                    [LIVE]   —  (Real is never a parameter: liveness)
+//	G1.Mo                    [REFUSE×2, ONE NAME + KEEP] THE OCCURRENCE ROW.
+//	                                  `Dict<Order, Order>` — a SINGLE shadowed
+//	                                  name appearing TWICE, with `Dict`
+//	                                  surviving. Every other row in this file
+//	                                  gives each shadowed name exactly one
+//	                                  occurrence, which is what let mutant CY-1
+//	                                  ("refuse the first occurrence, pass the
+//	                                  rest") stay ALIVE across the whole package.
+//	                                  Note the per-(field, target) dedup in
+//	                                  attachCsharpFieldTypeRefs means ONE leaked
+//	                                  occurrence is enough to emit the wrong
+//	                                  edge, and also means this row cannot tell
+//	                                  a first-occurrence leak from a
+//	                                  last-occurrence leak — see the mutant note
+//	                                  on CY-2.
 //	G2.C                     [LIVE]   —  (IThing is never a parameter)
 //	G3.A                     [REFUSE] parameter with a constraint naming a REAL
 //	                                  same-file type; `T` refused
@@ -320,6 +355,7 @@ func TestCsharpFieldTypeRefs_7041_ParameterFormSpace(t *testing.T) {
 	recs := extractCSFiles(t, map[string]string{ft7041FormPath: ft7041FormSrc})
 	const cls = "scope:component:class:csharp:P.cs:"
 	want := []string{
+		"G1.Mo -> " + cls + "Dict",
 		"G1.Ok -> " + cls + "Real",
 		"G2.C -> " + cls + "IThing",
 		"G2.M -> " + cls + "Dict",
@@ -381,8 +417,7 @@ func TestCsharpFieldTypeRefs_7041_ParameterFormSpace(t *testing.T) {
 		}
 	}
 
-	// TWO refusals on ONE field, asserted per (field, TARGET). See the
-	// REFUSAL COUNT axis in the block at the top of this file.
+	// TWO DISTINCT shadowed names on ONE field — the REFUSAL COUNT axis.
 	for _, forbidden := range []string{
 		"G2.M -> " + cls + "Order", // first of two refusals
 		"G2.M -> " + cls + "Real",  // second of two refusals
@@ -390,6 +425,22 @@ func TestCsharpFieldTypeRefs_7041_ParameterFormSpace(t *testing.T) {
 		for _, e := range got {
 			if e == forbidden {
 				t.Errorf("a field naming TWO shadowed names leaked one of them: %q", e)
+			}
+		}
+	}
+
+	// ONE shadowed name appearing TWICE — the OCCURRENCES axis, which is not
+	// the one above. Because attachCsharpFieldTypeRefs dedups per
+	// (field, target), a single leaked occurrence is enough to emit the wrong
+	// edge — so this one row catches a first-occurrence leak and a
+	// last-occurrence leak alike, and cannot distinguish them.
+	for _, forbidden := range []string{
+		"G1.Mo -> " + cls + "Order",
+	} {
+		for _, e := range got {
+			if e == forbidden {
+				t.Errorf("a shadowed name occurring TWICE in one field type leaked "+
+					"an occurrence: %q", e)
 			}
 		}
 	}
@@ -416,7 +467,7 @@ public class Real { public string N { get; set; } }
 public class Keep { public string N { get; set; } }
 public class Dict<A, B> { }
 
-public class N1<Order> { public class Inner1 { public Order A { get; set; } public Real B { get; set; } public Dict<Order, Real> Mm { get; set; } public (Order, Real) Pf; } }
+public class N1<Order> { public class Inner1 { public Order A { get; set; } public Real B { get; set; } public Dict<Order, Real> Mm { get; set; } public (Order, Real) Pf; public Dict<Order, Order> Mo { get; set; } } }
 
 public class N2<Order> { public class Mid2 { public class Deep2 { public Order A { get; set; } public Real B { get; set; } public Dict<Real, Order> Ml { get; set; } } } }
 
@@ -452,6 +503,16 @@ public class N7 { public class G7n<Order> { public Keep K { get; set; } } public
 //	                                  the declaring type itself.
 //	Inner1.Pf                [REFUSE+KEEP] the same, refused FIRST, at the FIELD
 //	                                  anchor: `(Order, Real) Pf` keeps `Real`.
+//	Inner1.Mo                [REFUSE×2, ONE NAME + KEEP] the occurrence axis
+//	                                  UNDER THE ASCENT: `Dict<Order, Order>` in
+//	                                  a nested class with NO list of its own, so
+//	                                  both occurrences are bound by the ancestor
+//	                                  `N1<Order>`. Added for the same reason
+//	                                  Inner3.Md was — without it the nesting
+//	                                  table would grade this axis not at all, and
+//	                                  the round-2 lesson (own-declaring-type
+//	                                  binders cannot reach the ascent) would
+//	                                  repeat one axis over for the third time.
 //	Deep2.A                  [REFUSE] depth 2 — grades that the ascent does not
 //	                                  stop after one level
 //	Deep2.B                  [LIVE]
@@ -518,6 +579,7 @@ func TestCsharpFieldTypeRefs_7041_NestingFormSpace(t *testing.T) {
 		"G7n.K -> " + cls + "Keep",
 		"Inner1.B -> " + cls + "Real",
 		"Inner1.Mm -> " + cls + "Dict",
+		"Inner1.Mo -> " + cls + "Dict",
 		"Inner1.Mm -> " + cls + "Real",
 		"Inner1.Pf -> " + cls + "Real",
 		"Inner3.C -> " + cls + "Keep",
@@ -569,6 +631,9 @@ func TestCsharpFieldTypeRefs_7041_NestingFormSpace(t *testing.T) {
 		"R6.Mr -> " + cls + "Order",     // refused MIDDLE, RECORD anchor,   depth 1
 		"Inner3.Md -> " + cls + "Order", // TWO refusals, from an ANCESTOR ...
 		"Inner3.Md -> " + cls + "Real",  // ... and from the NEAREST list
+		"Inner1.Mo -> " + cls + "Order", // ONE ancestor-bound name, TWO occurrences
+		// (the message below is shared; see the sibling test for why one row
+		// catches both the first- and last-occurrence mutants)
 	} {
 		for _, e := range got {
 			if e == forbidden {
