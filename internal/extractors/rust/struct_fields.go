@@ -37,7 +37,11 @@ func emitRustStructFields(
 	if body == nil || ownerName == "" {
 		return nil
 	}
-	return rustFieldsFromList(body, file, ownerName)
+	// Issue #7041 — `node` is the struct_item, so its own type-parameter list
+	// is in hand here and no scope tracker is needed. Rust does not let a
+	// nested item capture an enclosing item's generics (rustc E0401), so this
+	// declaration's list is the WHOLE shadowing scope for its fields.
+	return rustFieldsFromList(body, file, ownerName, rustTypeParameterNames(node, file.Content))
 }
 
 // emitRustEnumVariantFields returns SCOPE.Schema/field entities for the named
@@ -52,6 +56,9 @@ func emitRustEnumVariantFields(
 	if ownerName == "" {
 		return nil
 	}
+	// Issue #7041 — `enum E<Order> { V { item: Order } }`: the parameter list
+	// belongs to the enum_item, and it shadows for every variant's fields.
+	typeParams := rustTypeParameterNames(node, file.Content)
 	vl := node.ChildByFieldName("body")
 	if vl == nil {
 		vl = findChildOfType(node, "enum_variant_list")
@@ -75,7 +82,7 @@ func emitRustEnumVariantFields(
 		if fl == nil || vname == "" {
 			continue
 		}
-		out = append(out, rustFieldsFromList(fl, file, ownerName+"."+vname)...)
+		out = append(out, rustFieldsFromList(fl, file, ownerName+"."+vname, typeParams)...)
 	}
 	return out
 }
@@ -83,10 +90,15 @@ func emitRustEnumVariantFields(
 // rustFieldsFromList builds field entities for every field_declaration in a
 // field_declaration_list, applying the serde rename/skip attribute that
 // immediately precedes each field.
+//
+// typeParams is the set of names bound by the OWNING declaration's type
+// parameters (#7041); a field-type candidate in it is not a same-file type
+// declaration and is dropped before the stash. nil for a non-generic owner.
 func rustFieldsFromList(
 	body ts.Node,
 	file extractor.FileInput,
 	owner string,
+	typeParams map[string]bool,
 ) []types.EntityRecord {
 	var out []types.EntityRecord
 	seen := make(map[string]bool)
@@ -164,8 +176,24 @@ func rustFieldsFromList(
 		// the type it names. The TYPE NODE is read, not the `field_type`
 		// string, so the grammar's own primitive/qualified-path classification
 		// is what the candidate rule stands on (field_type_refs.go).
+		//
+		// Issue #7041 — a candidate bound by the owner's own type-parameter
+		// list is NOT a same-file type and is dropped here, at the one place
+		// that knows which declaration the field belongs to.
+		// `struct Box<Order> { item: Order }` beside a real `struct Order`
+		// used to emit an edge that BOUND, and a bound edge to the wrong
+		// entity is invisible to every instrument we have (#7056).
 		if cands := rustTypeRefCandidates(ch.ChildByFieldName("type"), file.Content); len(cands) > 0 {
-			out[len(out)-1].Metadata[rustFieldTypeRefsMetaKey] = cands
+			kept := cands[:0:0]
+			for _, c := range cands {
+				if typeParams[c] {
+					continue
+				}
+				kept = append(kept, c)
+			}
+			if len(kept) > 0 {
+				out[len(out)-1].Metadata[rustFieldTypeRefsMetaKey] = kept
+			}
 		}
 	}
 	return out

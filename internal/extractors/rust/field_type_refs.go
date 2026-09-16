@@ -90,21 +90,53 @@ import (
 //     case that is LIVE, `scoped_type_identifier`, is kept and is graded by
 //     TestRustFieldTypeRefs_QualifiedPathIsNotStrippedToASameFileName.
 //
-//   - IT IS FILE SCOPE AND NOTHING ELSE. It consults neither Rust's module
-//     scope nor type-parameter scope, so it over-fires twice, and both
-//     over-fires produce an edge that BINDS — worse than a dangling edge,
-//     because `bug-extractor` never sees a bound edge:
+//   - IT IS FILE SCOPE PLUS THE DECLARATION'S OWN TYPE PARAMETERS. It still
+//     consults no MODULE scope, so it over-fires there, and that over-fire
+//     produces an edge that BINDS — worse than a dangling edge, because
+//     `bug-extractor` never sees a bound edge:
 //
 //     mod a { pub struct Customer; }
 //     mod b { pub struct Order { buyer: Customer } }   ← one file: WRONG edge
-//     struct Box<Order> { item: Order }                ← beside a same-file
-//     struct Order: WRONG
 //
-//     So an open type parameter `T` is dropped only because nothing in the file
-//     happens to be named `T`, NOT because the guard understands type
-//     parameters. Both are PINNED as known-wrong by the two
-//     TestRustFieldTypeRefs_KnownOverFire_* cases, which a fix is expected to
-//     break.
+//     That one is still PINNED as known-wrong by
+//     TestRustFieldTypeRefs_KnownOverFire_ModuleScopeIsNotConsulted.
+//
+//     THE TYPE-PARAMETER OVER-FIRE IS CLOSED (#7041). `struct Box<Order> {
+//     item: Order }` beside a same-file `struct Order` used to emit
+//     `Box.item -> Order`; rustTypeParameterNames below now makes the
+//     declaration's own `type_parameters` list a shadowing scope and the
+//     candidate is refused before it is ever stashed. The known-wrong pin
+//     TestRustFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType was
+//     DELETED with this change, as its own failure message instructed; its
+//     replacement is the enumerated, both-direction table in
+//     field_type_refs_7041_test.go, which carries a live `Real` control in
+//     every fixture so it can tell "the refusal works" from "the producer
+//     stopped producing" — the distinction a bare over-fire pin cannot make.
+//
+//     THE RULE IS RUST'S OWN AND WAS DERIVED FROM rustc 1.98.1, not ported
+//     from a sibling arm (kotlin gates on `inner`, java ascends
+//     unconditionally, scala always accumulates; #7041 carries two published
+//     corrections caused by asserting a language rule from memory). A nested
+//     ITEM in Rust does not capture an enclosing item's generics —
+//     `fn f<T>() { struct S { x: T } }` is error[E0401] with rustc's own note
+//     *"nested items are independent from their parent item for everything
+//     except for privacy and name resolution"*, and adding a top-level
+//     `struct T` does NOT make rustc fall back to it; the reference stays
+//     illegal. So there is no legal Rust in which a nested declaration's bare
+//     name means the top-level type while an enclosing generic binds it, and
+//     THIS PASS THEREFORE DOES NOT ASCEND: it reads the owning declaration's
+//     list and nothing else. That also means "ascend" has no legal
+//     distinguishing input, which is why no fixture manufactures one.
+//
+//     WHAT IS NOT COLLECTED IS THE LOAD-BEARING HALF, and it is where cpp
+//     shipped its bug (#7057): a bound (`<T: Order>`), a default
+//     (`<T = Order>`), a where-clause predicate, a const parameter's TYPE
+//     (`<const N: Alias>`, legal when the alias is integral) and a lifetime
+//     all name REAL types or bind in another namespace. Refusing any of them
+//     silently DELETES a correct edge, and #7056 established that no
+//     instrument we own can see a missing edge. A const parameter's NAME is
+//     likewise not refused: `struct C<const Order: usize> { x: Order }`
+//     compiles beside `struct Order` and `x` IS the struct.
 //
 //   - IT DOES NOT DESCEND A QUALIFIED PATH. `crate::models::Order`,
 //     `super::Order`, `self::Order` and `<Order as Trait>::Assoc` are
@@ -140,6 +172,13 @@ import (
 // cannot become edges during the walk: `struct Order { buyer: Customer }` may be
 // declared BEFORE `struct Customer` in the same file, so the set of in-file
 // declarations is complete only once the walk has finished.
+//
+// ONE decision IS made during the walk (#7041): a candidate bound by the
+// owning declaration's own type-parameter list is dropped before it is stashed.
+// Neither reason above applies to it — the shadowing scope is lexical, it
+// belongs to the declaration node already in hand at the stash site, and no
+// record appended later can add a name to it or take one away. See the stash
+// site in struct_fields.go and rustTypeParameterNames below.
 const rustFieldTypeRefsMetaKey = "field_type_refs"
 
 // rustFieldTargetRefKind is the value of the `ref_kind` edge property, matching
@@ -189,6 +228,86 @@ func rustTypeRefCandidates(typ ts.Node, src []byte) []string {
 	}
 	walkType(typ)
 	return out
+}
+
+// rustTypeParameterNames returns the names bound by decl's own
+// `type_parameters` list — the shadowing scope for every field declared inside
+// decl (#7041). A nil/empty result means the declaration is not generic and
+// nothing is refused.
+//
+// THE NODE SPELLINGS ARE FROM A CST DUMP of tree-sitter-rust, printed in the
+// #7041 PR body, not from memory — the scala arm shipped a guard switching on
+// two node types its grammar never produces (#7064). What each form parses to:
+//
+//	<T>                type_identifier                    (direct child)
+//	<K, V>             two type_identifier children
+//	<T: Order>         constrained_type_parameter         field "left"  = T
+//	                                                      field "bounds" = trait_bounds(Order)
+//	<T: A + B>         same, trait_bounds holds both
+//	<T = Order>        optional_type_parameter            field "name" = T
+//	                                                      field "default_type" = Order
+//	<T: Bnd = Order>   optional_type_parameter            field "name" = constrained_type_parameter
+//	<'a>               lifetime                           (name is an `identifier`)
+//	<'a: 'b>           constrained_type_parameter         field "left" = lifetime
+//	<const N: usize>   const_parameter                    (name is an `identifier`)
+//	where T: Order     where_clause — a SIBLING of type_parameters, never read
+//
+// Only `left` and `name` are followed, and the recursion is what handles the
+// `<T: Bnd = Order>` nesting: taking "the first type_identifier child" of the
+// optional_type_parameter would collect NOTHING there, leaving the over-fire
+// live for that form — the direction cpp's first attempt got wrong. Everything
+// else is refused entry: a bound, a default and a const parameter's type name
+// REAL types, and collecting one would silently delete a correct edge.
+//
+// A lifetime and a const parameter contribute nothing, and neither can be
+// reached by a candidate anyway: rustTypeRefCandidates collects only
+// `type_identifier`, while a lifetime's name and a const parameter's name are
+// both `identifier`. `struct C<const Order: usize> { x: Order }` compiles
+// beside a `struct Order` and `x` IS the struct — a const parameter binds in
+// the value namespace — so refusing that name would be an over-refusal.
+func rustTypeParameterNames(decl ts.Node, src []byte) map[string]bool {
+	if decl == nil {
+		return nil
+	}
+	var list ts.Node
+	for i := 0; i < int(decl.NamedChildCount()); i++ {
+		if c := decl.NamedChild(i); c != nil && c.Type() == "type_parameters" {
+			list = c
+			break
+		}
+	}
+	if list == nil {
+		return nil
+	}
+	out := make(map[string]bool)
+	for i := 0; i < int(list.NamedChildCount()); i++ {
+		if name := rustTypeParameterName(list.NamedChild(i), src); name != "" {
+			out[name] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// rustTypeParameterName returns the single name bound by one entry of a
+// `type_parameters` list, or "" for an entry that binds no TYPE name (a
+// lifetime, a const parameter, an ERROR node from a form this grammar version
+// cannot parse).
+func rustTypeParameterName(p ts.Node, src []byte) string {
+	if p == nil {
+		return ""
+	}
+	switch p.Type() {
+	case "type_identifier":
+		return string(src[p.StartByte():p.EndByte()])
+	case "constrained_type_parameter":
+		return rustTypeParameterName(p.ChildByFieldName("left"), src)
+	case "optional_type_parameter":
+		return rustTypeParameterName(p.ChildByFieldName("name"), src)
+	}
+	return ""
 }
 
 // rustFieldTypeTarget is one in-file type declaration a field can point at: the

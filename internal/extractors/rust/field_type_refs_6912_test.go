@@ -564,20 +564,30 @@ impl Customer {
 	}
 }
 
-// TestRustFieldTypeRefs_KnownOverFire_ModuleScopeIsNotConsulted and
-// TestRustFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType PIN A
-// KNOWN DEFECT, and they are the only assertions in this file that describe
-// behaviour that is WRONG.
+// TestRustFieldTypeRefs_KnownOverFire_ModuleScopeIsNotConsulted PINS A KNOWN
+// DEFECT, and it is the only assertion in this file that describes behaviour
+// that is WRONG.
 //
-// "Declared in this same file" is a FILE-scoped check with no module scope and
-// no type-parameter scope behind it. Both consequences are reproduced here, and
-// both are worse than a dangling edge by the same logic that chose this pass's
-// address: the edge BINDS, so it never reaches `bug-extractor` and no
-// disposition figure will surface it.
+// "Declared in this same file" is a FILE-scoped check with no module scope
+// behind it. The consequence is reproduced here, and it is worse than a
+// dangling edge by the same logic that chose this pass's address: the edge
+// BINDS, so it never reaches `bug-extractor` and no disposition figure will
+// surface it.
 //
-// These two tests are expected to FAIL when a follow-up fixes them. That is the
-// point: they make the limitation observable at the code, so a fix has to come
-// here and say so rather than changing behaviour silently.
+// This test is expected to FAIL when a follow-up fixes it. That is the point:
+// it makes the limitation observable at the code, so a fix has to come here and
+// say so rather than changing behaviour silently.
+//
+// IT USED TO HAVE A SIBLING. TestRustFieldTypeRefs_KnownOverFire_TypeParameter-
+// ShadowsSameFileType pinned the second over-fire — `struct Box2<Customer>`
+// beside a real `struct Customer` — and #7041 FIXED it and DELETED the pin, as
+// that pin's own failure message instructed. Its replacement is
+// field_type_refs_7041_test.go, which grades the whole type-parameter form
+// space in both directions and carries a live control in every fixture, so it
+// can distinguish "the refusal works" from "the producer stopped producing" —
+// something a single over-fire assertion cannot do. The prose in
+// field_type_refs.go that promised TWO over-fires was corrected at the same
+// time; a claim nothing measures is exactly what #7056 is about.
 func TestRustFieldTypeRefs_KnownOverFire_ModuleScopeIsNotConsulted(t *testing.T) {
 	const src = `pub mod a { pub struct Customer { pub n: String } }
 pub mod b { pub struct Order { pub buyer: Customer } }
@@ -587,19 +597,6 @@ pub mod b { pub struct Order { pub buyer: Customer } }
 	if got := rustFieldTypeRefEdges(t, recs); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("KNOWN over-fire changed shape — if module scope is now consulted, "+
 			"delete this test and say so\n got: %v\nwant: %v", got, want)
-	}
-}
-
-func TestRustFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType(t *testing.T) {
-	const src = `pub struct Customer { pub n: String }
-
-pub struct Box2<Customer> { pub item: Customer }
-`
-	recs := extractRustFiles(t, map[string]string{"src/f.rs": src})
-	want := []string{"Box2.item -> scope:component:class:rust:src/f.rs:Customer"}
-	if got := rustFieldTypeRefEdges(t, recs); strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("KNOWN over-fire changed shape — if type-parameter scope is now "+
-			"consulted, delete this test and say so\n got: %v\nwant: %v", got, want)
 	}
 }
 
