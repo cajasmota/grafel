@@ -8,27 +8,66 @@ import (
 	"testing"
 )
 
-// THE REPORTING PATH IS GRADED HERE.
+// THE REPORTING PATH IS GRADED HERE, AS A SURFACE.
 //
-// #7076 round 2, blocker 2: deleting the ENTIRE always-on skip block from
-// printVerdict left the whole suite green. That was the third time in this PR
-// that the reporting path was the ungraded part — every other control asserts
-// on Result fields, and Result fields survive a printer that prints nothing.
+// Six review rounds of this PR produced six findings, and every one of them was
+// the same finding: some part of the reporting path was ungraded.
 //
-// A counter is not a diagnostic and a struct field is not output. These tests
-// assert on the BYTES printVerdict emits, because that text is the entire
-// product of the "count and name the skipped surface" requirement: a skipped
-// package that nobody can see is indistinguishable from one that does not
-// exist, and a Result field nobody prints is exactly that invisible.
+//	round 2  deleting printVerdict's whole skip block left the suite green
+//	round 3  the per-row "[baselined]" tag was pinned; the COUNTER that sums
+//	         those rows was not, so folding deferrals into it laundered eleven
+//	         fresh findings as suppressed, green
+//	round 3  printReport had no test at all; dropping a term from its
+//	         accounting line printed a sum disagreeing with the total, green
+//	round 4  the test written to close round 3 used a 1/1/1 fixture, so
+//	         PERMUTING its three arguments satisfied every assertion — M-P4
+//	         mirrored, surviving the test built for it — and five more
+//	         printer mutants (delete the headline, swap resolved/distinct,
+//	         delete two whole sections, swap distinct/files) were all alive
 //
-// They drive printVerdict with a hand-built Result rather than a package load,
-// so they grade the printer and nothing else: a change in the tree cannot make
-// them pass or fail.
+// The pattern behind all six is that the printers were treated as a list of
+// lines to patch one at a time. They are not; they are a SURFACE, and a surface
+// is covered by asserting its whole emitted shape. So each printer has one
+// golden test below that compares its complete output, byte for byte, against a
+// literal written out in full. A deleted line, a deleted section, a swapped
+// argument and a reworded label all red it, whether or not anyone thought of
+// that mutant in advance — which is the only property that would have caught
+// all six rounds.
+//
+// TWO RULES FOR EVERYTHING IN THIS FILE.
+//
+//  1. ASYMMETRIC FIXTURES. Every multi-term line is driven by values that are
+//     pairwise DISTINCT, so no permutation of them satisfies the assertions. A
+//     fixture whose expected values are all equal cannot detect a permutation
+//     of them: 1/1/1 is not a test of a three-term line, it is a test that the
+//     line prints three numbers. Round 4's blocker was exactly that, in the
+//     test written to close round 3, and the contrast was visible in the same
+//     file — the accounting line's 3/1/2 fixture killed its category swap
+//     instantly. If you add a term, give it a value nothing else on its line
+//     has.
+//
+//  2. NO "COVERS X" CLAIM WITHOUT DELETING X FIRST. A comment added in round 3
+//     said one test "covers the rest of printReport's output" while two whole
+//     sections of it were deletable with the suite green. That was the fourth
+//     consecutive round with a false comment in this file, all of them
+//     permissive. Delete the thing, watch something red, then write the claim.
+//
+// The golden tests are deliberately brittle: any intentional change to the
+// output must be reflected here, and that edit is the moment to ask whether the
+// new line is graded by anything but the golden. Both printers are driven on
+// hand-built Results, so a change in the tree can never move them.
 
 // verdictFor renders one Result and returns the emitted text.
 func verdictFor(res Result) string {
 	var b bytes.Buffer
 	printVerdict(&b, res)
+	return b.String()
+}
+
+// reportFor renders printReport and returns the emitted text.
+func reportFor(res Result, grammars map[string]*Grammar) string {
+	var b bytes.Buffer
+	printReport(&b, res, grammars)
 	return b.String()
 }
 
@@ -43,155 +82,33 @@ func wantAll(t *testing.T, got string, frags ...string) {
 		}
 	}
 	if len(missing) > 0 {
-		t.Errorf("printVerdict output is missing %d fragment(s):\n  %s\n--- emitted ---\n%s",
+		t.Errorf("output is missing %d fragment(s):\n  %s\n--- emitted ---\n%s",
 			len(missing), strings.Join(missing, "\n  "), got)
 	}
 }
 
-// TestPrintVerdict_EmitsTheSkippedSurface pins the always-on skip block.
-//
-// VARIED: the exemption state of the two skipped dirs (one carries a reason,
-// one does not) — the axis that decides whether the reader sees a reviewed
-// decision or an oversight, and the axis that M-P1 (delete the block) and a
-// "print only the exempt ones" mutant both move.
-// HELD CONSTANT: the site counts, the resolved/miss totals, the grammar map,
-// and the fact that the run is otherwise clean — so any diff in the emitted
-// text is attributable to the skip block alone.
-func TestPrintVerdict_EmitsTheSkippedSurface(t *testing.T) {
-	res := Result{
-		Resolved:        3000,
-		Distinct:        900,
-		DirsWithGrammar: []string{"internal/extractors/scala"},
-		Skipped: []SkippedDir{
-			{Dir: "internal/engine", Sites: 92, Reason: "parses under a language computed at runtime"},
-			{Dir: "internal/custom/brandnew", Sites: 7},
-		},
-		SkippedSites:    99,
-		UnreviewedSkips: []SkippedDir{{Dir: "internal/custom/brandnew", Sites: 7}},
+// diffGolden compares an emitted block against a golden literal and reports the
+// first differing line rather than dumping two walls of text.
+func diffGolden(t *testing.T, got, want string) {
+	t.Helper()
+	if got == want {
+		return
 	}
-	got := verdictFor(res)
-
-	wantAll(t, got,
-		// The headline: how much surface went unchecked, and in how many places.
-		"99 sites in 2 package(s) were NOT checked",
-		// Each dir named, WITH its own count. A total without a breakdown
-		// cannot be acted on.
-		"internal/engine",
-		"92 sites",
-		"internal/custom/brandnew",
-		"7 sites",
-		// The reviewed one shows its reason...
-		"parses under a language computed at runtime",
-		// ...and the unreviewed one is marked as such in the listing itself,
-		// not only in the error below it.
-		"NO EXEMPTION",
-		// And an unreviewed skip emits an actionable CI error.
-		"::error::internal/custom/brandnew produced 7 node-type literal sites",
-	)
-
-	// The exempt dir must NOT be reported as an error — over-reporting would
-	// make the error line worthless and is the permissive direction here.
-	for _, line := range strings.Split(got, "\n") {
-		if strings.HasPrefix(line, "::error") && strings.Contains(line, "internal/engine") {
-			t.Errorf("exempt dir emitted a CI error line: %q", line)
+	gl, wl := strings.Split(got, "\n"), strings.Split(want, "\n")
+	for i := 0; i < len(gl) || i < len(wl); i++ {
+		var g, w string
+		if i < len(gl) {
+			g = gl[i]
+		}
+		if i < len(wl) {
+			w = wl[i]
+		}
+		if g != w {
+			t.Fatalf("emitted output differs from the golden at line %d.\n  got:  %q\n  want: %q\n\nThe golden is the whole shape of this printer: a deleted line, a deleted\nsection, a swapped argument or a reworded label all land here. If the change\nwas intentional, update the golden — and while you are editing it, check\nwhether the new line is graded by anything other than this test.\n\n--- full emitted ---\n%s", i+1, g, w, got)
 		}
 	}
+	t.Fatalf("outputs differ but no line does; check trailing newlines.\ngot %q\nwant %q", got, want)
 }
-
-// TestPrintVerdict_NoSkippedSurfaceSaysNothing is the other direction: the
-// block must be conditional, so a clean tree does not print a "0 sites in 0
-// packages" line that trains readers to skip it.
-func TestPrintVerdict_NoSkippedSurfaceSaysNothing(t *testing.T) {
-	got := verdictFor(Result{Resolved: 3000, Distinct: 900})
-	if strings.Contains(got, "were NOT checked") {
-		t.Errorf("clean run printed a skipped-surface block:\n%s", got)
-	}
-	if !strings.Contains(got, "node-type-gate: OK") {
-		t.Errorf("clean run did not print OK:\n%s", got)
-	}
-}
-
-// TestPrintVerdict_EmitsTheAliasSurface pins the alias block the same way,
-// BEFORE it can become the next ungraded reporting path. The alias findings are
-// reported and not enforced (see enforceAliasForms), so this text is the ONLY
-// thing that makes them visible — there is no exit code behind it.
-//
-// VARIED: whether an alias miss is already baselined — the axis that decides
-// the "[baselined]" tag, and the one a reader needs to tell a triaged finding
-// from a fresh one.
-// HELD CONSTANT: the package, the alias-site count, and the literals' form.
-func TestPrintVerdict_EmitsTheAliasSurface(t *testing.T) {
-	mk := func(file, lit string, baselined bool) Miss {
-		return Miss{
-			Site:      Site{Dir: "internal/extractors/swift", File: file, Line: 697, Lit: lit, Form: FormCmp, Alias: true},
-			Grammars:  []string{"swift"},
-			Baselined: baselined,
-		}
-	}
-	res := Result{
-		Resolved:    3000,
-		Distinct:    900,
-		AliasSites:  230,
-		AliasMisses: []Miss{mk("internal/extractors/swift/swift.go", "attributes", false), mk("internal/extractors/javascript/navigation.go", "object_expression", true)},
-		Misses:      []Miss{mk("internal/extractors/swift/swift.go", "attributes", false)},
-	}
-	got := verdictFor(res)
-
-	wantAll(t, got,
-		// The count of the shape itself — the "make the skipped surface
-		// visible" half of round 2's blocker.
-		"230 of the CHECKED sites were reached through an alias",
-		"2 alias-form dead literal(s)",
-		// Reported, not enforced, and it says so rather than letting a reader
-		// assume the gate is failing on them.
-		"REPORTED, not enforced",
-		// file:line:literal for each, so a finding can be acted on from the
-		// log alone.
-		"internal/extractors/swift/swift.go:697",
-		`"attributes"`,
-		"internal/extractors/javascript/navigation.go:697",
-		`"object_expression"`,
-		"[baselined]",
-	)
-
-	// An un-baselined alias miss must NOT carry the baselined tag: that is the
-	// permissive direction, and it would silently launder a fresh finding as a
-	// triaged one.
-	for _, line := range strings.Split(got, "\n") {
-		if strings.Contains(line, `"attributes"`) && strings.Contains(line, "[baselined]") {
-			t.Errorf("un-baselined alias miss tagged as baselined: %q", line)
-		}
-	}
-}
-
-// TestPrintVerdict_FloorBreachSaysTheVerdictIsMeaningless pins the last piece
-// of always-on text. A gate that read nothing and printed OK is worse than no
-// gate; the floor error must say so in the same breath as the count.
-func TestPrintVerdict_FloorBreachSaysTheVerdictIsMeaningless(t *testing.T) {
-	got := verdictFor(Result{Resolved: 1, Distinct: 1})
-	wantAll(t, got,
-		"::error::node-type-gate read only 1 sites",
-		"the verdict below means nothing",
-		"node-type-gate: FAIL (count floor)",
-	)
-}
-
-// AGGREGATES ARE NOT GRADED BY GRADING THEIR ITEMS.
-//
-// #7076 round 3 named the pattern that had by then gone five deep in this one
-// PR: grading a per-item label does not grade the aggregate computed from those
-// items. M-P2 pinned the per-row "[baselined]" tag; the COUNTER that sums those
-// same rows stayed open, and folding the deferrals into it printed "77 misses =
-// 77 tolerated by the baseline + 0 alias-form" — laundering eleven fresh
-// findings as suppressed, which is exactly what the comment three lines above
-// that Fprintf forbids. The same round found printReport had no test at all, so
-// dropping a term from its accounting line printed a sum that disagreed with
-// the total one line above it, suite green.
-//
-// So: every number this tool prints that is derived from other numbers it
-// prints is checked HERE, by re-deriving it from the emitted text. Matching a
-// fixed string would not have caught either mutant — both print a well-formed
-// line with a wrong number in it.
 
 // numsIn pulls every integer out of one emitted line, found by a fragment.
 func numsIn(t *testing.T, out, fragment string) []int {
@@ -214,67 +131,249 @@ func numsIn(t *testing.T, out, fragment string) []int {
 	return nil
 }
 
-// reportFor renders printReport and returns the emitted text.
-func reportFor(res Result, grammars map[string]*Grammar) string {
-	var b bytes.Buffer
-	printReport(&b, res, grammars)
-	return b.String()
+func miss(dir, file string, line int, lit, form string, grammars []string, alias, baselined bool) Miss {
+	return Miss{
+		Site:      Site{Pkg: dir, Dir: dir, File: file, Line: line, Lit: lit, Form: form, Alias: alias, Const: true},
+		Grammars:  grammars,
+		Baselined: baselined,
+	}
 }
 
-// reportFixture is one hand-built surface whose every headline number is known
-// by construction, so the emitted arithmetic can be checked against the input
-// rather than against itself.
+// verdictFixture drives printVerdict's golden. Every number on every line is
+// distinct from every other number on that line, so no permutation of a line's
+// arguments can survive:
 //
-// 6 sites: 3 resolved in a mapped dir, 2 whitelisted (ERROR and "") in that
-// same mapped dir, 1 in an unmapped dir. So total 6 = 3 resolved + 1 skipped +
-// 2 whitelisted.
-func reportFixture() (Result, map[string]*Grammar) {
-	mk := func(dir, lit, form string) Site {
-		return Site{Pkg: dir, Dir: dir, File: dir + "/x.go", Line: 1, Lit: lit, Form: form, Const: true}
+//	headline    3041 resolved / 1017 distinct / 3 packages
+//	skip block  30 sites / 2 packages, rows of 23 and 7
+//	alias       13 alias sites / 4 alias misses
+//	miss line   10 misses = 5 baselined + 3 deferred + 2 new
+//
+// The two skipped dirs differ in exemption state, the four alias misses differ
+// in baselined state, and the misses cover all three dispositions, so every
+// conditional block in the printer contributes bytes to the golden. Note the
+// limit of that, because it is exactly the kind of claim this file has got
+// wrong four rounds running: one fixture can only exercise each branch in its
+// PRESENT direction. "The skip block is absent on a clean run", "the alias
+// block is absent", "OK rather than FAIL", and the count-floor path emit
+// nothing here and are covered by the conditional tests at the bottom of this
+// file, not by the golden.
+func verdictFixture() Result {
+	const js = "internal/extractors/javascript"
+	al := func(lit string, baselined bool) Miss {
+		return miss(js, js+"/navigation.go", 577, lit, FormCmp, []string{"javascript", "tsx"}, true, baselined)
 	}
-	const mapped, unmapped = "internal/extractors/scala", "internal/engine"
+	aliasDeferred := []Miss{al("object_expression", false), al("property", false), al("string_value", false)}
+	aliasBaselined := al("old_alias_dead", true)
+
+	var misses []Miss
+	// 5 baselined: four plain, one of them the baselined alias miss.
+	for _, lit := range []string{"b_one", "b_two", "b_three", "b_four"} {
+		misses = append(misses, miss(js, js+"/extractor.go", 12, lit, FormSwitch, []string{"javascript", "tsx"}, false, true))
+	}
+	misses = append(misses, aliasBaselined)
+	// 3 alias-deferred.
+	misses = append(misses, aliasDeferred...)
+	// 2 new.
+	failures := []Miss{
+		miss(js, js+"/extractor.go", 99, "brand_new_dead", FormCmp, []string{"javascript", "tsx"}, false, false),
+		miss(js, js+"/imports.go", 44, "also_new_dead", FormHelper, []string{"javascript", "tsx"}, false, false),
+	}
+	misses = append(misses, failures...)
+
+	return Result{
+		Resolved:        3041,
+		Distinct:        1017,
+		DirsWithGrammar: []string{js, "internal/extractors/scala", "internal/extractors/swift"},
+		Skipped: []SkippedDir{
+			{Dir: "internal/engine", Sites: 23, Reason: "parses under a runtime language"},
+			{Dir: "internal/custom/brandnew", Sites: 7},
+		},
+		SkippedSites:    30,
+		UnreviewedSkips: []SkippedDir{{Dir: "internal/custom/brandnew", Sites: 7}},
+		AliasSites:      13,
+		AliasMisses:     append(append([]Miss{}, aliasDeferred...), aliasBaselined),
+		Misses:          misses,
+		Failures:        failures,
+		StaleBaseline:   []BaselineEntry{{Class: "unreachable-code", Dir: js, Lit: "gone_literal", File: js + "/old.go", Line: 3}},
+	}
+}
+
+// TestPrintVerdict_FullEmittedShape is the whole-surface golden for
+// printVerdict. It is the test that would have caught all six rounds.
+//
+// VARIED: nothing is varied here on purpose — a golden is a single-point pin of
+// the complete output, and the axes that matter (exemption state, baselined
+// state, miss disposition, stale rows) are all present SIMULTANEOUSLY in the
+// one fixture, so every conditional block contributes bytes in its PRESENT
+// direction. Their absent directions are separate tests below; a golden cannot
+// show that a section is missing when it should be.
+// HELD CONSTANT: the entire Result; the assertion is byte equality.
+func TestPrintVerdict_FullEmittedShape(t *testing.T) {
+	if enforceAliasForms {
+		t.Skip("enforceAliasForms is true: the alias block's wording and the miss line's deferral term both change. Re-golden this test with the constant.")
+	}
+	const js = "internal/extractors/javascript"
+	want := strings.Join([]string{
+		`node-type-gate: 3041 node-type literal sites resolved (1017 distinct pkg+literal) across 3 packages with a grammar`,
+		`node-type-gate: 30 sites in 2 package(s) were NOT checked (no grammar was derived for them):`,
+		`  internal/engine                23 sites — parses under a runtime language`,
+		`  internal/custom/brandnew        7 sites — NO EXEMPTION — this package is not in skipExemptions`,
+		`::error::internal/custom/brandnew produced 7 node-type literal sites but no grammar could be derived for it, and it has no entry in skipExemptions. Either derive its grammar (a constant language passed to treesitter.Parse is picked up automatically) or add an exemption saying why it cannot be mapped. A silently skipped package is the defect this gate exists to catch.`,
+		`node-type-gate: 13 of the CHECKED sites were reached through an alias (a local or parameter holding a node type, not a syntactic x.Type() call)`,
+		`node-type-gate: 4 alias-form dead literal(s) — REPORTED, not enforced (see enforceAliasForms):`,
+		`  ` + js + `/navigation.go:577 "object_expression" in ` + js,
+		`  ` + js + `/navigation.go:577 "property" in ` + js,
+		`  ` + js + `/navigation.go:577 "string_value" in ` + js,
+		`  ` + js + `/navigation.go:577 "old_alias_dead" in ` + js + ` [baselined]`,
+		`node-type-gate: 10 misses = 5 tolerated by the baseline + 3 alias-form, reported not enforced + 2 new`,
+		`::error file=` + js + `/extractor.go,line=99::` + js + `/extractor.go:99: node type "brand_new_dead" resolves in none of package ` + js + `'s grammars [javascript,tsx] (form=cmp)`,
+		`::error file=` + js + `/imports.go,line=44::` + js + `/imports.go:44: node type "also_new_dead" resolves in none of package ` + js + `'s grammars [javascript,tsx] (form=helper)`,
+		`::error::stale baseline row: ` + js + ` "gone_literal" in ` + js + `/old.go no longer matches anything. If the literal was FIXED, delete the row. If the file or package was RENAMED or the literal MOVED, rewrite this row's dir/path to the new location — deleting it would leave the literal unbaselined and still failing. -update does NOT rewrite paths: it only refreshes the line number of a row whose (dir, literal, file) key already matches.`,
+		`node-type-gate: FAIL`,
+		``,
+	}, "\n")
+	diffGolden(t, verdictFor(verdictFixture()), want)
+}
+
+// reportFixture drives printReport's golden. Asymmetric on every line, by the
+// same rule as verdictFixture:
+//
+//	total       9 sites / 7 distinct literals / 4 files / 2 dynamic
+//	accounting  5 resolved + 3 skipped + 1 whitelisted = 9
+//	helper      2 sinks / 1 source
+//	grammars    2 packages / 3 distinct keys / 4 in the registry
+//
+// 9 sites: 5 resolved across two mapped packages, 1 whitelisted (ERROR) in a
+// mapped package, 3 in an unmapped one.
+func reportFixture() (Result, map[string]*Grammar) {
+	site := func(dir, file, lit, form string) Site {
+		return Site{Pkg: dir, Dir: dir, File: file, Line: 1, Lit: lit, Form: form, Const: true}
+	}
+	const (
+		js      = "internal/extractors/javascript"
+		scala   = "internal/extractors/scala"
+		engine  = "internal/engine"
+		jsFile  = js + "/extractor.go"
+		scFile  = scala + "/scala.go"
+		enFileA = engine + "/client.go"
+		enFileB = engine + "/dispatch.go"
+	)
+	dead := miss(scala, scFile, 1, "not_a_scala_node", FormSwitch, []string{"scala"}, false, false)
 	return Result{
 			Sites: []Site{
-				mk(mapped, "identifier", FormCmp),
-				mk(mapped, "block", FormCmp),
-				mk(mapped, "not_a_scala_node", FormSwitch),
-				mk(mapped, "ERROR", FormCmp),
-				mk(mapped, "", FormCmp),
-				mk(unmapped, "arrow_function", FormCmp),
+				site(js, jsFile, "identifier", FormCmp),
+				site(js, jsFile, "object", FormCmp),
+				site(js, jsFile, "ERROR", FormCmp),
+				site(scala, scFile, "identifier", FormCmp),
+				site(scala, scFile, "block", FormSwitch),
+				site(scala, scFile, "not_a_scala_node", FormSwitch),
+				site(engine, enFileA, "arrow_function", FormCmp),
+				site(engine, enFileA, "lexical_declaration", FormCmp),
+				site(engine, enFileB, "arrow_function", FormHelper),
 			},
-			Resolved:        3,
-			Distinct:        3,
-			DirsWithGrammar: []string{mapped},
-			GrammarsForDir:  map[string][]string{mapped: {"scala"}},
-			Skipped:         []SkippedDir{{Dir: unmapped, Sites: 1, Reason: "runtime language"}},
-			SkippedSites:    1,
-			Misses:          []Miss{{Site: mk(mapped, "not_a_scala_node", FormSwitch), Grammars: []string{"scala"}}},
-			Failures:        []Miss{{Site: mk(mapped, "not_a_scala_node", FormSwitch), Grammars: []string{"scala"}}},
-			Sinks:           []string{"a/b.IsKind#1", "a/b.Match#0"},
-			Sources:         []string{"a/b.IsDeclType#0"},
+			Dynamic: []Site{
+				site(js, jsFile, "", FormCmp),
+				site(scala, scFile, "", FormHelper),
+			},
+			Resolved:        5,
+			Distinct:        5,
+			DirsWithGrammar: []string{js, scala},
+			GrammarsForDir:  map[string][]string{js: {"javascript", "typescript"}, scala: {"scala"}},
+			Registrations: []Registration{
+				{Dir: js, Key: "javascript", File: jsFile, Line: 8},
+				{Dir: engine, Key: "", File: enFileB, Line: 61},
+			},
+			Skipped:      []SkippedDir{{Dir: engine, Sites: 3, Reason: "runtime language"}},
+			SkippedSites: 3,
+			Misses:       []Miss{dead},
+			Failures:     []Miss{dead},
+			Sinks:        []string{"a/b.IsKind#1", "a/b.Match#0"},
+			Sources:      []string{"a/b.IsDeclType#0"},
 		}, map[string]*Grammar{
-			"scala": {Key: "scala", Kinds: map[string]bool{"identifier": true, "block": true}},
+			"javascript": {Key: "javascript", Kinds: map[string]bool{"identifier": true, "object": true}},
+			"typescript": {Key: "typescript", Kinds: map[string]bool{"identifier": true}},
+			"scala":      {Key: "scala", Kinds: map[string]bool{"identifier": true, "block": true}},
+			"swift":      {Key: "swift", Kinds: map[string]bool{"attribute": true}},
 		}
 }
 
-// TestPrintReport_AccountingReconcilesWithTheTotal is the printReport half of
-// blocker 1. The accounting line exists ONLY to let a reader check the headline
-// numbers against each other; an accounting line that does not add up is worse
-// than none, because it is read as a confirmation.
+// TestPrintReport_FullEmittedShape is the whole-surface golden for printReport.
 //
-// VARIED: nothing — this is a single-surface arithmetic check, and its input is
-// hand-built precisely so every term is known independently of the code under
-// test.
-// HELD CONSTANT: everything; the assertion is that the emitted sum equals the
-// emitted total AND that each term equals what the fixture put in.
+// Round 4 found five printer mutants alive at once, two of them WHOLE SECTIONS
+// deleted — the non-constant-registration section and the grammar-keys summary
+// line. Section-level deletion is the mutant a fragment list never catches,
+// because nobody lists a fragment from a section they forgot exists. A golden
+// catches it by construction.
+//
+// VARIED: nothing, by the same reasoning as printVerdict's golden — the axes
+// (mapped/unmapped package, multi-grammar/single-grammar, resolved/whitelisted/
+// skipped site, constant/non-constant registration, new miss) are all live in
+// the one fixture at once.
+// HELD CONSTANT: the entire Result; the assertion is byte equality.
+func TestPrintReport_FullEmittedShape(t *testing.T) {
+	const (
+		js     = "internal/extractors/javascript"
+		scala  = "internal/extractors/scala"
+		engine = "internal/engine"
+	)
+	want := strings.Join([]string{
+		`== derived surface ==`,
+		`  form cmp             6 sites`,
+		`  form helper          1 sites`,
+		`  form switch          2 sites`,
+		`  total           9 sites / 7 distinct literals / 4 files / 2 dynamic positions`,
+		`  accounting      5 resolved + 3 in packages with no grammar + 1 whitelisted (ERROR/MISSING/"") = 9`,
+		`  helper surface 2 sink position(s) (argument is a node-type literal) / 1 source position(s) (parameter receives a node type)`,
+		`== grammar keys per package ==`,
+		`  ` + js + `           javascript,typescript`,
+		`  ` + scala + `                scala`,
+		`  (2 packages, 3 distinct grammar keys registered; 4 grammars in the parser registry)`,
+		`== packages with sites but no derivable grammar ==`,
+		`  internal/engine                 3 sites`,
+		`== registrations with a non-constant language key (mapping not derivable) ==`,
+		`  ` + engine + `/dispatch.go:61`,
+		`== misses ==`,
+		`  [NEW      ] ` + scala + `/scala.go:1: node type "not_a_scala_node" resolves in none of package ` + scala + `'s grammars [scala] (form=switch)`,
+		``,
+	}, "\n")
+	res, grammars := reportFixture()
+	diffGolden(t, reportFor(res, grammars), want)
+}
+
+// The goldens pin the SHAPE. The tests below pin the MEANING of the numbers in
+// it — that the accounting reconciles, that the miss line separates a
+// suppression from a deferral, that the two fixpoint counts are two counts.
+// A golden alone would happily accept a self-consistent lie: rename a label and
+// re-golden, and nothing says the number under it is still the right one. These
+// re-derive each value from the emitted text and check it against the fixture
+// and against the identity it claims.
+
+// TestPrintReport_AccountingReconcilesWithTheTotal.
+//
+// The accounting line exists ONLY to let a reader check the headline numbers
+// against each other; one that does not add up is worse than none, because it
+// is read as a confirmation.
+//
+// VARIED: the three accounting terms take three DIFFERENT values (5 resolved,
+// 3 skipped, 1 whitelisted) — the asymmetry rule. With 1/1/1 every permutation
+// of the Fprintf's arguments would pass, which is the exact hole round 4 found
+// in the miss-line test.
+// HELD CONSTANT: the rest of the surface.
 func TestPrintReport_AccountingReconcilesWithTheTotal(t *testing.T) {
 	res, grammars := reportFixture()
 	out := reportFor(res, grammars)
 
 	total := numsIn(t, out, "  total ")
-	if len(total) < 1 || total[0] != len(res.Sites) {
-		t.Fatalf("total line does not report %d sites: %v\n%s", len(res.Sites), total, out)
+	if len(total) != 4 {
+		t.Fatalf("total line has %d numbers, want 4 (sites, distinct literals, files, dynamic): %v\n%s", len(total), total, out)
 	}
+	if total[0] != len(res.Sites) {
+		t.Fatalf("total line reports %d sites, want %d", total[0], len(res.Sites))
+	}
+	if total[3] != len(res.Dynamic) {
+		t.Errorf("total line reports %d dynamic positions, want %d", total[3], len(res.Dynamic))
+	}
+
 	acct := numsIn(t, out, "  accounting ")
 	if len(acct) != 4 {
 		t.Fatalf("accounting line has %d numbers, want 4 (resolved, skipped, whitelisted, sum): %v\n%s", len(acct), acct, out)
@@ -289,11 +388,9 @@ func TestPrintReport_AccountingReconcilesWithTheTotal(t *testing.T) {
 	if skipped != res.SkippedSites {
 		t.Errorf("accounting reports %d skipped, want %d", skipped, res.SkippedSites)
 	}
-	if whitelisted != 2 {
-		t.Errorf("accounting reports %d whitelisted, want 2 — the fixture has one ERROR and one empty literal in a MAPPED package", whitelisted)
+	if whitelisted != 1 {
+		t.Errorf("accounting reports %d whitelisted, want 1 — the fixture has exactly one ERROR literal in a MAPPED package", whitelisted)
 	}
-	// The identity itself, both ways: the printed sum must be the sum of the
-	// printed terms, and it must equal the printed total.
 	if got := resolved + skipped + whitelisted; got != sum {
 		t.Errorf("accounting terms sum to %d but the line prints %d", got, sum)
 	}
@@ -302,71 +399,29 @@ func TestPrintReport_AccountingReconcilesWithTheTotal(t *testing.T) {
 	}
 }
 
-// TestPrintReport_TagsMissesAndNamesTheSkippedSurface covers the rest of
-// printReport's output, so "the report prints nothing at all" cannot pass the
-// arithmetic test above vacuously.
-func TestPrintReport_TagsMissesAndNamesTheSkippedSurface(t *testing.T) {
-	res, grammars := reportFixture()
-	out := reportFor(res, grammars)
-	wantAll(t, out,
-		"== derived surface ==",
-		"== grammar keys per package ==",
-		"helper surface",
-		"internal/extractors/scala",
-		"== packages with sites but no derivable grammar ==",
-		"internal/engine",
-		"== misses ==",
-		"[NEW      ]",
-		"not_a_scala_node",
-	)
-	// A baselined miss must be tagged differently from a new one. Same
-	// aggregate/label distinction as above, in the other direction: the per-row
-	// tag is what the counter in printVerdict aggregates.
-	res.Misses[0].Baselined = true
-	res.Failures = nil
-	out = reportFor(res, grammars)
-	if strings.Contains(out, "[NEW      ]") {
-		t.Errorf("a baselined miss is still tagged NEW:\n%s", out)
-	}
-	wantAll(t, out, "[baselined]")
-}
-
-// TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral is the printVerdict
-// half of blocker 1, and the direct kill for M-P4.
+// TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral.
 //
 // A baselined miss is SUPPRESSED — somebody decided not to fix it. An alias-form
 // miss is DEFERRED — nobody has decided anything yet, it is waiting on an issue.
-// Printing the second as the first launders a fresh finding as a triaged one,
-// and it is the aggregate of exactly the per-row tag that M-P2 already pins.
+// Printing the second as the first launders a fresh finding as a triaged one.
 //
-// VARIED across the fixture's three misses: the disposition of each one
-// (baselined / alias-deferred / new). That is the only axis the miss line
-// reports, and every mutant on it moves a miss from one bucket to another.
-// HELD CONSTANT: the package, the file, the grammars, and the literal shape —
-// the misses differ ONLY in disposition, so a wrong count cannot be blamed on
-// anything else.
+// ROUND 4'S BLOCKER LIVED HERE. The first version of this test used one miss of
+// each kind and asserted every term == 1, so swapping two arguments in the
+// Fprintf was green while the shipped output read "77 misses = 11 tolerated by
+// the baseline + 66 alias-form". Three terms all expecting the same value do
+// not test a three-term line.
+//
+// VARIED: the COUNT of each disposition — 5 baselined, 3 alias-deferred, 2 new,
+// pairwise distinct and distinct from the total 10. That is the axis the line
+// reports, and it is now varied in the only way a permutation cannot survive.
+// HELD CONSTANT: the package, the grammars, and the fact that every miss is a
+// miss — the three groups differ ONLY in disposition, so a wrong count cannot
+// be blamed on anything else.
 func TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral(t *testing.T) {
 	if enforceAliasForms {
 		t.Skip("enforceAliasForms is true: alias misses are failures now, and this line's deferral term is retired. Delete this test with the constant.")
 	}
-	mk := func(lit string, alias, baselined bool) Miss {
-		return Miss{
-			Site:      Site{Dir: "internal/extractors/swift", File: "internal/extractors/swift/swift.go", Line: 7, Lit: lit, Form: FormCmp, Alias: alias},
-			Grammars:  []string{"swift"},
-			Baselined: baselined,
-		}
-	}
-	suppressed := mk("old_known_dead", false, true)
-	deferred := mk("attributes", true, false)
-	brandNew := mk("brand_new_dead", false, false)
-	res := Result{
-		Resolved:    3000,
-		Distinct:    900,
-		AliasSites:  230,
-		Misses:      []Miss{suppressed, deferred, brandNew},
-		Failures:    []Miss{brandNew},
-		AliasMisses: []Miss{deferred},
-	}
+	res := verdictFixture()
 	out := verdictFor(res)
 
 	n := numsIn(t, out, "misses = ")
@@ -374,24 +429,54 @@ func TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral(t *testing.T) {
 		t.Fatalf("miss line has %d numbers, want 4 (total, baselined, alias-deferred, new): %v\n%s", len(n), n, out)
 	}
 	total, baselined, alias, fresh := n[0], n[1], n[2], n[3]
-	if total != 3 {
-		t.Errorf("miss line reports %d misses, want 3", total)
+
+	// The four expected values are pairwise distinct, so each of these checks
+	// is independent of the others.
+	if total != 10 {
+		t.Errorf("miss line reports %d misses, want 10", total)
 	}
-	if baselined != 1 {
-		t.Errorf("miss line reports %d tolerated by the baseline, want 1. Folding the alias deferrals into this counter launders fresh findings as suppressed — the thing the comment above the Fprintf forbids.", baselined)
+	if baselined != 5 {
+		t.Errorf("miss line reports %d tolerated by the baseline, want 5. Folding the alias deferrals into this counter launders fresh findings as suppressed.", baselined)
 	}
-	if alias != 1 {
-		t.Errorf("miss line reports %d alias-form deferrals, want 1", alias)
+	if alias != 3 {
+		t.Errorf("miss line reports %d alias-form deferrals, want 3", alias)
 	}
-	if fresh != 1 {
-		t.Errorf("miss line reports %d new, want 1", fresh)
+	if fresh != 2 {
+		t.Errorf("miss line reports %d new, want 2 — and it must equal len(Failures), the set that actually fails CI", fresh)
+	}
+	if fresh != len(res.Failures) {
+		t.Errorf("miss line's new count is %d but %d misses are in Failures", fresh, len(res.Failures))
 	}
 	if got := baselined + alias + fresh; got != total {
 		t.Errorf("miss line terms sum to %d but it reports %d total misses:\n%s", got, total, out)
 	}
-	// And the words must still say which is which: a reader who sees the right
-	// numbers under the wrong labels is misled just as badly.
 	wantAll(t, out, "tolerated by the baseline", "reported not enforced", "new")
+}
+
+// TestPrintVerdict_HeadlineReportsResolvedNotDistinct.
+//
+// The headline is the line the count floor is read from, so a swap between its
+// first two arguments is a silent 41→17 collapse in the number every other
+// claim about coverage is quoted against.
+//
+// VARIED: the three headline values are pairwise distinct (3041 resolved, 1017
+// distinct, 3 packages) — asymmetry again, and the reason a swap is detectable.
+// HELD CONSTANT: the rest of the surface.
+func TestPrintVerdict_HeadlineReportsResolvedNotDistinct(t *testing.T) {
+	res := verdictFixture()
+	n := numsIn(t, verdictFor(res), "literal sites resolved")
+	if len(n) != 3 {
+		t.Fatalf("headline has %d numbers, want 3 (resolved, distinct, packages): %v", len(n), n)
+	}
+	if n[0] != res.Resolved {
+		t.Errorf("headline reports %d resolved, want %d", n[0], res.Resolved)
+	}
+	if n[1] != res.Distinct {
+		t.Errorf("headline reports %d distinct pkg+literal, want %d", n[1], res.Distinct)
+	}
+	if n[2] != len(res.DirsWithGrammar) {
+		t.Errorf("headline reports %d packages with a grammar, want %d", n[2], len(res.DirsWithGrammar))
+	}
 }
 
 // TestPrintReport_NamesBothFixpointSurfaces keeps the two fixpoints from being
@@ -402,9 +487,8 @@ func TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral(t *testing.T) {
 // — separately, because one number standing in for two is how the distinction
 // got lost in the first place.
 //
-// VARIED: which fixpoint a position belongs to (two sinks, one source) — an
-// asymmetric fixture on purpose, so a line that prints the same count twice, or
-// swaps the two, cannot pass.
+// VARIED: the two counts differ (2 sinks, 1 source) — asymmetric on purpose, so
+// a line printing the same count twice, or swapping them, cannot pass.
 // HELD CONSTANT: the rest of the surface.
 func TestPrintReport_NamesBothFixpointSurfaces(t *testing.T) {
 	res, grammars := reportFixture()
@@ -419,4 +503,71 @@ func TestPrintReport_NamesBothFixpointSurfaces(t *testing.T) {
 	if n[1] != len(res.Sources) {
 		t.Errorf("reports %d source positions, want %d — the sources fixpoint added in this PR had no exported field and no output at all", n[1], len(res.Sources))
 	}
+}
+
+// The remaining tests pin the printer's CONDITIONAL behaviour, which a golden
+// built from one fixture cannot reach: a golden shows what is printed when a
+// section applies, never that it is absent when it does not.
+
+// TestPrintVerdict_NoSkippedSurfaceSaysNothing: the skip block must be
+// conditional, so a clean tree does not print a "0 sites in 0 packages" line
+// that trains readers to skip it.
+func TestPrintVerdict_NoSkippedSurfaceSaysNothing(t *testing.T) {
+	got := verdictFor(Result{Resolved: 3000, Distinct: 900})
+	if strings.Contains(got, "were NOT checked") {
+		t.Errorf("clean run printed a skipped-surface block:\n%s", got)
+	}
+	if strings.Contains(got, "alias-form dead literal") {
+		t.Errorf("clean run printed an alias-findings block:\n%s", got)
+	}
+	if !strings.Contains(got, "node-type-gate: OK") {
+		t.Errorf("clean run did not print OK:\n%s", got)
+	}
+}
+
+// TestPrintVerdict_ExemptSkipEmitsNoError is the permissive direction on the
+// skip block: over-reporting would make the ::error:: line worthless.
+func TestPrintVerdict_ExemptSkipEmitsNoError(t *testing.T) {
+	for _, line := range strings.Split(verdictFor(verdictFixture()), "\n") {
+		if strings.HasPrefix(line, "::error") && strings.Contains(line, "internal/engine") {
+			t.Errorf("exempt dir emitted a CI error line: %q", line)
+		}
+	}
+}
+
+// TestPrintVerdict_UnBaselinedAliasMissIsNotTaggedBaselined is the permissive
+// direction on the alias block: the tag is what tells a triaged finding from a
+// fresh one.
+func TestPrintVerdict_UnBaselinedAliasMissIsNotTaggedBaselined(t *testing.T) {
+	for _, line := range strings.Split(verdictFor(verdictFixture()), "\n") {
+		if strings.Contains(line, `"object_expression"`) && strings.Contains(line, "[baselined]") {
+			t.Errorf("un-baselined alias miss tagged as baselined: %q", line)
+		}
+	}
+}
+
+// TestPrintReport_BaselinedMissIsTaggedDifferently pins the per-row tag the
+// verdict's counter aggregates. The golden covers the NEW tag; this covers the
+// other branch, which no single fixture can show at the same time.
+func TestPrintReport_BaselinedMissIsTaggedDifferently(t *testing.T) {
+	res, grammars := reportFixture()
+	res.Misses[0].Baselined = true
+	res.Failures = nil
+	out := reportFor(res, grammars)
+	if strings.Contains(out, "[NEW      ]") {
+		t.Errorf("a baselined miss is still tagged NEW:\n%s", out)
+	}
+	wantAll(t, out, "[baselined]")
+}
+
+// TestPrintVerdict_FloorBreachSaysTheVerdictIsMeaningless. A gate that read
+// nothing and printed OK is worse than no gate; the floor error must say so in
+// the same breath as the count.
+func TestPrintVerdict_FloorBreachSaysTheVerdictIsMeaningless(t *testing.T) {
+	got := verdictFor(Result{Resolved: 1, Distinct: 1})
+	wantAll(t, got,
+		"::error::node-type-gate read only 1 sites",
+		"the verdict below means nothing",
+		"node-type-gate: FAIL (count floor)",
+	)
 }
