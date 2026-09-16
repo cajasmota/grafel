@@ -147,9 +147,11 @@ class Svc {
 
 // The leaf is read as the scoped node's LAST NAMED CHILD, which the grammar
 // (`seq(qualifier, '.', repeat(annotation), type_identifier)`) makes correct
-// even when the trailing segment carries a type annotation. A reduction that
-// took the last named child WITHOUT checking its kind, or that took a fixed
-// index, is killed here.
+// even when the trailing segment carries a type annotation: the annotations
+// sit BEFORE the identifier, so the identifier is still last. A reduction that
+// took a FIXED index instead — `NamedChild(1)`, which is the identifier for
+// `com.x.Bar` and the ANNOTATION the moment one appears — is killed here, and
+// only here.
 func TestJava7096_AnnotatedQualifiedSegmentStillBindsToLeaf(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
 class XController { void getCounts() {} }
@@ -199,4 +201,133 @@ class Svc {
 `)
 	j7094MustNotCall(t, rels, "Order.b", "Customer.a", "Order.a", "Customer.b")
 	j7094MustCall(t, rels, "a", "b")
+}
+
+// ---------------------------------------------------------------------------
+// leafTypeName's OTHER CALLERS (round 2).
+//
+// leafTypeName has EIGHT non-recursive callers. Sites 1-3 above grade three of
+// them; the remaining five reach the SAME scoped_type_identifier arm from
+// field types, parameter types, the enhanced-for arm, javaSuperclassNames,
+// javaSuperInterfaceNames and javaInjectFieldTypes, and every one of them
+// emitted the package root for a qualified type:
+//
+//	extends com.x.Base          EXTENDS    -> "com"
+//	implements com.x.Iface      IMPLEMENTS -> "com"
+//	@Inject com.x.Repo repo     REFERENCES -> "com"
+//	com.x.Repo repo; repo.l()   CALLS      -> "com.load"
+//	void run(com.x.Param p)     CALLS      -> "com.ping"
+//	for (com.x.Item i : is)     CALLS      -> "com.use"
+//
+// Measured: reverting javaSuperclassNames ALONE to the old
+// findAllNodes(...)[len-1] passed the ENTIRE Java suite with zero --- FAIL
+// lines while emitting `EXTENDS -> com`. So the #7096 defect could return on
+// any of these five surfaces under a green suite. That is the same argument
+// that makes sites 1/2/3 worth grading separately, applied to the callers.
+//
+// EACH SURFACE IS ITS OWN TEST on its own fixture: six assertions in one test
+// fail together, and assertions that only fail together grade none of them.
+
+// j7096ClassRels returns "KIND:ToID" tokens for the SCOPE.Component entity
+// named `class`, which is where EXTENDS / IMPLEMENTS / REFERENCES land.
+func j7096ClassRels(t *testing.T, class, src string) []string {
+	t.Helper()
+	out := jcovExtract(t, "com/x/"+class+".java", src)
+	for _, ent := range out {
+		if ent.Name == class && ent.Kind == "SCOPE.Component" {
+			var rels []string
+			for _, r := range ent.Relationships {
+				rels = append(rels, r.Kind+":"+r.ToID)
+			}
+			return rels
+		}
+	}
+	t.Fatalf("no SCOPE.Component entity named %q", class)
+	return nil
+}
+
+func j7096MustRel(t *testing.T, rels []string, want string) {
+	t.Helper()
+	for _, r := range rels {
+		if r == want {
+			return
+		}
+	}
+	t.Fatalf("expected edge %q; got %v", want, rels)
+}
+
+func j7096MustNotRel(t *testing.T, rels []string, bad ...string) {
+	t.Helper()
+	for _, b := range bad {
+		for _, r := range rels {
+			if r == b {
+				t.Fatalf("must NOT emit %q (package root as a type); got %v", b, rels)
+			}
+		}
+	}
+}
+
+// SURFACE 4 — javaSuperclassNames.
+func TestJava7096_QualifiedSuperclassBindsToLeaf(t *testing.T) {
+	rels := j7096ClassRels(t, "Svc", `package com.x;
+class Svc extends com.x.Base {}
+`)
+	j7096MustNotRel(t, rels, "EXTENDS:com", "EXTENDS:x")
+	j7096MustRel(t, rels, "EXTENDS:Base")
+}
+
+// SURFACE 5 — javaSuperInterfaceNames.
+func TestJava7096_QualifiedInterfaceBindsToLeaf(t *testing.T) {
+	rels := j7096ClassRels(t, "Svc", `package com.x;
+class Svc implements com.x.Iface {}
+`)
+	j7096MustNotRel(t, rels, "IMPLEMENTS:com", "IMPLEMENTS:x")
+	j7096MustRel(t, rels, "IMPLEMENTS:Iface")
+}
+
+// SURFACE 6 — javaInjectFieldTypes.
+func TestJava7096_QualifiedInjectedFieldBindsToLeaf(t *testing.T) {
+	rels := j7096ClassRels(t, "Svc", `package com.x;
+class Svc {
+  @Inject com.x.Repo repo;
+}
+`)
+	j7096MustNotRel(t, rels, "REFERENCES:com", "REFERENCES:x")
+	j7096MustRel(t, rels, "REFERENCES:Repo")
+}
+
+// SURFACE 7 — collectFieldTypes, reached through a FIELD receiver.
+func TestJava7096_QualifiedFieldTypeReceiverBindsToLeaf(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Svc {
+  com.x.Repo repo;
+  void run() { repo.load(); }
+}
+`)
+	j7094MustNotCall(t, rels, "com.load", "x.load")
+	j7094MustCall(t, rels, "Repo.load")
+}
+
+// SURFACE 8 — collectParamTypes, reached through a PARAMETER receiver.
+func TestJava7096_QualifiedParamTypeReceiverBindsToLeaf(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Svc {
+  void run(com.x.Param p) { p.ping(); }
+}
+`)
+	j7094MustNotCall(t, rels, "com.ping", "x.ping")
+	j7094MustCall(t, rels, "Param.ping")
+}
+
+// SURFACE 9 — the enhanced-for arm of collectLocalVarTypes.
+func TestJava7096_QualifiedEnhancedForTypeBindsToLeaf(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Svc {
+  void run(java.util.List<com.x.Item> items) {
+    for (com.x.Item i : items) { i.use(); }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "com.use", "x.use")
+	j7094MustCall(t, rels, "Item.use")
 }
