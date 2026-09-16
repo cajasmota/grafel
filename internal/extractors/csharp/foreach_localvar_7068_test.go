@@ -682,6 +682,23 @@ namespace Shop
 // target at a brand-new site, in exactly the direction the `var` guard closes.
 // main emits the honest bare `Process` here, so this would have been a
 // regression minted by #7068.
+//
+// THIS TEST RESTS ON AN UNVERIFIED LANGUAGE PREMISE, stated here because the
+// assertion below otherwise reads as settled. `var` and `dynamic` are both
+// contextual keywords, and they are believed NOT to be symmetric: a user type
+// named `var` is prohibited by the language, while one named `dynamic` is
+// believed to be PERMITTED and to shadow the keyword in type position. If that
+// is right, `class dynamic {}` beside `foreach (dynamic d in xs)` is a legal
+// program whose correct edge this refusal silently deletes — an over-refusal
+// with no symptom (#7056).
+//
+// NO C# COMPILER EXISTS IN THIS ENVIRONMENT, so neither the reviewer who raised
+// this nor the author could demonstrate the rule either way, and asserting a
+// language rule nobody ran is the defect class this whole change exists to fix.
+// What settles it: compile `class dynamic {}` with `csc`. If it compiles, this
+// test and csNonBindableTypeKeyword both need the `dynamic` case reconsidered.
+// Until then the direction is the conservative one — the guard drops an edge
+// rather than fabricating a dotted target — and its blast radius is this arm.
 func TestCSharp_Foreach7068_DynamicIsNotFabricated(t *testing.T) {
 	src := `
 using System.Collections.Generic;
@@ -862,4 +879,216 @@ public class Runner
 			t.Errorf("Runner.Alias: alias_qualified_name should bind to its leaf segment; got %v", got)
 		}
 	})
+}
+
+// TestCSharp_Foreach7068_LinqBoundNamesAreRefused is F-1: round 3's defect
+// one level over, plus refusal rows for the three ordinary LINQ range
+// variables that had been on the ledger without one. The claimed-names ledger listed `from_clause`, `let_clause`
+// and `join_clause` BECAUSE LINQ range variables bind names — and `into` binds
+// one by the same rule, so the list was self-inconsistent rather than merely
+// short.
+//
+// Measured against main, where the arm never ran:
+//
+//	main:  [Count GetHashCode]        — the honest bare leaf
+//	round 3: [Order.Count GetHashCode] — fabricated; Order has no Count
+//
+// Two distinct CST shapes, confirmed by dump, and only one of them has a node:
+//
+//	group … into c   `into` + a bare `identifier` as DIRECT CHILDREN of
+//	                 query_expression — nothing for findAllNodes to match,
+//	                 which is why it was missed. Found positionally.
+//	select … into c  the same shape.
+//	join … into c    wrapped in a `join_into_clause`, now on the ledger's list.
+//
+// The `join` case is the instructive one: `join_clause` was ALREADY on the list
+// and has no `name` field, so the first-identifier fallback returned the join
+// RANGE variable `b` and stopped — correct as far as it went, which is exactly
+// what hid the missing continuation variable `c`.
+//
+// LEGALITY, unverified and stated because it is load-bearing: no C# compiler
+// exists in this environment. These rows rest on the same rule every row in
+// ForeachNeverClobbersALocal rests on — a foreach variable's scope is its own
+// statement, so a sibling statement may reuse the name.
+func TestCSharp_Foreach7068_LinqBoundNamesAreRefused(t *testing.T) {
+	forms := []struct {
+		name  string
+		query string
+		shape string
+	}{
+		{
+			"group-into",
+			"from o in orders group o by o.GetHashCode() into c select c.Count()",
+			"bare identifier under query_expression — no node type to match",
+		},
+		{
+			"select-into",
+			"from o in orders select o into c select c.Count()",
+			"same nodeless shape as group-into",
+		},
+		{
+			"join-into",
+			"from a in orders join b in orders on a.GetHashCode() equals b.GetHashCode() into c select c.Count()",
+			"join_into_clause — a node, but hidden behind join_clause's own range variable",
+		},
+		// The three ORDINARY range variables. These were on the ledger from the
+		// start but had no refusal row of their own, so a mutant dropping any of
+		// them survived. They collide by the same rule and the same shape as the
+		// `into` rows above, so grading them costs three lines and removes three
+		// silently-ungraded entries.
+		{
+			"from-range",
+			"from c in orders select c.Count()",
+			"from_clause — the range variable proper",
+		},
+		{
+			"let-range",
+			"from a in orders let c = a.GetHashCode() select c.Count()",
+			"let_clause — no `name` field; the first-identifier fallback supplies it",
+		},
+		{
+			"join-range",
+			"from a in orders join c in orders on a.GetHashCode() equals c.GetHashCode() select c.Count()",
+			"join_clause — no `name` field; fallback returns the range variable",
+		},
+	}
+	for _, f := range forms {
+		for _, order := range []string{"foreach-first", "query-first"} {
+			t.Run(f.name+"/"+order, func(t *testing.T) {
+				loop := "foreach (Order c in orders) { }"
+				query := "var q = " + f.query + ";"
+				body := loop + "\n            " + query
+				if order == "query-first" {
+					body = query + "\n            " + loop
+				}
+				src := `
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Shop
+{
+    public class Order { public void Ship() {} }
+
+    public class Runner
+    {
+        // CONTROL — a foreach whose name nothing else binds, same file.
+        public void Control(List<Order> orders)
+        {
+            foreach (Order o in orders) { o.Ship(); }
+        }
+
+        public void M(List<Order> orders)
+        {
+            ` + body + `
+        }
+    }
+}
+`
+				ents := runCSharp(t, src)
+				if got := fe7068Targets(t, ents, "Runner.Control"); !csHasTarget(got, "Order.Ship") {
+					t.Fatalf("CONTROL Runner.Control: missing CALLS -> Order.Ship; got %v", got)
+				}
+				got := fe7068Targets(t, ents, "Runner.M")
+				if csHasTarget(got, "Order.Count") {
+					t.Errorf("%s/%s (%s): the foreach took `c`, a name the LINQ `into` "+
+						"continuation binds, and fabricated Order.Count — Order has no "+
+						"Count; got %v", f.name, order, f.shape, got)
+				}
+				if !csHasTarget(got, "Count") {
+					t.Errorf("%s/%s (%s): expected the bare leaf CALLS -> Count; got %v",
+						f.name, order, f.shape, got)
+				}
+			})
+		}
+	}
+}
+
+// TestCSharp_Foreach7068_NonCollidingBindingIsKept is F-2, and it grades the
+// direction every other table in this file structurally cannot.
+//
+// THE HELD-CONSTANT AXIS. Every row in every other table places the prior
+// binding where a collision is PLAUSIBLE — same name, sibling scope — and then
+// asserts a wrong dotted target is absent. `ForeachNeverClobbersALocal` accepts
+// `Order.Ship` OR a bare `Ship` by design, precisely because whether the prior
+// form types the receiver is not its subject. So nothing in this file could
+// detect the ledger becoming TOO BROAD: a ledger that refused every foreach
+// name unconditionally passed every refusal row.
+//
+// These rows invert it. The prior binding uses a DIFFERENT name, so a collision
+// is IMPOSSIBLE, and the assertion is that the loop KEEPS its receiver type —
+// `Order.Ship` present, bare `Ship` absent.
+//
+// Why this matters even though over-refusal is the safe direction: the arm never
+// ran on main, so it can only add, and a dropped receiver costs unrealized
+// recall rather than emitting anything wrong. But "safe" is not "graded". This
+// ledger is a list that grows every time a review finds another binding form —
+// twice so far — and the failure mode of a growing list is that it eventually
+// swallows names it was never meant to touch. Nothing observed that until it was
+// asked for.
+//
+// LEGALITY: unlike every other table here, these fixtures involve NO shadowing
+// whatsoever — each prior binding has a name the foreach does not use — so their
+// legality does not depend on the sibling-scope rule the other rows rest on, and
+// the absence of a C# compiler does not weaken them.
+func TestCSharp_Foreach7068_NonCollidingBindingIsKept(t *testing.T) {
+	forms := []struct {
+		name string
+		stmt string
+		node string
+	}{
+		{"local-declaration", "Line n1 = null; n1.Touch();", "variable_declarator"},
+		{"using-statement", "using (Conn n2 = Open()) { n2.Close(); }", "variable_declarator via using_statement"},
+		{"catch-clause", "try { } catch (Boom n3) { n3.Bang(); }", "catch_declaration"},
+		{"lambda-implicit-param", "var f1 = xs.Select(n4 => n4.Touch());", "implicit_parameter"},
+		{"lambda-typed-param", "var f2 = xs.Select((Line n5) => n5.Touch());", "parameter"},
+		{"local-function-param", "void Inner(Line n6) { n6.Touch(); }", "parameter via local_function_statement"},
+		{"out-declaration", "Fetch(out Line n7); n7.Touch();", "declaration_expression"},
+		{"is-pattern", "if (probe is Line n8) { n8.Touch(); }", "declaration_pattern"},
+		{"linq-from", "var q1 = from n9 in xs select n9;", "from_clause"},
+		{"linq-let", "var q2 = from a in xs let n10 = a.Touch() select n10;", "let_clause"},
+		{"linq-join", "var q3 = from a in xs join n11 in xs on a.K() equals n11.K() select n11;", "join_clause"},
+		{"linq-group-into", "var q4 = from a in xs group a by a.K() into n12 select n12.Count();", "positional `into` scan"},
+		{"linq-join-into", "var q5 = from a in xs join b in xs on a.K() equals b.K() into n13 select n13.Count();", "join_into_clause"},
+	}
+	for _, f := range forms {
+		t.Run(f.name, func(t *testing.T) {
+			src := `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Shop
+{
+    public class Order { public void Ship() {} }
+    public class Line  { public void Touch() {} public int K() { return 0; } }
+    public class Boom : Exception { public void Bang() {} }
+    public class Conn : IDisposable { public void Close() {} public void Dispose() {} }
+
+    public class Runner
+    {
+        private Conn Open() { return null; }
+        private void Fetch(out Line v) { v = null; }
+        private object probe = null;
+
+        public void M(List<Order> orders, List<Line> xs)
+        {
+            ` + f.stmt + `
+            foreach (Order o in orders) { o.Ship(); }
+        }
+    }
+}
+`
+			ents := runCSharp(t, src)
+			got := fe7068Targets(t, ents, "Runner.M")
+			if !csHasTarget(got, "Order.Ship") {
+				t.Errorf("%s (%s): a NON-colliding %s suppressed the loop variable's "+
+					"receiver type — the ledger is over-refusing; got %v",
+					f.name, f.node, f.node, got)
+			}
+			if csHasTarget(got, "Ship") {
+				t.Errorf("%s (%s): emitted the bare leaf CALLS -> Ship alongside/instead of "+
+					"Order.Ship; got %v", f.name, f.node, got)
+			}
+		})
+	}
 }

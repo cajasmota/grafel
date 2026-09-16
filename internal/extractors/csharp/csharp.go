@@ -983,6 +983,15 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	//      it `identifier`, so leafTypeName returns "dynamic" and the arm would
 	//      emit `dynamic.Process`. csNonBindableTypeKeyword refuses BOTH.
 	//
+	//      UNVERIFIED, and repeated here because this is where the decision
+	//      reads as settled: the two tokens may not be symmetric. A user type
+	//      named `var` is prohibited by the language; one named `dynamic` is
+	//      believed to be PERMITTED, and if so, `class dynamic {}` beside
+	//      `foreach (dynamic d in xs)` is a legal program whose correct edge the
+	//      guard silently drops. NO C# COMPILER EXISTS IN THIS ENVIRONMENT, so
+	//      neither the reviewer who raised it nor the author could demonstrate
+	//      the rule. See csNonBindableTypeKeyword for what settles it.
+	//
 	//      A `foreach`'s `right` field is the COLLECTION, not the element, so
 	//      inferImplicitLocalType's RHS trick cannot be reused here — it would
 	//      need the collection's generic argument. `foreach (var o in …)`
@@ -1205,15 +1214,44 @@ func csNonBindableTypeKeyword(declType string) bool {
 //	declaration_expression `out var c`, `out T c`
 //	declaration_pattern    `x is T c`, `case T c:`
 //	from_clause/let_clause/join_clause   LINQ range variables
+//	join_into_clause       `join … into c`
+//	(positional)           `group … into c` / `select … into c`, which have NO
+//	                       node of their own — see the scan at the end
 //
 // THE GUARANTEE IS AS WIDE AS THIS LIST AND NO WIDER. It is an enumeration, not
 // a derivation from the grammar, so a binding construct missing from it would
-// still be taken unopposed by the `foreach` arm. Graded directly by
-// ForeachNeverClobbersALocal's binding-form rows for `variable_declarator`
-// (typed and untyped) and `catch_declaration`; the remaining entries are
-// covered but UNGRADED, because grading them needs a fixture whose same-name
-// sibling-scope legality cannot be checked without a C# compiler, and none
-// exists in this environment.
+// still be taken unopposed by the `foreach` arm. That is not hypothetical: the
+// LINQ `into` continuation variable WAS missing from the first version of this
+// list and produced the fabricated `Order.Count` on a corpus-shaped query, in
+// the same shape as the `using` case one level up. The list should be read as
+// "everything found so far", not as a closed set.
+//
+// GRADED IN BOTH DIRECTIONS, which are different questions:
+//
+//	REFUSAL (a colliding name must be refused) — graded for
+//	variable_declarator (typed and untyped), catch_declaration, from_clause,
+//	let_clause, join_clause, join_into_clause and the positional `into` scan.
+//
+//	FOUR ENTRIES ARE COVERED BUT UNGRADED IN THE REFUSAL DIRECTION, and they
+//	are named rather than left to be discovered: `parameter` (lambda and
+//	local-function parameters), `implicit_parameter`, `declaration_expression`
+//	(`out var c`) and `declaration_pattern` (`x is T c`). Mutants deleting any
+//	of them survive the suite. The reason is not laziness: a refusal fixture
+//	needs a same-name collision, `out` declarations and `is` patterns are
+//	scoped to the ENCLOSING BLOCK (so colliding with a nested `foreach` is very
+//	likely CS0136 and no such program exists), and whether a lambda or
+//	local-function parameter may reuse a sibling `foreach` variable's name is a
+//	shadowing rule that CANNOT BE CHECKED WITHOUT A C# COMPILER — and none
+//	exists in this environment. Writing those rows on an unchecked premise is
+//	the defect class this change exists to fix; a named gap costs less.
+//
+//	OVER-REFUSAL (a NON-colliding name must be left alone) — graded for every
+//	entry, by TestCSharp_Foreach7068_NonCollidingBindingIsKept. Those fixtures
+//	need no shadowing at all, so their legality is not in question. Over-refusal
+//	is the safe direction (it drops a receiver type rather than fabricating
+//	one), but "safe" is not "graded": nothing observed it until it was asked
+//	for, and this ledger is exactly the kind of list that grows until it starts
+//	swallowing names it was never meant to touch.
 //
 // `foreach_statement` is deliberately absent: its own loop variables are the
 // names being offered, and collecting them would make every `foreach` refuse
@@ -1233,6 +1271,7 @@ func csNamesBoundOutsideForeach(body ts.Node, src []byte) map[string]bool {
 		"from_clause",
 		"let_clause",
 		"join_clause",
+		"join_into_clause",
 	)
 	for _, n := range named {
 		if nm := n.ChildByFieldName("name"); nm != nil {
@@ -1256,6 +1295,32 @@ func csNamesBoundOutsideForeach(body ts.Node, src []byte) map[string]bool {
 	for _, n := range findAllNodes(body, "implicit_parameter") {
 		if t := string(src[n.StartByte():n.EndByte()]); t != "" {
 			out[t] = true
+		}
+	}
+	// The LINQ CONTINUATION variable of `group … into c` and `select … into c`
+	// has NO node of its own: the grammar emits the anonymous `into` token and a
+	// bare `identifier` as DIRECT CHILDREN of the query_expression, so there is
+	// nothing for findAllNodes to match and the loop above cannot see it. It is
+	// found positionally instead — the identifier following the `into` token.
+	//
+	// `join … into c` is the sibling case and is NOT handled here: it wraps the
+	// pair in a `join_into_clause`, which the list above collects. Both were
+	// missed by the first version of this ledger, and the `join` one was missed
+	// in a way worth recording: `join_clause` was already on the list and has no
+	// `name` field, so the first-identifier fallback returned the join RANGE
+	// variable and stopped — correct as far as it went, which is exactly what
+	// made the missing continuation variable invisible.
+	for _, q := range findAllNodes(body, "query_expression") {
+		for i := 0; i < int(q.ChildCount())-1; i++ {
+			c := q.Child(i)
+			if c == nil || c.Type() != "into" {
+				continue
+			}
+			if nx := q.Child(i + 1); nx != nil && nx.Type() == "identifier" {
+				if t := string(src[nx.StartByte():nx.EndByte()]); t != "" {
+					out[t] = true
+				}
+			}
 		}
 	}
 	return out
