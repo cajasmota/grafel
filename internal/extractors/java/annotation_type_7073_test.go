@@ -254,100 +254,342 @@ func TestJavaAnnotationType_7073_Nested(t *testing.T) {
 	}
 }
 
-// TestJavaAnnotationType_7073_UsageSiteBinding MEASURES — it does not assert —
-// what minting the declaration does for a usage site. It drives the real
-// resolver over the declaring file plus a consumer file and reports which of
-// the consumer's outbound edges land on the new entity.
+// TestJavaAnnotationType_7073_UsageSiteBinding MEASURES — it does not assume —
+// what minting the declaration does for a usage site, and pins BOTH halves of a
+// partial result.
 //
-// The measured result is recorded in the assertions below: the IMPORTS edge
-// from the consumer file DOES bind once the declaration exists (it dangled
-// before), while the `@Audited` application sites themselves still emit NO edge
-// at all — the extractor has never modelled annotation USE as an edge, so
-// minting the declaration cannot make a non-existent edge resolve. That second
-// half is a separate, honestly-stated gap, pinned here so it cannot be silently
-// claimed as fixed.
+// Half one: an annotation APPLICATION (`@Audited("x")` written above a
+// declaration) emits no edge at all. This extractor reads annotation nodes for
+// detection (@Transactional, tracing, Bean Validation) but has never modelled
+// annotation USE as a relationship, so minting the declaration cannot make a
+// non-existent edge resolve. #7073 does not close that; the assertion fires if
+// it ever does, so the scope claim cannot go stale. (Distinct from READING an
+// element — `a.value()` — which does emit an edge; see
+// TestJavaAnnotationType_7073_ElementIsACallTarget.)
+//
+// Half two: the `import a.Audited;` edge now RESOLVES onto the new component's
+// entity id. The assertion is on the resolved ToID, not on the edge's presence:
+// the raw import text is emitted with no reference to any entity and is
+// therefore present on main too, so asserting presence would grade nothing.
 func TestJavaAnnotationType_7073_UsageSiteBinding(t *testing.T) {
-	const consumerPath = "com/example/audit/Svc.java"
-	const consumerSrc = `package com.example.audit;
+	const declPath = "a/Audited.java"
+	const consumerPath = "b/Svc.java"
+	recs := extractJavaFT(t, map[string]string{
+		declPath: `package a;
 
-import com.example.audit.Audited;
+public @interface Audited { String value(); }
+`,
+		// `Ghost` is the SELECTIVITY control: a type that does not exist in the
+		// record set. Without it, "the Audited import resolved" is equally
+		// explained by the resolver rewriting every import it sees.
+		consumerPath: `package b;
+
+import a.Audited;
+import a.Ghost;
 
 @Audited("x")
 public class Svc {
     @Audited("y")
     public void go() {}
 }
-`
-	recs := append(
-		extractJava7073(t, javaAnn7073Path, javaAnn7073Src),
-		extractJava7073(t, consumerPath, consumerSrc)...,
-	)
+`,
+	})
 	for i := range recs {
 		if recs[i].ID == "" {
 			recs[i].ID = graph.EntityID("issue7073", recs[i].Kind, recs[i].Name, recs[i].SourceFile)
 		}
 	}
 
-	// The declaration is in the record set at all — the premise of any binding
-	// claim below.
 	decl := findJava7073(recs, "SCOPE.Component", "Audited")
 	if len(decl) != 1 {
 		t.Fatalf("premise failed: no Audited declaration to bind to; entities:\n  %s",
 			describeJava7073(recs))
 	}
+	declID := decl[0].ID
 
-	// Positive control on the address dialect: the annotation's simple name must
-	// be UNAMBIGUOUS in this fixture, otherwise "it bound" would be untestable.
-	idx := resolve.BuildIndex(recs)
-	if _, st := idx.LookupStatusHint("Audited", "IMPORTS"); st != 1 {
-		t.Fatalf("premise failed: %q does not resolve uniquely (status %d), so this "+
-			"fixture cannot distinguish a bound edge from a lucky one", "Audited", st)
-	}
-
-	// Half one — MEASURED: annotation APPLICATION sites emit no edge.
-	var annEdges []string
+	// PRE-RESOLUTION control: the edge must currently hold raw import TEXT, not
+	// an entity id. This is what makes half two a statement about the resolver
+	// binding onto the new entity rather than about the extractor having emitted
+	// an id directly.
+	rawBefore := map[string]bool{}
 	for _, e := range recs {
 		if e.SourceFile != consumerPath {
 			continue
 		}
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" {
+				rawBefore[r.ToID] = true
+			}
+		}
+	}
+	if !rawBefore["a.Audited"] {
+		t.Fatalf("premise failed: consumer's pre-resolution IMPORTS targets were %v, "+
+			"want the raw text %q — this test grades the resolution step, so the "+
+			"unresolved starting state must be the one it claims", keysOf7073(rawBefore), "a.Audited")
+	}
+	if rawBefore[declID] {
+		t.Fatalf("premise failed: the IMPORTS edge already held the entity id before " +
+			"resolution, so nothing about binding is graded here")
+	}
+
+	idx := resolve.BuildIndex(recs)
+	resolve.ReferencesEmbedded(recs, idx)
+
+	var after []string
+	for _, e := range recs {
+		if e.SourceFile != consumerPath {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind == "IMPORTS" {
+				after = append(after, r.ToID)
+			}
+		}
+	}
+	sort.Strings(after)
+
+	bound := false
+	ghostStayedRaw := false
+	for _, tgt := range after {
+		if tgt == declID {
+			bound = true
+		}
+		if tgt == "a.Ghost" {
+			ghostStayedRaw = true
+		}
+	}
+	if !bound {
+		t.Errorf("the consumer's IMPORTS edge did NOT resolve onto the Audited "+
+			"component id %q; resolved targets were %v", declID, after)
+	}
+	if !ghostStayedRaw {
+		t.Errorf("selectivity control failed: the import of a NON-EXISTENT type no "+
+			"longer holds its raw text %q (targets %v), so a resolver that rewrote "+
+			"every import indiscriminately would also pass the assertion above",
+			"a.Ghost", after)
+	}
+
+	// Half one — annotation APPLICATION sites still emit no edge naming Audited.
+	var annEdges []string
+	for _, e := range recs {
+		if e.SourceFile != consumerPath || e.Subtype == "file" {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind == "IMPORTS" {
 				continue
 			}
-			if strings.Contains(r.ToID, "Audited") {
+			if strings.Contains(r.ToID, "Audited") || r.ToID == declID {
 				annEdges = append(annEdges, e.Name+" -["+r.Kind+"]-> "+r.ToID)
 			}
 		}
 	}
 	if len(annEdges) != 0 {
-		t.Errorf("MEASUREMENT MOVED: @Audited application sites now emit %d edge(s): %v.\n"+
-			"This test pins the honest scope of #7073 — if annotation USE now produces "+
-			"edges, update this test and the PR body rather than leaving the claim stale.",
+		t.Errorf("MEASUREMENT MOVED: @Audited APPLICATION sites now emit %d edge(s): %v.\n"+
+			"This pins the honest scope of #7073 — if annotation USE now produces edges, "+
+			"update this test and the PR body rather than leaving the claim stale.",
 			len(annEdges), annEdges)
 	}
+}
 
-	// Half two — MEASURED: the file-level IMPORTS edge names the annotation and
-	// now has a real entity to reach.
-	var importTargets []string
-	for _, e := range recs {
-		if e.SourceFile != consumerPath || e.Subtype != "file" {
+func keysOf7073(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestJavaAnnotationType_7073_ElementIsACallTarget is an ACCEPTED, DOCUMENTED
+// MEASUREMENT, and it exists because the first version of this PR carried a
+// FALSE universal: "no CALLS edge can ever reach an annotation element".
+//
+// It is false. Reading an element back is the ordinary reflection idiom, and
+// `a.value()` is a genuine invocation — invokeinterface on the annotation proxy
+// at runtime. The pre-existing local-variable-receiver machinery (#4682) types
+// `a` as `Audited` and emits `Audited.value` as a CALLS target. On main that
+// stub was harmlessly unmatched because NO entity of that name existed; minting
+// the declaration turns it into a bound edge whose target is a
+// SCOPE.Schema/field.
+//
+// Accepted rather than forbidden, deliberately:
+//
+//   - The edge is semantically RIGHT. "Who reads the `value` element of
+//     @Audited" is a query a consumer wants, and this is the only edge that
+//     answers it.
+//   - A forbidden row would have to suppress the stub, and could only ever do
+//     so when the annotation is declared in the SAME FILE as the reader. The
+//     dominant real shape has the annotation in another file, where the
+//     extractor cannot know the receiver's type is an annotation at all. A
+//     guard that holds in the graded case and is structurally absent in the
+//     common one is worse than none.
+//   - No production consumer keys a CALLS edge on its TARGET's Kind (swept:
+//     the CALLS readers in internal/mcp, internal/docgen and internal/links
+//     filter on edge kind, never on target kind).
+//
+// So it is pinned as a measurement instead: the edge, its binding, and the KIND
+// it lands on are all asserted, and any of the three changing breaks this test
+// rather than drifting silently.
+func TestJavaAnnotationType_7073_ElementIsACallTarget(t *testing.T) {
+	recs := extractJavaFT(t, map[string]string{"App.java": `public @interface Audited { String value(); }
+public class Reader {
+    public String read(Class<?> c) {
+        Audited a = (Audited) c.getAnnotation(Audited.class);
+        return a.value();
+    }
+}
+`})
+	byID := map[string]string{}
+	for i := range recs {
+		if recs[i].ID == "" {
+			recs[i].ID = graph.EntityID("issue7073", recs[i].Kind, recs[i].Name, recs[i].SourceFile)
+		}
+		byID[recs[i].ID] = recs[i].Kind + "|" + recs[i].Subtype + "|" + recs[i].Name
+	}
+
+	// Located by NAME ONLY, across every kind. Looking it up as a SCOPE.Schema
+	// would make a change of the element's kind fail this test as a *premise*
+	// failure before reaching the kind assertion below — i.e. the kind claim
+	// would be ungraded by its own test.
+	var elem *types.EntityRecord
+	for i := range recs {
+		if recs[i].Name == "Audited.value" {
+			if elem != nil {
+				t.Fatalf("premise failed: %q is minted more than once, so "+
+					"\"the CALLS edge lands on it\" is ambiguous; entities:\n  %s",
+					"Audited.value", describeJava7073(recs))
+			}
+			elem = &recs[i]
+		}
+	}
+	if elem == nil {
+		t.Fatalf("premise failed: no Audited.value element; entities:\n  %s",
+			describeJava7073(recs))
+	}
+
+	idx := resolve.BuildIndex(recs)
+	resolve.ReferencesEmbedded(recs, idx)
+
+	var reader *types.EntityRecord
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Operation" && recs[i].Name == "Reader.read" {
+			reader = &recs[i]
+		}
+	}
+	if reader == nil {
+		t.Fatalf("premise failed: no Reader.read operation; entities:\n  %s",
+			describeJava7073(recs))
+	}
+
+	var onElement, external int
+	for _, r := range reader.Relationships {
+		if r.Kind != "CALLS" {
 			continue
 		}
-		for _, r := range e.Relationships {
-			if r.Kind == "IMPORTS" {
-				importTargets = append(importTargets, r.ToID)
-			}
+		switch {
+		case r.ToID == elem.ID:
+			onElement++
+		case byID[r.ToID] == "":
+			external++
 		}
 	}
-	found := false
-	for _, tgt := range importTargets {
-		if tgt == "com.example.audit.Audited" {
-			found = true
+	// The MEASURED fact: exactly one CALLS edge lands on the element entity,
+	// and that entity is a SCOPE.Schema/field.
+	if onElement != 1 {
+		t.Errorf("want exactly 1 CALLS edge from Reader.read onto the element entity "+
+			"%q, got %d. Reader.read edges: %v", elem.ID, onElement, reader.Relationships)
+	}
+	if got := byID[elem.ID]; got != "SCOPE.Schema|field|Audited.value" {
+		t.Errorf("the CALLS target is %q, want %q — if the element's kind is being "+
+			"changed, this measurement and the PR's Decision 2 both need revisiting",
+			got, "SCOPE.Schema|field|Audited.value")
+	}
+	// Positive control on selectivity: `c.getAnnotation(...)` in the same method
+	// targets a JDK type with no entity here and must stay unbound. Without it,
+	// "the element call bound" is equally explained by every CALLS edge binding.
+	if external == 0 {
+		t.Errorf("selectivity control failed: no unbound CALLS edge remains on "+
+			"Reader.read, so this fixture cannot distinguish a real binding from "+
+			"everything binding. Edges: %v", reader.Relationships)
+	}
+}
+
+// TestJavaAnnotationType_7073_ElementSignatureKeepsDefaultLiteral grades the
+// signature builder's modifier-stripping arm and its interaction with the
+// `default` clause, which the element signature deliberately KEEPS (unlike
+// buildFieldSignature, which truncates at `=`). A whole-span ReplaceAll of
+// "public " therefore reaches INTO the default's string literal.
+//
+// Axes: the element's MODIFIER PREFIX (absent / present) crossed with whether
+// the default literal CONTAINS a modifier keyword. Held constant: the enclosing
+// annotation, the file, the declared type (String), and the arity.
+func TestJavaAnnotationType_7073_ElementSignatureKeepsDefaultLiteral(t *testing.T) {
+	recs := extractJava7073(t, "Cfg.java", `public @interface Cfg {
+    String scope() default "public api";
+    public abstract String mode();
+    String plain();
+}
+`)
+	for _, want := range []struct{ name, sig string }{
+		// The corruption: the literal is VALUE text, not a modifier.
+		{"Cfg.scope", `String scope() default "public api"`},
+		// The modifier-stripping arm itself, graded — without this row no
+		// fixture puts a modifier on an element and the arm is dead code.
+		{"Cfg.mode", "String mode()"},
+		// Control: neither modifier nor default.
+		{"Cfg.plain", "String plain()"},
+	} {
+		got := findJava7073(recs, "SCOPE.Schema", want.name)
+		if len(got) != 1 {
+			t.Errorf("want exactly 1 SCOPE.Schema named %q, got %d. All entities:\n  %s",
+				want.name, len(got), describeJava7073(recs))
+			continue
+		}
+		if got[0].Signature != want.sig {
+			t.Errorf("%s.Signature = %q, want %q", want.name, got[0].Signature, want.sig)
 		}
 	}
-	if !found {
-		t.Errorf("consumer file has no IMPORTS edge naming com.example.audit.Audited; got %v",
-			importTargets)
+}
+
+// TestJavaAnnotationType_7073_ElementSpans grades the element builder's span.
+// Spans are persisted through the flatbuffer, hashed by cmd/grafel's
+// entityTupleKey, and drive grafel_get_source — so a builder that collapsed
+// every element onto line 1 would be invisible to every other assertion in this
+// file while breaking source retrieval for every annotation element in a repo.
+//
+// Axis varied: the element's LINE EXTENT (single-line vs a declaration wrapped
+// across three lines). Held constant: the enclosing annotation, the file, the
+// declared type, the arity, and the absence of modifiers.
+func TestJavaAnnotationType_7073_ElementSpans(t *testing.T) {
+	recs := extractJava7073(t, "Spans.java", `public @interface Spans {
+    String one();
+    String
+        two()
+        default "x";
+    String three();
+}
+`)
+	for _, want := range []struct {
+		name       string
+		start, end int
+	}{
+		{"Spans.one", 2, 2},
+		// The multi-line row is what distinguishes a real span from
+		// StartLine==EndLine emitted for everything.
+		{"Spans.two", 3, 5},
+		{"Spans.three", 6, 6},
+	} {
+		got := findJava7073(recs, "SCOPE.Schema", want.name)
+		if len(got) != 1 {
+			t.Errorf("want exactly 1 SCOPE.Schema named %q, got %d. All entities:\n  %s",
+				want.name, len(got), describeJava7073(recs))
+			continue
+		}
+		if got[0].StartLine != want.start || got[0].EndLine != want.end {
+			t.Errorf("%s span = %d-%d, want %d-%d",
+				want.name, got[0].StartLine, got[0].EndLine, want.start, want.end)
+		}
 	}
 }
 
