@@ -45,11 +45,16 @@ import (
 // inherited). Only embedded types declared in this file (knownTypeNames) get
 // an EXTENDS edge, keeping the graph conservative — package-external embeds
 // resolve cross-file is out of scope for this pass.
+//
+// typeParams is the set of names bound by the OWNING declaration's
+// type-parameter list (issue #7041), as returned by goTypeParameterNames. It
+// gates the #6912 candidate stash only; see the comment at the stash site.
 func extractStructFieldEntities(
 	typeBody ts.Node,
 	src []byte,
 	ownerName, filePath string,
 	knownTypeNames map[string]bool,
+	typeParams map[string]bool,
 ) ([]types.EntityRecord, []types.RelationshipRecord) {
 	if typeBody == nil || ownerName == "" {
 		return nil, nil
@@ -153,8 +158,38 @@ func extractStructFieldEntities(
 			// candidate rule stands on. Computed per field record rather than
 			// per field_declaration so `A, B Order` gives each of A and B its
 			// own stash.
+			//
+			// Issue #7041 — a candidate whose name is bound by THIS
+			// declaration's type-parameter list is the type parameter, not a
+			// same-file type that happens to share the name, so it is refused
+			// here and never reaches the stash. `type Box[T any] struct { Item
+			// T }` beside `type T struct{…}` used to bind Item to that struct:
+			// a WRONG BINDING, which no instrument we own can see (#7056).
+			//
+			// THIS IS THE ONE DECISION THAT CAN BE MADE DURING THE WALK. The
+			// two reasons the candidate/target match must wait for the attach
+			// pass (an in-file type may be declared after the field, and the
+			// collision rule needs records appended after extractTypes returns)
+			// do not apply to a type parameter: the shadowing scope is lexical,
+			// belongs to the declaration node in hand, and no later record can
+			// add to or remove from it. Both orderings are graded anyway —
+			// TestGoFieldTypeRefs_7041_FormSpace sweeps the colliding
+			// declaration BEFORE and AFTER the generic one.
+			//
+			// The refusal is per-DECLARATION, which is exactly Go's scope: a
+			// sibling `type Other struct { Val T }` in the same file still binds
+			// to the package-scope `T`.
 			if cands := goFieldTypeCandidates(typeNode, src); len(cands) > 0 {
-				fields[len(fields)-1].Metadata[goFieldTypeRefsMetaKey] = cands
+				kept := cands[:0:0]
+				for _, c := range cands {
+					if typeParams[c] {
+						continue
+					}
+					kept = append(kept, c)
+				}
+				if len(kept) > 0 {
+					fields[len(fields)-1].Metadata[goFieldTypeRefsMetaKey] = kept
+				}
 			}
 		}
 	}

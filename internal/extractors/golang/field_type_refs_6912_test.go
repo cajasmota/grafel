@@ -503,35 +503,23 @@ type Customer struct{ Name string }
 	}
 }
 
-// TestGoFieldTypeRefs_KnownOverFire_TypeParameterShadowedByASameFileType pins a
-// KNOWN-WRONG edge, deliberately, so a fix breaks a test rather than passing
-// silently.
+// The KNOWN-OVER-FIRE pin that stood here — TestGoFieldTypeRefs_..._TypeParameterShadowedByASameFileType —
+// was DELETED by #7041, which made type parameters a shadowing scope.
 //
-// The pass does not understand type parameters. `type Box[T any] struct{ Item T
-// }` yields candidate `T`, which is normally dropped only because nothing in the
-// file is DECLARED `T`. In a file that also declares `type T struct{…}` the
-// candidate matches and the edge is emitted — asserting that Box.Item's declared
-// type is that struct, which is false. A real fix (tracking the type-parameter
-// list as a shadowing scope) is EXPECTED to break this test.
-func TestGoFieldTypeRefs_KnownOverFire_TypeParameterShadowedByASameFileType(t *testing.T) {
-	const src = `package models
-
-type T struct{ Unrelated string }
-
-type Box[T any] struct {
-	Item T
-}
-`
-	recs := goFTOne(t, src)
-	got := goFTTargetsOf(recs, "Box.Item")
-	if !contains(got, "T") {
-		t.Skipf("KNOWN-WRONG edge is gone (Box.Item targets %v). If type "+
-			"parameters are now tracked as a shadowing scope, DELETE this test; "+
-			"it exists only to make the over-fire visible.", got)
-	}
-	t.Logf("known over-fire present as expected: Box.Item -> %v (a type parameter "+
-		"shadowed by a same-file declaration)", got)
-}
+// It is worth recording WHY it was safe to delete and what it was actually
+// worth, because its own documentation was wrong about both. The pin called
+// t.Skipf when the over-fire was gone and t.Logf when it was present: there was
+// no t.Error or t.Fatal on any path, so it GRADED NOTHING. Three separate
+// comments — its own doc, the header of field_type_refs.go, and a comment on
+// #7041 — stated that "a real fix is EXPECTED to break this test". All three
+// were false, and all three have been corrected or removed with it.
+//
+// The replacement is field_type_refs_7041_test.go, where every absent edge is
+// asserted beside a PRESENT one from a real same-file declaration in the same
+// fixture. That pairing is the thing the old pin structurally could not do:
+// deleting the candidate handling outright would have made it skip too, so it
+// could never tell "type parameters are now a shadowing scope" from "targets
+// stopped working at all".
 
 // TestGoFieldTypeRefs_StashIsClearedFromMetadata — the candidate stash is an
 // internal handoff between the walk and the attach pass. Leaving it on the record

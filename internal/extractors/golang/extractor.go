@@ -1894,7 +1894,12 @@ func extractTypes(root ts.Node, src []byte, filePath string) ([]types.EntityReco
 				// EXTENDS edge per embedded field, so the struct (a DTO/data
 				// class) projects field children in the dashboard shape tree.
 				var embedExtends []types.RelationshipRecord
-				fieldEntities, embedExtends = extractStructFieldEntities(typeBody, src, name, filePath, knownTypeNames)
+				// #7041 — the declaration's own type-parameter list is the
+				// shadowing scope for its field-type candidates. Read from the
+				// type_spec, so it covers exactly this declaration and no
+				// sibling.
+				fieldEntities, embedExtends = extractStructFieldEntities(typeBody, src, name, filePath,
+					knownTypeNames, goTypeParameterNames(typeSpec, src))
 				relationships = append(relationships, embedExtends...)
 			case "interface":
 				methodNodes := findAll(typeBody, "method_elem", "method_spec")

@@ -183,12 +183,29 @@ import (
 //     package type view that pass 1 has none of; binding a bare type name
 //     across files is the exact hazard #6976/#6369 are about. Separate arm, not
 //     a widening of this one.
-//   - IT DOES NOT UNDERSTAND TYPE PARAMETERS. `type Holder[T any] struct { Item
-//     T }` yields candidate `T`, which is dropped only because nothing in the
-//     file happens to be DECLARED `T`. A file that also declares `type T
-//     struct{}` gets a wrong edge. Known-wrong and pinned as such by
-//     TestGoFieldTypeRefs_KnownOverFire_TypeParameterShadowedByASameFileType, a
-//     case a real fix is expected to break.
+//   - IT DOES UNDERSTAND TYPE PARAMETERS, SINCE #7041. `type Holder[T any]
+//     struct { Item T }` beside a same-file `type T struct{}` used to emit a
+//     WRONG BINDING — an edge asserting Item's declared type is that struct.
+//     goTypeParameterNames now makes the declaration's type-parameter list a
+//     shadowing scope and the candidate is refused. Graded in both directions,
+//     form by form, by field_type_refs_7041_test.go and its internal sibling.
+//
+//     THE PIN THAT USED TO STAND HERE GRADED NOTHING, and this comment was one
+//     of three places that said otherwise. It skipped when the over-fire was
+//     gone and logged when it was present, with no t.Error or t.Fatal on any
+//     path, so "a case a real fix is expected to break" — written here, in the
+//     test's own doc, and again on the issue — was never true of it. Recorded
+//     because the reasoning error is the portable part: a pin whose only signal
+//     is a skip cannot be the safety net for the fix it describes, since
+//     deleting the candidate handling outright would make it skip too.
+//
+//     STILL OUT OF SCOPE, deliberately: the STRUCT-ANCHORED DEPENDS_ON
+//     (extractStructFieldDependencies) and the embedded-field EXTENDS both
+//     resolve a bare name against knownTypeNames and so still treat a type
+//     parameter as a same-file type. Re-pointing either is a different blast
+//     radius, as with qualified names in point 3 above. The boundary is a graded
+//     fact rather than a claim: see
+//     TestGoFieldTypeRefs_7041_EmbeddedFieldAndDependsOnAreUntouched.
 //   - AN ANONYMOUS NESTED STRUCT OR INTERFACE IS NOT A TARGET AND CONTRIBUTES
 //     NONE. `Inner struct { A Order }` yields nothing: `Order` is the declared
 //     type of `Inner.A`, not of `Inner`, and emitting `Inner → Order` with
@@ -208,6 +225,13 @@ import (
 // set is complete only once the walk has finished; and the collision rule above
 // must see the enum value-sets and import records, which are appended to
 // `records` after extractTypes returns.
+//
+// ONE decision IS made during the walk, and #7041 is careful about why: a
+// candidate bound by the declaration's own type-parameter list is dropped before
+// it is stashed. Neither reason above applies to it — the shadowing scope is
+// lexical, it belongs to the declaration node already in hand, and no record
+// appended later can add to or remove from it. See the stash site in
+// struct_fields.go and goTypeParameterNames below.
 const goFieldTypeRefsMetaKey = "field_type_refs"
 
 // goFieldTargetRefKind is the value of the `ref_kind` edge property. It matches
@@ -452,4 +476,95 @@ func attachGoFieldTypeRefs(records []types.EntityRecord, filePath string) []type
 		}
 	}
 	return records
+}
+
+// goTypeParameterNames returns the set of names bound by a declaration's
+// TYPE-PARAMETER LIST — the shadowing scope of issue #7041.
+//
+// Inside `type Box[T any] struct { Item T }`, `T` denotes the type parameter,
+// NOT a same-file `type T struct{…}` that happens to share the name. Before this
+// pass consulted the list, `Box.Item`'s candidate `T` matched that declaration
+// and the edge was emitted — a WRONG BINDING, the failure direction arms A–E
+// were all written to avoid, and the one no instrument we own can see (#7056):
+// the edge has the right name, the right file, an admissible kind and an
+// admissible subtype, and is wrong only in pointing at a type parameter.
+//
+// THE NODE NAMES ARE READ OFF A CST DUMP, NOT RECALLED. The scala arm (#7064)
+// shipped a guard switching on `variant_type_parameter` / `type_parameter`,
+// neither of which exists in that grammar, and it was a silent no-op no mutant
+// could kill. tree-sitter-go spells it:
+//
+//	type_spec                         `Box[T any] struct { Item T }`
+//	  type_identifier                 `Box`
+//	  type_parameter_list             `[T any]`
+//	    type_parameter_declaration    `T any`
+//	      identifier                  `T`      <- COLLECTED (the bound name)
+//	      type_constraint             `any`    <- NEVER DESCENDED (see below)
+//	        type_identifier           `any`
+//	  struct_type                     `struct { Item T }`
+//
+// Graded at this level by TestGoTypeParameterNames_FormSpace, which fails if any
+// of those three strings is corrupted, and at the edge level by
+// TestGoFieldTypeRefs_7041_FormSpace.
+//
+// THE CONSTRAINT IS NEVER COLLECTED, AND THAT IS THE LOAD-BEARING HALF. Only the
+// `identifier` children DIRECTLY under a type_parameter_declaration are taken.
+// Everything else the list can contain lives under a `type_constraint`, and a
+// constraint names REAL TYPES: `type Con[T Order]`, `[T A | B]`, `[T ~Alias]`,
+// `[T interface{ Order }]`. Harvesting any of them would refuse a correct edge
+// from a sibling field genuinely typed `Order` — the over-refusal direction,
+// which is worse than over-firing because a missing edge has no symptom at all.
+// cpp's first cut at this same refusal (#7057) made exactly that mistake with a
+// template default argument. Every constraint form above has a row in both test
+// tables carrying a sibling field of the constrained type that MUST still bind.
+//
+// ONE DECLARATION MAY BIND SEVERAL NAMES: `[K, V any]` is a SINGLE
+// type_parameter_declaration with two `identifier` children, so the loop takes
+// every one rather than the first.
+//
+// SCOPE. The list is looked up as a DIRECT child of the declaration node, so the
+// scope is exactly Go's: a parameter shadows within its own declaration and
+// nowhere else. A sibling `type Other struct { Val T }` in the same file still
+// binds to the package-scope `T`, and a generic FUNCTION's parameters shadow
+// nothing this pass anchors on.
+//
+// Callers this pass has: extractTypes hands it the `type_spec` of each struct
+// declaration. Generic functions and methods on generic receivers are not
+// callers because neither emits a SCOPE.Schema/field entity — closed by
+// observation in TestGoTypeParameterNames_FunctionFormsAreNotTypeSpecs and in
+// the declaring-form rows of the edge table, not by assumption.
+func goTypeParameterNames(decl ts.Node, src []byte) map[string]bool {
+	if decl == nil {
+		return nil
+	}
+	var list ts.Node
+	for i := 0; i < int(decl.NamedChildCount()); i++ {
+		if c := decl.NamedChild(i); c.Type() == "type_parameter_list" {
+			list = c
+			break
+		}
+	}
+	if list == nil {
+		return nil
+	}
+	out := make(map[string]bool)
+	for i := 0; i < int(list.NamedChildCount()); i++ {
+		d := list.NamedChild(i)
+		if d.Type() != "type_parameter_declaration" {
+			continue
+		}
+		for j := 0; j < int(d.NamedChildCount()); j++ {
+			p := d.NamedChild(j)
+			if p.Type() != "identifier" {
+				continue
+			}
+			if name := nodeText(p, src); name != "" {
+				out[name] = true
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
