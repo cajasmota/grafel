@@ -89,7 +89,7 @@ func is16HexRust(s string) bool {
 // call binding.
 func runRustResolve(merged []types.EntityRecord) int {
 	idx := resolve.BuildIndex(merged)
-	n := idx.ResolveRustCrossModuleCalls(merged)
+	n := idx.ResolveRustCrossModuleCalls(merged, nil)
 	resolve.ReferencesEmbedded(merged, idx)
 	return n
 }

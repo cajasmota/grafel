@@ -1064,16 +1064,26 @@ var sourceRootPrefixes = []string{"src.", "lib.", "app."}
 //     and emitted ToID="foo".
 //  3. Wildcard imports — `from x import *` makes every entity in x
 //     callable as a bare name; best-effort.
-func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, bool) {
+//
+// #7071 — the second return names the GUESS TIER that chose the id, blank
+// when the id came from rung 1. Rungs 2 and 3 are lexical guesses by this
+// repo's own taxonomy (see BindTierImportPlainModuleAttr /
+// BindTierImportWildcard) and were previously unmarked AND unclassified,
+// which mattered because ResolveImports runs ahead of every marked resolver
+// and its output short-circuits them.
+func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, BindTier, bool) {
 	if name == "" {
-		return "", false
+		return "", "", false
 	}
 	callerFile = normalizePath(callerFile)
 	bucket := t.byFile[callerFile]
 	if bucket != nil {
 		if b, ok := bucket[name]; ok {
 			if id, ok := t.lookupModuleEntity(b.SourceModule, b.ImportedName); ok {
-				return id, true
+				// EVIDENCE (#7071) — an explicit `from x import y` in this
+				// file named both the module and the symbol. Nothing was
+				// inferred from the bare name.
+				return id, "", true
 			}
 			// Issue #778 — Java canonical tie-break for bare CALLS that
 			// map to an ambiguous (module, name) tuple. When the generic
@@ -1086,8 +1096,18 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 			// lookupModuleEntityJavaCanonical itself checks for the
 			// ambiguous flag and the canonical-suffix match — if neither
 			// condition holds it returns (false) immediately.
+			// GUESS TIER (#7071). #7078 round 2 argued this was evidence
+			// because it "deduplicates two records of the same class".
+			// Review demonstrated that argument false — nothing in the
+			// function enforces same-class, and modulesForJavaFile's
+			// `*/src/main/java/` stripping lets two Gradle modules share
+			// one bucket, so an app-module caller can bind a lib-module
+			// entity. It fires only on a tuple the import table has already
+			// flagged ambiguous, then picks by filename convention: E1/E3/E4's
+			// shape exactly, and those are guesses here. See
+			// BindTierJavaCanonicalFileTiebreak.
 			if id, ok := t.lookupModuleEntityJavaCanonical(b.SourceModule, b.ImportedName); ok {
-				return id, true
+				return id, BindTierJavaCanonicalFileTiebreak, true
 			}
 		}
 	}
@@ -1120,17 +1140,22 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 		}
 	}
 	if plainHits == 1 {
-		return plainCandidate, true
+		// GUESS TIER (#7071) — the receiver was STRIPPED by the extractor
+		// and the winner is whichever plain import uniquely answers. Same
+		// species as G2/E1/E3/E4.
+		return plainCandidate, BindTierImportPlainModuleAttr, true
 	}
 	if plainHits > 1 {
-		return "", false
+		return "", "", false
 	}
 	for _, mod := range t.wildcardModules[callerFile] {
 		if id, ok := t.lookupModuleEntity(mod, name); ok {
-			return id, true
+			// GUESS TIER (#7071) — first module that answers, no ambiguity
+			// sentinel. Weaker than every other tier in AllBindTiers.
+			return id, BindTierImportWildcard, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // splitFormatAStructuralRef parses a Format A structural-ref stub
@@ -1190,9 +1215,14 @@ func splitFormatAStructuralRef(stub string) (filePath, name string, ok bool) {
 // table; imported names landed in that table as same-file structural
 // refs because the extractor doesn't know the imported entity's
 // declaring file. This resolver bridges that gap.
-func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (string, bool) {
+// #7071 — the second return names the guess tier, exactly as in
+// ResolveBareCallTarget. The two functions carry the SAME rungs 2 and 3 and
+// share their tier values, because it is the same decision; the edge Kind
+// (CALLS vs REFERENCES) is what tells the two call sites apart, and both are
+// graded separately.
+func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (string, BindTier, bool) {
 	if name == "" {
-		return "", false
+		return "", "", false
 	}
 	callerFile = normalizePath(callerFile)
 	bucket := t.byFile[callerFile]
@@ -1201,11 +1231,15 @@ func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (s
 			// `ext:` shapes are stamped on the IMPORTS edge by the
 			// Python extractor for known-external roots and are the
 			// authoritative external target for this binding.
+			// EVIDENCE (#7071) — an `ext:` target the Python extractor
+			// stamped on the IMPORTS edge itself.
 			if strings.HasPrefix(b.ResolvedToID, "ext:") {
-				return b.ResolvedToID, true
+				return b.ResolvedToID, "", true
 			}
+			// EVIDENCE (#7071) — explicit binding, module and symbol both
+			// named by an import statement.
 			if id, ok := t.lookupModuleEntity(b.SourceModule, b.ImportedName); ok {
-				return id, true
+				return id, "", true
 			}
 		}
 	}
@@ -1231,17 +1265,19 @@ func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (s
 		}
 	}
 	if plainHits == 1 {
-		return plainCandidate, true
+		// GUESS TIER (#7071) — see ResolveBareCallTarget's rung 2.
+		return plainCandidate, BindTierImportPlainModuleAttr, true
 	}
 	if plainHits > 1 {
-		return "", false
+		return "", "", false
 	}
 	for _, mod := range t.wildcardModules[callerFile] {
 		if id, ok := t.lookupModuleEntity(mod, name); ok {
-			return id, true
+			// GUESS TIER (#7071) — see ResolveBareCallTarget's rung 3.
+			return id, BindTierImportWildcard, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // ResolveCrossModuleCallTarget resolves a Python attribute-call site of the
@@ -1284,35 +1320,48 @@ func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (s
 //
 // In those cases the caller leaves the original bare-name ToID in place
 // and the downstream bare-name resolver gets a turn.
-func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string) (string, bool) {
+//
+// #7071 — the second return names the GUESS TIER, blank for the first two
+// rungs. This probe runs BEFORE ResolveBareCallTarget in ResolveImports and
+// `continue`s on success, so an unmarked bind here is never reconsidered by
+// anything downstream. Review of #7078 round 2 found its last rung
+// unmarked; see BindTierImportClassModuleAttr.
+func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string) (string, BindTier, bool) {
 	if alias == "" || leaf == "" {
-		return "", false
+		return "", "", false
 	}
 	callerFile = normalizePath(callerFile)
 	bucket := t.byFile[callerFile]
 	if bucket == nil {
-		return "", false
+		return "", "", false
 	}
 	b, ok := bucket[alias]
 	if !ok {
-		return "", false
+		return "", "", false
 	}
 	if b.SourceModule == "" {
-		return "", false
+		return "", "", false
 	}
 	// `import x` shape — alias IS the module name.
 	if b.ImportedName == b.SourceModule {
+		// EVIDENCE (#7071) — the receiver of `x.leaf()` IS the module, and
+		// an import statement named that module. The receiver is used, not
+		// inferred and not discarded; `leaf` is looked up in exactly the
+		// module the call named.
 		if id, ok := t.lookupModuleEntity(b.SourceModule, leaf); ok {
-			return id, true
+			return id, "", true
 		}
-		return "", false
+		return "", "", false
 	}
 	// `from x import y` shape — the alias may be a submodule of x or a
 	// symbol exposed by x. Try submodule first.
 	if b.ImportedName != "" {
 		submod := b.SourceModule + "." + b.ImportedName
+		// EVIDENCE (#7071) — same reasoning one level down: the receiver is
+		// the submodule x.y that the import statement named, and the lookup
+		// is scoped to it.
 		if id, ok := t.lookupModuleEntity(submod, leaf); ok {
-			return id, true
+			return id, "", true
 		}
 	}
 	// Same-class fallback: the alias is a class imported from module x,
@@ -1321,12 +1370,30 @@ func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string
 		// Sanity guard — only accept this fallback when the class itself
 		// also lives in (source_module, imported_name). Otherwise we could
 		// bind to an unrelated function named `leaf` in module x.
+		//
+		// #7071 — MEASURED, and the guard does NOT prevent what this
+		// comment says it prevents. It checks only that the CLASS RESOLVES
+		// in the module, never that `leaf` is a MEMBER of it, so
+		// `Helper.format()` binds a module-level `format` that is no member
+		// of `Helper`. The receiver type is known here and thrown away.
+		//
+		// An earlier revision of this note said the guard is "trivially
+		// true whenever the from-import above resolved". That absolute is
+		// FALSE and review produced the counter-example: lookupModuleEntity
+		// refuses on an ambiguous (module, name) tuple, so a class name that
+		// is ambiguous in its own module makes this fallback DECLINE and the
+		// stub survive. Both halves are now graded — see
+		// TestBindTier_ImportCrossModuleCallTarget_7071.
+		//
+		// Marked rather than repaired: requiring class membership changes
+		// which edges exist, and this change must not add or remove one.
+		// The tier stops the edge asserting it was resolved on evidence.
 		if classID, classOk := t.lookupModuleEntity(b.SourceModule, b.ImportedName); classOk && classID != "" {
 			_ = classID // we only need to verify the class is in the module
-			return id, true
+			return id, BindTierImportClassModuleAttr, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // lookupModuleEntity returns (id, true) when (module, name) maps to
@@ -1477,6 +1544,12 @@ type ImportResolveStats struct {
 	// an `ext:` ResolvedToID from the Python extractor's
 	// resolveImportToIDs pass).
 	ReferencesRewritten int
+	// BindTierCounts (#7071) tallies the guess-tier binds this pass made,
+	// by tier. It is the SOLE route by which the two import-pass tiers
+	// reach cmd/grafel's per-tier report, because ResolveImports is not a
+	// Reference pass and its stats are not a resolve.Stats. Merged via
+	// MergeBindTierMap.
+	BindTierCounts map[BindTier]int
 }
 
 // ResolveDottedImportTarget looks up a project-internal IMPORTS ToID of
@@ -1567,18 +1640,24 @@ func isCSharpImportSource(entityLang, callerFile string, props types.Props) bool
 // is the default export of a single-component file.
 //
 // Caller MUST gate on lang ∈ {javascript, typescript}.
-func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool) {
+func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, BindTier, bool) {
+	// EVIDENCE (#7071) — the minted (module, leaf) split, matched exactly.
 	if id, ok := t.ResolveDottedImportTarget(dotted); ok {
-		return id, true
+		return id, "", true
 	}
 	// default-leaf fallback: try (module, last-segment(module)).
+	//
+	// GUESS TIER (#7071) from here down — the minted leaf `default` is
+	// DISCARDED and the module path's last segment is substituted for it,
+	// on the convention this function's own doc names. See
+	// BindTierImportJSDefaultBasename.
 	dot := strings.LastIndexByte(dotted, '.')
 	if dot <= 0 || dot == len(dotted)-1 {
-		return "", false
+		return "", "", false
 	}
 	leaf := dotted[dot+1:]
 	if leaf != "default" {
-		return "", false
+		return "", "", false
 	}
 	module := dotted[:dot]
 	innerDot := strings.LastIndexByte(module, '.')
@@ -1589,10 +1668,10 @@ func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool
 		basename = module[innerDot+1:]
 	}
 	if basename == "" {
-		return "", false
+		return "", "", false
 	}
 	if id, ok := t.lookupModuleEntityCaseFold(module, basename); ok {
-		return id, true
+		return id, BindTierImportJSDefaultBasename, true
 	}
 	// `<dir>/index.ts` barrel case: try the parent directory's last
 	// segment instead. `src.features.new-note.index.default` →
@@ -1602,7 +1681,7 @@ func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool
 	// owns the default export.
 	if basename == "index" {
 		if innerDot <= 0 {
-			return "", false
+			return "", "", false
 		}
 		parentModule := module[:innerDot]
 		parentDot := strings.LastIndexByte(parentModule, '.')
@@ -1613,11 +1692,34 @@ func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool
 			parentBase = parentModule[parentDot+1:]
 		}
 		if parentBase == "" {
-			return "", false
+			return "", "", false
 		}
-		return t.lookupModuleEntityCaseFold(parentModule, parentBase)
+		if id, ok := t.lookupModuleEntityCaseFold(parentModule, parentBase); ok {
+			return id, BindTierImportJSDefaultBasename, true
+		}
+		return "", "", false
 	}
-	return t.lookupModuleEntityCaseFold(module, basename)
+	// #7071 — this line DUPLICATES the early return above: same function,
+	// same arguments, same result. With both present the early one always
+	// wins, so this stamp can never be observed and a mutant on it is ALIVE
+	// AND EQUIVALENT.
+	//
+	// DEMONSTRATED, not reasoned: forcing the early return to decline
+	// (`ok && false`) leaves every assertion in
+	// TestBindTier_ImportsLadderRungs_7071 green, because THIS line answers
+	// identically. That is the positive control for the equivalence claim —
+	// the two sites are interchangeable, so no input distinguishes them and
+	// manufacturing a fixture to kill this one would be grading a branch
+	// production cannot enter.
+	//
+	// Pre-existing shape, not introduced here; deleting dead code is a
+	// separate change from classifying live rungs. The two OBSERVABLE
+	// stamps are the early return above and the barrel-case block, and
+	// both are separately graded.
+	if id, ok := t.lookupModuleEntityCaseFold(module, basename); ok {
+		return id, BindTierImportJSDefaultBasename, true
+	}
+	return "", "", false
 }
 
 // lookupModuleEntityCaseFold tries exact (module, name); if it misses,
@@ -1769,9 +1871,12 @@ func normaliseIdent(s string) string {
 // rely on the strict ResolveDottedImportTarget semantics where plain
 // module imports without a leaf binding stay unresolved. Issue #485
 // PHP wave-3.
-func (t ImportTable) ResolveDottedImportTargetForPHP(dotted string) (string, bool) {
+func (t ImportTable) ResolveDottedImportTargetForPHP(dotted string) (string, BindTier, bool) {
+	// EVIDENCE (#7071) — ResolveDottedImportTarget matches the (module,
+	// leaf) split of the address the extractor minted, with a uniqueness
+	// sentinel. Both halves came from the source text.
 	if id, ok := t.ResolveDottedImportTarget(dotted); ok {
-		return id, true
+		return id, "", true
 	}
 	return t.resolveNamespaceTarget(dotted)
 }
@@ -1786,10 +1891,10 @@ func (t ImportTable) ResolveDottedImportTargetForPHP(dotted string) (string, boo
 // preferring SCOPE.Component over other kinds via the same ordering
 // applied at insert time (preferEntityKind). Returns ("", false) when
 // no entity in that namespace is indexed.
-func (t ImportTable) resolveNamespaceTarget(dotted string) (string, bool) {
+func (t ImportTable) resolveNamespaceTarget(dotted string) (string, BindTier, bool) {
 	bucket, ok := t.entitiesByModuleName[dotted]
 	if !ok || len(bucket) == 0 {
-		return "", false
+		return "", "", false
 	}
 	var picked string
 	for _, id := range bucket {
@@ -1798,9 +1903,13 @@ func (t ImportTable) resolveNamespaceTarget(dotted string) (string, bool) {
 		}
 	}
 	if picked == "" {
-		return "", false
+		return "", "", false
 	}
-	return picked, true
+	// GUESS TIER (#7071) — the namespace is minted evidence; WHICH member
+	// of it this returns is not. The loop is a min(), not a uniqueness
+	// check: two equally valid candidates do not make it decline. See
+	// BindTierImportNamespaceRepresentative.
+	return picked, BindTierImportNamespaceRepresentative, true
 }
 
 // isPHPFQNMethodShape reports whether s looks like a PHP FQN-method
@@ -2037,18 +2146,39 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						if leaf == "" {
 							leaf = to
 						}
-						if id, ok := tbl.ResolveCrossModuleCallTarget(callerFile, alias, leaf); ok {
+						if id, tier, ok := tbl.ResolveCrossModuleCallTarget(callerFile, alias, leaf); ok {
 							rel.ToID = id
+							// #7071 — a FUNNEL for three rungs, two of which
+							// are evidence. This probe `continue`s on
+							// success, so nothing downstream ever revisits
+							// the edge: an unmarked guess here is final.
+							if tier != "" {
+								rel.Properties.Set(types.PropBindTier, string(tier))
+								stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, tier)
+							}
 							stats.CallsRewritten++
 							continue
 						}
 					}
 				}
-				id, ok := tbl.ResolveBareCallTarget(callerFile, to)
+				id, tier, ok := tbl.ResolveBareCallTarget(callerFile, to)
 				if !ok {
 					continue
 				}
 				rel.ToID = id
+				// #7071 — this line is a FUNNEL. ResolveBareCallTarget
+				// returns FOUR distinct verdicts: blank for the explicit
+				// from-import binding, and three tiers —
+				// java-canonical-file-tiebreak (rung 1's ambiguity
+				// tie-break, promoted from "evidence" in round 3 when
+				// review demonstrated the argument for it false),
+				// import-plain-module-attr and import-wildcard. The tier
+				// value carries the deciding rung's own verdict, so
+				// stamping here marks only what a guess produced.
+				if tier != "" {
+					rel.Properties.Set(types.PropBindTier, string(tier))
+					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, tier)
+				}
 				stats.CallsRewritten++
 			case "REFERENCES":
 				// Chain-fix: python-references-cross-file. The Python
@@ -2090,11 +2220,19 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				stats.ReferencesConsidered++
-				id, ok := tbl.ResolveCrossFileReferenceTarget(stubFile, stubName)
+				id, tier, ok := tbl.ResolveCrossFileReferenceTarget(stubFile, stubName)
 				if !ok {
 					continue
 				}
 				rel.ToID = id
+				// #7071 — same funnel shape as the CALLS site above, and a
+				// SEPARATE line in a separate branch. Grading one would say
+				// nothing about the other (the M3/M3b lesson), so both have
+				// their own fixtures.
+				if tier != "" {
+					rel.Properties.Set(types.PropBindTier, string(tier))
+					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, tier)
+				}
 				stats.ReferencesRewritten++
 			case importRelKind:
 				// Markdown cross-file file-path shape (issue #44 follow-up):
@@ -2147,15 +2285,37 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				var (
 					id string
 					ok bool
+					// #7071 — carries the deciding rung's verdict out to
+					// the funnel below.
+					//
+					// An earlier revision of this comment said "every other
+					// rung in this ladder resolves a qualifier the extractor
+					// minted", which was a BLANKET EVIDENCE CLASSIFICATION
+					// asserted over a set nobody had enumerated — the same
+					// defect as the "every pass stamps this key" universal
+					// deleted from internal/types/bindtier.go in the same
+					// commit, just scoped to a file. Review demonstrated it
+					// false of three rungs by running them.
+					//
+					// There is no claim here about the ladder as a whole.
+					// Each rung is classified at its own site, and a rung
+					// carrying neither a tier nor an "EVIDENCE (#7071)" note
+					// is unclassified, not vouched for.
+					importTier BindTier
 				)
 				if isPHP {
-					id, ok = tbl.ResolveDottedImportTargetForPHP(normalized)
+					id, importTier, ok = tbl.ResolveDottedImportTargetForPHP(normalized)
 				} else if isJSImportSource(callerFile) {
-					id, ok = tbl.ResolveDottedImportTargetForJS(normalized)
+					id, importTier, ok = tbl.ResolveDottedImportTargetForJS(normalized)
 				} else {
+					// EVIDENCE (#7071) — the minted (module, leaf) split,
+					// matched exactly through the per-module index.
 					id, ok = tbl.ResolveDottedImportTarget(normalized)
 					if !ok && isCSharpImportSource(e.Language, callerFile, rel.Properties) {
-						id, ok = tbl.resolveNamespaceTarget(normalized)
+						// The SECOND call site of the namespace rung; the
+						// PHP wrapper is the first. Same guess, two
+						// languages, two branches.
+						id, importTier, ok = tbl.resolveNamespaceTarget(normalized)
 					}
 					// Issue #778 — Java FQCN ambiguity tie-break.
 					// When the generic dotted-import lookup fails because
@@ -2171,6 +2331,14 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						srcMod := rel.Properties.Get(importPropSourceModule)
 						impName := rel.Properties.Get(importPropImportedName)
 						id, ok = tbl.lookupModuleEntityJavaCanonical(srcMod, impName)
+						if ok {
+							// GUESS TIER (#7071) — the SECOND production
+							// call site of the tie-break. The bare-CALLS
+							// site is a different function in a different
+							// branch; grading one would say nothing about
+							// this one.
+							importTier = BindTierJavaCanonicalFileTiebreak
+						}
 					}
 					// Refs #44 — Python module-level import resolution.
 					// `from users import views` emits to_id = "users.views".
@@ -2184,6 +2352,10 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					// dotted paths are not widened.
 					if !ok && rel.Properties != nil &&
 						rel.Properties.Get("language") == "python" {
+						// EVIDENCE (#7071) — the WHOLE minted dotted path
+						// names a module, and moduleFileEntity maps that
+						// exact string to that module's file entity.
+						// Nothing is substituted or inferred.
 						id, ok = tbl.ResolvePythonModuleImport(normalized)
 					}
 					// #1991 — Python __init__.py re-exports of module
@@ -2208,6 +2380,15 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						if dot := strings.LastIndexByte(normalized, '.'); dot > 0 {
 							parent := normalized[:dot]
 							id, ok = tbl.ResolvePythonModuleImport(parent)
+							if ok {
+								// GUESS TIER (#7071) — note the argument:
+								// `parent`, not `normalized`. The named
+								// symbol was not found, so the edge is
+								// pointed at its PARENT MODULE instead. The
+								// target is not the thing the edge names.
+								// See BindTierImportPythonReexportParent.
+								importTier = BindTierImportPythonReexportParent
+							}
 						}
 					}
 				}
@@ -2215,6 +2396,14 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				rel.ToID = id
+				// #7071 — FUNNEL for the whole IMPORTS ladder. It stamps
+				// whatever the deciding rung handed back and knows nothing
+				// about which rung that was; blank means that rung either
+				// carries an EVIDENCE note or has not been classified.
+				if importTier != "" {
+					rel.Properties.Set(types.PropBindTier, string(importTier))
+					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, importTier)
+				}
 				stats.ImportsRewritten++
 			}
 		}
@@ -2388,7 +2577,12 @@ func (idx Index) ResolveGoCrossPackageCalls(records []types.EntityRecord) int {
 // Must run AFTER BuildIndex (needs the package-scoped indexes) and BEFORE the
 // embedded-reference resolver so the rewritten hex ID is seen as resolved.
 // Returns the number of edges rewritten.
-func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
+// #7071 — stats may be nil. When supplied, the crate-wide fallback tier
+// below stamps types.PropBindTier on the edges it binds and tallies them in
+// stats.BindTierCounts. The candidate-directory binds in the loop above it
+// are NOT marked: those directories came from resolved `use` statements,
+// which is evidence the extractor produced, not a lexical guess.
+func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord, stats *Stats) int {
 	if len(idx.byPackageOperation) == 0 && len(idx.byPackageMember) == 0 {
 		return 0
 	}
@@ -2434,6 +2628,16 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
 				if id == "" {
 					continue
 				}
+				// EVIDENCE (#7071) — the candidate directories come from
+				// `use` statements the extractor resolved, and this loop
+				// REFUSES on disagreement (`conflict`) rather than picking.
+				// The dir is the qualifier; it was not inferred from the
+				// leaf name. Contrast the crate-wide rung below, which is
+				// reached only after every offered dir has declined.
+				//
+				// internal/types/bindtier.go names this site; it carried no
+				// note until review of #7078 round 3 found the list naming
+				// sites that did not exist.
 				if resolved == "" {
 					resolved = id
 				} else if resolved != id {
@@ -2445,9 +2649,11 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
 			// Associated-call crate-wide fallback: an `OrderService::new()`
 			// whose type is unique in the crate but lives outside the offered
 			// candidate dirs. Bind through the unambiguous global member index.
+			crateWide := false
 			if resolved == "" && !conflict && scope != "" {
 				if id := idx.lookupUniqueMember(scope, leaf); id != "" {
 					resolved = id
+					crateWide = true
 				}
 			}
 
@@ -2455,6 +2661,17 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
 				continue
 			}
 			r.ToID = resolved
+			// GUESS TIER E4 (#7071) — crate-wide uniqueness, reached only
+			// after every candidate directory the import resolver offered
+			// has declined. `scope::leaf` matching something exactly once
+			// across the whole crate is the same species of guess as "the
+			// only same-named method in the caller's file". The tier is
+			// decided by which branch produced `resolved`, which is why the
+			// flag is set at that branch and not inferred here — this
+			// assignment is a funnel for both.
+			if crateWide {
+				stampBindTier(r, BindTierRustCrateUniqueMember, stats)
+			}
 			rewrites++
 		}
 	}

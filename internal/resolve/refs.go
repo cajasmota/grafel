@@ -882,6 +882,18 @@ type Stats struct {
 	DispositionCounts  map[Disposition]int
 	DispositionSamples map[Disposition][]string
 	BugRate            float64
+
+	// #7071 — per-tier tallies for the LEXICAL GUESS tiers only (see
+	// BindTier in bindtier.go). BindTierCounts[t] is exactly the number of
+	// edges in the resolved output carrying the types.PropBindTier property
+	// with value t; the counter and the property are written by the same
+	// helper so they cannot drift.
+	//
+	// This is a strictly different question from Rewritten / Disposition.
+	// Every one of these edges is ALSO counted Rewritten and dispositioned
+	// Resolved — that is the whole finding: a guess and a qualified bind are
+	// indistinguishable in every existing counter.
+	BindTierCounts map[BindTier]int
 }
 
 // initDispositions lazily allocates the disposition maps. Cheap to call on
@@ -2266,8 +2278,22 @@ func (idx Index) LookupStatus(stub string) (id string, status int) {
 //
 // When passed "" the function behaves exactly like LookupStatus.
 func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) {
+	id, status, _ = idx.lookupStatusHintTier(stub, relKind)
+	return id, status
+}
+
+// lookupStatusHintTier is LookupStatusHint plus the #7071 guess-tier
+// attribution: the third return names the tier that CHOSE the id, and is
+// blank on every evidence tier (exact QualifiedName, structural ref,
+// explicit Kind: bucket) and on every non-hit.
+//
+// The tier is decided HERE, at the branch that picks the id, rather than by
+// the caller inspecting the result. The two are not the same: the
+// global-name tier and an exact QualifiedName hit can return the identical
+// id for the identical stub, and only the branch knows which one answered.
+func (idx Index) lookupStatusHintTier(stub, relKind string) (id string, status int, tier BindTier) {
 	if stub == "" {
-		return "", statusUnmatched
+		return "", statusUnmatched, ""
 	}
 
 	// #3936 — scope-local synthetic stubs (e.g. "var:order" discriminator /
@@ -2280,7 +2306,7 @@ func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) 
 	// → rewriteOne keeps the verbatim stub; classifyDispositionLang routes it
 	// to DispositionDynamic.
 	if isScopeLocalSyntheticStub(stub) {
-		return "", statusUnmatched
+		return "", statusUnmatched, ""
 	}
 
 	// Direct QualifiedName match (issue #100). Some extractors — markdown
@@ -2291,27 +2317,33 @@ func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) 
 	// QualifiedName collided across entities; treat as ambiguous.
 	if qid, ok := idx.byQualifiedName[stub]; ok {
 		if qid == "" {
-			return "", statusAmbiguous
+			return "", statusAmbiguous, ""
 		}
-		return qid, statusRewritten
+		// EVIDENCE (#7071) — the extractor minted this address and the
+		// resolver matched it exactly. No marker.
+		return qid, statusRewritten, ""
 	}
 
 	// Structural-ref forms (Format A / B). Recognised by the "scope:"
 	// prefix and resolved through the location/member indexes — bypasses
 	// the kind / name path entirely.
 	if id, st, handled := idx.lookupStructural(stub); handled {
-		return id, st
+		// EVIDENCE (#7071) — a structural address, likewise minted by
+		// the extractor. No marker.
+		return id, st, ""
 	}
 
 	kind, name := splitStub(stub)
 	if kind != "" {
 		if bucket, ok := idx.byKind[kind]; ok {
 			if id, ok := bucket[name]; ok {
-				return id, statusRewritten
+				// EVIDENCE (#7071) — the stub carried an explicit
+				// "Kind:Name" and the kind bucket answered on both halves.
+				return id, statusRewritten, ""
 			}
 		}
 		if idx.ambigKind[kind] != nil && idx.ambigKind[kind][name] {
-			return "", statusAmbiguous
+			return "", statusAmbiguous, ""
 		}
 	}
 	lookupName := name
@@ -2319,18 +2351,27 @@ func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) 
 		lookupName = stub
 	}
 	if id, ok := idx.byName[lookupName]; ok {
-		return id, statusRewritten
+		// GUESS TIER G1 (#7071) — the bare name is unique ANYWHERE in the
+		// graph. No file, no package, no kind participated in the choice.
+		// Structurally the first tier every lookup reaches and the only one
+		// needing no caller context, so it is expected to be the largest
+		// population of the enumeration.
+		return id, statusRewritten, BindTierGlobalName
 	}
 	if idx.ambigName[lookupName] {
 		// Ambiguous bare-name. Try the kind hint: pick a family that
 		// the relKind biases toward, and if exactly one entity with this
 		// name lives in that family, resolve to it.
 		if id, ok := idx.lookupByKindHint(lookupName, relKind); ok {
-			return id, statusRewritten
+			// GUESS TIER G2 (#7071) — the narrowing evidence is the EDGE's
+			// kind, never the target's type. "Unique within the family the
+			// relKind biases toward" is a lexical guess with one extra
+			// filter, not a resolution.
+			return id, statusRewritten, BindTierGlobalKindFamily
 		}
-		return "", statusAmbiguous
+		return "", statusAmbiguous, ""
 	}
-	return "", statusUnmatched
+	return "", statusUnmatched, ""
 }
 
 // componentKindFamily / operationKindFamily / schemaKindFamily are the
@@ -3955,7 +3996,7 @@ func (idx Index) lookupPackageComponent(pkgDir, name string) (string, bool) {
 // rewriteOne resolves a single endpoint reference. It returns the (possibly
 // rewritten) ID string and the status code from LookupStatusHint. Hex IDs
 // and empty strings short-circuit with a zero status, signalling "skip".
-func (idx Index) rewriteOne(ref, relKind string) (string, int) {
+func (idx Index) rewriteOne(ref, relKind string) (string, int, BindTier) {
 	return idx.rewriteOneWithCaller(ref, relKind, "", "")
 }
 
@@ -3972,9 +4013,9 @@ func (idx Index) rewriteOne(ref, relKind string) (string, int) {
 // Empty callerFile / callerPkgDir disables the locality preference and
 // behaves identically to rewriteOne — preserving the existing test contract
 // for call sites that don't supply caller context.
-func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir string) (string, int) {
+func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir string) (string, int, BindTier) {
 	if ref == "" || isHexID(ref) {
-		return ref, 0
+		return ref, 0, ""
 	}
 	// #5782 (ADR-0025) — BINDS_CHANNEL edges are resolved EXCLUSIVELY by the
 	// dedicated ResolveChannelBindings pass (join on the `channel` property +
@@ -3985,15 +4026,15 @@ func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir str
 	// unmatched channel ref untouched keeps it available for orphan detection.
 	// Resolved refs are already hex and short-circuit above.
 	if strings.EqualFold(relKind, string(types.RelationshipKindBindsChannel)) {
-		return ref, statusUnmatched
+		return ref, statusUnmatched, ""
 	}
-	id, st := idx.LookupStatusHint(ref, relKind)
+	id, st, tier := idx.lookupStatusHintTier(ref, relKind)
 	if st == statusRewritten {
-		return id, st
+		return id, st, tier
 	}
 	if st == statusAmbiguous && (callerFile != "" || callerPkgDir != "") {
-		if localID, ok := idx.lookupBareWithLocality(ref, relKind, callerFile, callerPkgDir); ok {
-			return localID, statusRewritten
+		if localID, localTier, ok := idx.lookupBareWithLocality(ref, relKind, callerFile, callerPkgDir); ok {
+			return localID, statusRewritten, localTier
 		}
 	}
 	// Issue #778 — Java bare CALLS to qualified-name operations.
@@ -4008,11 +4049,13 @@ func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir str
 	// do not carry qualified names in this way.
 	if st == statusUnmatched && (callerFile != "" || callerPkgDir != "") &&
 		strings.ToUpper(relKind) == "CALLS" && !strings.ContainsAny(ref, ":.#") {
-		if localID, ok := idx.lookupBareWithLocality(ref, relKind, callerFile, callerPkgDir); ok {
-			return localID, statusRewritten
+		if localID, localTier, ok := idx.lookupBareWithLocality(ref, relKind, callerFile, callerPkgDir); ok {
+			return localID, statusRewritten, localTier
 		}
 	}
-	return ref, st
+	// Not bound: no tier decided anything, so no marker. #7071's key means
+	// "bound by a guess", never "the resolver looked at this".
+	return ref, st, ""
 }
 
 // lookupBareWithLocality is the wave-9 same-file / same-package tie-breaker
@@ -4040,13 +4083,13 @@ func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir str
 // global byName already failed; we cannot bind to a wrong overload
 // because the package buckets only carry entities whose SourceFile rolls
 // up to the same directory as the caller.
-func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir string) (string, bool) {
+func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir string) (string, BindTier, bool) {
 	_, name := splitStub(stub)
 	if name == "" {
 		name = stub
 	}
 	if name == "" {
-		return "", false
+		return "", "", false
 	}
 	families := hintKinds(relKind)
 	if callerFile != "" {
@@ -4075,7 +4118,9 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 					match = id
 				}
 				if !ambig && match != "" {
-					return match, true
+					// GUESS TIER L1 (#7071) — same-file real entity,
+					// kind-filtered. The file is the whole evidence.
+					return match, BindTierFileKind, true
 				}
 			}
 		}
@@ -4085,7 +4130,9 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 		case "CALLS":
 			if bucket, ok := idx.byPackageOperation[callerPkgDir]; ok {
 				if id, ok := bucket[name]; ok && id != "" {
-					return id, true
+					// GUESS TIER L2 (#7071) — same directory, dot-free
+					// operation name.
+					return id, BindTierPackageOperation, true
 				}
 			}
 			// Issue #778 — Java bare CALLS to qualified-name methods.
@@ -4103,18 +4150,27 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 			// lookupPackageMemberByLeafName and deliberately does not.
 			if callerFile != "" {
 				if id, ok := idx.lookupMemberByLeafName(callerFile, name, famOperation, true); ok {
-					return id, true
+					// GUESS TIER L3 (#7071) — same-file leaf-name suffix
+					// match. This is the tier #7071's end-to-end
+					// reproduction runs through: a bare `Touch` became
+					// `AuditEntry.Touch` because it was the only same-named
+					// method in the caller's file, with the receiver's type
+					// never part of the decision.
+					return id, BindTierFileLeafName, true
 				}
 			}
 			if callerPkgDir != "" {
 				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name, famOperation, true); ok {
-					return id, true
+					// GUESS TIER L4 (#7071) — L3 widened from the caller's
+					// file to the caller's directory.
+					return id, BindTierPackageLeafName, true
 				}
 			}
 		case "EXTENDS", "IMPLEMENTS":
 			if bucket, ok := idx.byPackageComponent[callerPkgDir]; ok {
 				if id, ok := bucket[name]; ok && id != "" {
-					return id, true
+					// GUESS TIER L5 (#7071) — same-directory component.
+					return id, BindTierPackageComponent, true
 				}
 			}
 		}
@@ -4134,15 +4190,22 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 	if callerFile != "" && strings.ToUpper(relKind) == "CALLS" {
 		if fileBucket := idx.byLocationKind[callerFile]; fileBucket != nil {
 			nameBucket := fileBucket[name].base
+			// GUESS TIER L6 (#7071) — both probes. The target here is not a
+			// declaration at all but a synthetic SCOPE.* placeholder, which
+			// is #7056's "admissible-looking carrier" shape in a second,
+			// language-agnostic place. One tier value covers both probes:
+			// they are the same decision run against two placeholder kinds,
+			// and a consumer wanting to tell them apart reads the bound
+			// entity's Kind rather than a duplicated marker.
 			if id, _ := nameBucket.get(scopeKindPrefix + "Operation"); id != "" {
-				return id, true
+				return id, BindTierFileScopePlaceholder, true
 			}
 			if id, _ := nameBucket.get(scopeKindPrefix + "Component"); id != "" {
-				return id, true
+				return id, BindTierFileScopePlaceholder, true
 			}
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // nameExists reports whether the supplied name appears anywhere in the
@@ -7110,7 +7173,11 @@ func ReferencesWithAllowlist(rels []types.RelationshipRecord, idx Index, allow E
 		lang := relLanguage(r)
 		if r.FromID != "" && !isHexID(r.FromID) {
 			orig := r.FromID
-			newID, st := idx.rewriteOne(r.FromID, r.Kind)
+			// #7071 — the FROM endpoint's tier is deliberately dropped:
+			// the marker key is named to_bind_tier and one key per edge
+			// cannot carry two answers. Named gap, pinned by
+			// TestBindTier_FromEndpointGuessIsNotMarked_7071.
+			newID, st, _ := idx.rewriteOne(r.FromID, r.Kind)
 			r.FromID = newID
 			applyEndpointStats(&stats, st, true)
 			d := idx.classifyDispositionLang(r.FromID, orig, lang, allow)
@@ -7120,8 +7187,16 @@ func ReferencesWithAllowlist(rels []types.RelationshipRecord, idx Index, allow E
 		}
 		if r.ToID != "" && !isHexID(r.ToID) {
 			orig := r.ToID
-			newID, st := idx.rewriteOne(r.ToID, r.Kind)
+			newID, st, tier := idx.rewriteOne(r.ToID, r.Kind)
 			r.ToID = newID
+			// #7071 — this line is a FUNNEL, not a tier. It is reached by
+			// exact-QualifiedName hits, structural refs and the two global
+			// guess tiers alike; stamping unconditionally here would defame
+			// the first two. The tier value carries the deciding branch's
+			// own verdict and is blank for every evidence tier.
+			if st == statusRewritten {
+				stampBindTier(r, tier, &stats)
+			}
 			applyEndpointStats(&stats, st, false)
 			d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
 			stats.recordDisposition(d, orig)
@@ -7228,7 +7303,9 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 			}
 			if r.FromID != "" && !isHexID(r.FromID) {
 				orig := r.FromID
-				newID, st := idx.rewriteOneWithCaller(r.FromID, r.Kind, parentSourceFile, parentPkgDir)
+				// #7071 — see the FROM-endpoint note on the References
+				// path: the tier is dropped, not absent.
+				newID, st, _ := idx.rewriteOneWithCaller(r.FromID, r.Kind, parentSourceFile, parentPkgDir)
 				r.FromID = newID
 				applyEndpointStats(&stats, st, true)
 				d := idx.classifyDispositionLang(r.FromID, orig, lang, allow)
@@ -7291,6 +7368,14 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 						}
 						if hits == 1 && hit != "" {
 							r.ToID = hit
+							// GUESS TIER E1 (#7071). Property-informed, but
+							// "exactly one implementer in the graph" is an
+							// inference about the corpus, not a proof about
+							// the call: a second implementer appearing later
+							// changes the answer. This tier never reaches
+							// the rewriteOneWithCaller funnel, which is why
+							// a marker written there would miss it.
+							stampBindTier(r, BindTierGoInterfaceDispatch, &stats)
 							applyEndpointStats(&stats, statusRewritten, false)
 							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
 							stats.recordDisposition(d, orig)
@@ -7426,6 +7511,13 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 						// probe is always resolving a call destination.
 						if id, ok := idx.lookupMemberByLeafName(parentSourceFile, r.ToID, famOperation, true); ok && id != "" {
 							r.ToID = id
+							// GUESS TIER E2 (#7071) — the receiver type
+							// WAS stamped but was ambiguous within the
+							// package, so the type evidence is
+							// explicitly discarded and the same-file
+							// leaf-name scan runs instead. A guess that
+							// had evidence available and declined it.
+							stampBindTier(r, BindTierGoAmbiguousReceiverLeaf, &stats)
 							applyEndpointStats(&stats, statusRewritten, false)
 							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
 							stats.recordDisposition(d, orig)
@@ -7477,6 +7569,9 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 					if id, ok := idx.lookupPackageComponent(parentPkgDir, r.ToID); ok {
 						if id != "" {
 							r.ToID = id
+							// GUESS TIER E3 (#7071) — a bare type name
+							// unique within the parent's package directory.
+							stampBindTier(r, BindTierGoPackageComponent, &stats)
 							applyEndpointStats(&stats, statusRewritten, false)
 							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
 							stats.recordDisposition(d, orig)
@@ -7487,8 +7582,14 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 						// ambiguous against the global byName index.
 					}
 				}
-				newID, st := idx.rewriteOneWithCaller(r.ToID, r.Kind, parentSourceFile, parentPkgDir)
+				newID, st, tier := idx.rewriteOneWithCaller(r.ToID, r.Kind, parentSourceFile, parentPkgDir)
 				r.ToID = newID
+				// #7071 — FUNNEL, not a tier. See the identical note on the
+				// References path: the eight tiers that exit here are told
+				// apart by the tier value, never by the line.
+				if st == statusRewritten {
+					stampBindTier(r, tier, &stats)
+				}
 				applyEndpointStats(&stats, st, false)
 				// Issues #514 / #517 — framework-DSL receiver gate. The
 				// JS/TS extractor stamps Properties["receiver_package"] on
@@ -7542,6 +7643,16 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 					continue
 				}
 				for _, ncID := range nonCanonicals {
+					// #1818 fan-out. #7071 — the clone inherits the
+					// parent's Properties, and therefore its guess marker,
+					// by construction: no second decision is made here, so
+					// none is recorded. Properties is a sorted slice, so the
+					// clone shares the parent's backing array; nothing below
+					// mutates it, and a future edit that does must copy
+					// first. Deliberately NOT re-stamped and NOT re-counted
+					// — a clone is the same bind reaching a second platform
+					// variant, and counting it twice would inflate the
+					// per-tier incidence this change exists to measure.
 					clone := *r
 					clone.ToID = ncID
 					extras = append(extras, clone)

@@ -172,9 +172,43 @@ type ExpectedRelationship struct {
 	ToKind       string `json:"to_kind,omitempty"`
 	ToFile       string `json:"to_file,omitempty"`
 	ToBareName   string `json:"to_bare_name,omitempty"`
-	MustExist    bool   `json:"must_exist"`
-	NiceToHave   bool   `json:"nice_to_have,omitempty"`
-	Note         string `json:"note,omitempty"`
+	// ToMustBeTyped (#7071) narrows the row to edges whose TO endpoint was
+	// bound on EVIDENCE — an exact qualified name, a structural address the
+	// extractor minted, a resolved import qualifier, a stamped and
+	// unambiguous receiver type. An edge the resolver bound by a lexical
+	// guess (types.PropBindTier present; see internal/resolve/bindtier.go
+	// for the twelve tiers) does NOT satisfy such a row.
+	//
+	// WHY A FIXTURE NEEDS THIS. A must_exist row naming a dotted target is
+	// satisfied by an edge the extractor emitted with no type information at
+	// all, as long as that target happens to be the only same-named thing in
+	// the caller's file — the resolver's locality tier launders the untyped
+	// guess into exactly the target the fixture is asserting. Measured on
+	// the golden corpus at the time of writing: 146 of 507 must_exist edge
+	// rows (29%) have the "unique leaf, no competitor" shape that makes them
+	// vulnerable to this. Those rows cannot prove they grade what they claim
+	// to grade.
+	//
+	// The workaround before this field was a COMPETITOR: a second same-named
+	// method in the same file, so the locality tier refuses and the only
+	// route to the right target is a correctly typed receiver. That works,
+	// but it costs a fixture edit per row and reads as redundant to the next
+	// person, who deletes it. This field says the same thing directly.
+	//
+	// It is deliberately a TIGHTENING of an existing row, not a new forbidden
+	// row. A forbidden hit is always fatal (scripts/quality/ratchet.py), so
+	// expressing "this edge is currently a guess" as a forbidden row would
+	// turn the gate red on shipping behaviour. Tightening a must_exist row
+	// instead drops relationship_found, which the existing recall ratchet
+	// already grades — no new ratchet tier needed (that is #7056's ask, and
+	// this field deliberately does not depend on it).
+	//
+	// ABSENT (the default) means "either is fine", which is what every
+	// pre-#7071 row meant and still means. It is not a silent tightening.
+	ToMustBeTyped bool   `json:"to_must_be_typed,omitempty"`
+	MustExist     bool   `json:"must_exist"`
+	NiceToHave    bool   `json:"nice_to_have,omitempty"`
+	Note          string `json:"note,omitempty"`
 }
 
 // LoadFixture reads expected.json from the given fixture directory.
@@ -338,6 +372,32 @@ func LoadFixture(dir string) (*Fixture, error) {
 	// exemption claimed": the defect being closed here is precisely that an
 	// absent or empty value was read as consent, so the opt-in may not be
 	// expressible as one.
+	// #7071 — to_must_be_typed is a TIGHTENING, and a tightening only makes
+	// sense on a row that can go red when it stops matching. On a forbidden
+	// row it does the opposite: "this edge must not exist, unless the
+	// resolver guessed it" WIDENS what is permitted, silently, in a
+	// direction nobody would intend. Reject it rather than let a fixture
+	// author discover it by having a real defect pass.
+	//
+	// It is likewise pointless on a row that is neither must_exist nor
+	// nice_to_have: such a row is scored by nothing, so narrowing it narrows
+	// nothing.
+	for i, fb := range f.ForbiddenRelationships {
+		if fb.ToMustBeTyped {
+			return nil, fmt.Errorf("%s: forbidden_relationships[%d] sets to_must_be_typed; on a "+
+				"forbidden row that WIDENS what is permitted (the edge becomes allowed whenever "+
+				"the resolver guessed its target), which is never the intent. Put the narrowing "+
+				"on the must_exist row instead", p, i)
+		}
+	}
+	for i, er := range f.ExpectedRelationships {
+		if er.ToMustBeTyped && !er.MustExist && !er.NiceToHave {
+			return nil, fmt.Errorf("%s: expected_relationships[%d] sets to_must_be_typed but is "+
+				"neither must_exist nor nice_to_have, so nothing scores it — the narrowing grades "+
+				"nothing", p, i)
+		}
+	}
+
 	mustHave := 0
 	for _, er := range f.ExpectedRelationships {
 		if er.MustExist {

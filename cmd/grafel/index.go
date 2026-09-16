@@ -6096,7 +6096,12 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	// edges stamped with rust_call_pkg_dirs + call_leaf (+ rust_call_scope)
 	// to byPackageOperation / byPackageMember. Same ordering constraints as
 	// the Go pass: after BuildIndex, before the embedded-reference resolver.
-	rustCrossModCallRewrites := idx.ResolveRustCrossModuleCalls(merged)
+	// #7071 — rustStats collects ONLY the crate-wide-uniqueness guess tier's
+	// per-edge tallies from this pass; it is folded into totalStats below so
+	// the per-tier report covers every tier rather than only those that flow
+	// through the two Reference passes.
+	var rustStats resolve.Stats
+	rustCrossModCallRewrites := idx.ResolveRustCrossModuleCalls(merged, &rustStats)
 	if rustCrossModCallRewrites > 0 {
 		fmt.Fprintf(os.Stderr, "resolver: rust-cross-module rewrote=%d CALLS targets\n", rustCrossModCallRewrites)
 	}
@@ -6154,6 +6159,22 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	}
 	resolve.MergeDispositions(&totalStats, &embStats)
 	resolve.MergeDispositions(&totalStats, &standStats)
+	resolve.MergeBindTiers(&totalStats, &embStats)
+	resolve.MergeBindTiers(&totalStats, &standStats)
+	resolve.MergeBindTiers(&totalStats, &rustStats)
+	// #7071 finding A — ResolveImports runs BEFORE every resolver above
+	// (see the call near the top of this function), so the edges it binds
+	// arrive at them already hex and short-circuit. Its two guess tiers
+	// therefore have exactly one route to this report, and this is it.
+	resolve.MergeBindTierMap(&totalStats, importStats.BindTierCounts)
+	// #7071 — the number this change exists to produce: how many shipped
+	// edges were bound by a lexical guess, split by which guess. Printed
+	// unconditionally when non-empty, because a measurement behind a flag is
+	// a measurement nobody takes. An all-zero map prints nothing rather than
+	// fourteen zeros.
+	if line := resolve.FormatBindTiers(totalStats.BindTierCounts); line != "" {
+		fmt.Fprintf(os.Stderr, "resolver: guess-tier binds %s\n", line)
+	}
 	// Stash the resolver index + pre-synthesis dispositions on the indexer
 	// so the post-synthesis classification step (after external.Synthesize)
 	// can reclassify "ext:*" endpoints with the allowlist.
