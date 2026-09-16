@@ -115,17 +115,24 @@ type rustTPCase struct {
 // and nothing else (#7041 trap (c): this mistake has shipped on five
 // consecutive PRs, twice inside a fix for it).
 //
-//	ANCHOR ROW (everything at its anchor value): `plain`.
-//	  anchor          = named-struct field
-//	  parameter form  = a bare `<Order>`
-//	  owner form      = top-level `struct`
-//	  collider form   = `struct`, declared BEFORE the generic (in the preamble)
+//	ANCHOR ROW (every axis at its anchor value): `plain`.
+//	  anchor                 = named-struct field
+//	  parameter form         = a bare `<Order>`
+//	  owner form             = top-level `struct`
+//	  collider form          = `struct`, declared BEFORE the generic (preamble)
+//	  candidate multiplicity = ONE candidate, and it is the refused one
+//	  serde attributes       = none
 //
-//	VARIES the PARAMETER FORM, all else held at the anchor:
+//	VARIES the PARAMETER FORM — which spellings enter the shadow set:
 //	  two_params, bounded, multi_bound, where_clause, lifetime,
 //	  const_param_type, const_param_name, default, default_with_bound
-//	VARIES the ANCHOR (where the field record comes from):
-//	  enum_variant_field, tuple_struct_field, union_field
+//	VARIES the SHADOWED FIELD'S CANDIDATE MULTIPLICITY — what the shadow set
+//	is allowed to REMOVE from a field, i.e. per-candidate vs per-field:
+//	  mixed_candidates_struct, mixed_candidates_enum_variant
+//	VARIES the ANCHOR (which producer makes the field record):
+//	  enum_variant_field, tuple_struct_field, union_field,
+//	  mixed_candidates_enum_variant (varies anchor AND multiplicity together,
+//	  deliberately: the enum producer computes its own shadow set)
 //	VARIES the OWNER'S NESTING (which item the declaration sits in):
 //	  nested_in_mod, nested_in_fn
 //	VARIES the COLLIDER'S DECLARING FORM:
@@ -134,13 +141,36 @@ type rustTPCase struct {
 //	  collider_declared_after
 //	VARIES the DECLARATION the parameter belongs to (scope leakage):
 //	  sibling_declaration_keeps_edge
-//	GRADES PRODUCER LIVENESS ONLY — it varies nothing about scoping, because
-//	its parameter name is never a same-file type. It is NOT a scoping control
-//	and is not counted as one:
+//	GRADES PRODUCER LIVENESS ONLY — varies nothing about scoping, because its
+//	parameter name is never a same-file type. NOT a scoping control and not
+//	counted as one anywhere:
 //	  non_colliding_param
 //
-// Every row also carries the liveness control inside itself (the `ctl` /
-// `b` / `ali` fields), which is what distinguishes "the refusal works" from
+// STILL HELD CONSTANT, named so the next reader can attack it rather than
+// inherit the blind spot:
+//
+//   - SERDE ATTRIBUTES on the shadowed field. No row carries `#[serde(rename)]`
+//     or `#[serde(skip)]`. This axis cannot exercise the guard: both are
+//     handled in rustFieldsFromList BEFORE the stash and act on the field's
+//     WIRE NAME, never on its declared type, and a skipped field `continue`s
+//     before any candidate is collected. It is therefore recorded as unable
+//     to distinguish, not as covered.
+//   - THE NUMBER OF DECLARATIONS IN THE FILE beyond two. `mixed_candidates_-
+//     struct` carries two generic declarations (`Holder`, `G22`) and
+//     `sibling_declaration_keeps_edge` one generic and one not, which is what
+//     grades per-declaration scoping; a third would vary nothing new.
+//
+// MULTIPLICITY WAS THE AXIS THIS BLOCK ORIGINALLY FAILED TO NAME, and the
+// omission is why the gap was invisible: with every shadowed field spelled as
+// one bare candidate, "drop the refused candidate" and "drop the whole field"
+// are the same function, so a whole-field refusal deleted correct edges at
+// both anchors with the suite green. The portable lesson is the one this
+// family keeps relearning — a control row grades the property it VARIES, not
+// the property it is filed under, and an axis a block does not NAME is an
+// axis nobody audits.
+//
+// Every row also carries the liveness control inside itself (the `ctl` / `b` /
+// `ali` / `m` fields), which is what distinguishes "the refusal works" from
 // "the producer died" — the distinction the deleted pin could not make.
 func TestRustFieldTypeRefs_7041_TypeParameterFormSpace(t *testing.T) {
 	cases := []rustTPCase{
@@ -245,6 +275,65 @@ func TestRustFieldTypeRefs_7041_TypeParameterFormSpace(t *testing.T) {
 			name: "enum_variant_field",
 			src:  "pub enum G11<Order> { V { item: Order, ctl: Real } }",
 			want: []string{"G11.V.ctl -> " + rustTPRef + "Real"},
+		},
+		{
+			// VARIES THE SHADOWED FIELD'S CANDIDATE MULTIPLICITY, the axis
+			// every other row holds constant at ONE — and the only axis on
+			// which the refusal being per-CANDIDATE rather than per-FIELD is
+			// observable at all. Each of `m`, `p`, `q` and `h` names the
+			// parameter `Order` AND a real same-file type in the SAME declared
+			// type, so "drop the refused candidate" and "drop the whole field"
+			// stop being the same behaviour here. Without this row a
+			// whole-field refusal silently deletes four correct edges with the
+			// rust and resolve suites green — the direction #7056 established
+			// has no symptom, one level up from where the rest of this table
+			// attacks it (those rows grade which names ENTER the shadow set;
+			// this one grades what the shadow set may REMOVE from a field).
+			//
+			// `q` puts the REAL type FIRST and the parameter second, so the
+			// position of the refused candidate within the list is varied too.
+			// `h` makes the surviving candidate the generic CONSTRUCTOR
+			// (`Holder`, itself a same-file generic declaration), not an
+			// argument. `v: Vec<Order>` is the row's PERMISSIVE half: every
+			// candidate is either unmodelled or refused, so it must emit
+			// NOTHING — applying the refusal only to single-candidate fields
+			// would put this issue's own wrong-and-BINDING edge straight back.
+			//
+			// The shape is ordinary, not exotic: `Vec<T>`, `HashMap<K, Real>`,
+			// `Option<T>`, `(T, Real)` are how a generic container's fields are
+			// normally spelled. The corpus was already exercising it — this
+			// PR's own refusal listing names `just/src/recipe.rs:Recipe.dependencies`,
+			// whose source line is `pub(crate) dependencies: Vec<D>,`.
+			name: "mixed_candidates_struct",
+			src: "use std::collections::HashMap;\n" +
+				"pub struct Holder<X> { pub x: X }\n" +
+				"pub struct G22<Order> { pub m: HashMap<Order, Real>, pub v: Vec<Order>, " +
+				"pub p: (Order, Real), pub q: (Real, Order), pub h: Holder<Order>, pub ctl: Real }",
+			want: []string{
+				"G22.ctl -> " + rustTPRef + "Real",
+				"G22.h -> " + rustTPRef + "Holder",
+				"G22.m -> " + rustTPRef + "Real",
+				"G22.p -> " + rustTPRef + "Real",
+				"G22.q -> " + rustTPRef + "Real",
+			},
+		},
+		{
+			// VARIES CANDIDATE MULTIPLICITY *AT THE ENUM ANCHOR*. The two
+			// anchors reach the stash site through different producers
+			// (emitRustStructFields vs emitRustEnumVariantFields), each
+			// computing the shadow set from a different owner node, so a
+			// per-field refusal has to be graded at both. Closing it on the
+			// struct alone would leave the enum producer ungraded on this
+			// axis — the same mistake one level down.
+			name: "mixed_candidates_enum_variant",
+			src: "use std::collections::HashMap;\n" +
+				"pub enum G23<Order> { V { m: HashMap<Order, Real>, v: Vec<Order>, " +
+				"p: (Order, Real), ctl: Real } }",
+			want: []string{
+				"G23.V.ctl -> " + rustTPRef + "Real",
+				"G23.V.m -> " + rustTPRef + "Real",
+				"G23.V.p -> " + rustTPRef + "Real",
+			},
 		},
 		{
 			// VARIES THE ANCHOR: a tuple struct's positional fields are an

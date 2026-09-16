@@ -259,12 +259,26 @@ func rustTypeRefCandidates(typ ts.Node, src []byte) []string {
 // else is refused entry: a bound, a default and a const parameter's type name
 // REAL types, and collecting one would silently delete a correct edge.
 //
-// A lifetime and a const parameter contribute nothing, and neither can be
-// reached by a candidate anyway: rustTypeRefCandidates collects only
-// `type_identifier`, while a lifetime's name and a const parameter's name are
-// both `identifier`. `struct C<const Order: usize> { x: Order }` compiles
-// beside a `struct Order` and `x` IS the struct — a const parameter binds in
-// the value namespace — so refusing that name would be an over-refusal.
+// A lifetime and a const parameter contribute nothing, and the reason is that
+// refusing them would be WRONG — not that they could never match. The shadow
+// set is a set of STRINGS, so a name introduced here collides with any
+// candidate spelled the same way, whatever node kind bound it. That is exactly
+// the reachable case: `struct C<const Order: usize> { x: Order }` compiles
+// beside a `struct Order`, and `x` IS the struct, because a const parameter
+// binds in the VALUE namespace and does not shadow the type. Collecting it
+// would silently delete that correct edge — graded by the `const_param_name`
+// row, which asserts `G8.x -> Order` is KEPT.
+//
+// The same holds for a lifetime: `<'a>` binds the string "a", and a same-file
+// `struct a` gives a field the candidate "a", so collecting it would delete
+// that edge too — graded by the `lifetime` row, which asserts `G6.y -> a` is
+// KEPT. Neither is safe merely because the grammar tokenises the BINDING as an
+// `identifier` rather than a `type_identifier`; the sets meet as strings.
+//
+// (An earlier revision of this comment said neither "can be reached by a
+// candidate anyway". That was false, and it contradicted the sentence after
+// it — the kind of prose claim nothing measures that #7056 is about. Both are
+// reachable; both are graded; neither is collected.)
 func rustTypeParameterNames(decl ts.Node, src []byte) map[string]bool {
 	if decl == nil {
 		return nil
