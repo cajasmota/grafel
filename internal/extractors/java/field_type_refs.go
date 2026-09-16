@@ -172,16 +172,17 @@ import (
 //     needs the resolver rather than the extractor. Separate arm.
 //   - QUALIFIED NAMES ARE SKIPPED WHOLE, NEVER REDUCED. See
 //     javaFieldTypeCandidates.
-//   - IT DOES NOT UNDERSTAND TYPE PARAMETERS. `class Holder<T> { T item; }`
-//     yields candidate `T`, dropped only because nothing in the file happens to
-//     be DECLARED `T`. A file that also declares `class T {}` gets a wrong edge.
-//     Known-wrong and pinned as such by
-//     TestJavaFieldTypeRefs_KnownOverFire_TypeParameterShadowedByASameFileType,
-//     a case a real fix is expected to break. Java's grammar gives no help here:
-//     a type parameter and a class reference are the same `type_identifier`
-//     node, and separating them needs the enclosing declaration's
-//     `type_parameters` list threaded to the field — the same shape Go's arm
-//     deferred.
+//   - IT UNDERSTANDS TYPE PARAMETERS AS A SHADOWING SCOPE (#7041). `class
+//     Holder<T> { T item; }` in a file that also declares `class T {}` used to
+//     emit an edge asserting `item`'s declared type was that class. It is not:
+//     `T` is the parameter, which shadows the outer declaration. The refusal
+//     lives in javaVisibleTypeParameterNames; see it for Java's scoping rule,
+//     why that rule is NOT kotlin's, and the javac evidence behind it. What is
+//     still NOT modelled, and is a stated limit rather than an accident: a
+//     METHOD's own type parameters (`<T> void f(T x)`), because no field entity
+//     is ever emitted inside a method body — local-class and method-local
+//     declarations produce no SCOPE.Schema/field record at all, so there is no
+//     anchor for such a name to reach. Modelling them would be unreachable code.
 //   - IT DOES NOT INFLATE PAST ONE EDGE PER (field, target). A field written
 //     `Map<Order, Order>` yields the candidate `Order` twice and emits ONE edge.
 
@@ -269,7 +270,16 @@ const javaFieldTargetRefKind = "field_target_type"
 //     collected while `java`, `util` and `List` are not. That is the correct
 //     answer and it falls out of the traversal rather than being special-cased;
 //     pinned by TestJavaFieldTypeRefs_QualifiedGenericStillBindsItsArgument.
-func javaFieldTypeCandidates(typ ts.Node, src []byte) []string {
+//
+// A NAME BOUND BY AN ENCLOSING TYPE PARAMETER IS NEVER A CANDIDATE (#7041).
+// `typeParams` is the set javaVisibleTypeParameterNames computed for this
+// field's position; a `type_identifier` in it denotes the parameter, not a
+// same-file declaration of that name. The refusal is here rather than in
+// javaInFileTypeTargets because it is a property of the FIELD'S POSITION, not
+// of the file's declaration set: two fields in the same file can disagree about
+// whether `T` names a type, and they do in every fixture of
+// field_type_refs_7041_test.go.
+func javaFieldTypeCandidates(typ ts.Node, src []byte, typeParams map[string]bool) []string {
 	var out []string
 	var walkType func(n ts.Node)
 	walkType = func(n ts.Node) {
@@ -280,7 +290,9 @@ func javaFieldTypeCandidates(typ ts.Node, src []byte) []string {
 		case "scoped_type_identifier":
 			return
 		case "type_identifier":
-			out = append(out, nodeText(n, src))
+			if name := nodeText(n, src); !typeParams[name] {
+				out = append(out, name)
+			}
 			return
 		}
 		for i := 0; i < int(n.NamedChildCount()); i++ {
@@ -289,6 +301,114 @@ func javaFieldTypeCandidates(typ ts.Node, src []byte) []string {
 	}
 	walkType(typ)
 	return out
+}
+
+// javaVisibleTypeParameterNames returns every type-parameter name that shadows
+// a same-file type declaration at `node`'s position — the union of the
+// `type_parameters` lists carried by every LEXICALLY ENCLOSING node.
+//
+// JAVA'S RULE, AND WHY IT IS NOT KOTLIN'S OR SCALA'S. JLS 8.1.2 scopes a class
+// type parameter over the whole body of the declaration that introduces it, and
+// JLS 6.4.1 makes that a SHADOW: inside `class Box<T>` the name `T` denotes the
+// parameter and never a same-file `class T`. Kotlin's arm
+// (kotlinVisibleTypeParameterNames) ascends only through `inner` declarations,
+// because a plain nested Kotlin class does NOT see the outer parameter and `T`
+// there really does name the same-file type; Scala has no static nesting and
+// always captures. Java looks like the hard case — it has BOTH `static` nested
+// and inner classes — so the expected rule is kotlin's, gated on `static`.
+//
+// THAT EXPECTED RULE IS WRONG, and javac 25.0.3 is the evidence. JLS 8.1.2's
+// static-context restriction makes the REFERENCE illegal; it does not reopen
+// the outer name:
+//
+//	class P {}
+//	class Box<P> { static class Nested { P f = new P(); } }
+//	  → error: non-static type variable P cannot be referenced from a static
+//	    context                                  (NOT: resolves to class P)
+//
+// The same error comes back for a nested `record`, for a member class of a
+// generic interface, for a `static` field of the generic class itself, and for
+// a static class nested two levels down — each compiled separately, each with a
+// top-level type of the parameter's name present. So there is NO valid Java
+// program in which one of these names denotes the same-file type, and an
+// unconditional ascent deletes no correct edge. Gating on `static` would have
+// been the over-REFUSAL direction's mirror: it would have KEPT a wrong binding
+// on input that does not compile, for a rule Java does not have.
+//
+// Graded in both directions, with a real-type control in every fixture, by
+// TestJavaFieldTypeRefs_7041_NestingFormSpace_Compiling (inner class, anonymous
+// class in a field initializer, redeclared name, an inner class with its OWN
+// differently-named list that STILL uses the outer's — the input that grades
+// the ascent past a non-empty nearest list, found by scoring a mutant ALIVE —
+// generic inner of a non-generic outer) and ..._StaticContext (the four forms above). The controls that stop
+// the ascent from over-refusing are `InnerFlatN.ft` and `SiblingN.st`: both sit
+// OUTSIDE any declaration binding the name, so both must keep their edge — an
+// implementation that refused a name file-wide once it had seen it anywhere
+// deletes exactly those two rows.
+//
+// NO DECLARATION-KIND LIST. The ascent matches on `type_parameters` alone
+// rather than enumerating class_declaration / interface_declaration /
+// record_declaration, because only a declaration that introduces parameters
+// carries that child and its scope is exactly that declaration's subtree. A
+// kind list would be four more matcher strings to keep true against the
+// grammar, and the scala arm shipped two that did not exist in its grammar at
+// all — dead code a mutant could not kill. (`object_creation_expression` and a
+// generic invocation carry `type_arguments`, a different node type, so an
+// anonymous class's field is shadowed by its ENCLOSING declaration's list and
+// not by the arguments at its own `new` site.)
+func javaVisibleTypeParameterNames(node ts.Node, src []byte) map[string]bool {
+	out := map[string]bool{}
+	if node == nil {
+		return out
+	}
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		javaCollectTypeParameterNames(p, src, out)
+	}
+	return out
+}
+
+// javaCollectTypeParameterNames adds the names bound by `decl`'s own
+// `type_parameters` child, if it has one, to `into`.
+//
+// ONLY DIRECT `type_identifier` CHILDREN OF `type_parameter` ARE NAMES. The CST
+// (dumped, not recalled) puts a bound under a `type_bound` child and an
+// annotation under a `marker_annotation`/`annotation` child, both SIBLINGS of
+// the name:
+//
+//	<T>                        type_parameter[type_identifier T]
+//	<T extends Order>          type_parameter[type_identifier T,
+//	                             type_bound[extends, type_identifier Order]]
+//	<T extends A & B>          type_bound[extends, tid A, &, tid B]
+//	<T extends Comparable<T>>  type_bound[extends, generic_type[tid Comparable,
+//	                             type_arguments[tid T]]]
+//	<@NonNull T>               type_parameter[marker_annotation, tid T]
+//
+// So a descendant walk instead of a direct-children scan would harvest `Order`,
+// `A`, `B` and `Comparable` as shadowed names and DELETE the correct edges
+// those types earn in field position — the silent direction. That is the mutant
+// TestJavaFieldTypeRefs_7041_TypeParameterFormSpace's `Bounded.ok`, `Multi.a`
+// and `Multi.b` rows exist to kill.
+func javaCollectTypeParameterNames(decl ts.Node, src []byte, into map[string]bool) {
+	for i := 0; i < int(decl.ChildCount()); i++ {
+		tps := decl.Child(i)
+		if tps == nil || tps.Type() != "type_parameters" {
+			continue
+		}
+		for j := 0; j < int(tps.ChildCount()); j++ {
+			tp := tps.Child(j)
+			if tp == nil || tp.Type() != "type_parameter" {
+				continue
+			}
+			for k := 0; k < int(tp.ChildCount()); k++ {
+				id := tp.Child(k)
+				if id != nil && id.Type() == "type_identifier" {
+					if name := nodeText(id, src); name != "" {
+						into[name] = true
+					}
+				}
+			}
+		}
+	}
 }
 
 // javaFieldTypeTarget is one in-file type declaration a field can point at: the
@@ -406,10 +526,18 @@ func javaInFileTypeTargets(records []types.EntityRecord, filePath string) map[st
 // is the declaring type's bare name, or "" for a field with no stable enclosing
 // type.
 //
-// A no-op when the type expression names nothing addressable (a bare primitive),
-// so a field that can never produce an edge carries no metadata at all.
+// A no-op when the type expression names nothing addressable (a bare primitive
+// — or, since #7041, a name bound only by an enclosing type parameter), so a
+// field that can never produce an edge carries no metadata at all.
+//
+// THE SHADOW SET IS COMPUTED FROM `typ` ITSELF rather than threaded down from
+// the two call sites in java.go. `typ` is the field's own `type` node, so its
+// parent chain reaches the declaring type for BOTH anchors — a class
+// `field_declaration` and a record header `formal_parameter` — without either
+// site learning anything new, and without a third anchor added later being able
+// to forget to pass it.
 func stashJavaFieldTypeRefs(rec *types.EntityRecord, typ ts.Node, src []byte, owner string) {
-	cands := javaFieldTypeCandidates(typ, src)
+	cands := javaFieldTypeCandidates(typ, src, javaVisibleTypeParameterNames(typ, src))
 	if len(cands) == 0 {
 		return
 	}

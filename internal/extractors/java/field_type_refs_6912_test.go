@@ -22,7 +22,8 @@ package java_test
 //
 // The axes that cannot vary inside that fixture without also varying something
 // else get their own: cross-file targets need a second FILE; the type-parameter
-// over-fire needs a file that DECLARES the parameter's name; the nosql `schema`
+// shadowing rule needs files that DECLARE the parameter's name and is graded in
+// its own file, field_type_refs_7041_test.go; the nosql `schema`
 // collision needs an @Document annotation; the Lombok duplicate-Component case
 // needs a @Builder beside a hand-declared `<Class>Builder`. Each is below with
 // its own comment.
@@ -190,7 +191,11 @@ func javaFTWantEqual(t *testing.T, got, want []string) {
 //	nested                   — `Outer.Inner` takes NEITHER segment, though
 //	                           both are declared in this file.
 //	depot                    — `Warehouse` is declared in the OTHER file.
-//	Holder.item              — the type parameter `T` binds to nothing.
+//	Holder.item              — `T` is `Holder`'s type parameter. Since #7041 it
+//	                           is refused as a candidate outright; before, it
+//	                           survived only because this file declares no
+//	                           `class T`. field_type_refs_7041_test.go grades
+//	                           the case where one IS declared.
 //	Money.currency/amount    — a record component with no in-file target.
 func TestJavaFieldTypeRefs_EdgeSet(t *testing.T) {
 	recs := extractJavaFT(t, map[string]string{
@@ -436,26 +441,14 @@ record Invoice(Customer buyer, String note, int total) {}
 	javaFTWantEqual(t, javaFTEdges(recs), []string{"R.java:Invoice.buyer => Customer"})
 }
 
-// TestJavaFieldTypeRefs_KnownOverFire_TypeParameterShadowedByASameFileType pins
-// a case this pass gets WRONG, so the wrongness is a graded fact rather than a
-// silent one. `class Holder<T>` uses `T` in field position; a file that also
-// declares `class T {}` gets an edge that asserts something false. A real fix —
-// threading the enclosing declaration's type_parameters list to the field — is
-// EXPECTED to break this test, and breaking it is the signal that the fix
-// landed.
-//
-// The control is the same source WITHOUT `class T {}`, which must produce
-// nothing: that separates "the type parameter is mistaken for a type" from
-// "type parameters produce edges unconditionally".
-func TestJavaFieldTypeRefs_KnownOverFire_TypeParameterShadowedByASameFileType(t *testing.T) {
-	overfire := extractJavaFT(t, map[string]string{"H.java": `class T {}
-class Holder<T> { T item; }
-`})
-	javaFTWantEqual(t, javaFTEdges(overfire), []string{"H.java:Holder.item => T"})
-
-	clean := extractJavaFT(t, map[string]string{"H2.java": `class Holder<T> { T item; }`})
-	javaFTWantEqual(t, javaFTEdges(clean), nil)
-}
+// The known-over-fire pin that stood here
+// (TestJavaFieldTypeRefs_KnownOverFire_TypeParameterShadowedByASameFileType)
+// was DELETED by #7041, which closed the over-fire it pinned: `class Holder<T>`
+// beside a same-file `class T {}` now emits nothing. Its positive-control idea
+// — a second fixture that cannot pass by the producer going silent — survives
+// and is applied per-fixture in field_type_refs_7041_test.go, where every
+// source carries a real same-file type whose edge must be present in the same
+// assertion.
 
 // TestJavaFieldTypeRefs_NoSqlModelSchemaIsNeverATarget grades the allow-list
 // against a REAL same-file competitor rather than a synthetic one.
