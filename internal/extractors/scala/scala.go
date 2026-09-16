@@ -84,6 +84,15 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// to shared SCOPE.ExceptionType convergence nodes. Runs after the main
 	// walk so the SCOPE.Operation host entities exist for FromName attachment.
 	emitExceptionFlowEdges(file.TSTree.RootNode(), file, &entities)
+	// #6912 — turn each field's captured declared type into a REFERENCES edge.
+	// Runs LAST of the entity-producing passes so the in-file target index and
+	// the ambiguity count see every record this extractor will emit, including
+	// the SCOPE.Enum value-sets emitConstantSets mints beside a sealed trait or
+	// an object. Under the shipped rule those are out-of-family and cannot
+	// change a count; the ordering is what keeps that a MEASURED fact rather
+	// than a lucky one, and it is what arm D's all-kinds counterfactual needs
+	// in order to be measurable at all.
+	attachScalaFieldTypeRefs(entities, file.Path)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "scala")
 	extractor.TagEntitiesLanguage(entities, "scala")
@@ -193,13 +202,17 @@ func emitContainerWithMembers(
 	classIdx := len(*out)
 	*out = append(*out, rec)
 
+	// #6912 — the type parameters this declaration introduces, so a field typed
+	// `T` never binds to a same-file `class T`.
+	classTypeParams := scalaTypeParameterNames(node, file.Content)
+
 	// Build the per-container scope: class parameters + val/var members.
 	localCtx := &classCtx{fields: collectContainerFieldTypes(node, file.Content)}
 
 	body := findTemplateBody(node)
 	if body == nil {
 		// Even without a body, emit case class parameter fields.
-		emitScalaCaseClassFields(node, file, rec.Name, classIdx, out)
+		emitScalaCaseClassFields(node, file, rec.Name, classIdx, out, classTypeParams)
 		return
 	}
 	before := len(*out)
@@ -211,7 +224,7 @@ func emitContainerWithMembers(
 		// that don't match the CONTAINS stub's byLocation key.
 		switch ch.Type() {
 		case "val_definition", "var_definition":
-			if fieldRec, ok := buildScalaField(ch, file, rec.Name); ok {
+			if fieldRec, ok := buildScalaField(ch, file, rec.Name, classTypeParams); ok {
 				*out = append(*out, fieldRec)
 			}
 			continue
@@ -241,7 +254,7 @@ func emitContainerWithMembers(
 	// Issue #690 — also emit SCOPE.Schema/field for case class parameters
 	// (class_parameters child of the class_definition node). These are
 	// structural fields, not just constructor arguments.
-	emitScalaCaseClassFields(node, file, rec.Name, classIdx, out)
+	emitScalaCaseClassFields(node, file, rec.Name, classIdx, out, classTypeParams)
 }
 
 // findTemplateBody returns the template_body child of a class/object/
@@ -660,7 +673,9 @@ func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 // matches.
 //
 // Issue #690 — closes the Scala analog of the Python field orphan gap (#689).
-func buildScalaField(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+// typeParams carries the enclosing declaration's type-parameter names so
+// #6912's capture never mistakes `T` for a same-file `class T`; nil is fine.
+func buildScalaField(node ts.Node, file extractor.FileInput, parentType string, typeParams map[string]bool) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -669,7 +684,7 @@ func buildScalaField(node ts.Node, file extractor.FileInput, parentType string) 
 	if parentType != "" {
 		emittedName = parentType + "." + name
 	}
-	return types.EntityRecord{
+	rec := types.EntityRecord{
 		Name:       emittedName,
 		Kind:       "SCOPE.Schema",
 		Subtype:    "field",
@@ -677,7 +692,13 @@ func buildScalaField(node ts.Node, file extractor.FileInput, parentType string) 
 		Language:   "scala",
 		StartLine:  int(node.StartPoint().Row) + 1,
 		EndLine:    int(node.EndPoint().Row) + 1,
-	}, true
+	}
+	// #6912 — the declared type sits between ":" and any "=", which is what
+	// excludes the INITIALIZER of `val c = new Repo()` (an inferred type whose
+	// `new Repo()` holds a type_identifier in this very node).
+	stashScalaFieldTypeRefs(&rec,
+		scalaDeclaredTypeCandidates(node, file.Content, typeParams), parentType)
+	return rec, true
 }
 
 // emitScalaCaseClassFields scans a class_definition / case_class_definition
@@ -699,6 +720,7 @@ func emitScalaCaseClassFields(
 	className string,
 	classIdx int,
 	out *[]types.EntityRecord,
+	typeParams map[string]bool,
 ) {
 	if className == "" {
 		return
@@ -727,6 +749,9 @@ func emitScalaCaseClassFields(
 				StartLine:  int(param.StartPoint().Row) + 1,
 				EndLine:    int(param.EndPoint().Row) + 1,
 			}
+			// #6912 — the declared type sits between ":" and any "=" default.
+			stashScalaFieldTypeRefs(&rec,
+				scalaDeclaredTypeCandidates(param, file.Content, typeParams), className)
 			*out = append(*out, rec)
 			toID := extractor.BuildSchemaFieldStructuralRef("scala", file.Path, emittedName)
 			(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
