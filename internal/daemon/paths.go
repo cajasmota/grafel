@@ -69,6 +69,15 @@ func EnsureLayout(l Layout) error {
 
 // layoutFromRoot builds a Layout rooted at root. Used by DefaultLayout
 // on all platforms when GRAFEL_DAEMON_ROOT is set.
+// logPathForRoot returns the daemon log file inside root. Every platform's
+// layout puts it at <root>/logs/daemon.log (see DefaultLayout in paths_unix.go
+// and paths_windows.go, and layoutFromRoot below), so a caller holding only a
+// root — the engine supervisor's child-command constructor — can derive it
+// without a Layout.
+func logPathForRoot(root string) string {
+	return filepath.Join(root, "logs", "daemon.log")
+}
+
 func layoutFromRoot(root, socketPath string) Layout {
 	socketDir := ""
 	if socketPath != "" && !isWindowsPipePath(socketPath) {
@@ -90,6 +99,6 @@ func layoutFromRoot(root, socketPath string) Layout {
 		SocketPath: socketPath,
 		PIDPath:    filepath.Join(root, "daemon.pid"),
 		LogDir:     logDir,
-		LogPath:    filepath.Join(logDir, "daemon.log"),
+		LogPath:    logPathForRoot(root),
 	}
 }

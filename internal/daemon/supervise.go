@@ -99,17 +99,102 @@ func engineChildCommand(selfExe, root string) *exec.Cmd {
 //     and inherited verbatim → both resolve <tmp>/state.
 //
 // root is retained in the signature (it is Layout.Root, threaded from the
-// supervisor) for the test seam and future non-layout-switching uses, but is
-// deliberately NOT written into the child env.
+// supervisor). It is used to locate the daemon's own log sink for the child's
+// standard handles (see engineChildLogSink, #7083), but is still deliberately
+// NOT written into the child env.
 func defaultEngineChildCommand(selfExe, root string) *exec.Cmd {
-	_ = root // intentionally not exported to the child env; see doc comment.
 	cmd := exec.Command(selfExe, "engine", "--foreground")
 	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Standard handles: the daemon's OWN log sink, never the inherited one
+	// (#7083). See engineChildLogSink. A nil Stdout/Stderr is os/exec's
+	// documented "connect the child to os.DevNull" — the deliberate fallback
+	// when the sink cannot be opened.
+	sink := engineChildLogSink(root)
+	if sink != nil {
+		cmd.Stdout = sink
+		cmd.Stderr = sink
+	}
 	cmd.SysProcAttr = engineChildSysProcAttr()
 	executil.NoWindow(cmd)
 	return cmd
+}
+
+// engineChildSinkCache caches the engine child's log sink per daemon root.
+//
+// The file has to outlive defaultEngineChildCommand (os/exec duplicates the
+// descriptor/handle into the child at Start, but the *os.File stays the
+// PARENT's to close) and the constructor has no completion hook — the seam
+// returns only an *exec.Cmd. Opening one per spawn would therefore leak a
+// descriptor per relaunch in a crash loop. One sink per root, opened lazily
+// and held for the life of the process, is what the daemon actually wants
+// anyway: it is the same append-only daemon.log its own logger writes, under
+// the no-rotation contract (#2300, see layoutFromRoot).
+var engineChildSinkCache = struct {
+	mu     sync.Mutex
+	byPath map[string]*os.File
+}{}
+
+// engineChildLogSink returns the file the engine child's stdout and stderr are
+// wired to: the daemon's OWN log (<root>/logs/daemon.log). It returns nil when
+// there is no usable owned sink, which makes the child's streams os.DevNull.
+//
+// #7083: the child used to inherit os.Stdout/os.Stderr, so whether the daemon
+// could run its own engine depended on a property of whatever launched it —
+// one it does not control and never checks. os/exec passes those *os.Files to
+// StartProcess, which DUPLICATES the underlying descriptor/handle into the
+// child; on Windows duplicating an invalid handle fails and the spawn fails
+// with it. A process started by `Start-Process -WindowStyle Hidden` with no
+// -Redirect* flag runs under UseShellExecute=true and has no valid standard
+// handles at all, so every spawn fails deterministically — and run() treats a
+// failed spawn as a crash, so it backs off, retries, and gives up.
+//
+// The daemon therefore OWNS the handles it hands down, unconditionally. It
+// does not probe the inherited ones: there is no portable way to ask whether a
+// handle the parent was given is usable (the reliable test is to use it, which
+// is the failure being avoided), and a probe would leave a second, untested
+// code path for exactly the launcher shape we cannot reproduce in CI. The
+// destination is unchanged for the supported launcher — `grafel start` already
+// points the daemon's own stdout/stderr at this very file (defaultManualForkStart
+// in internal/cli/watcher_ctl.go), so the child's output lands where it always
+// did.
+//
+// The sink is never CREATED out of thin air: <root>/logs must already exist
+// (EnsureLayout makes it before serve starts). An empty root, a missing log
+// directory, or an unopenable log yields nil rather than an inherited handle.
+func engineChildLogSink(root string) *os.File {
+	if root == "" {
+		return nil
+	}
+	path := logPathForRoot(root)
+
+	engineChildSinkCache.mu.Lock()
+	defer engineChildSinkCache.mu.Unlock()
+	if f, ok := engineChildSinkCache.byPath[path]; ok {
+		return f
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		// Not cached: a later spawn retries, in case the directory appears.
+		return nil
+	}
+	if engineChildSinkCache.byPath == nil {
+		engineChildSinkCache.byPath = make(map[string]*os.File)
+	}
+	engineChildSinkCache.byPath[path] = f
+	return f
+}
+
+// closeEngineChildSinksForTest closes and drops every cached engine-child log
+// sink. Tests that point a sink at a t.TempDir root call it in cleanup, so the
+// directory can be removed on Windows (where an open file blocks removal).
+// Production never calls it: the daemon holds its sink for its whole life.
+func closeEngineChildSinksForTest() {
+	engineChildSinkCache.mu.Lock()
+	defer engineChildSinkCache.mu.Unlock()
+	for path, f := range engineChildSinkCache.byPath {
+		_ = f.Close()
+		delete(engineChildSinkCache.byPath, path)
+	}
 }
 
 // SetEngineChildCommandForTest overrides how the supervisor spawns the engine
