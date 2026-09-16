@@ -44,6 +44,17 @@ extractor that stops emitting must-have A while starting to emit must-have B
 holds the count and passes. Every report already carries `missing_entities` /
 `missing_relationships`; the gate does not yet consult them.
 
+Precision (Refs #7056). `forbidden_relationships` is the only mechanism here
+that can say "this edge is wrong", and a hit is unconditionally fatal — so a
+defect found, measured and not fixable today could only be fixed now or not
+written down, and findings evaporated instead of accumulating. A forbidden row
+marked `known_bad` (with a mandatory issue and note) is recorded instead of
+failed, and is graded in BOTH directions: a row that fires is printed by name
+on every run including green ones, and a row that STOPS firing fails, because a
+defect that got fixed and a producer that quietly died look identical from
+here. Nothing about that channel is recorded in baseline.json — see
+declared_known_bad() for why the declaration lives in expected.json instead.
+
 Usage (normally via scripts/quality/run.sh --ratchet / --update-baseline):
 
     ratchet.py check  <reports-dir> <golden-dir> <baseline.json>
@@ -152,6 +163,122 @@ def observed(rep):
         if key in rep:
             obs[key] = int(rep[key])
     return obs
+
+
+def declared_known_bad(golden_dir, name):
+    """How many `known_bad` rows fixture `name` declares in expected.json.
+
+    THE ANSWER TO "SHOULD THE FORBIDDEN COUNT GO IN baseline.json" IS NO, AND
+    THIS FUNCTION IS WHY (Refs #7056).
+
+    Every other figure this gate grades is compared against a number recorded
+    in baseline.json, which is a GENERATED file: `--update-baseline` rewrites
+    it from whatever this run observed. That is fine for recall, where the
+    recorded floor is the thing being ratcheted and a rise is a red demanding a
+    re-record. It is fatal for a known-bad count. The count would be recorded
+    from observation, so the moment a known_bad row stopped firing the next
+    `--update-baseline` would write the smaller number down as the new normal
+    and the finding would be gone — the #6273 shape exactly, where a flag in
+    the generated baseline documented a gap and then justified it.
+
+    So the known-bad floor is not recorded here at all. It is DECLARED, in the
+    fixture's own expected.json, which is hand-written, reviewed, and which no
+    mode of this script ever writes to. `--update-baseline` therefore has
+    nothing to launder: the declaration it would have to weaken is not in a
+    file it can touch, and removing a known_bad row is a fixture edit a
+    reviewer sees.
+
+    A parse failure returns 0 rather than raising. The fixture loader
+    (internal/quality/expected.go) is the authority on a malformed
+    expected.json and reports it far better than this reader could; guessing
+    here would turn one bad file into a second, worse diagnostic.
+    """
+    path = os.path.join(golden_dir, name, "expected.json")
+    try:
+        with open(path) as fh:
+            fix = json.load(fh)
+    except Exception:
+        return 0
+    n = 0
+    for key in ("forbidden_relationships", "forbidden_entities"):
+        for row in fix.get(key) or []:
+            if isinstance(row, dict) and row.get("known_bad"):
+                n += 1
+    return n
+
+
+def known_bad_failures(name, rep, declared):
+    """Gate failures this fixture's known-bad rows produce, as strings.
+
+    Two, and the second is the one that makes the channel something other than
+    a one-way valve:
+
+      * the report does not agree with the fixture about how many known_bad
+        rows exist. Absent (an old binary) or wrong (a fixture edited without
+        a re-run) both land here, because either way nothing measured the rows
+        and a silent row could not be seen.
+      * a declared row went SILENT. The row asserts a defect the graph still
+        has. If it no longer has it, that is either a fix — amend the row into
+        an ordinary forbidden row and take the credit — or a producer that
+        quietly died, in which case a real defect has been replaced by a
+        bigger one. The two are indistinguishable from here, which is exactly
+        why a human has to come back rather than the gate guessing.
+    """
+    out = []
+    reported = rep.get("known_bad_declared")
+    if declared == 0 and reported in (None, 0):
+        return out
+    if reported is None:
+        out.append(
+            f"{name}: declares {declared} known_bad row(s) but this run's report "
+            f"carries no known_bad_declared at all — it was written by a binary "
+            f"that predates the known-bad channel, so nothing graded them. "
+            f"Rebuild grafel and re-run."
+        )
+        return out
+    if int(reported) != declared:
+        out.append(
+            f"{name}: expected.json declares {declared} known_bad row(s) but the "
+            f"report graded {int(reported)} — the fixture was edited without a "
+            f"re-run, so the rows it names were measured by nothing"
+        )
+    for row in rep.get("known_bad_silent") or []:
+        out.append(
+            f"{name}: known_bad {row.get('class', 'row')} "
+            f"{row.get('label', '?')} STOPPED FIRING [{row.get('issue') or 'UNTRACKED'}] "
+            f"— the recorded defect is no longer in the graph. If it was FIXED, "
+            f"drop known_bad so the row goes back to being always-fatal and the "
+            f"fix is locked in. If it was not fixed, the producer that emitted "
+            f"the offending output has died and a worse regression is hiding "
+            f"behind this one. A known_bad row is not a one-way valve."
+        )
+    return out
+
+
+def format_known_bad(rows):
+    """Render the fired known-bad rows for the human-facing gate output.
+
+    Printed on PASSING runs as well as failing ones, for the reason
+    format_known_regressions is: a recorded defect only visible when the gate
+    is already red is invisible exactly when someone could act on it.
+    """
+    if not rows:
+        return []
+    lines = [
+        "",
+        f"  {len(rows)} known-bad row(s) fired and were recorded, not failed:",
+    ]
+    for name, row in rows:
+        lines.append(
+            f"    - {name}: {row.get('class', 'row')} {row.get('label', '?')}  "
+            f"[{row.get('issue') or 'UNTRACKED'}]  {row.get('note', '')}"
+        )
+    lines.append(
+        "  These are measured, shipping precision defects that are tracked and "
+        "not fixed today. They are NOT accepted behaviour, and a row that stops "
+        "firing fails this gate (Refs #7056)."
+    )
+    return lines
 
 
 # Refs to try, in order, when nothing names the default branch explicitly. The
@@ -451,6 +578,19 @@ def build(golden_dir, reports_dir, baseline_path):
                     f"extracted-total gate. Rebuild grafel and re-run "
                     f"`scripts/quality/run.sh --runs 1 --update-baseline`."
                 )
+        # #7056. --update-baseline is the forgetting vector on every other
+        # axis, and it is deliberately NOT one here: nothing about the
+        # known-bad channel is stored in this file, so there is no figure for a
+        # re-record to weaken. What a re-record CAN do is happen while a
+        # declared row is silent and leave the operator believing the tree is
+        # in a recordable state. Refuse, on the same terms as the missing
+        # extracted total just above — a run that cannot account for every
+        # known_bad row it declares is not a run worth recording from.
+        kb = known_bad_failures(name, rep, declared_known_bad(golden_dir, name))
+        if kb:
+            raise SystemExit(
+                "ratchet: refusing to re-record — " + "; ".join(kb)
+            )
         fixtures[name] = obs
     doc = {
         "_comment": (
@@ -489,6 +629,8 @@ def check(golden_dir, reports_dir, baseline_path):
     known_regressions = baseline.get("known_regressions", []) or []
     present = fixture_names(golden_dir)
     failures = []
+    # (fixture, row) for every known_bad row that fired this run (#7056).
+    known_bad_fired = []
 
     for name in sorted(set(recorded) - set(present)):
         failures.append(
@@ -557,6 +699,23 @@ def check(golden_dir, reports_dir, baseline_path):
             failures.append(
                 f"{name}: {forbidden_entities} forbidden entity row(s) fired — always fatal"
             )
+        # #7056. The precision channel, graded in BOTH directions.
+        #
+        # A known_bad row that fires does NOT land in the two counters above —
+        # internal/quality/diff.go routes it aside before it can — so it is not
+        # fatal. That is the permissive direction, and it is not silent: every
+        # fired row is printed by name and issue below, on green runs too.
+        #
+        # A known_bad row that goes SILENT is a failure, and this is the half
+        # that makes the channel something other than a one-way valve. Without
+        # it a fixed defect stays recorded as broken forever, and — worse — a
+        # row that stops firing because the PRODUCER broke reads identically to
+        # one that stops firing because it was FIXED. That is this milestone's
+        # recall-blindness re-created on the precision side, and it is what an
+        # IMPROVED recall floor is failed for a few lines down.
+        failures.extend(known_bad_failures(name, rep, declared_known_bad(golden_dir, name)))
+        for row in rep.get("known_bad") or []:
+            known_bad_fired.append((name, row))
 
         for metric in ("entity_found", "relationship_found"):
             want, got = int(base.get(metric, 0)), obs[metric]
@@ -628,6 +787,8 @@ def check(golden_dir, reports_dir, baseline_path):
             print(f"  - {f}", file=sys.stderr)
         for line in format_known_regressions(known_regressions):
             print(line, file=sys.stderr)
+        for line in format_known_bad(known_bad_fired):
+            print(line, file=sys.stderr)
         print(
             f"\n  baseline: {baseline_path}\n"
             f"  regenerate: {baseline.get('regenerate', 'scripts/quality/run.sh --runs 1 --update-baseline')}\n",
@@ -650,6 +811,8 @@ def check(golden_dir, reports_dir, baseline_path):
     # only visible when the gate goes red is invisible exactly when someone is
     # in a position to act on it.
     for line in format_known_regressions(known_regressions):
+        print(line)
+    for line in format_known_bad(known_bad_fired):
         print(line)
     return 0
 

@@ -28,16 +28,48 @@ type JSONReport struct {
 	// to move. Not omitempty — a consumer must be able to tell "zero hits"
 	// from "this report predates the field".
 	ForbiddenEntityHits int `json:"forbidden_entity_hits"`
-	NiceEntityFound     int `json:"nice_entity_found"`
-	NiceEntityTotal     int `json:"nice_entity_total"`
-	NiceRelFound        int `json:"nice_relationship_found"`
-	NiceRelTotal        int `json:"nice_relationship_total"`
+	// KnownBadDeclared / KnownBadHits are the #7056 precision channel, and the
+	// pair is the whole point: a count of hits alone cannot express the
+	// failing direction, which is a declared row that STOPPED firing.
+	//
+	// Neither is omitempty. A consumer must be able to tell "this fixture
+	// declares no known-bad rows" from "this report predates the channel" —
+	// and scripts/quality/ratchet.py does exactly that, by counting the
+	// declared rows in expected.json itself and refusing a report whose
+	// known_bad_declared disagrees. That cross-check is what keeps a stale
+	// binary from erasing the finding.
+	KnownBadDeclared int `json:"known_bad_declared"`
+	KnownBadHits     int `json:"known_bad_hits"`
+	// KnownBad names the rows that FIRED, KnownBadSilent the rows that did
+	// not. Both are serialised because the gate reads names, not counts: the
+	// permissive direction has to print which finding is still open and under
+	// which issue, and the failing direction has to say which row went quiet.
+	KnownBad        []knownBadRow `json:"known_bad,omitempty"`
+	KnownBadSilent  []knownBadRow `json:"known_bad_silent,omitempty"`
+	NiceEntityFound int           `json:"nice_entity_found"`
+	NiceEntityTotal int           `json:"nice_entity_total"`
+	NiceRelFound    int           `json:"nice_relationship_found"`
+	NiceRelTotal    int           `json:"nice_relationship_total"`
 
 	// Per-item details so a human can see WHICH expectations missed.
 	MissingEntities      []missingEntity       `json:"missing_entities,omitempty"`
 	MissingRelationships []missingRelationship `json:"missing_relationships,omitempty"`
 	Forbidden            []missingRelationship `json:"forbidden,omitempty"`
 	ForbiddenEntities    []forbiddenEntity     `json:"forbidden_entities,omitempty"`
+}
+
+// knownBadRow is the serialised shape of a KnownBadResult (#7056).
+//
+// It carries the issue and the note, not just the label, because this is the
+// text the gate prints and the reader acts on. A row that named only the edge
+// would put the reader back where the channel started: something is wrong and
+// nowhere to read why.
+type knownBadRow struct {
+	Class string `json:"class"`
+	Label string `json:"label"`
+	Issue string `json:"issue"`
+	Note  string `json:"note"`
+	GotID string `json:"got_id,omitempty"`
 }
 
 // forbiddenEntity is the serialised shape of a ForbiddenEntityHit.
@@ -130,6 +162,7 @@ func (r *Report) ToJSON() *JSONReport {
 		RelationshipExtractedTotal: r.RelExtractedN,
 		ForbiddenHits:              len(r.ForbiddenHits),
 		ForbiddenEntityHits:        len(r.ForbiddenEntityHits),
+		KnownBadDeclared:           len(r.KnownBad),
 		NiceEntityFound:            r.NiceEntityFound,
 		NiceEntityTotal:            r.NiceEntityTotal,
 		NiceRelFound:               r.NiceRelFound,
@@ -180,6 +213,18 @@ func (r *Report) ToJSON() *JSONReport {
 			To:       to,
 			ToKind:   fh.Expected.ToKind,
 		})
+	}
+	for _, kb := range r.KnownBad {
+		row := knownBadRow{
+			Class: kb.Class, Label: kb.Label,
+			Issue: kb.Issue, Note: kb.Note, GotID: kb.MatchedID,
+		}
+		if kb.Fired {
+			jr.KnownBadHits++
+			jr.KnownBad = append(jr.KnownBad, row)
+		} else {
+			jr.KnownBadSilent = append(jr.KnownBadSilent, row)
+		}
 	}
 	for _, fh := range r.ForbiddenEntityHits {
 		jr.ForbiddenEntities = append(jr.ForbiddenEntities, forbiddenEntity{
@@ -361,6 +406,23 @@ func (r *Report) WriteHuman(w io.Writer) {
 			}
 			fmt.Fprintf(w, "    - %s --[%s]--> %s\n",
 				fromLabel(fh.Expected), fh.Expected.Kind, to)
+		}
+	}
+
+	// #7056. Printed even when every row fired and the fixture is green: a
+	// recorded defect that is only visible on a red run is invisible exactly
+	// when someone is in a position to act on it. This mirrors ratchet.py
+	// printing known_regressions on a passing check.
+	if len(r.KnownBad) > 0 {
+		fmt.Fprintln(w, "  KNOWN-BAD rows (recorded precision defects, not fatal):")
+		for _, kb := range r.KnownBad {
+			if kb.Fired {
+				fmt.Fprintf(w, "    - still firing: %s %s  [%s] %s\n",
+					kb.Class, kb.Label, kb.Issue, kb.Note)
+				continue
+			}
+			fmt.Fprintf(w, "    - STOPPED FIRING: %s %s  [%s] %s\n",
+				kb.Class, kb.Label, kb.Issue, kb.Note)
 		}
 	}
 }

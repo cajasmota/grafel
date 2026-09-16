@@ -2009,7 +2009,8 @@ def extract_aggregator():
     """The per-fixture merge program (medians, max, gate exit code)."""
     return extract_heredoc(
         AGGREGATOR_OPEN,
-        ("forbidden_hits", "forbidden_entity_hits", "sys.exit(2)"),
+        ("forbidden_hits", "forbidden_entity_hits", "known_bad_silent",
+         "silent_in_every_run", "sys.exit(2)"),
         "aggregator")
 
 
@@ -2017,7 +2018,7 @@ def extract_stability():
     """The short-circuit predicate: `yes` stops the repeat loop early."""
     return extract_heredoc(
         STABILITY_OPEN,
-        ("entity_recall", "relationship_recall", "yes", "no"),
+        ("entity_recall", "relationship_recall", "known_bad_silent", "yes", "no"),
         "stability")
 
 
@@ -2445,6 +2446,389 @@ class ShortCircuitCannotTruncateAForbiddenRow(unittest.TestCase):
         self.assertEqual(rc, 2, "a 1-in-3 forbidden row did not fail the fixture")
         self.assertEqual(merged["forbidden_hits"], 1)
         self.assertEqual(merged["forbidden_hits_runs"], 1)
+
+
+# ---------------------------------------------------------------------------
+# #7056 — the known-bad precision channel.
+# ---------------------------------------------------------------------------
+
+KB_ISSUE = "#6425"
+KB_NOTE = "yul operation minted from an assembly block label"
+KB_LABEL = "Vault --[CALLS]--> helper"
+
+
+def kb_row(label=KB_LABEL, cls="relationship", issue=KB_ISSUE, note=KB_NOTE):
+    """One serialised known_bad row, as internal/quality/report.go writes it."""
+    return {"class": cls, "label": label, "issue": issue, "note": note}
+
+
+def declare_known_bad(golden, n=1, fixture="demo-mini"):
+    """Add `n` known_bad forbidden rows to a fixture's expected.json.
+
+    The DECLARATION is the floor this channel grades against — deliberately
+    not a figure in baseline.json — so a test that wants a known-bad row has
+    to write it here, in the hand-authored file, exactly as an author would.
+    """
+    path = os.path.join(golden, fixture, "expected.json")
+    with open(path) as fh:
+        fix = json.load(fh)
+    fix["forbidden_relationships"] = [
+        {"from_name": "Vault", "kind": "CALLS", "to_name": f"helper{i}",
+         "known_bad": True, "issue": KB_ISSUE, "note": KB_NOTE}
+        for i in range(n)
+    ]
+    with open(path, "w") as fh:
+        json.dump(fix, fh)
+
+
+def kb_report(**extra):
+    """A merged per-fixture report carrying the known-bad keys."""
+    rep = {
+        "fixture": "demo-mini", "run_stamp": STAMP,
+        "entity_found": 4, "entity_expected": 10,
+        "relationship_found": 0, "relationship_expected": 0,
+        "forbidden_hits": 0, "forbidden_entity_hits": 0,
+        "entity_extracted_total": 12, "relationship_extracted_total": 7,
+        "known_bad_declared": 1, "known_bad_hits": 1,
+        "known_bad": [kb_row()],
+    }
+    rep.update(extra)
+    return rep
+
+
+class KnownBadIsRecordedNotFatal(unittest.TestCase):
+    """Direction 1. A recorded precision defect must not fail the gate — and
+    must not be SILENT about it either.
+
+    forbidden_relationships is the only mechanism in this repo that can say
+    "this edge is wrong", and a hit is unconditionally fatal, so a defect that
+    has been found and cannot be fixed today can only be fixed now or not
+    written down. golden/solidity-mini/NOTICE.md carries two such findings as
+    markdown prose for exactly that reason.
+
+    Every case here asserts the EMITTED TEXT, never the exit code alone. A
+    green run that mentions nothing is the failure mode this channel would
+    otherwise introduce: the defect would be recorded in a file and reported
+    by no instrument, which is where it started.
+    """
+
+    def _check(self, rep, declared=1):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            golden, reports, baseline = make_fixture(root)
+            if declared:
+                declare_known_bad(golden, declared)
+            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                json.dump(rep, fh)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = ratchet.check(golden, reports, baseline)
+            return rc, out.getvalue() + err.getvalue()
+
+    def test_a_firing_known_bad_row_passes_the_gate(self):
+        rc, _text = self._check(kb_report())
+        self.assertEqual(
+            rc, 0,
+            "a known_bad row that fired failed the gate — the channel is still "
+            "the always-fatal one it exists to replace")
+
+    def test_a_firing_known_bad_row_is_named_in_the_output(self):
+        """The row AND its issue. A pass that prints a bare count sends the
+        reader back to the graph to work out which finding is still open, and
+        a pass that prints nothing at all is prose in a JSON file."""
+        _rc, text = self._check(kb_report())
+        self.assertIn(KB_LABEL, text,
+                      "the passing gate does not name the known-bad row")
+        self.assertIn(KB_ISSUE, text,
+                      "the passing gate does not name the issue that owns it — an "
+                      "untracked known-bad is indistinguishable from an accepted one")
+        self.assertIn(KB_NOTE, text,
+                      "the passing gate does not carry the note, so the mechanism "
+                      "is lost and only the delta survives")
+
+    def test_positive_control_the_same_row_without_known_bad_is_fatal(self):
+        """Without this, every case above would pass on a gate that had simply
+        stopped reading forbidden_hits."""
+        rc, text = self._check(
+            kb_report(forbidden_hits=1, known_bad_declared=0, known_bad_hits=0,
+                      known_bad=[]),
+            declared=0)
+        self.assertEqual(rc, 2, "an ordinary forbidden hit is no longer fatal")
+        self.assertIn("always fatal", text)
+
+    def test_the_channel_is_off_by_default(self):
+        """A fixture that declares no known_bad rows, graded by a report that
+        carries none, is unaffected. Asserted because the cross-check below
+        fails a report whose known_bad_declared disagrees with the fixture, and
+        a version of it that fired on 0 == None would red every fixture."""
+        rc, text = self._check(
+            {"fixture": "demo-mini", "run_stamp": STAMP,
+             "entity_found": 4, "entity_expected": 10,
+             "relationship_found": 0, "relationship_expected": 0,
+             "forbidden_hits": 0,
+             "entity_extracted_total": 12, "relationship_extracted_total": 7},
+            declared=0)
+        self.assertEqual(rc, 0, f"a fixture with no known_bad rows went red:\n{text}")
+        self.assertNotIn("known-bad", text)
+
+
+class KnownBadIsNotAOneWayValve(unittest.TestCase):
+    """DIRECTION 2, and the whole reason this is a mechanism rather than a
+    mute button.
+
+    A known_bad row asserts that the graph STILL HAS a defect. When it stops
+    firing, one of two things happened, and they are indistinguishable from
+    here: the defect was fixed (in which case the row must become an ordinary
+    always-fatal forbidden row so the fix is locked in), or the producer that
+    emitted the offending output quietly died (in which case a real defect has
+    been replaced by a bigger one).
+
+    Without this half, `known_bad` would be a one-way valve — a fixed defect
+    recorded as broken forever, and a dead producer wearing the same face as a
+    fix. That is the recall-blindness of this milestone re-created on the
+    precision side, and it is why ratchet.py fails an IMPROVED recall floor
+    rather than quietly accepting it.
+    """
+
+    def _check(self, rep, declared=1):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            golden, reports, baseline = make_fixture(root)
+            if declared:
+                declare_known_bad(golden, declared)
+            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                json.dump(rep, fh)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = ratchet.check(golden, reports, baseline)
+            return rc, out.getvalue() + err.getvalue()
+
+    SILENT = dict(known_bad_hits=0, known_bad=[], known_bad_silent=[kb_row()])
+
+    def test_a_row_that_stopped_firing_fails_the_gate(self):
+        rc, _text = self._check(kb_report(**self.SILENT))
+        self.assertEqual(
+            rc, 2,
+            "a known_bad row that stopped firing was accepted — the channel is a "
+            "one-way valve, and a dead producer now reads as a fix")
+
+    def test_it_names_the_row_the_issue_and_both_readings(self):
+        _rc, text = self._check(kb_report(**self.SILENT))
+        self.assertIn(KB_LABEL, text, "the failure does not name the row that went quiet")
+        self.assertIn(KB_ISSUE, text, "the failure does not name the issue that owns it")
+        self.assertIn("STOPPED FIRING", text)
+        self.assertIn(
+            "producer", text,
+            "the failure does not tell the reader that a dead producer and a fix "
+            "look identical here — without that, every occurrence is read as a fix")
+
+    def test_a_stale_binary_cannot_erase_a_declared_row(self):
+        """The report predates the channel, so nothing measured the rows. That
+        is not the same fact as "the rows did not fire", and reading it as one
+        would let an old binary retire the finding silently — the #6488 arm D
+        reasoning about an absent extracted total, on this key."""
+        rep = kb_report()
+        del rep["known_bad_declared"]
+        del rep["known_bad_hits"]
+        del rep["known_bad"]
+        rc, text = self._check(rep)
+        self.assertEqual(rc, 2, "a report with no known-bad keys graded a fixture "
+                                "that declares a known_bad row")
+        self.assertIn("predates", text)
+
+    def test_a_fixture_edited_without_a_rerun_is_red(self):
+        """Two declared, one graded. The second row was measured by nothing, so
+        it could not have been seen to go silent."""
+        rc, text = self._check(kb_report(), declared=2)
+        self.assertEqual(rc, 2)
+        self.assertIn("declares 2 known_bad row(s)", text)
+
+
+class UpdateBaselineCannotLaunderAKnownBad(unittest.TestCase):
+    """The forgetting vector, answered by NOT recording the figure.
+
+    Every other figure this gate grades lives in baseline.json, which
+    --update-baseline rewrites from observation. A known-bad count recorded
+    there would be re-recorded as the new normal the first time a row stopped
+    firing — the #6273 shape, where a flag in the generated baseline documented
+    a gap and then justified it. So the floor is the DECLARATION in
+    expected.json, which no mode of ratchet.py writes to.
+    """
+
+    def _build(self, rep, declared=1):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            make_repo(root)
+            golden, reports, baseline = make_fixture(root)
+            if declared:
+                declare_known_bad(golden, declared)
+            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                json.dump(rep, fh)
+            return ratchet.build(golden, reports, baseline)
+
+    def test_the_written_baseline_records_no_known_bad_figure(self):
+        """The property the whole design rests on. If a count appeared here,
+        the next --update-baseline would be free to lower it."""
+        doc = self._build(kb_report())
+        blob = json.dumps(doc)
+        self.assertNotIn(
+            "known_bad", blob,
+            "--update-baseline wrote a known-bad figure into baseline.json; it is "
+            "now a number a re-record can weaken, which is the forgetting vector "
+            "this design exists to avoid")
+        self.assertEqual(
+            sorted(doc["fixtures"]["demo-mini"]),
+            sorted(["entity_found", "entity_expected", "relationship_found",
+                    "relationship_expected", "entity_extracted_total",
+                    "relationship_extracted_total"]),
+            "the per-fixture entry grew a key")
+
+    def test_it_refuses_to_re_record_while_a_row_is_silent(self):
+        """A re-record taken while a declared row is quiet would leave the
+        operator believing the tree is in a recordable state. Refuse, on the
+        same terms build() already refuses a report with no extracted total."""
+        with self.assertRaises(SystemExit) as ctx:
+            self._build(kb_report(known_bad_hits=0, known_bad=[],
+                                  known_bad_silent=[kb_row()]))
+        self.assertIn("STOPPED FIRING", str(ctx.exception))
+
+    def test_it_refuses_a_report_that_predates_the_channel(self):
+        rep = kb_report()
+        for k in ("known_bad_declared", "known_bad_hits", "known_bad"):
+            del rep[k]
+        with self.assertRaises(SystemExit) as ctx:
+            self._build(rep)
+        self.assertIn("predates", str(ctx.exception))
+
+
+class KnownBadSurvivesTheMerge(unittest.TestCase):
+    """The aggregator, driven with run.sh's own bytes.
+
+    Two aggregations, and they are complements of each other:
+
+      * the rows that FIRED are unioned, for #7084's reason — a row seen by
+        any run fired, and a median of positive observations discards evidence.
+      * the rows that went SILENT are INTERSECTED. Only a row that no run saw
+        fire has stopped firing. A union there would red the gate on every
+        intermittent producer; a median would be #7084 re-entered on the key
+        that grades the other direction.
+    """
+
+    @staticmethod
+    def _runs(fired):
+        """One report per bool in `fired`: True the row fired, False it did not."""
+        out = []
+        for hit in fired:
+            rep = run_report(entity_found=10, entity_expected=10)
+            rep["known_bad_declared"] = 1
+            rep["known_bad_hits"] = 1 if hit else 0
+            rep["known_bad"] = [kb_row()] if hit else []
+            rep["known_bad_silent"] = [] if hit else [kb_row()]
+            out.append(rep)
+        return out
+
+    def test_a_row_firing_in_a_minority_of_runs_is_alive(self):
+        """The shape the median erased on the forbidden side, read here in the
+        opposite direction: two firing runs out of five mean the row is still
+        firing, and the fixture must stay green."""
+        with tempfile.TemporaryDirectory() as root:
+            rc, merged = merge_runs(root, self._runs([False, False, True, False, True]))
+        self.assertEqual(rc, 0, "a known_bad row that fired twice failed the fixture")
+        self.assertEqual(merged["known_bad_hits"], 1)
+        self.assertEqual(merged.get("known_bad_silent", []), [],
+                         "a row that fired in 2 of 5 runs was reported as silent")
+        self.assertEqual(len(merged["known_bad"]), 1,
+                         "the firing row is not named in the merged report")
+
+    def test_a_row_silent_in_every_run_survives_to_the_gate(self):
+        with tempfile.TemporaryDirectory() as root:
+            rc, merged = merge_runs(root, self._runs([False] * 5))
+        self.assertEqual(
+            rc, 2,
+            "the aggregator passed a fixture whose known_bad row went silent in "
+            "every run — strict mode reads this exit code and nothing else")
+        self.assertEqual(len(merged["known_bad_silent"]), 1)
+        self.assertEqual(merged["known_bad_hits"], 0)
+
+    def test_the_merged_report_then_reds_the_ratchet(self):
+        """End to end: the merge program and `check` agree. Two graders, and a
+        fix reaching only one of them leaves the other blind."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            golden, reports, baseline = make_fixture(root)
+            declare_known_bad(golden, 1)
+            _rc, merged = merge_runs(root, self._runs([False] * 5))
+            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                json.dump(merged, fh)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = ratchet.check(golden, reports, baseline)
+        self.assertEqual(rc, 2)
+        self.assertIn("STOPPED FIRING", err.getvalue())
+
+    def test_a_run_that_predates_the_channel_drops_the_counters(self):
+        """One old report among five is enough. Writing 0 instead would be a
+        measurement nobody took, and the gate would read it as a fixture with
+        nothing to grade."""
+        runs = self._runs([True] * 5)
+        for k in ("known_bad_declared", "known_bad_hits", "known_bad"):
+            del runs[2][k]
+        with tempfile.TemporaryDirectory() as root:
+            _rc, merged = merge_runs(root, runs)
+        self.assertNotIn("known_bad_declared", merged)
+        self.assertNotIn("known_bad_hits", merged)
+
+    def test_the_firing_union_is_not_inherited_from_one_run(self):
+        """`merged` starts as a copy of reports[-1]. A row that fired only in
+        run 0 must still be named, or the passing gate reports a count it
+        cannot attribute."""
+        runs = self._runs([True, False, False])
+        with tempfile.TemporaryDirectory() as root:
+            _rc, merged = merge_runs(root, runs)
+        self.assertEqual(len(merged.get("known_bad", [])), 1,
+                         "the firing row was inherited from the last run and lost")
+
+
+class ShortCircuitCannotDeclareARowDead(unittest.TestCase):
+    """#7056 against #7084's loop. The gate fails a row that is silent in EVERY
+    run, so the number of runs taken is load-bearing in this direction too:
+    stopping at 3 because recall was stable would let an intermittent producer
+    be declared dead on three samples.
+
+    The veto can only make the loop run LONGER, and more runs can only turn a
+    false RED into a green — it can never hide a row that fires.
+    """
+
+    @staticmethod
+    def _stable_runs(n=3, **extra_last):
+        runs = [run_report(entity_recall=0.40, relationship_recall=0.50)
+                for _ in range(n)]
+        runs[-1].update(extra_last)
+        return runs
+
+    def test_a_silent_known_bad_row_vetoes_the_short_circuit(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(
+                run_stability(root, self._stable_runs(
+                    known_bad_silent=[kb_row()])), "no",
+                "the loop stopped at 3 runs with a known_bad row already observed "
+                "silent — the remaining runs are the only evidence that could "
+                "prove it still fires")
+
+    def test_a_firing_known_bad_row_does_not_veto_it(self):
+        """The negative control, and a real scope guard: known-bad rows are the
+        steady state once this channel is used, so a veto that fired on a
+        FIRING row would make every such fixture run the full five forever."""
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(
+                run_stability(root, self._stable_runs(
+                    known_bad=[kb_row()], known_bad_hits=1)), "yes",
+                "a known_bad row that is firing normally now vetoes the "
+                "short-circuit — every fixture using the channel runs 5 runs")
 
 
 if __name__ == "__main__":

@@ -118,8 +118,20 @@ type ExpectedEntity struct {
 	// receivers, custom managers) without holding the fixture hostage to
 	// them.
 	NiceToHave bool `json:"nice_to_have,omitempty"`
-	// Note is free-form prose for the fixture author. Ignored by the harness.
+	// Note is free-form prose for the fixture author. Ignored by the harness
+	// on a recall row; MANDATORY on a known_bad row, where it is the mechanism
+	// the next reader needs rather than the delta.
 	Note string `json:"note,omitempty"`
+	// KnownBad demotes a FORBIDDEN row from "always fatal" to "recorded, still
+	// wrong, not fixed today" (#7056). See the KnownBad field on
+	// ExpectedRelationship for the whole rationale; the two are one mechanism
+	// wearing the two row shapes this package already has.
+	KnownBad bool `json:"known_bad,omitempty"`
+	// Issue is the tracking issue that owns a known_bad row. Mandatory on such
+	// a row and rejected on every other, for the reason
+	// TestKnownRegressionsAgreeWithRecordedFloor gives on the recall side: an
+	// untracked known-bad is indistinguishable from an accepted one.
+	Issue string `json:"issue,omitempty"`
 }
 
 // ExpectedRelationship is a hand-curated edge assertion. The matcher reads
@@ -209,6 +221,32 @@ type ExpectedRelationship struct {
 	MustExist     bool   `json:"must_exist"`
 	NiceToHave    bool   `json:"nice_to_have,omitempty"`
 	Note          string `json:"note,omitempty"`
+	// KnownBad demotes a FORBIDDEN row from "always fatal" to "recorded, still
+	// wrong, not fixed today" (#7056).
+	//
+	// WHY THE CHANNEL HAS TO EXIST. forbidden_relationships is the only
+	// mechanism in this repo that can say "this edge is wrong", and a hit is
+	// unconditionally fatal in scripts/quality/ratchet.py. So a precision
+	// defect that has been found, measured, and cannot be fixed today has
+	// exactly two fates: fixed now, or not written down. Findings evaporate
+	// instead of accumulating, and the tree already carries the receipts —
+	// golden/solidity-mini/NOTICE.md records two measured, shipping defects
+	// that were deliberately kept OUT of expected.json while they fired,
+	// because committing them would have broken the gate rather than recorded
+	// a gap, and they lived as markdown prose until a fix happened to land.
+	//
+	// A known_bad row fires exactly as a forbidden row does. What changes is
+	// where the hit is counted: out of forbidden_hits (fatal) and into
+	// known_bad (recorded, printed on every run, green).
+	//
+	// IT IS NOT A ONE-WAY VALVE. A known_bad row that STOPS firing is a
+	// failure — see Report.KnownBad and the known_bad_silent key. A defect
+	// that got fixed and a producer that quietly died look identical from
+	// here, and both demand that a human come back and amend the row.
+	KnownBad bool `json:"known_bad,omitempty"`
+	// Issue is the tracking issue that owns a known_bad row. Mandatory on such
+	// a row and rejected on every other.
+	Issue string `json:"issue,omitempty"`
 }
 
 // LoadFixture reads expected.json from the given fixture directory.
@@ -398,6 +436,72 @@ func LoadFixture(dir string) (*Fixture, error) {
 		}
 	}
 
+	// #7056. known_bad is a property of a FORBIDDEN row and of nothing else,
+	// and it is worth nothing without an issue and a note.
+	//
+	// Each of the three rejections below closes a way the channel could be
+	// decorative — the same failure mode #6488 arm B enumerated for
+	// forbidden_entities, one concept over:
+	//
+	//   - known_bad on a recall row (expected_entities /
+	//     expected_relationships) is honoured by nothing. Evaluate consults
+	//     the flag only on the two forbidden loops, so such a row reads as a
+	//     recorded finding and is scored as an ordinary must-have.
+	//   - a known_bad row with no ISSUE records that something is wrong and
+	//     nowhere to go and read why. It is then indistinguishable from an
+	//     accepted behaviour, which is the state this whole channel exists to
+	//     stop a finding decaying into.
+	//   - a known_bad row with no NOTE records the fact and loses the
+	//     mechanism. baseline_test.go demands both on every known_regressions
+	//     entry for exactly this reason; a precision finding is no different.
+	//
+	// And `issue` on a row that is NOT known_bad is rejected rather than
+	// ignored: the grader never reads it there, so the row would state a
+	// tracking claim nothing honours. Prose belongs in `note`.
+	checkKnownBad := func(key string, i int, label string, knownBad bool, issue, note string, forbidden bool) error {
+		if knownBad && !forbidden {
+			return fmt.Errorf("%s: %s[%d] (%s) sets known_bad, but known_bad demotes a "+
+				"FORBIDDEN row from fatal to recorded and is read on no other path — on a "+
+				"recall row it is honoured by nothing. Move the row to %s, or drop the key",
+				p, key, i, label, forbiddenTwin(key))
+		}
+		if knownBad && issue == "" {
+			return fmt.Errorf("%s: %s[%d] (%s) is known_bad with no issue — a known-bad "+
+				"finding with nowhere to read why is indistinguishable from an accepted "+
+				"behaviour, which is the decay this channel exists to stop", p, key, i, label)
+		}
+		if knownBad && note == "" {
+			return fmt.Errorf("%s: %s[%d] (%s) is known_bad with no note — the next reader "+
+				"needs the mechanism, not just the issue number", p, key, i, label)
+		}
+		if !knownBad && issue != "" {
+			return fmt.Errorf("%s: %s[%d] (%s) sets issue but is not known_bad — nothing "+
+				"reads issue on such a row, so it states a tracking claim the grader does "+
+				"not honour; put prose in note, or set known_bad", p, key, i, label)
+		}
+		return nil
+	}
+	for i, ee := range f.ExpectedEntities {
+		if err := checkKnownBad("expected_entities", i, ee.Name, ee.KnownBad, ee.Issue, ee.Note, false); err != nil {
+			return nil, err
+		}
+	}
+	for i, fe := range f.ForbiddenEntities {
+		if err := checkKnownBad("forbidden_entities", i, fe.Name, fe.KnownBad, fe.Issue, fe.Note, true); err != nil {
+			return nil, err
+		}
+	}
+	for i, er := range f.ExpectedRelationships {
+		if err := checkKnownBad("expected_relationships", i, relLabel(er), er.KnownBad, er.Issue, er.Note, false); err != nil {
+			return nil, err
+		}
+	}
+	for i, fb := range f.ForbiddenRelationships {
+		if err := checkKnownBad("forbidden_relationships", i, relLabel(fb), fb.KnownBad, fb.Issue, fb.Note, true); err != nil {
+			return nil, err
+		}
+	}
+
 	mustHave := 0
 	for _, er := range f.ExpectedRelationships {
 		if er.MustExist {
@@ -448,4 +552,30 @@ func matchAxes(ee ExpectedEntity) ExpectedEntity {
 // We keep this trivial so callers don't have to know the layout.
 func SourceDir(fixtureDir string) string {
 	return filepath.Join(fixtureDir, "src")
+}
+
+// forbiddenTwin names the forbidden array a recall array corresponds to, so the
+// known_bad rejection can tell an author where the row belongs instead of only
+// where it does not.
+func forbiddenTwin(key string) string {
+	if key == "expected_entities" {
+		return "forbidden_entities"
+	}
+	return "forbidden_relationships"
+}
+
+// relLabel identifies one edge row for a diagnostic. It is the same
+// from --[KIND]--> to shape report.go prints, kept here so a LOAD-time error
+// (which has no Report to lean on) names the row the same way a GRADE-time one
+// does.
+func relLabel(er ExpectedRelationship) string {
+	from := er.FromName
+	if from == "" {
+		from = er.FromBareName
+	}
+	to := er.ToName
+	if to == "" {
+		to = er.ToBareName
+	}
+	return from + " --[" + er.Kind + "]--> " + to
 }
