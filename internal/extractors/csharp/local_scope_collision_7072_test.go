@@ -35,6 +35,7 @@ namespace Shop
     {
         private Order    MakeOrder()    { return null; }
         private Customer MakeCustomer() { return null; }
+        private ref Order Slot() { throw new Exception(); }
 
         public void M(List<Order> orders)
         {
@@ -172,12 +173,18 @@ func TestCSharp7072_NestedShadowingDegradesToBare(t *testing.T) {
 	}
 }
 
-// TestCSharp7072_ParamsStillWinOverARefusedLocal pins that the refusal does
-// not disturb the `params win over locals` precedence at csharp.go:629. A
-// PARAMETER named `o` keeps its type even though the method body also holds a
-// colliding pair of locals named `o` — the refusal removes a LOCAL entry, and
-// the parameter entry was never the local map's to remove.
-func TestCSharp7072_ParamsStillWinOverARefusedLocal(t *testing.T) {
+// TestCSharp7072_RefusalLeavesAnUnrelatedParamAlone pins that refusing a
+// colliding local does not disturb an UNRELATED parameter in the same method:
+// parameter `o` keeps its type while locals named `p` collide and are dropped.
+//
+// NOTE WHAT THIS DOES NOT PIN. It was originally named for the
+// `params win over locals` precedence and graded nothing of the kind — the
+// parameter and the locals have DIFFERENT names, so the two maps never share
+// a key and inverting the merge left it green. The name claimed more than the
+// body did. TestCSharp7072_ParamsWinOverALocalOfTheSameName is the test that
+// actually exercises that line; this one is the non-interference control
+// beside it.
+func TestCSharp7072_RefusalLeavesAnUnrelatedParamAlone(t *testing.T) {
 	src := `
 using System;
 using System.Collections.Generic;
@@ -191,6 +198,7 @@ namespace Shop
     {
         private Order    MakeOrder()    { return null; }
         private Customer MakeCustomer() { return null; }
+        private ref Order Slot() { throw new Exception(); }
 
         public void M(Order o)
         {
@@ -249,5 +257,138 @@ func TestCSharp7072_AmbiguityIsStickyAcrossAnAgreeingRedeclaration(t *testing.T)
 		if !csHasTarget(got, bare) {
 			t.Errorf("missing the bare leaf %q; got %v", bare, got)
 		}
+	}
+}
+
+// TestCSharp7072_UntypedSiblingPoisonsTheName is the round-2 red (F1).
+//
+// The first cut of the #7072 ledger let an UNTYPED declarator slip past it:
+// when `var` RHS inference yields nothing the declarator `continue`d before
+// reaching the ambiguity check, so the name was never poisoned. A typed
+// sibling then kept the map to itself and its type was applied to the
+// untyped sibling's call sites as well — a confidently wrong dotted receiver
+// on a real same-file type, which BINDS. That is the exact #7072/#7056
+// signature the fix was opened to remove, surviving inside the fix.
+//
+// "We could not type this declaration" is not the same as "no declaration
+// happened here". The ledger records the NAME regardless, with an empty type
+// standing for "bound here, type unknown", and an empty type disagrees with
+// every real one.
+func TestCSharp7072_UntypedSiblingPoisonsTheName(t *testing.T) {
+	for _, tc := range []struct{ name, body string }{
+		{"typed-first", `
+            { Order o = MakeOrder();    o.Ship(); }
+            { var   o = MakeCustomer(); o.Ship(); }
+`},
+		{"untyped-first", `
+            { var   o = MakeCustomer(); o.Ship(); }
+            { Order o = MakeOrder();    o.Ship(); }
+`},
+		// The same hole from the other direction: an untypeable DECLARED type
+		// rather than an uninferable `var`. `ref_type` has no leafTypeName
+		// case, so a `ref` local's type comes back empty and the declaration
+		// used to be skipped before the declarator loop even started. It binds
+		// a name all the same.
+		{"ref-local-sibling", `
+            { Order o = MakeOrder();      o.Ship(); }
+            { ref Order o = ref Slot();   o.Ship(); }
+`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fe7072Targets(t, cs7072Fixture(tc.body))
+			if csHasTarget(got, "Order.Ship") {
+				t.Errorf("emitted Order.Ship: the `var` sibling could not be "+
+					"typed, so it did not poison `o`, and the typed sibling's "+
+					"Order was applied to a call site whose `o` was whatever "+
+					"MakeCustomer returns — a wrong dotted receiver on a real "+
+					"same-file type, which binds (#7056); got %v", got)
+			}
+			if !csHasTarget(got, "Ship") {
+				t.Errorf("a poisoned name must still emit the bare leaf Ship; "+
+					"got %v", got)
+			}
+		})
+	}
+}
+
+// TestCSharp7072_UntypedAloneIsNotPoison is the over-refusal control for the
+// row above, in three shapes. Recording untyped declarations in the ledger
+// must not cost anything where there is no disagreement: a lone untyped
+// `var`, two untyped `var`s sharing a name, and an untyped `var` sitting
+// beside an unrelated typed local must all behave exactly as before.
+func TestCSharp7072_UntypedAloneIsNotPoison(t *testing.T) {
+	got := fe7072Targets(t, cs7072Fixture(`
+            Order o = MakeOrder();
+            o.Ship();
+            { var u = MakeCustomer(); u.Bill(); }
+            { var u = MakeCustomer(); u.Greet(); }
+`))
+	if !csHasTarget(got, "Order.Ship") {
+		t.Errorf("an untyped `var` elsewhere in the body suppressed an "+
+			"UNRELATED typed local's receiver — the ledger is over-refusing "+
+			"across names; got %v", got)
+	}
+	// `u` was never typed by anyone, so its calls stay bare — unchanged
+	// behaviour, and no fabricated receiver appears for it either.
+	for _, bare := range []string{"Bill", "Greet"} {
+		if !csHasTarget(got, bare) {
+			t.Errorf("an untyped `var` local must keep its bare leaf %q; got %v",
+				bare, got)
+		}
+	}
+	for _, wrong := range []string{"Customer.Bill", "Order.Bill", "Customer.Greet", "Order.Greet"} {
+		if csHasTarget(got, wrong) {
+			t.Errorf("fabricated %q for a local nothing ever typed; got %v",
+				wrong, got)
+		}
+	}
+}
+
+// TestCSharp7072_ParamsWinOverALocalOfTheSameName pins the precedence the
+// `params win over locals` line at extractCallRelationships actually encodes
+// (F2). The earlier test named for this pinned nothing of the kind: its
+// parameter was `o` and its locals were `p`, so the two maps never shared a
+// key and inverting the merge left the suite green.
+//
+// The fixture needs a parameter and a local that GENUINELY collide. C#
+// forbids that — CS0136, a local may not reuse an enclosing scope's name —
+// so this is believed not to be a compilable program. DERIVED FROM THE SPEC
+// AND UNDERIVED BY EXECUTION: there is no C# compiler in this environment
+// (`csc`, `dotnet`, `mono`, `mcs` absent, verified), recorded the way
+// csNonBindableTypeKeyword records its own `dynamic` question. tree-sitter
+// parses it regardless and the merge has to answer, so the answer is pinned
+// where the code claims it. What settles the compilability: `csc`.
+func TestCSharp7072_ParamsWinOverALocalOfTheSameName(t *testing.T) {
+	src := `
+using System;
+using System.Collections.Generic;
+
+namespace Shop
+{
+    public class Order    { public void Ship() {} public void Fill() {} }
+    public class Customer { public void Bill() {} public void Greet() {} }
+
+    public class Runner
+    {
+        private Customer MakeCustomer() { return null; }
+        private ref Order Slot() { throw new Exception(); }
+
+        public void M(Order o)
+        {
+            Customer o = MakeCustomer();
+            o.Ship();
+        }
+    }
+}
+`
+	got := fe7072Targets(t, src)
+	if !csHasTarget(got, "Order.Ship") {
+		t.Errorf("the PARAMETER type lost to a local of the same name; "+
+			"extractCallRelationships merges locals first and overwrites them "+
+			"with params precisely so params win; got %v", got)
+	}
+	if csHasTarget(got, "Customer.Ship") {
+		t.Errorf("the local overwrote the parameter — the merge order at "+
+			"`params win over locals` is inverted; got %v", got)
 	}
 }

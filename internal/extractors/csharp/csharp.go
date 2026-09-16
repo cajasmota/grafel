@@ -940,6 +940,16 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 // note said it needed: "that needs scope, not a word list" — with the honest
 // caveat that this is still not scope, only the refusal a scope would license.
 //
+// AN UNTYPED DECLARATION POISONS THE NAME TOO (#7072 round 2). "We could not
+// type this declaration" is not "no declaration happened here". A `var` whose
+// initialiser defeats inferImplicitLocalType, and a declared type leafTypeName
+// has no case for (a `ref` local's ref_type), both used to skip this ledger
+// entirely — so a same-name sibling we DID type kept the map to itself and its
+// type was applied to call sites it never covered. That reproduced the exact
+// defect this function was changed to remove, INSIDE the fix, and it bound.
+// Such names now enter the ledger with an empty type, which disagrees with
+// every real type in either source order.
+//
 // SAME-NAME/SAME-TYPE IS NOT A COLLISION. Two blocks each declaring `Order o`
 // agree on the answer, so refusing them would be pure recall loss for no
 // soundness gain; the ledger compares TYPES, not names.
@@ -980,10 +990,24 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	out := map[string]string{}
 	// Two-stage ledger, mirroring feTypes/feAmbiguous below: candidates are
 	// accumulated first and only the unambiguous ones are published to `out`.
-	// It cannot be done in one stage against `out` directly, because the
-	// `foreach` arm reads `out` and a name must be ABSENT from it — not
-	// present-then-deleted at some later point in the walk — for that arm to
-	// see a consistent map.
+	//
+	// The reason is STICKINESS, and it is worth being exact because an earlier
+	// revision of this comment gave a different one — that a one-stage
+	// delete-on-collision against `out` was impossible "because the `foreach`
+	// arm reads `out`". That was FALSE, and this same function contradicts it
+	// sixty lines down: the `foreach` arm WRITES `out` and gates on
+	// feAmbiguous plus csNamesBoundOutsideForeach, having deliberately dropped
+	// its `out` lookup ("so the `out` lookup is gone rather than left in front
+	// of it"). It invented an ordering dependency that does not exist and that
+	// nothing grades.
+	//
+	// The real reason: a separate ambiguous SET is the only thing that
+	// remembers a name ONCE disagreed. Deleting the entry from `out` instead
+	// destroys that memory, so a third declarator agreeing with the first
+	// finds no entry, sees no conflict and RESURRECTS the binding — re-minting
+	// the wrong receiver for the middle declaration. That difference is
+	// graded: TestCSharp7072_AmbiguityIsStickyAcrossAnAgreeingRedeclaration
+	// kills the one-stage form, and the delete-the-set mutant with it.
 	localTypes := map[string]string{}
 	localAmbiguous := map[string]bool{}
 	for _, decl := range findAllNodes(body, "local_declaration_statement") {
@@ -1001,11 +1025,28 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 		// DI-returning-interface RHS (`var s = factory.Create();`) stays
 		// UNTYPED so the call resolves to its bare leaf rather than a fabricated
 		// receiver type.
+		//
+		// READ THAT LAST CLAUSE NARROWLY. It holds of the declaration in
+		// isolation and it did NOT hold of the method: until #7072 an untyped
+		// declarator skipped the ambiguity ledger, so a same-name sibling that
+		// WAS typed kept the map to itself and the untyped local's calls came
+		// out carrying that sibling's type — a fabricated receiver reached by
+		// the one route this sentence promised was closed, and a binding one,
+		// since the sibling's type is real. The ledger below now records the
+		// name with an empty type, which disagrees with every real type, so
+		// the promise is kept at method scope and not merely at declaration
+		// scope.
 		declType := leafTypeName(vd.ChildByFieldName("type"), src)
 		implicit := isImplicitVarType(declType)
-		if declType == "" && !implicit {
-			continue
-		}
+		// #7072: an EMPTY declType (a type node leafTypeName has no case for,
+		// e.g. a `ref` local's ref_type) used to `continue` here, skipping the
+		// declarator loop entirely. It no longer does. Failing to TYPE a
+		// declaration is not the same as no declaration having happened: the
+		// names it binds must still reach the ambiguity ledger below, or a
+		// same-name sibling we DID type keeps the map to itself and gets
+		// applied to call sites it never covered. Nothing is published from an
+		// empty type — the publish loop drops those — so the only effect is
+		// poisoning.
 		for i := 0; i < int(vd.ChildCount()); i++ {
 			ch := vd.Child(i)
 			if ch == nil || ch.Type() != "variable_declarator" {
@@ -1026,12 +1067,16 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 			}
 			typ := declType
 			if implicit {
+				// May be "" when the RHS defeats inference (a factory call, a
+				// DI lookup). That empty result must NOT skip the ledger: see
+				// the note above — it is "bound here, type unknown", which
+				// disagrees with every real type.
 				typ = inferImplicitLocalType(ch, src)
-				if typ == "" {
-					continue
-				}
 			}
-			// #7072: same name, DIFFERENT type ⇒ ambiguous, refuse both.
+			// #7072: same name, DIFFERENT type ⇒ ambiguous, refuse both. ""
+			// participates as a distinct value, so typed-beside-untyped is a
+			// disagreement in either source order.
+			//
 			// The flag is STICKY — a third declarator agreeing with the first
 			// must not clear it, since the disagreeing one is still out there.
 			if prev, seen := localTypes[name]; seen && prev != typ {
@@ -1041,6 +1086,15 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 			localTypes[name] = typ
 		}
 	}
+	// An ambiguous name is dropped. An UNTYPED one (typ == "") is published
+	// as-is and is INERT: csharpCallTarget returns the bare method whenever
+	// the receiver type comes back empty, which is the guard the entire
+	// bare-leaf half of this suite grades. A `|| typ == ""` arm here was
+	// tried and REMOVED after scoring — it fires only where that one already
+	// fires, and deleting it AND receiverTypeName's `t != ""` mask together
+	// still failed nothing. This file's own rule for that case, from the
+	// #7068 note below: "a redundant guard fires only where the real one
+	// already fires and leaves both ungraded."
 	for name, typ := range localTypes {
 		if localAmbiguous[name] {
 			continue
