@@ -37,14 +37,34 @@ package types
 // it was never bound at all. Consumers that care about the difference must
 // also look at whether ToID is an entity ID.
 //
-// That sentence is only true because EVERY pass that can bind a name
-// lexically stamps this key, including the ones that run BEFORE the
-// reference resolver and whose output reaches it already resolved. Review
-// of #7078 found two such rungs in ResolveImports that were neither marked
-// nor classified, and the consequence was precisely that this sentence was
-// false for their edges. If a new binding pass is added ahead of the
-// resolver, it belongs in internal/resolve.AllBindTiers or this sentence
-// quietly stops holding again.
+// That reading is only as good as the list of sites that stamp the key, and
+// THAT LIST IS NOT A UNIVERSAL. An earlier revision of this comment claimed
+// "every pass that can bind a name lexically stamps this key"; two
+// successive reviews of #7078 each found one more rung it was false of —
+// first ResolveImports' plain-import and wildcard rungs, then the
+// same-class fallback three lines above them. A completeness claim that the
+// next person to read the code can refute is worse than no claim, because
+// it discourages the reading. So it is replaced by two lists that can be
+// wrong in a VISIBLE way:
+//
+// WHAT STAMPS THIS KEY is enumerated, one constant each with its site and
+// its argument, in internal/resolve.AllBindTiers. That enumeration is the
+// authority; this file deliberately does not duplicate it.
+//
+// WHAT HAS BEEN CHECKED AND FOUND NOT TO BE A GUESS, and is therefore
+// deliberately unmarked, is recorded as an "EVIDENCE (#7071)" comment AT
+// EACH SUCH SITE rather than in a central list — exact QualifiedName and
+// structural-ref hits and the explicit-Kind bucket in
+// internal/resolve/refs.go; the explicit from-import binding, the
+// module-and-submodule receiver rungs of ResolveCrossModuleCallTarget, the
+// `ext:` ResolvedToID, and the candidate-directory rung of the Rust pass in
+// internal/resolve/imports.go.
+//
+// WHAT HAS NOT BEEN CHECKED is everything else, and there is no claim here
+// that the set is empty. A binding site carrying neither a tier nor an
+// "EVIDENCE (#7071)" note has simply not been classified; finding one is a
+// finding, not a contradiction. Two rounds of review each found one, so the
+// prior should be that more exist.
 //
 // SCOPE: the key describes the TO endpoint only, which is why it is named
 // to_*. The same tiers can fire on a FROM endpoint rewrite

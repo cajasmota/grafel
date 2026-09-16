@@ -842,16 +842,19 @@ func TestBindTier_AllTiersEnumerated_7071(t *testing.T) {
 		}
 		seen[tr] = true
 	}
-	if len(AllBindTiers) != 14 {
-		t.Fatalf("AllBindTiers has %d members, want 14 — adding or removing one is a scope "+
+	if len(AllBindTiers) != 16 {
+		t.Fatalf("AllBindTiers has %d members, want 16 — adding or removing one is a scope "+
 			"change that must be argued, not a silent edit.\n"+
 			"The enumeration is of GUESS TIERS ACROSS THE WHOLE RESOLVER, not of one file: "+
-			"twelve in internal/resolve/refs.go plus the Rust crate-wide rung, and two more in "+
-			"the import pass (ResolveBareCallTarget / ResolveCrossFileReferenceTarget rungs 2 "+
-			"and 3), which review found after #7071's grounding had classified their sibling "+
-			"rungs but not them. If you are adding a fifteenth because you found another "+
-			"unclassified site, that is the right reason; say where it is and why it is a "+
-			"guess rather than evidence.",
+			"ELEVEN in internal/resolve/refs.go (G1, G2, L1-L6, E1-E3) and FIVE in "+
+			"internal/resolve/imports.go (the Rust crate-wide rung; the plain-import and "+
+			"wildcard rungs shared by ResolveBareCallTarget and "+
+			"ResolveCrossFileReferenceTarget; ResolveCrossModuleCallTarget's same-class "+
+			"fallback; and the Java canonical file tie-break).\n"+
+			"Every one of the last four was found by REVIEW, not by the grounding, and each "+
+			"round of review found one more. If you are adding a seventeenth because you "+
+			"found another unclassified site, that is the expected outcome, not a surprise: "+
+			"say where it is and why it is a guess rather than evidence.",
 			len(AllBindTiers))
 	}
 }

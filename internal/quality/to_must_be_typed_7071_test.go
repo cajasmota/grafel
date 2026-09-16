@@ -167,6 +167,24 @@ func TestToMustBeTypedFallsThroughToAnEvidenceBoundEdge_7071(t *testing.T) {
 // `to_bare_name` is the axis this block names out loud, because §7's
 // original block named from/to/kind/file and never named it, and an axis a
 // block does not name is an axis nobody audits.
+//
+// THE "GUESSED" AXIS HERE IS CONSTRUCTED, NOT OBSERVED — say so rather than
+// let the kill read stronger than it is. Every site that stamps
+// types.PropBindTier assigns a RESOLVED entity id to ToID first, so an edge
+// carrying the marker reaches a bare-name lookup only when the row's
+// `to_bare_name` is literally that entity id. diff.go's #6476 comment
+// anticipates and classifies exactly that authoring shape ("equal to some
+// entity's ID -> resolved, no complaint"), so it is not impossible — but
+// MEASURED over the golden set, ZERO of its 129 `to_bare_name` rows carry
+// an entity id, so nothing in the corpus reaches it today.
+//
+// The rows below construct the combination directly. That makes the guard
+// defensive rather than load-bearing, and it makes MR3's DEAD verdict rest
+// on a premise the indexer does not currently produce. The guard is kept —
+// removing it would be a behaviour change, and the shape is one a fixture
+// author may legitimately write — but it is labelled. If someone finds a
+// production path where a stamped edge keeps a bare ToID, this caveat
+// dissolves and this comment should go with it.
 // ---------------------------------------------------------------------------
 
 // bareDoc builds a doc whose single CALLS edge has an UNRESOLVED string

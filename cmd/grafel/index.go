@@ -6098,8 +6098,8 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	// the Go pass: after BuildIndex, before the embedded-reference resolver.
 	// #7071 — rustStats collects ONLY the crate-wide-uniqueness guess tier's
 	// per-edge tallies from this pass; it is folded into totalStats below so
-	// the per-tier report covers all twelve tiers rather than the eleven that
-	// flow through the two Reference passes.
+	// the per-tier report covers every tier rather than only those that flow
+	// through the two Reference passes.
 	var rustStats resolve.Stats
 	rustCrossModCallRewrites := idx.ResolveRustCrossModuleCalls(merged, &rustStats)
 	if rustCrossModCallRewrites > 0 {

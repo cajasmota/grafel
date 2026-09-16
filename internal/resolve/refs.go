@@ -2355,7 +2355,7 @@ func (idx Index) lookupStatusHintTier(stub, relKind string) (id string, status i
 		// graph. No file, no package, no kind participated in the choice.
 		// Structurally the first tier every lookup reaches and the only one
 		// needing no caller context, so it is expected to be the largest
-		// population of the twelve.
+		// population of the enumeration.
 		return id, statusRewritten, BindTierGlobalName
 	}
 	if idx.ambigName[lookupName] {

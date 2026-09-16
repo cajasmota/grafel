@@ -51,9 +51,10 @@ const (
 	// csharp-aspnet-core-mini row #7068 added for exactly that edge is
 	// therefore rejected by a `to_must_be_typed` narrowing that should accept
 	// it. Splitting this tier on whether the stub contains a separator is the
-	// obvious repair; it is deliberately NOT done here because #7071's
-	// grounding fixed the tier list at twelve and changing it is a scope
-	// decision, not an implementation detail. Until it is split, treat a
+	// obvious repair; it is deliberately NOT done here and is filed as
+	// #7080, because splitting a tier CHANGES THE MEANING of a value already
+	// written on edges, which is a different kind of change from adding a
+	// tier for a site nothing marked. Until it is split, treat a
 	// `global-name` mark as "bound on a name alone", which is true, and NOT
 	// as "bound with no type information", which is true only of its bare-leaf
 	// half.
@@ -172,6 +173,54 @@ const (
 	// rung 3 cannot. A single value would hide that behind an average.
 	BindTierImportWildcard BindTier = "import-wildcard"
 
+	// BindTierImportClassModuleAttr — imports.go,
+	// ResolveCrossModuleCallTarget's LAST rung, the "same-class fallback".
+	// The alias is a CLASS imported from module x and `<alias>.<leaf>()` is
+	// assumed to be a classmethod call — but the lookup is
+	// lookupModuleEntity(x, leaf), i.e. the unique entity named `leaf`
+	// anywhere in MODULE x, which need not be a member of the class at all.
+	//
+	// The receiver type is KNOWN here and then discarded, which puts it
+	// closest in spirit to E2 (the #6125 hoist) rather than to rung 2: rung
+	// 2's receiver was already stripped by the extractor, this one throws a
+	// receiver away. Kept separate from BindTierImportPlainModuleAttr for
+	// the reason that matters to a consumer — this rung can bind a target
+	// that is NOT a member of the named receiver, and rung 2 makes no claim
+	// about a receiver at all.
+	//
+	// Its in-source "sanity guard" does not prevent what its comment says:
+	// it checks only that the CLASS is in the module, which is trivially
+	// true whenever the from-import resolved. Whether the rung should
+	// require class membership is a REPAIR and deliberately not made here
+	// (#7077-adjacent); this constant only stops the edge asserting it was
+	// resolved on evidence. Found by review of #7078 round 2, three lines
+	// above round 1's own finding, in the same funnel.
+	BindTierImportClassModuleAttr BindTier = "import-class-module-attr"
+
+	// BindTierJavaCanonicalFileTiebreak — imports.go
+	// lookupModuleEntityJavaCanonical, stamped at both of its production
+	// call sites (the bare-CALLS rung 1 and the IMPORTS ladder).
+	//
+	// It fires ONLY when (module, name) is already flagged ambiguous — the
+	// resolver's own admission that it does not know — and then picks by a
+	// filename-suffix convention plus a SCOPE-kind preference.
+	//
+	// #7078 round 2 classified this as evidence, arguing it "deduplicates
+	// two records of the same class". That argument was WRONG and the
+	// review demonstrated it: nothing in the function enforces same-class,
+	// and because modulesForJavaFile strips `*/src/main/java/` anywhere in
+	// a path, `lib/src/main/java/com/acme/Bar.java` and
+	// `app/src/main/java/com/acme/Bar.java` share one module bucket — so an
+	// app-module caller can bind the lib-module entity.
+	//
+	// Structurally that is E1/E3/E4's shape exactly: evidence narrows the
+	// candidate set, then a locality-or-convention uniqueness rule picks
+	// one. All three of those are guesses in this taxonomy, so this is too.
+	// The genuinely-duplicated-records case it was justified by is a SUBSET
+	// of what it accepts, and a tier value that is right for the subset and
+	// wrong for the rest is the mislabelling this whole key exists to end.
+	BindTierJavaCanonicalFileTiebreak BindTier = "java-canonical-file-tiebreak"
+
 	// BindTierRustCrateUniqueMember — imports.go
 	// ResolveRustCrossModuleCalls' crate-wide fallback (lookupUniqueMember).
 	// Reached only AFTER every candidate directory the import resolver
@@ -204,6 +253,8 @@ var AllBindTiers = []BindTier{
 	BindTierGoPackageComponent,
 	BindTierImportPlainModuleAttr,
 	BindTierImportWildcard,
+	BindTierImportClassModuleAttr,
+	BindTierJavaCanonicalFileTiebreak,
 	BindTierRustCrateUniqueMember,
 }
 
@@ -243,8 +294,8 @@ func stampBindTier(r *types.RelationshipRecord, t BindTier, stats *Stats) {
 
 // FormatBindTiers renders a per-tier tally as a stable, log-friendly line:
 // `global-name=41 file-leaf-name=3 total=44`. Tiers that did not fire are
-// omitted — twelve zeros is noise, and the absent ones are recoverable from
-// AllBindTiers.
+// omitted — a column of zeros is noise, and the absent ones are recoverable
+// from AllBindTiers.
 //
 // Returns "" for an empty or all-zero tally so the caller can decide
 // whether to print a line at all.

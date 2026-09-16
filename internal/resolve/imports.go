@@ -1096,20 +1096,18 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, Bin
 			// lookupModuleEntityJavaCanonical itself checks for the
 			// ambiguous flag and the canonical-suffix match — if neither
 			// condition holds it returns (false) immediately.
-			// EVIDENCE (#7071), and this one is the judgement call in the
-			// pair — recorded rather than left silent. It is reached only
-			// when the explicit binding above found an AMBIGUOUS (module,
-			// name) tuple, and it picks by a filename/class-name
-			// convention. What keeps it out of the guess column is WHICH
-			// question the convention answers: the candidate set was
-			// selected by an import statement that named this exact symbol,
-			// and the tie-break is deduplicating two records of the same
-			// class (a canonical declaration and a hierarchy-inference
-			// entity), not choosing a target from a bare name. Contrast
-			// rung 2 below, where the name alone selects the candidates.
-			// If a reviewer disagrees this is a 15th tier, not a rewrite.
+			// GUESS TIER (#7071). #7078 round 2 argued this was evidence
+			// because it "deduplicates two records of the same class".
+			// Review demonstrated that argument false — nothing in the
+			// function enforces same-class, and modulesForJavaFile's
+			// `*/src/main/java/` stripping lets two Gradle modules share
+			// one bucket, so an app-module caller can bind a lib-module
+			// entity. It fires only on a tuple the import table has already
+			// flagged ambiguous, then picks by filename convention: E1/E3/E4's
+			// shape exactly, and those are guesses here. See
+			// BindTierJavaCanonicalFileTiebreak.
 			if id, ok := t.lookupModuleEntityJavaCanonical(b.SourceModule, b.ImportedName); ok {
-				return id, "", true
+				return id, BindTierJavaCanonicalFileTiebreak, true
 			}
 		}
 	}
@@ -1322,35 +1320,48 @@ func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (s
 //
 // In those cases the caller leaves the original bare-name ToID in place
 // and the downstream bare-name resolver gets a turn.
-func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string) (string, bool) {
+//
+// #7071 — the second return names the GUESS TIER, blank for the first two
+// rungs. This probe runs BEFORE ResolveBareCallTarget in ResolveImports and
+// `continue`s on success, so an unmarked bind here is never reconsidered by
+// anything downstream. Review of #7078 round 2 found its last rung
+// unmarked; see BindTierImportClassModuleAttr.
+func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string) (string, BindTier, bool) {
 	if alias == "" || leaf == "" {
-		return "", false
+		return "", "", false
 	}
 	callerFile = normalizePath(callerFile)
 	bucket := t.byFile[callerFile]
 	if bucket == nil {
-		return "", false
+		return "", "", false
 	}
 	b, ok := bucket[alias]
 	if !ok {
-		return "", false
+		return "", "", false
 	}
 	if b.SourceModule == "" {
-		return "", false
+		return "", "", false
 	}
 	// `import x` shape — alias IS the module name.
 	if b.ImportedName == b.SourceModule {
+		// EVIDENCE (#7071) — the receiver of `x.leaf()` IS the module, and
+		// an import statement named that module. The receiver is used, not
+		// inferred and not discarded; `leaf` is looked up in exactly the
+		// module the call named.
 		if id, ok := t.lookupModuleEntity(b.SourceModule, leaf); ok {
-			return id, true
+			return id, "", true
 		}
-		return "", false
+		return "", "", false
 	}
 	// `from x import y` shape — the alias may be a submodule of x or a
 	// symbol exposed by x. Try submodule first.
 	if b.ImportedName != "" {
 		submod := b.SourceModule + "." + b.ImportedName
+		// EVIDENCE (#7071) — same reasoning one level down: the receiver is
+		// the submodule x.y that the import statement named, and the lookup
+		// is scoped to it.
 		if id, ok := t.lookupModuleEntity(submod, leaf); ok {
-			return id, true
+			return id, "", true
 		}
 	}
 	// Same-class fallback: the alias is a class imported from module x,
@@ -1359,12 +1370,24 @@ func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string
 		// Sanity guard — only accept this fallback when the class itself
 		// also lives in (source_module, imported_name). Otherwise we could
 		// bind to an unrelated function named `leaf` in module x.
+		//
+		// #7071 — MEASURED, and the guard does NOT prevent what this
+		// comment says it prevents. It checks only that the CLASS is in the
+		// module, which is trivially true whenever the from-import above
+		// resolved; the bind is still "the unique entity named `leaf`
+		// anywhere in module x", so `Helper.format()` binds a module-level
+		// `format` that is no member of `Helper`. The receiver type is
+		// known here and thrown away.
+		//
+		// Marked rather than repaired: requiring class membership changes
+		// which edges exist, and this change must not add or remove one.
+		// The tier stops the edge asserting it was resolved on evidence.
 		if classID, classOk := t.lookupModuleEntity(b.SourceModule, b.ImportedName); classOk && classID != "" {
 			_ = classID // we only need to verify the class is in the module
-			return id, true
+			return id, BindTierImportClassModuleAttr, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // lookupModuleEntity returns (id, true) when (module, name) maps to
@@ -2081,8 +2104,16 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						if leaf == "" {
 							leaf = to
 						}
-						if id, ok := tbl.ResolveCrossModuleCallTarget(callerFile, alias, leaf); ok {
+						if id, tier, ok := tbl.ResolveCrossModuleCallTarget(callerFile, alias, leaf); ok {
 							rel.ToID = id
+							// #7071 — a FUNNEL for three rungs, two of which
+							// are evidence. This probe `continue`s on
+							// success, so nothing downstream ever revisits
+							// the edge: an unmarked guess here is final.
+							if tier != "" {
+								rel.Properties.Set(types.PropBindTier, string(tier))
+								stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, tier)
+							}
 							stats.CallsRewritten++
 							continue
 						}
@@ -2207,6 +2238,11 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				var (
 					id string
 					ok bool
+					// #7071 — set by the Java canonical tie-break rung
+					// below and by nothing else. Every other rung in this
+					// ladder resolves a qualifier the extractor minted, so
+					// they leave it blank and the funnel stamps nothing.
+					importTier BindTier
 				)
 				if isPHP {
 					id, ok = tbl.ResolveDottedImportTargetForPHP(normalized)
@@ -2231,6 +2267,14 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						srcMod := rel.Properties.Get(importPropSourceModule)
 						impName := rel.Properties.Get(importPropImportedName)
 						id, ok = tbl.lookupModuleEntityJavaCanonical(srcMod, impName)
+						if ok {
+							// GUESS TIER (#7071) — the SECOND production
+							// call site of the tie-break. The bare-CALLS
+							// site is a different function in a different
+							// branch; grading one would say nothing about
+							// this one.
+							importTier = BindTierJavaCanonicalFileTiebreak
+						}
 					}
 					// Refs #44 — Python module-level import resolution.
 					// `from users import views` emits to_id = "users.views".
@@ -2275,6 +2319,12 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				rel.ToID = id
+				// #7071 — FUNNEL for the whole IMPORTS ladder; blank for
+				// every rung except the Java canonical tie-break.
+				if importTier != "" {
+					rel.Properties.Set(types.PropBindTier, string(importTier))
+					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, importTier)
+				}
 				stats.ImportsRewritten++
 			}
 		}
