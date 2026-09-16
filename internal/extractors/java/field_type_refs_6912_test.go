@@ -409,17 +409,18 @@ class Customer {}
 
 // TestJavaFieldTypeRefs_AllFourComponentSubtypesAreTargets grades the
 // allow-list's ADMIT direction one subtype at a time. Java routes class,
-// interface, enum and record through the SAME buildComponent call with only the
-// Subtype varying, so a guard written on Kind alone would look correct and a
-// guard that dropped one subtype would be invisible without this row-per-subtype
-// assertion.
+// interface, enum, record and — since #7073 — annotation through the SAME
+// buildComponent call with only the Subtype varying, so a guard written on Kind
+// alone would look correct and a guard that dropped one subtype would be
+// invisible without this row-per-subtype assertion.
 func TestJavaFieldTypeRefs_AllFourComponentSubtypesAreTargets(t *testing.T) {
 	recs := extractJavaFT(t, map[string]string{"T.java": `class C {}
 interface I { void x(); }
 enum E { A, B }
 record R(int v) {}
+@interface A { String value(); }
 class Host {
-  C c; I i; E e; R r;
+  C c; I i; E e; R r; A a;
 }
 `})
 	javaFTWantEqual(t, javaFTEdges(recs), []string{
@@ -427,6 +428,7 @@ class Host {
 		"T.java:Host.i => I",
 		"T.java:Host.e => E",
 		"T.java:Host.r => R",
+		"T.java:Host.a => A",
 	})
 }
 

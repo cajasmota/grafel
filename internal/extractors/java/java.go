@@ -3,6 +3,8 @@
 // Extracted entities:
 //   - class_declaration       → Kind="SCOPE.Component", Subtype="class"
 //   - interface_declaration   → Kind="SCOPE.Component", Subtype="interface"
+//   - annotation_type_declaration          → Kind="SCOPE.Component", Subtype="annotation" (#7073)
+//   - annotation_type_element_declaration  → Kind="SCOPE.Schema",    Subtype="field"      (#7073)
 //   - method_declaration      → Kind="SCOPE.Operation", Subtype="method"
 //   - constructor_declaration → Kind="SCOPE.Operation", Subtype="constructor"
 //   - import_declaration      → IMPORTS relationship on file entity (issue #681)
@@ -357,11 +359,60 @@ func walk(
 	}
 
 	switch node.Type() {
-	case "class_declaration", "interface_declaration", "enum_declaration", "record_declaration":
+	case "class_declaration", "interface_declaration", "enum_declaration", "record_declaration",
+		"annotation_type_declaration":
 		subtype := "class"
 		switch node.Type() {
 		case "interface_declaration":
 			subtype = "interface"
+		case "annotation_type_declaration":
+			// Issue #7073 — a Java annotation type (`public @interface Audited`)
+			// previously minted NO entity at all, so a project's own annotations
+			// were structurally invisible: nothing to find, nothing to point an
+			// edge at.
+			//
+			// Kind is SCOPE.Component with its OWN subtype rather than reusing
+			// "interface", staying inside the existing Kind vocabulary (no
+			// SCOPE.* bump) exactly as enum/record already do.
+			//
+			// TWO REASONS THAT WERE FIRST GIVEN HERE AND ARE NOT TRUE, recorded
+			// so they are not re-derived:
+			//
+			//   - "it would pollute who-implements-this-interface answers". It
+			//     would not. Those answers are EDGE-driven (docgen/llm_bundle.go,
+			//     mcp/mro.go), and an `@interface` emits neither EXTENDS nor
+			//     IMPLEMENTS, so it contributes zero rows under either subtype.
+			//   - "a distinct subtype keeps `list this project's annotations`
+			//     answerable". It does not, today: Subtype is invisible to MCP —
+			//     serializeEntity and grafel_find hit rows emit no `subtype` key,
+			//     no tool filters on one, and Java does not dual-stamp
+			//     Properties["subtype"]. That query is not answerable over MCP at
+			//     all right now, under any subtype.
+			//
+			// The reasons that ARE real are downstream subtype tables, and they
+			// cut both ways — stated with their costs rather than only their
+			// benefits:
+			//
+			//   - engine.ClassLikeComponentSubtypes (classfold.go): "annotation"
+			//     is absent, so an annotation is never a class-fold SOURCE. Inert
+			//     today (there is no typed survivor for it to fold into) but it
+			//     is a real exclusion, not a neutral one.
+			//   - links/sameas_pass.go modelSubtypes: absent, and isDomainModelKind
+			//     returns modelSubtypes[sub], so an annotation is excluded from
+			//     cross-repo SAME_AS. Deliberate — an annotation is not a shared
+			//     domain model — but it IS a cost if two repos ever share one.
+			//   - feedback/report.go isFieldExtractionCandidate: "annotation" is
+			//     NOT in nonClassSubtypes, so an annotation IS admitted to the
+			//     field-bearing denominator. Verified by reading the predicate,
+			//     not assumed. That is the correct side for it to land on: with
+			//     elements emitted as Subtype "field" children, an annotation
+			//     genuinely is field-bearing and can pass.
+			//
+			// Reusing "interface" would have put annotations into the first two
+			// tables and left the third unchanged. Choosing a new subtype trades
+			// the class-fold and SAME_AS rows (worth nothing here) for a subtype
+			// that names what the thing is.
+			subtype = "annotation"
 		case "enum_declaration":
 			subtype = "enum"
 		case "record_declaration":
@@ -779,6 +830,45 @@ func walk(
 			*out = append(*out, rec)
 		}
 		return
+
+	case "annotation_type_element_declaration":
+		// Issue #7073 — an annotation ELEMENT (`String value() default "";`)
+		// parses as its own node kind, not as method_declaration, which is why
+		// nothing downstream ever saw one. It is modelled as SCOPE.Schema/field,
+		// the same shape this extractor already gives a record component
+		// (#1935): a named, typed, defaultable attribute that carries data.
+		//
+		// It is deliberately NOT a SCOPE.Operation, but NOT for the reason the
+		// first version of this change gave. That reason — "an annotation element
+		// is never a call target" — is FALSE, and reading it back is the ordinary
+		// reflection idiom:
+		//
+		//	Audited a = (Audited) c.getAnnotation(Audited.class);
+		//	return a.value();
+		//
+		// The local-variable-receiver machinery (#4682) types `a` and emits
+		// `Audited.value` as a CALLS target, which now BINDS onto this
+		// SCOPE.Schema/field. On main that stub was harmlessly unmatched because
+		// no entity of that name existed; minting the declaration is what turns
+		// it into a real edge. That edge is accepted, not suppressed — it is the
+		// only thing that answers "who reads @Audited's value" — and it is pinned
+		// by TestJavaAnnotationType_7073_ElementIsACallTarget, which asserts the
+		// edge, its binding, AND the kind it lands on.
+		//
+		// The real reason for Schema over Operation is the dead-code surface:
+		// internal/mcp/dead_code.go's isLiveCodeKind excludes "schema" and admits
+		// "operation", keyed on Kind with no subtype escape hatch. Most annotation
+		// elements are read only by frameworks via reflection, invisible to this
+		// graph — so as operations they would be reported as dead code almost
+		// universally.
+		//
+		// The grammar exposes `name` and `type` fields on this node exactly as
+		// interface_declaration exposes `name` / `body`, so buildField's sibling
+		// helpers apply unchanged. The enclosing CONTAINS edge is emitted by the
+		// generic SCOPE.Schema/field arm of the body loop above.
+		if rec, ok := buildAnnotationElement(node, file, parentType); ok {
+			*out = append(*out, rec)
+		}
 
 	case "field_declaration":
 		// Issue #690 — pass parentType so the field name is qualified as
@@ -1526,6 +1616,77 @@ func buildField(node ts.Node, file extractor.FileInput, parentType string) (type
 	// lossy shape arm C refused).
 	stashJavaFieldTypeRefs(&rec, node.ChildByFieldName("type"), file.Content, parentType)
 	return rec, true
+}
+
+// buildAnnotationElement creates a SCOPE.Schema/field entity for one
+// annotation_type_element_declaration (issue #7073).
+//
+// The node's `name` field is the element identifier and its `type` field is the
+// declared type; both are the same field names interface/class declarations and
+// field_declaration use, so the signature and field-type-ref helpers are shared
+// rather than duplicated. Like every other member of a Java type, the emitted
+// Name is qualified by the immediate enclosing type ("<Annotation>.<element>")
+// so ComputeID separates same-named elements on sibling annotations.
+func buildAnnotationElement(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+	name := childFieldText(node, "name", file.Content)
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+
+	emittedName := name
+	if parentType != "" {
+		emittedName = parentType + "." + name
+	}
+
+	rec := types.EntityRecord{
+		Name:       emittedName,
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: file.Path,
+		Language:   "java",
+		StartLine:  int(node.StartPoint().Row) + 1,
+		EndLine:    int(node.EndPoint().Row) + 1,
+		Signature:  buildAnnotationElementSignature(node, file.Content),
+	}
+	// Issue #6912 arm E — same contract as buildField: stash the declared
+	// type's AST node so attachJavaFieldTypeRefs can emit the element -> type
+	// REFERENCES edge once the file's full record set exists. This is what makes
+	// `Level level();` on an annotation reach the project's own Level enum.
+	stashJavaFieldTypeRefs(&rec, node.ChildByFieldName("type"), file.Content, parentType)
+	return rec, true
+}
+
+// buildAnnotationElementSignature renders an annotation element as
+// "Type name()" plus any `default <value>` clause, stripping the modifiers JLS
+// 9.6.1 permits on one (`public` and `abstract`, both redundant and both
+// legal). The trailing "()" is kept deliberately: it is how the element is
+// written at its declaration and how a reader recognises it as an annotation
+// element rather than a plain field.
+//
+// Modifiers are trimmed as a LEADING PREFIX, in a loop, rather than with
+// strings.ReplaceAll over the whole span. That is not a style preference. This
+// signature deliberately KEEPS the `default <value>` clause — buildFieldSignature
+// truncates at `=` and so never has a value in scope, but this one does — and a
+// default's value is arbitrary text that may itself contain a modifier keyword.
+// A whole-span ReplaceAll reaches inside it and silently corrupts the value:
+// `String scope() default "public api";` rendered as
+// `String scope() default "api"`. The prefix loop also makes the strip
+// order-independent, so `abstract public` is handled as well as
+// `public abstract`.
+func buildAnnotationElementSignature(node ts.Node, src []byte) string {
+	raw := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
+	raw = strings.TrimSuffix(raw, ";")
+	raw = strings.Join(strings.Fields(raw), " ")
+	for trimmed := true; trimmed; {
+		trimmed = false
+		for _, mod := range []string{"public ", "abstract "} {
+			if strings.HasPrefix(raw, mod) {
+				raw = strings.TrimPrefix(raw, mod)
+				trimmed = true
+			}
+		}
+	}
+	return strings.TrimSpace(raw)
 }
 
 // buildFieldSignature produces "Type name" for a Java field, stripping visibility.
