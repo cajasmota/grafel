@@ -74,7 +74,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		// JS/TS fix from #570/#575.
 		entities = append(entities, extractor.FileEntity(file))
 	}
-	walkNode(file.TSTree.RootNode(), file, nil, &entities)
+	walkNode(file.TSTree.RootNode(), file, nil, nil, &entities)
 	// #4432 — index Scala constant collections / enumerations (object const
 	// groups, `val X = Map(...)`, Scala 3 `enum`, sealed-trait + case-object
 	// enumerations) as searchable SCOPE.Enum value-sets carrying structured
@@ -128,7 +128,12 @@ type classCtx struct {
 // Issue #379: class/object/trait declarations attach CONTAINS edges per
 // function declared inside their template_body, and every function body
 // is scanned for call_expression descendants that yield CALLS edges.
-func walkNode(node ts.Node, file extractor.FileInput, cc *classCtx, out *[]types.EntityRecord) {
+//
+// #6912 — enclTypeParams carries the type parameters every LEXICALLY ENCLOSING
+// declaration introduces, so a field of a nested class typed by the outer
+// class's `T` is refused rather than bound to a same-file `class T`. Scala has
+// no static nesting, so the set accumulates all the way down; nil at the root.
+func walkNode(node ts.Node, file extractor.FileInput, cc *classCtx, enclTypeParams map[string]bool, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -145,15 +150,15 @@ func walkNode(node ts.Node, file extractor.FileInput, cc *classCtx, out *[]types
 				subtype = "case_class"
 			}
 		}
-		emitContainerWithMembers(node, file, subtype, out)
+		emitContainerWithMembers(node, file, subtype, enclTypeParams, out)
 		return
 
 	case "trait_definition":
-		emitContainerWithMembers(node, file, "trait", out)
+		emitContainerWithMembers(node, file, "trait", enclTypeParams, out)
 		return
 
 	case "object_definition":
-		emitContainerWithMembers(node, file, "object", out)
+		emitContainerWithMembers(node, file, "object", enclTypeParams, out)
 		return
 
 	case "function_definition", "function_declaration":
@@ -174,7 +179,7 @@ func walkNode(node ts.Node, file extractor.FileInput, cc *classCtx, out *[]types
 	}
 
 	for i := range node.ChildCount() {
-		walkNode(node.Child(int(i)), file, cc, out)
+		walkNode(node.Child(int(i)), file, cc, enclTypeParams, out)
 	}
 }
 
@@ -188,23 +193,25 @@ func emitContainerWithMembers(
 	node ts.Node,
 	file extractor.FileInput,
 	subtype string,
+	enclTypeParams map[string]bool,
 	out *[]types.EntityRecord,
 ) {
+	// #6912 — the type parameters in scope for THIS declaration's members: its
+	// own, union every enclosing declaration's. Computed before the
+	// buildComponent check so a malformed declaration still scopes its members.
+	classTypeParams := scalaScopedTypeParameterNames(enclTypeParams, node, file.Content)
+
 	rec, ok := buildComponent(node, file, subtype)
 	if !ok {
 		// Still recurse so nested types/imports below this node are
 		// captured even when the declaration itself is malformed.
 		for i := range node.ChildCount() {
-			walkNode(node.Child(int(i)), file, nil, out)
+			walkNode(node.Child(int(i)), file, nil, classTypeParams, out)
 		}
 		return
 	}
 	classIdx := len(*out)
 	*out = append(*out, rec)
-
-	// #6912 — the type parameters this declaration introduces, so a field typed
-	// `T` never binds to a same-file `class T`.
-	classTypeParams := scalaTypeParameterNames(node, file.Content)
 
 	// Build the per-container scope: class parameters + val/var members.
 	localCtx := &classCtx{fields: collectContainerFieldTypes(node, file.Content)}
@@ -229,7 +236,7 @@ func emitContainerWithMembers(
 			}
 			continue
 		}
-		walkNode(ch, file, localCtx, out)
+		walkNode(ch, file, localCtx, classTypeParams, out)
 	}
 	after := len(*out)
 	for k := before; k < after; k++ {

@@ -96,10 +96,29 @@ import (
 // — the over-fire arm F had to pin as KNOWN-WRONG because Java's grammar gives a
 // type parameter and a type reference the same node. Scala's does too, but the
 // declaration's `type_parameters` list is right there at the emit site, so the
-// shadow is refused instead of documented. FLOOR, stated: only the IMMEDIATELY
-// enclosing declaration's parameters are in scope, because walkNode carries no
-// lexical stack, so a field of a NESTED class typed by the OUTER class's `T`
-// keeps that shadow.
+// shadow is refused rather than documented.
+//
+// That sentence was FALSE FOR `[+A]` AND `[-A]` when this arm first shipped, and
+// the false half is the dominant form in the language: the collector switched on
+// two node types the grammar does not have, so every variance-annotated
+// parameter fell through and `class A; class Box[+A](val a: A)` emitted
+// `Box.a -> A` — a wrong edge that BOUND. A mutant making both of those arms
+// unmatchable killed zero tests: they were dead code, and the claim was prose
+// asserting what no test observed. The declaration-form space is now enumerated
+// from the grammar at scalaTypeParameterNames and graded row by row IN BOTH
+// DIRECTIONS (TestScalaFieldTypeRefs_TypeParameterFormSpace), because
+// enumerating the parameter's NAME and the ANCHOR thoroughly is exactly what
+// made the parameter's FORM look covered.
+//
+// SCOPE IS LEXICAL AND ACCUMULATES, WHICH IS THE OPPOSITE OF ARM J'S RULE.
+// Kotlin nests statically by default, so arm J must not inherit; Scala has no
+// `inner` keyword and no static nesting, so a nested class, trait or object sees
+// every enclosing declaration's parameters and this pass carries them down (see
+// scalaScopedTypeParameterNames). `class T; class Outer[T] { class Inner(val x:
+// T) }` emitted `Inner.x -> T`, bound, and was filed as a "recall floor" — it
+// was not one: a recall floor loses a correct edge and is safe, this gained a
+// wrong one. The over-refusal direction (nesting alone must never refuse) is
+// graded in the same table.
 //
 // THE AMBIGUITY RULE — derived from the tier that resolves THIS address, not
 // copied. Every arm has answered "how many same-file declarations sharing this
@@ -157,7 +176,12 @@ import (
 //     a `type_identifier` is an `annotation` (the child space was enumerated by
 //     probe — modifiers → access_modifier → access_qualifier → identifier; the
 //     name is an `identifier` / `identifiers`; val/var and the punctuation are
-//     anonymous). So the annotation skip carries every refusal the suite can
+//     anonymous). An independent review re-enumerated that child space by CST
+//     dump and added the STRONGER fact: the one shape that puts a ":" below the
+//     top level of these nodes — a repeated parameter, `val b: Repo*` — mints no
+//     field record at all, so it distinguishes nothing either and the mutant is
+//     not production-reachable. No fixture was manufactured to kill it.
+//     So the annotation skip carries every refusal the suite can
 //     observe, and the colon requirement is DEFENSIVE — it keeps the capture
 //     scoped structurally if the grammar ever puts a type there. Neither is
 //     claimed to be independently load-bearing.
@@ -252,11 +276,57 @@ func scalaFieldTypeCandidates(typeNode ts.Node, src []byte, typeParams map[strin
 }
 
 // scalaTypeParameterNames returns the type-parameter names a class/trait/object
-// declaration introduces, e.g. {"T", "R"} for `class Holder[T, R]`.
+// declaration introduces ON ITS OWN, e.g. {"T", "R"} for `class Holder[T, R]`.
+// Use scalaScopedTypeParameterNames to get the set actually in scope for the
+// declaration's members, which also carries every enclosing declaration's.
 //
-// The Scala grammar spells a type parameter as a plain `identifier` inside
-// `type_parameters` — NOT as a `type_identifier`, which is how the same list
-// reads in the Kotlin grammar. Probed, not assumed.
+// THE DIRECT-CHILD SPACE OF `type_parameters`, ENUMERATED BY CST DUMP rather
+// than recalled. The first cut of this function switched on
+// `variant_type_parameter` / `type_parameter`, and NEITHER NODE TYPE EXISTS in
+// this grammar, so `[+A]` and `[-A]` — the form the collection-shaped generics
+// Scala is actually written in are spelled (`List[+A]`,
+// `Function1[-T, +R]`) — contributed NOTHING and `class A; class Box[+A](val a:
+// A)` emitted `Box.a -> A`: a wrong edge that BINDS rather than dangles, the
+// #7056 signature. A mutant making both of those arms unmatchable killed zero
+// tests, because they were dead code. The real space is:
+//
+//	identifier                     [A]                 THE NAME (invariant)
+//	covariant_type_parameter       [+A]                `+`, identifier, bounds
+//	contravariant_type_parameter   [-A]                `-`, identifier, bounds
+//	upper_bound                    [A <: Repo]         a REAL type
+//	lower_bound                    [A >: Repo]         a REAL type
+//	view_bound                     [A <% Repo]         a REAL type
+//	context_bound                  [A : Ord]           a REAL type
+//	type_parameters   (nested)     [F[_]] / [F[X]]     F's OWN parameters
+//	annotation                     [@specialized A]    a REAL type
+//	wildcard                       [_ <: Repo]         no name at all
+//	[ ] , :                        anonymous
+//
+// ONLY THE NAME IS REFUSED, and that is the direction this guard must not get
+// wrong. A bound's or context bound's right-hand side, an annotation's class and
+// a higher-kinded parameter's own parameters are all REAL types that a field may
+// legitimately be declared as (`class Box[A <: Repo](val r: Repo)`), and arm I
+// shipped a template-parameter refusal that was wrong in BOTH directions at once
+// (#7057) — a deleted correct edge has no symptom. So this walks DIRECT CHILDREN
+// only and never descends into a wrapper that is not a variance wrapper, and it
+// matches `identifier` alone: a `type_identifier` never occurs as a direct child
+// (every one of them sits inside a bound, an annotation or a nested parameter
+// list), and if the grammar ever minted one it would be a bound's RHS, i.e. a
+// type that must stay bindable.
+//
+// TWO MUTANTS HERE ARE EQUIVALENT UNDER AN OBSERVED GRAMMAR FACT, not under an
+// argument — TestScalaFieldTypeRefs_PremiseTypeParametersChildShapes walks the
+// whole enumerated form space and fails if either fact moves:
+//
+//   - Re-adding `type_identifier` to the `identifier` arm changes nothing,
+//     because no direct child of `type_parameters` is ever a `type_identifier`.
+//     The day one is, that mutant becomes an OVER-REFUSAL and the premise test
+//     fails first.
+//   - Deleting the `break` in the variance arm changes nothing, because a
+//     variance wrapper has exactly ONE direct `identifier` child.
+//
+// The reachable direction on both — a bound's RHS joining the shadow set — is
+// graded, in the variance wrapper and at the top level alike.
 func scalaTypeParameterNames(declNode ts.Node, src []byte) map[string]bool {
 	out := map[string]bool{}
 	if declNode == nil {
@@ -270,20 +340,56 @@ func scalaTypeParameterNames(declNode ts.Node, src []byte) map[string]bool {
 		for j := 0; j < int(tp.ChildCount()); j++ {
 			p := tp.Child(j)
 			switch p.Type() {
-			case "identifier", "type_identifier":
+			case "identifier":
 				out[string(src[p.StartByte():p.EndByte()])] = true
-			case "variant_type_parameter", "type_parameter":
-				// Variance-annotated (`[+A]`) and bounded parameters wrap the
-				// name one level deeper in some grammar revisions.
+			case "covariant_type_parameter", "contravariant_type_parameter":
+				// `+A` / `-A`. The variance sigil is an anonymous child and the
+				// name is the first `identifier`; any bound that follows stays
+				// wrapped in its own node and is deliberately not read.
 				for k := 0; k < int(p.ChildCount()); k++ {
 					id := p.Child(k)
-					if id.Type() == "identifier" || id.Type() == "type_identifier" {
+					if id.Type() == "identifier" {
 						out[string(src[id.StartByte():id.EndByte()])] = true
 						break
 					}
 				}
 			}
 		}
+	}
+	return out
+}
+
+// scalaScopedTypeParameterNames returns the type parameters in scope for the
+// MEMBERS of declNode: its own, UNION every lexically enclosing declaration's.
+//
+// SCALA'S SCOPING IS NOT KOTLIN'S, AND THIS RULE IS THE OPPOSITE OF ARM J'S.
+// Kotlin nests statically by default — a nested class does not see the enclosing
+// class's type parameters unless it is declared `inner` — so arm J's guard must
+// NOT inherit. Scala has no `inner` keyword and no static nesting at all: every
+// member class, trait and object of a template is an inner member of it, and the
+// template is evaluated in a scope that already contains the declaration's type
+// parameters (SLS §5.1). `object` is not an exception the way Kotlin's
+// `companion object` is: an object nested inside a class is a PER-INSTANCE
+// member — only a TOP-LEVEL object is static-like — so it sees `T` too.
+//
+// Before this, `class T; class Outer[T] { class Inner(val x: T) }` emitted
+// `Inner.x -> T` and it BOUND, to the top-level `class T` that `Outer[T]`
+// shadows. That was filed as a "recall floor" and it was not one: a recall floor
+// LOSES a correct edge and is safe; this GAINED a wrong one, invisibly.
+//
+// The parent's map is never mutated — siblings of declNode share it, and the
+// scope must not leak sideways or forward out of a nested body.
+func scalaScopedTypeParameterNames(enclosing map[string]bool, declNode ts.Node, src []byte) map[string]bool {
+	own := scalaTypeParameterNames(declNode, src)
+	if len(enclosing) == 0 {
+		return own
+	}
+	out := make(map[string]bool, len(enclosing)+len(own))
+	for k := range enclosing {
+		out[k] = true
+	}
+	for k := range own {
+		out[k] = true
 	}
 	return out
 }
@@ -352,6 +458,20 @@ type scalaFieldTypeTarget struct {
 // never reaches ambigLocation. Two records sharing a Kind are ONE node (EntityID
 // excludes Subtype), which is why `case class Order` beside its companion
 // `object Order` is not ambiguous.
+//
+// THE `len(famKinds[name]) > 1` GUARD CANNOT FIRE THROUGH Extract AT ALL, and
+// that is stronger than "its incidence is unmeasured". `records` is the slice
+// THIS extractor alone built, and this extractor mints exactly one family Kind
+// (`SCOPE.Component`) — internal/patterns' `SCOPE.Model` records are added to a
+// different slice, later, and never reach here. So `famKinds[name]` has at most
+// one entry on every input Extract can produce, and every test that scores this
+// guard scores it against a HAND-BUILT record set. It is kept deliberately, as
+// the defence against a SECOND family-Kind producer being added to this package
+// — the day a `SCOPE.Class` or `SCOPE.View` arm lands here, the count starts
+// mattering and the unit of the count (the KIND, not the record) is already
+// right. What is graded is therefore the guard's RULE, counterfactually; its
+// production incidence today is ZERO, by construction rather than by
+// measurement.
 //
 // Pass 2's allow-list is written on Scala's own emit sites:
 //

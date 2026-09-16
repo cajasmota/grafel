@@ -309,6 +309,14 @@ class Holder {
 // same collision and the declaration's type_parameters list is in hand, so it
 // is refused instead of documented. The control row differs ONLY in the type
 // parameter's name.
+//
+// THIS TEST IS NOT THE GRADING — it varies the parameter's NAME and the ANCHOR
+// and holds the parameter's DECLARATION FORM constant at bare-invariant, and
+// holding that axis is what let `[+A]` / `[-A]` ship as a binding wrong edge.
+// The declaration-form space and the NESTING scope are enumerated from the
+// grammar and graded in both directions in
+// field_type_refs_typeparams_6912_test.go; this file keeps the two axes it does
+// vary, and nothing more is claimed for it.
 func TestScalaFieldTypeRefs_TypeParameterNeverShadowsASameFileClass(t *testing.T) {
 	scWantEdges(t, "class T\ncase class Holder[T](item: T)\n")
 	scWantEdges(t, "class T\ncase class Holder[U](item: T)\n", "Holder.item -> T")

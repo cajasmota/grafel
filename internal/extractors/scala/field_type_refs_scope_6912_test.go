@@ -329,3 +329,91 @@ func TestScalaFieldTypeRefs_InFamilyRivalIsRefusedByThePass(t *testing.T) {
 	// directly with the rival in the slice — this test exists to name that
 	// split rather than to leave it unexplained.
 }
+
+// TestScalaFieldTypeRefs_Unit_TheAmbiguityGuardCannotFireThroughExtract states
+// the STRONGER fact the header now carries, and observes it instead of arguing
+// it.
+//
+// The PR originally said only that the in-family rival's INCIDENCE is
+// unmeasured. It is more than that: attachScalaFieldTypeRefs is handed the slice
+// THIS extractor alone built, and this extractor mints exactly ONE Kind in the
+// component address family — SCOPE.Component. So `len(famKinds[name]) > 1` can
+// never be true on any input Extract can produce, and every test that scores the
+// guard (including the table above and M29) scores it against a hand-built
+// record set. The guard stays as a defence against a second family-Kind producer
+// landing in this package; this test is what will notice the day one does.
+//
+// The source is deliberately broad — every container form Scala has, plus the
+// constructs that mint the out-of-family rivals (a sealed trait's value-set, a
+// const-group object, a def named after a class, an import placeholder) — so a
+// new family-Kind producer in this package is likely to be caught by it.
+func TestScalaFieldTypeRefs_Unit_TheAmbiguityGuardCannotFireThroughExtract(t *testing.T) {
+	src := `import Order.Status
+
+sealed trait Shape
+case object Circle extends Shape
+case object Square extends Shape
+
+object Status {
+  val Draft = "draft"
+  val Sent = "sent"
+}
+
+class Order(val status: Status, val shape: Shape)
+case class Money(amount: Int)
+object Money {
+  def Order(): Int = 1
+}
+trait Repo {
+  val m: Money = null
+}
+class Node[+A](val next: Node[A], val head: A)
+`
+	ents := runScala(t, src)
+
+	// Premise: something in the component family IS minted here, so the count
+	// below is not vacuously satisfied by an empty record set.
+	famPerName := map[string]map[string]bool{}
+	total := 0
+	for i := range ents {
+		k := ents[i].Kind
+		if !scIsComponentFamilyKind(k) || ents[i].Name == "" {
+			continue
+		}
+		total++
+		if famPerName[ents[i].Name] == nil {
+			famPerName[ents[i].Name] = map[string]bool{}
+		}
+		famPerName[ents[i].Name][k] = true
+	}
+	if total < 6 {
+		t.Fatalf("premise gone: only %d family-kind records minted, so this "+
+			"test observes almost nothing", total)
+	}
+	for name, kinds := range famPerName {
+		if len(kinds) > 1 {
+			t.Fatalf("PREMISE MOVED: Extract now mints %d family Kinds for %q "+
+				"(%v). The ambiguity guard is now REACHABLE through Extract, so "+
+				"it must be graded against a real parse and the header's "+
+				"'cannot fire through Extract' claim is stale", len(kinds), name, kinds)
+		}
+		for k := range kinds {
+			if k != "SCOPE.Component" {
+				t.Fatalf("PREMISE MOVED: Extract now mints family Kind %q for "+
+					"%q; the header claims SCOPE.Component is the only one", k, name)
+			}
+		}
+	}
+}
+
+// scIsComponentFamilyKind mirrors scalaComponentAddressFamily. It is spelled out
+// here rather than exported from production, so the test does not agree with the
+// code by construction.
+func scIsComponentFamilyKind(kind string) bool {
+	switch kind {
+	case "Component", "Class", "View", "Model",
+		"SCOPE.Component", "SCOPE.Class", "SCOPE.View", "SCOPE.Model":
+		return true
+	}
+	return false
+}
