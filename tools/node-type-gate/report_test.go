@@ -554,6 +554,35 @@ func TestPrintReport_NamesBothFixpointSurfaces(t *testing.T) {
 // sites. Round 4 scored :37, got DEAD, and reported that the absent direction
 // was graded; :160 was alive. A verdict at one occurrence says nothing about
 // its twin, so both are listed and both were scored.
+//
+// COMPOUND PREDICATES ARE GRADED ARM BY ARM OR NOT AT ALL. The guards above are
+// single-condition. Where a predicate has two or more arms, a fixture that
+// reaches only one leaves the rest free while every assertion still passes —
+// which is how round 6 found the SEVENTH ungraded reporting path, one
+// expression past round 5's three. report.go's multi-arm predicates, and the
+// arms each is scored on:
+//
+//	report.go:136  s.Lit == "" || runtimeKinds[s.Lit]   TWO arms, same
+//	               expression as gate.go:190. Both sites scored; both DEAD.
+//	                 -> TestPrintReport_WhitelistTallyGradesBothArmsSeparately
+//	                    has one row per arm plus a neither-arm negative row.
+//	report.go:85   m.Alias() && !enforceAliasForms      TWO arms, but the
+//	               second is a compile-time constant while enforceAliasForms
+//	               is false, so only m.Alias() varies. DEAD.
+//	                 -> TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral
+//	                    and printVerdict's golden.
+//	report.go:106  res.Failed()  (gate.go:242)          THREE arms: Failures,
+//	               StaleBaseline, UnreviewedSkips. verdictFixture has all
+//	               three non-empty at once, so the emitted verdict line alone
+//	               would grade none of them — each is isolated by a fixture
+//	               elsewhere in the package, and all three are DEAD.
+//	report.go:261  stringVal's tv.Value == nil arm      EQUIVALENT, not
+//	               graded: its only caller, constStringOf (main.go:401),
+//	               returns early on a nil Value, so the arm is unreachable in
+//	               production. Deleting it leaves the package green. Reaching
+//	               it would mean calling stringVal directly to exercise a
+//	               defensive branch no production path takes, so it is
+//	               recorded here rather than covered.
 
 // TestPrintVerdict_NoSkippedSurfaceSaysNothing scores TWO of printVerdict's
 // guards at once — the skip block (report.go:37) and the alias block
@@ -792,5 +821,128 @@ func TestPrintReport_WhitelistCountExcludesPackagesWithNoGrammar(t *testing.T) {
 		t.Errorf("accounting sums to %d but the fixture has %d derived sites. Every site is\n"+
 			"resolved, skipped for want of a grammar, or whitelisted — exactly one of the three.\n"+
 			"--- emitted ---\n%s", sum, len(res.Sites), out)
+	}
+}
+
+// whitelistArmsFixture drives the arm-by-arm test for report.go:136. One
+// MAPPED package holds three ordinary resolved sites plus one site whose
+// literal the caller chooses; one UNMAPPED package holds two more. Six sites
+// in all, and the accounting must reconcile to six in every row.
+//
+// The varying site sits in a package WITH a grammar on purpose. That is the
+// only way to reach report.go:136 at all — report.go:133 `continue`s an
+// unmapped package's sites one line earlier, which is why
+// TestPrintReport_WhitelistCountExcludesPackagesWithNoGrammar (unmapped) and
+// this test (mapped) grade different lines and neither substitutes for the
+// other.
+//
+// The per-row numbers are pairwise distinct, per this file's asymmetry rule:
+// 3 resolved / 2 skipped / 1 whitelisted on the whitelisted rows, and
+// 4 / 2 / 0 on the ordinary one. No permutation of the Fprintf's arguments
+// survives either.
+func whitelistArmsFixture(lit string, resolved int) (Result, map[string]*Grammar) {
+	const (
+		js     = "internal/extractors/javascript"
+		engine = "internal/engine"
+		jsFile = js + "/extractor.go"
+		enFile = engine + "/dispatch.go"
+	)
+	site := func(dir, file, l string) Site {
+		return Site{Pkg: dir, Dir: dir, File: file, Line: 1, Lit: l, Form: FormCmp, Const: true}
+	}
+	return Result{
+			Sites: []Site{
+				site(js, jsFile, "identifier"),
+				site(js, jsFile, "object"),
+				site(js, jsFile, "statement_block"),
+				site(js, jsFile, lit), // the axis
+				site(engine, enFile, "arrow_function"),
+				site(engine, enFile, "lexical_declaration"),
+			},
+			Resolved:        resolved,
+			Distinct:        resolved,
+			DirsWithGrammar: []string{js},
+			GrammarsForDir:  map[string][]string{js: {"javascript"}},
+			Skipped:         []SkippedDir{{Dir: engine, Sites: 2, Reason: "runtime language"}},
+			SkippedSites:    2,
+		}, map[string]*Grammar{
+			"javascript": {Key: "javascript", Kinds: map[string]bool{
+				"identifier":       true,
+				"object":           true,
+				"statement_block":  true,
+				"return_statement": true,
+			}},
+		}
+}
+
+// TestPrintReport_WhitelistTallyGradesBothArmsSeparately scores report.go:136
+// arm by arm.
+//
+// `whitelisted` is computed from a TWO-ARM predicate,
+// `s.Lit == "" || runtimeKinds[s.Lit]`, and a compound guard is graded arm by
+// arm or not at all. Round 6's killing mutant dropped the FIRST arm at
+// report.go:136 only — leaving the identical expression at gate.go:190 intact,
+// so the suite could not fall back on it — and the package stayed green,
+// because no fixture put a `""` literal in a package that has a grammar. The
+// second arm was already graded (reportFixture's ERROR site is in a mapped
+// package); the first was free.
+//
+// The arm is not unreachable. `siteFor` (scan.go) folds a literal `""` in a
+// node-type position into `Lit: "", Const: true`, so it lands in `res.Sites`
+// and reaches this line — the sentinel/dynamic split is on `Const`, not on the
+// literal being empty. gate.go:190 makes the same distinction for the same
+// reason and its own test names that arm explicitly
+// (`TestEvaluate_ResolveRules/the empty string is a sentinel, never a node
+// kind`). The tree happens to carry no `x.Type() == ""` site today; a zero
+// population is a fact about this tree, never about what the line can receive,
+// and the guard exists precisely for the day it does.
+//
+// VARIED: the literal at the one varying site — empty-string sentinel, runtime
+// kind, ordinary node name. One row per ARM of the predicate, plus the
+// negative row where neither arm fires.
+// HELD CONSTANT: the package (mapped, one grammar), the file, the form, the
+// three ordinary resolved sites beside it, and the whole unmapped package. The
+// only thing that can move the whitelist tally is the literal.
+func TestPrintReport_WhitelistTallyGradesBothArmsSeparately(t *testing.T) {
+	rows := []struct {
+		name            string
+		lit             string
+		resolved        int
+		wantWhitelisted int
+		arm             string
+	}{
+		{"empty-string sentinel in a mapped package", "", 3, 1, `s.Lit == ""`},
+		{"runtime kind ERROR in a mapped package", "ERROR", 3, 1, "runtimeKinds[s.Lit]"},
+		{"ordinary node name in a mapped package", "return_statement", 4, 0, "neither arm"},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			res, grammars := whitelistArmsFixture(r.lit, r.resolved)
+			out := reportFor(res, grammars)
+
+			acct := numsIn(t, out, "  accounting ")
+			if len(acct) != 4 {
+				t.Fatalf("accounting line has %d numbers, want 4 (resolved, skipped, whitelisted, sum): %v\n%s", len(acct), acct, out)
+			}
+			resolved, skipped, whitelisted, sum := acct[0], acct[1], acct[2], acct[3]
+
+			if whitelisted != r.wantWhitelisted {
+				t.Errorf("the EMITTED accounting line reports %d whitelisted, want %d.\n"+
+					"This row exists to grade the %s arm of report.go:136's two-arm predicate;\n"+
+					"dropping that arm changes this number and nothing else in the package.\n"+
+					"--- emitted ---\n%s", whitelisted, r.wantWhitelisted, r.arm, out)
+			}
+			if resolved != res.Resolved {
+				t.Errorf("accounting reports %d resolved, want %d", resolved, res.Resolved)
+			}
+			if skipped != res.SkippedSites {
+				t.Errorf("accounting reports %d skipped, want %d", skipped, res.SkippedSites)
+			}
+			if sum != len(res.Sites) {
+				t.Errorf("accounting sums to %d but the fixture has %d derived sites. Every site is\n"+
+					"resolved, skipped for want of a grammar, or whitelisted — exactly one of the three.\n"+
+					"--- emitted ---\n%s", sum, len(res.Sites), out)
+			}
+		})
 	}
 }
