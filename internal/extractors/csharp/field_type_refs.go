@@ -81,11 +81,14 @@ import (
 // C#'s scoping rule, why that rule is NOT kotlin's, java's or rust's, the
 // grammar evidence behind it, and — since no C# compiler exists on the machine
 // this was written on — which rows are UNVERIFIED and what would settle them.
-// There are TWO such rows, and BOTH are named there: the `static` nested class
-// (Sn4) and the same-file attribute class on a type parameter (G13). An earlier
-// revision of this sentence promised "exactly which rows" while the block below
-// named Sn4 alone, leaving G13's unverified status recorded in the test file
-// only — corrected on review of #7075. The known-wrong pin
+// There are FOUR such rows — Sn4, G13, G9 and G8 — all named there, with G9
+// flagged as SHARING G13's premise rather than independently confirming it, and
+// two further rows (G5, G9's previous spelling) recorded there as found ILLEGAL
+// and fixed. Two earlier revisions of this sentence were wrong in turn: one
+// promised "exactly which rows" while the block below named Sn4 alone, and the
+// next claimed "exactly two" when re-derivation found four unverified and two
+// illegal. Both corrections are on the record rather than folded in silently.
+// The known-wrong pin
 // (TestCsharpFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType, a
 // hard `t.Fatalf` asserting the wrong edge WAS present) was deleted with the fix
 // and replaced by field_type_refs_7041_test.go.
@@ -224,12 +227,34 @@ func csTypeRefCandidates(typ ts.Node, src []byte, typeParams map[string]bool) []
 //     the KEEP half (`Mark` must still bind in field position, which is what
 //     kills a descendant-walk collector) only gets stronger if the form is
 //     legal. What would settle it: `csc` on that snippet.
-//   - NOT WRITTEN, and named rather than guessed: using a type parameter in
-//     generic-CONSTRUCTOR position (`class B<D> { D<int,int> f; }`) — believed
-//     illegal, so no fixture asserts anything about it; and a shadowing
-//     parameter on a `delegate_declaration`, `method_declaration` or
-//     `local_function_statement`, which are UNREACHABLE for a different and
-//     verified reason given below.
+//   - `[App.Mark]` on a type parameter (fixture G9) — the same premise as G13
+//     with the attribute named by its QUALIFIED spelling. Recorded as a FOURTH
+//     unverified row but NOT as a second confirmation of the third: two rows
+//     sharing one premise are one premise.
+//   - `Order?` where `Order` is an UNCONSTRAINED type parameter (fixture G8).
+//     `T?` on an unconstrained parameter requires C# 9 or later — before that
+//     it is CS8627 — and the sibling `Real?` warns CS8632 outside a
+//     `#nullable enable` context. The row grades the `nullable_type` CST shape,
+//     which the parse produces at any LangVersion. NOT DEMONSTRATED.
+//
+// TWO ROWS WERE FOUND ILLEGAL AND FIXED rather than marked, because an illegal
+// program grades nothing at all. This list was RE-DERIVED under review of
+// #7075 after its own "exactly two rows" claim proved false in the dangerous
+// direction — a row asserted legal that was not:
+//
+//   - `interface G5<in Order, out Real> { Order A { get; set; } Real B { get;
+//     set; } }` was CS1961 twice — a contravariant `in` parameter cannot appear
+//     in a getter, a covariant `out` parameter cannot appear in a setter. G5 is
+//     the sole occupant of the "variance-annotated" and "interface" axes, so
+//     both were ungraded. Now `{ set; }` / `{ get; }`.
+//   - `class G9<[System.Obsolete] Order>` was CS0592: ObsoleteAttribute's
+//     AttributeUsage does not include GenericParameter. Now `[App.Mark]`.
+//
+// NOT WRITTEN AT ALL, and named rather than guessed: using a type parameter in
+// generic-CONSTRUCTOR position (`class B<D> { D<int,int> f; }`) — believed
+// illegal, so no fixture asserts anything about it; and a shadowing parameter on
+// a `delegate_declaration`, `method_declaration` or `local_function_statement`,
+// which are UNREACHABLE for a different and verified reason given below.
 //
 // ── NO DECLARATION-KIND LIST, AND WHY THAT IS SOUND ──────────────────────────
 //

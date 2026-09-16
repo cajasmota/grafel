@@ -34,7 +34,12 @@ import (
 //	                  (G7, G11, PlainR.X); CANDIDATE MULTIPLICITY — one
 //	                  candidate (G1.Shadowed), refused-first (G12.Pair),
 //	                  refused-middle (G10.M, G11.M), refused-last (G10.R,
-//	                  G11.R); and the field-type SYNTAX the candidate sits in —
+//	                  G11.R); REFUSAL COUNT — how MANY candidates of one field
+//	                  are refused, which is a DIFFERENT axis from where the
+//	                  refused one sits: one refusal at every row above, TWO at
+//	                  G2.M (`Dict<Order, Real>` inside `G2<Order, Real>`, both
+//	                  parameters shadowed, only `Dict` surviving); and the
+//	                  field-type SYNTAX the candidate sits in —
 //	                  bare (G1), nullable (G8), array (G12.Arr), tuple
 //	                  (G12.Pair), generic argument (G10, G11).
 //	  HELD CONSTANT   nesting depth — every declaration in this file is
@@ -59,7 +64,10 @@ import (
 //	                  Inner1.Mm (refused MIDDLE, property, depth 1), Inner1.Pf
 //	                  (refused FIRST, field, depth 1), Deep2.Ml (refused LAST,
 //	                  property, depth 2) and R6.Mr (refused MIDDLE, RECORD
-//	                  anchor, depth 1).
+//	                  anchor, depth 1); and REFUSAL COUNT at Inner3.Md, whose
+//	                  two refusals come from TWO DIFFERENT LEVELS — `Order` from
+//	                  the ancestor `N3<Order>` and `Real` from Inner3's own
+//	                  `<Real>` — with `Dict` surviving.
 //	  HELD CONSTANT   parameter form — every list in this file is plain and
 //	                  unconstrained, which is the previous table's axis.
 //
@@ -72,6 +80,17 @@ import (
 // block exists so a reader can tell what is graded without re-deriving it; a
 // block that asserts coverage it does not have turns the audit tool into the
 // thing needing an audit. Every axis named above now points at rows that exist.
+//
+// ROUND 3 FOUND THE SAME AXIS ONE TURN FURTHER IN, and it is worth stating why
+// the round-2 fix did not reach it. Round 1: every shadowed field had exactly
+// ONE candidate. The fix varied the refused candidate's POSITION among its
+// neighbours — which reads like "multiplicity is covered" and is not: all ~46
+// rows across both files still refused exactly ONE candidate per field, so
+// "refuse the shadowed candidates" and "refuse the FIRST shadowed candidate"
+// remained the same function. Mutant MF (refuse only the first) was ALIVE on
+// the whole package and leaked `G2.M -> Real`: a wrong edge that BINDS, which
+// is the symptomless class this entire issue exists for. POSITION and COUNT are
+// two axes, and naming one does not grade the other.
 //
 // EVERY row is classified below by WHAT IT VARIES, under three kinds:
 //
@@ -90,14 +109,54 @@ import (
 // absent). Rows whose LEGALITY is load-bearing are marked UNVERIFIED-LEGALITY
 // with the reason; forms whose legality is in doubt and whose behaviour would be
 // load-bearing are NOT written at all and are named as omissions in
-// field_type_refs.go. EXACTLY TWO rows below rest on a legality that is not
-// demonstrated — `Sn4` (a `static` nested class inside a generic one) and `G13`
-// (a same-file attribute class applied to a type parameter) — and both are
-// marked at the row, named in field_type_refs.go's UNVERIFIED block, and safe
-// in either branch. EVERY OTHER form below is a plain generic
+// field_type_refs.go.
+//
+// THE LEGALITY LIST WAS RE-DERIVED IN ROUND 3, NOT EXTENDED, because the
+// previous revision's own "EXACTLY TWO rows" claim was FALSE — and false in the
+// direction that matters most, a row asserted LEGAL that is not. Every
+// declaration in both fixtures was re-read against the variance rules, the
+// accessor rules, the attribute-target rules, the constraint-ordering rules and
+// the nullable rules. Two rows were ILLEGAL and are FIXED; three rest on a
+// premise no compiler here can settle and are MARKED.
+//
+// FIXED — these were graded nothing, because an illegal program is not an input
+// any producer sees:
+//
+//   - G5 was `interface G5<in Order, out Real> { Order A { get; set; } Real B
+//     { get; set; } }` — CS1961 TWICE: a contravariant `in` parameter may not
+//     appear in a getter (an OUTPUT position) and a covariant `out` parameter
+//     may not appear in a setter (an INPUT position). Now `{ set; }` and
+//     `{ get; }` respectively. This mattered more than a stray bad row: G5 is
+//     the SOLE occupant of two axes the block above names — "variance-annotated"
+//     and "declaration kind … interface" — so both were ungraded. Probed after
+//     the fix: G5.A and G5.B still emit as field entities, so the anchor
+//     survives the accessor change and the axes are now real.
+//   - G9 was `class G9<[System.Obsolete] Order>` — CS0592. ObsoleteAttribute's
+//     AttributeUsage lists Class, Struct, Enum, Interface, Constructor, Method,
+//     Property, Field, Event and Delegate, and NOT GenericParameter, so it
+//     cannot be applied to a type parameter at all. Found by re-deriving rather
+//     than by review. Now `[App.Mark]`, which keeps the QUALIFIED-name CST
+//     shape that is G9's whole reason to exist and is valid on a type parameter
+//     because `Mark` declares no AttributeUsage and therefore defaults to All.
+//
+// MARKED UNVERIFIED-LEGALITY — reasoned, not demonstrated, and safe in either
+// branch (if legal the assertion is right; if illegal no program exercises the
+// row, so refusing costs nothing):
+//
+//   - `Sn4` — a `static` class nested inside a generic class.
+//   - `G13` — `[Mark]` where `class Mark : System.Attribute` is same-file.
+//   - `G9` — SHARES G13's premise (an attribute class applied to a type
+//     parameter) and is therefore NOT an independent second confirmation of it;
+//     it varies only the qualified spelling of the name.
+//   - `G8` — `Order?` where `Order` is an UNCONSTRAINED type parameter needs
+//     C# 9 or later (before that it is CS8627), and `Real?` outside a
+//     `#nullable enable` context warns CS8632. The row is about the
+//     `nullable_type` CST shape, which the parse produces regardless of
+//     LangVersion. What would settle all four: `csc` on the snippet.
+//
+// EVERY OTHER form in both fixtures is a plain generic
 // class/struct/record/interface with a type parameter shadowing a same-file
-// type, whose legality is not in doubt. (An earlier revision of this sentence
-// said "every form", which the two marked rows contradict.)
+// type, whose legality is not in doubt.
 
 const ft7041FormPath = "P.cs"
 
@@ -116,13 +175,13 @@ public class Dict<A, B> { }
 
 public class G1<Order> { public Order Shadowed { get; set; } public Real Ok { get; set; } }
 
-public class G2<Order, Real> { public Order A { get; set; } public Real B { get; set; } public IThing C { get; set; } }
+public class G2<Order, Real> { public Order A { get; set; } public Real B { get; set; } public IThing C { get; set; } public Dict<Order, Real> M { get; set; } }
 
 public class G3<T> where T : Order { public T A { get; set; } public Order B { get; set; } }
 
 public class G4<T> where T : class, IThing, new() { public T A { get; set; } public IThing B { get; set; } }
 
-public interface G5<in Order, out Real> { Order A { get; set; } Real B { get; set; } }
+public interface G5<in Order, out Real> { Order A { set; } Real B { get; } }
 
 public struct G6<Order> { public Order A; public Real B; }
 
@@ -130,7 +189,7 @@ public record G7<Order>(Order A, Real B);
 
 public class G8<Order> { public Order? A { get; set; } public Real? B { get; set; } }
 
-public class G9<[System.Obsolete] Order> { public Order A { get; set; } public Real B { get; set; } }
+public class G9<[App.Mark] Order> { public Order A { get; set; } public Real B { get; set; } }
 
 public class G10<Order> { public Dict<Order, Real> M { get; set; } public Dict<Real, Order> R { get; set; } }
 
@@ -172,15 +231,40 @@ public record PlainR(Order X, Keep Y);
 //	                                  type_parameter_list) — this row is what
 //	                                  proves that rather than asserting it.
 //	G4.B                     [KEEP]   multi-constraint `class, IThing, new()`
-//	G5.A / G5.B              [REFUSE] VARIANCE annotation (`in` / `out`)
+//	G2.M                     [REFUSE×2 + KEEP] THE REFUSAL-COUNT ROW.
+//	                                  `Dict<Order, Real>` inside
+//	                                  `G2<Order, Real>`: BOTH type arguments name
+//	                                  a shadowed parameter, so two candidates are
+//	                                  refused and only the constructor `Dict`
+//	                                  survives. Every other row in this file
+//	                                  refuses exactly one candidate, which is
+//	                                  what let mutant MF — "refuse only the FIRST
+//	                                  shadowed candidate" — stay ALIVE across the
+//	                                  whole package while leaking
+//	                                  `G2.M -> Real`, a wrong edge that BINDS.
+//	G5.A / G5.B              [REFUSE] VARIANCE annotation (`in` / `out`), on an
+//	                                  interface. Accessors are deliberately
+//	                                  asymmetric — `Order A { set; }` and
+//	                                  `Real B { get; }` — because the symmetric
+//	                                  `{ get; set; }` this row used to carry is
+//	                                  CS1961 in both directions. See the legality
+//	                                  re-derivation at the top of this file.
 //	G6.A                     [REFUSE] struct anchor + FIELD anchor
 //	G6.B                     [KEEP]   struct anchor, unshadowed
 //	G7.A                     [REFUSE] record anchor (positional parameter)
 //	G7.B                     [KEEP]   record anchor, unshadowed
-//	G8.A                     [REFUSE] nullable `Order?`
+//	G8.A                     [REFUSE] nullable `Order?`. UNVERIFIED-LEGALITY:
+//	                                  `T?` on an UNCONSTRAINED parameter needs
+//	                                  C# 9+; the CST shape it grades
+//	                                  (`nullable_type`) is produced regardless.
 //	G8.B                     [KEEP]   nullable, unshadowed
-//	G9.A                     [REFUSE] ATTRIBUTED parameter — the form that cost
-//	                                  the scala arm its guard
+//	G9.A                     [REFUSE] ATTRIBUTED parameter, with the attribute
+//	                                  written as a QUALIFIED name (`[App.Mark]`)
+//	                                  — the form that cost the scala arm its
+//	                                  guard, and a different CST shape from
+//	                                  G13's simple name. UNVERIFIED-LEGALITY,
+//	                                  sharing G13's premise rather than
+//	                                  independently confirming it.
 //	G9.B                     [KEEP]   attributed-parameter declaration, unshadowed
 //	G13.A                    [REFUSE] parameter attributed with a SAME-FILE
 //	                                  attribute class
@@ -218,8 +302,16 @@ public record PlainR(Order X, Keep Y);
 //	G12.Pair                 [REFUSE+KEEP] tuple `(Order, Real)`, refused FIRST
 //	G12.Arr                  [REFUSE] array of the parameter; no survivor
 //	Plain.X                  [KEEP]   the over-refusal control at the PROPERTY
-//	                                  anchor: `Order` is a parameter in nine
-//	                                  declarations of this file and NOT here.
+//	                                  anchor: `Order` is bound as a type
+//	                                  parameter by ELEVEN declarations in this
+//	                                  file (G1, G2, G5, G6, G7, G8, G9, G10,
+//	                                  G11, G12, G13) and NOT here. Enumerated,
+//	                                  not counted: the sibling sentence in
+//	                                  ft7041NestSrc was corrected six→seven in
+//	                                  round 2 and THIS one was left saying
+//	                                  "nine" when it was eleven. A bare count is
+//	                                  the only form of this claim that drifts
+//	                                  silently.
 //	Plain.Y                  [LIVE]
 //	PlainS.X                 [KEEP]   the same control at the FIELD anchor
 //	PlainR.X                 [KEEP]   the same control at the RECORD anchor
@@ -230,6 +322,7 @@ func TestCsharpFieldTypeRefs_7041_ParameterFormSpace(t *testing.T) {
 	want := []string{
 		"G1.Ok -> " + cls + "Real",
 		"G2.C -> " + cls + "IThing",
+		"G2.M -> " + cls + "Dict",
 		"G3.B -> " + cls + "Order",
 		"G4.B -> " + cls + "IThing",
 		"G6.B -> " + cls + "Real",
@@ -254,13 +347,17 @@ func TestCsharpFieldTypeRefs_7041_ParameterFormSpace(t *testing.T) {
 	}
 	sort.Strings(want)
 	got := fieldTypeRefEdges(t, recs)
-	if strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("parameter-form-space edges mismatch\n got:\n%s\nwant:\n%s",
-			strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
 
-	// The [REFUSE] direction, asserted by NAME rather than left to the set
-	// comparison above, so a failure says which form leaked.
+	// THE [REFUSE] ASSERTIONS RUN FIRST, BEFORE the exact-set comparison, and
+	// that ORDER IS LOAD-BEARING. The set comparison is a `t.Fatalf`, so
+	// anything written after it is unreachable on the very failures it is there
+	// to describe: a leak produces one `edges mismatch` and ZERO of the precise
+	// messages below. Round 3 of review found exactly that shape in the
+	// mixed-candidate loop this file added in round 2 — prose crediting a
+	// mechanism that never ran. Absence was still graded, by the exact set; it
+	// was the NAMED diagnosis that was dead. Both loops are now reachable, and
+	// the set comparison stays as the backstop that catches anything neither
+	// loop names.
 	for _, field := range []string{
 		"G1.Shadowed", // plain generic class
 		"G2.A",        // first of two parameters
@@ -282,6 +379,24 @@ func TestCsharpFieldTypeRefs_7041_ParameterFormSpace(t *testing.T) {
 					"field-type edge, got %q", field, e)
 			}
 		}
+	}
+
+	// TWO refusals on ONE field, asserted per (field, TARGET). See the
+	// REFUSAL COUNT axis in the block at the top of this file.
+	for _, forbidden := range []string{
+		"G2.M -> " + cls + "Order", // first of two refusals
+		"G2.M -> " + cls + "Real",  // second of two refusals
+	} {
+		for _, e := range got {
+			if e == forbidden {
+				t.Errorf("a field naming TWO shadowed names leaked one of them: %q", e)
+			}
+		}
+	}
+
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("parameter-form-space edges mismatch\n got:\n%s\nwant:\n%s",
+			strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 
@@ -305,7 +420,7 @@ public class N1<Order> { public class Inner1 { public Order A { get; set; } publ
 
 public class N2<Order> { public class Mid2 { public class Deep2 { public Order A { get; set; } public Real B { get; set; } public Dict<Real, Order> Ml { get; set; } } } }
 
-public class N3<Order> { public class Inner3<Real> { public Order A { get; set; } public Real B { get; set; } public Keep C { get; set; } } }
+public class N3<Order> { public class Inner3<Real> { public Order A { get; set; } public Real B { get; set; } public Keep C { get; set; } public Dict<Order, Real> Md { get; set; } } }
 
 public class N4<Order> { public static class Sn4 { public static Order A; public static Real B; } }
 
@@ -351,6 +466,14 @@ public class N7 { public class G7n<Order> { public Keep K { get; set; } } public
 //	Inner3.B                 [REFUSE] the NEAREST list, when an outer list also
 //	                                  exists — grades the union, not a pick-one
 //	Inner3.C                 [LIVE]
+//	Inner3.Md                [REFUSE×2 + KEEP] REFUSAL COUNT UNDER THE ASCENT,
+//	                                  and the only row where the two refusals
+//	                                  come from TWO DIFFERENT LEVELS: `Order`
+//	                                  from the ancestor `N3<Order>`, `Real` from
+//	                                  Inner3's own `<Real>`. `Dict` survives. A
+//	                                  "refuse the first shadowed candidate" or a
+//	                                  "read one level" implementation each leak a
+//	                                  different one of the two.
 //	Sn4.A                    [REFUSE] `static` nested class.
 //	                                  UNVERIFIED-LEGALITY: C# nested types are
 //	                                  always static-in-the-Java-sense and §7.7
@@ -398,6 +521,7 @@ func TestCsharpFieldTypeRefs_7041_NestingFormSpace(t *testing.T) {
 		"Inner1.Mm -> " + cls + "Real",
 		"Inner1.Pf -> " + cls + "Real",
 		"Inner3.C -> " + cls + "Keep",
+		"Inner3.Md -> " + cls + "Dict",
 		"Inner5.C -> " + cls + "Real",
 		"N5.A -> " + cls + "Order",
 		"R6.B -> " + cls + "Real",
@@ -409,11 +533,8 @@ func TestCsharpFieldTypeRefs_7041_NestingFormSpace(t *testing.T) {
 	}
 	sort.Strings(want)
 	got := fieldTypeRefEdges(t, recs)
-	if strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("nesting-form-space edges mismatch\n got:\n%s\nwant:\n%s",
-			strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
 
+	// Reachable before the `t.Fatalf` set comparison — see the sibling test.
 	for _, field := range []string{
 		"Inner1.A", // depth 1
 		"Deep2.A",  // depth 2
@@ -446,12 +567,19 @@ func TestCsharpFieldTypeRefs_7041_NestingFormSpace(t *testing.T) {
 		"Inner1.Pf -> " + cls + "Order", // refused FIRST,  field anchor,    depth 1
 		"Deep2.Ml -> " + cls + "Order",  // refused LAST,   property anchor, depth 2
 		"R6.Mr -> " + cls + "Order",     // refused MIDDLE, RECORD anchor,   depth 1
+		"Inner3.Md -> " + cls + "Order", // TWO refusals, from an ANCESTOR ...
+		"Inner3.Md -> " + cls + "Real",  // ... and from the NEAREST list
 	} {
 		for _, e := range got {
 			if e == forbidden {
 				t.Errorf("mixed-candidate row leaked the shadowed candidate: %q", e)
 			}
 		}
+	}
+
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("nesting-form-space edges mismatch\n got:\n%s\nwant:\n%s",
+			strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 
