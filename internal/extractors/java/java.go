@@ -1360,12 +1360,33 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 // the one-stage form.
 //
 // NESTED SHADOWING is treated identically to sibling reuse, because a flat
-// walk cannot tell them apart. Java forbids an inner block from redeclaring a
-// name already in scope, so a compilable program cannot contain that case;
-// DERIVED FROM THE JLS (§6.4) AND UNDERIVED BY EXECUTION — no javac exists in
-// this environment. If the rule holds, refusing costs nothing real; if it does
-// not, the cost is an outer binding degraded to a bare leaf, the honest
-// direction.
+// walk cannot tell them apart, AND IT COSTS REAL RECALL. An earlier revision of
+// this comment said Java "forbids an inner block from redeclaring a name
+// already in scope, so a compilable program cannot contain that case". That is
+// FALSE, and it was load-bearing — it is how a reader concludes there is
+// nothing here to grade. JLS §6.4 restricts redeclaration only within the
+// DIRECTLY ENCLOSING method, constructor or initializer block; a local or
+// anonymous CLASS BODY is a new class scope and may legally shadow. The calls
+// inside such a body are attributed to the enclosing method entity, so this
+// flat walk reaches straight across the class boundary:
+//
+//	Order o = new Order();
+//	o.a();                                   // was Order.a, now bare `a`
+//	Runnable r = new Runnable() {
+//	  public void run() { Customer o = new Customer(); o.b(); }
+//	};
+//
+// MEASURED, on compilable Java, with the control (inner variable renamed)
+// still emitting `Order.a` and `Customer.b` — so the loss is caused by
+// cross-class-boundary poisoning, not by the fixture. Recorded as a FIXTURE
+// (TestJava7094_ClassBodyShadowingCostsRecall) rather than as prose, so the
+// cost is observed and moves when the behaviour does.
+//
+// The behaviour is left as-is deliberately: refusing across a class boundary
+// is defensible and recall loss is the honest direction, whereas the
+// alternative is guessing which of two real types a name has. Recovering it
+// needs the symbol table described below, which would stop the walk at the
+// class boundary for free.
 //
 // WHAT A REAL SYMBOL TABLE WOULD COST, since refusal is the cheaper of two
 // defensible answers and the more expensive one is not wrong: a block-scoped

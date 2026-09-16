@@ -273,3 +273,72 @@ class Svc {
 `)
 	j7094MustCall(t, rels, "Order.a", "Order.b")
 }
+
+// THE COST OF REFUSING, RECORDED AS A FIXTURE RATHER THAN AS PROSE.
+//
+// An earlier revision of collectLocalVarTypes' comment claimed Java forbids an
+// inner block from redeclaring a name already in scope, so "a compilable
+// program cannot contain that case". FALSE: JLS §6.4 restricts redeclaration
+// only within the DIRECTLY ENCLOSING method, constructor or initializer block.
+// A local or anonymous CLASS BODY is a new class scope and may legally shadow.
+// Calls inside such a body are attributed to the ENCLOSING METHOD entity, so
+// the flat walk reaches across the class boundary and poisons the outer name.
+//
+// This test does not argue that the refusal is wrong — recall loss is the
+// honest direction, and the alternative is guessing which of two real types a
+// name has at a site. It exists so the cost is OBSERVED and moves when the
+// behaviour moves: a real block-scoped symbol table would stop at the class
+// boundary and `Order.a` would come back, at which point this test fails and
+// is updated to assert the recovery.
+func TestJava7094_ClassBodyShadowingCostsRecall(t *testing.T) {
+	// Anonymous class body shadowing the enclosing method's local.
+	anon := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() {
+      public void run() { Customer o = new Customer(); o.b(); }
+    };
+  }
+}
+`)
+	// THE COST: the outer `o.a()` loses its receiver. Asserted, not tolerated.
+	j7094MustCall(t, anon, "a", "b")
+	j7094MustNotCall(t, anon, "Order.a", "Customer.b", "Order.b", "Customer.a")
+
+	// Local (named) class body — same shape, same cost.
+	local := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    class Inner { void go() { Customer o = new Customer(); o.b(); } }
+  }
+}
+`)
+	j7094MustCall(t, local, "a", "b")
+	j7094MustNotCall(t, local, "Order.a", "Customer.b")
+
+	// CONTROL — rename the inner variable and both receivers come back. This
+	// is what proves the loss above is caused by cross-class-boundary
+	// poisoning and not by anything else in the fixture.
+	control := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() {
+      public void run() { Customer c = new Customer(); c.b(); }
+    };
+  }
+}
+`)
+	j7094MustCall(t, control, "Order.a", "Customer.b")
+}
