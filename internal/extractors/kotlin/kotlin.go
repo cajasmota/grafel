@@ -225,9 +225,11 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		}
 		classIdx := len(*out)
 		*out = append(*out, rec)
-		// #6912 — the type parameters this declaration introduces, so a field
-		// typed `T` never binds to a same-file `class T`.
-		classTypeParams := kotlinTypeParameterNames(node, file.Content)
+		// #6912 — the type parameters VISIBLE to this declaration's fields, so
+		// a field typed `T` never binds to a same-file `class T`. Visible, not
+		// merely declared: an `inner class` captures its enclosing class's
+		// list and declares none of its own.
+		classTypeParams := kotlinVisibleTypeParameterNames(node, file.Content)
 		// emit Spring stereotype service entity alongside the class.
 		if svc, ok := buildSpringService(node, file, rec.Name); ok {
 			*out = append(*out, svc)
@@ -327,8 +329,11 @@ func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx
 		}
 		classIdx := len(*out)
 		*out = append(*out, rec)
-		// An object declaration takes no type parameters (Kotlin forbids it),
-		// so the #6912 shadow set is empty here.
+		// An object declaration takes no type parameters (Kotlin forbids it)
+		// and CAPTURES none either — it cannot be `inner`, so an enclosing
+		// generic class's `T` is not in scope for its members. Both halves,
+		// because only the second is a #6912 question; the shadow set is empty
+		// here for both reasons and the nesting-form table grades it.
 		var classTypeParams map[string]bool
 		body := findClassBody(node)
 		if body != nil {

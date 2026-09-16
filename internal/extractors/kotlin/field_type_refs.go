@@ -73,6 +73,23 @@ import (
 //     extension-carrier construct at all, which is the single reason this arm
 //     does not need arm G's Metadata marker.
 //
+// TWO FORMS THAT DECLARE A TYPE AND ARE UNREACHABLE AS TARGETS ANYWAY, named
+// here so this audit is not presented as exhaustive while omitting them. Both
+// are pre-existing extractor ceilings, neither is introduced or widened here,
+// and both are RECALL floors — a missing edge, never a wrong one:
+//
+//   - `fun interface Cb` — extracted as SCOPE.Operation/function, not as a
+//     Component, so `val c: Cb` produces no edge. It is also a COLLIDER: it
+//     makes a same-named `typealias Cb` ambiguous on the alias tier, which the
+//     all-kinds count there already handles correctly.
+//   - a LOCAL class (`fun f() { class Local(val o: Order) }`) — mints no
+//     entity, so it is neither a target nor a source: its `val o` is not a
+//     field record at all, and the type parameters of the enclosing generic
+//     function are therefore never a shadow question.
+//
+// Both are graded by TestKotlinFieldTypeRefs_UnmintedDeclarationForms, which
+// asserts the no-entity / wrong-kind premise rather than only the absent edge.
+//
 // THE SOURCE ENDPOINT, audited too (arm cpp found 68 of 254 "fields" were
 // member FUNCTIONS with the return type captured as field_type). Kotlin's field
 // records come from exactly two producers, both genuine property declarations:
@@ -195,8 +212,15 @@ var kotlinComponentAddressFamily = map[string]bool{
 // candidate `T`, and a file that also declares `class T` would get a wrong edge
 // — the over-fire arm F had to pin as KNOWN-WRONG because Java's grammar gives a
 // type parameter and a type reference the same node. Kotlin's does too, but the
-// declaration's `type_parameters` list is right there at the emit site, so the
-// shadow is refused instead of documented.
+// `type_parameters` lists are reachable from the emit site, so the shadow is
+// refused instead of documented.
+//
+// The set refused is the one VISIBLE at the declaration, not the one it
+// declares: an `inner class` captures its enclosing class's parameters and
+// declares none of its own, so reading the immediate list alone emitted a wrong
+// edge that BOUND (review finding F1). kotlinVisibleTypeParameterNames walks
+// the enclosing-declaration chain and states exactly where it stops, because
+// stopping too late deletes a correct edge instead.
 func kotlinFieldTypeCandidates(typeNode ts.Node, src []byte, typeParams map[string]bool) []string {
 	var out []string
 	var walkType func(n ts.Node)
@@ -238,8 +262,120 @@ func kotlinFieldTypeCandidates(typeNode ts.Node, src []byte, typeParams map[stri
 	return out
 }
 
+// kotlinVisibleTypeParameterNames returns every type-parameter name in scope
+// for the fields of `declNode` — its OWN list, plus the lists it CAPTURES.
+//
+// The immediate list is not the whole scope. Kotlin has exactly one nested form
+// that captures an enclosing declaration's type parameters, and it is spelled:
+//
+//	class Cache<Key> { inner class Entry { val k: Key } }  // Key is Cache's
+//
+// `Entry` declares nothing, so reading only the immediate `type_parameters`
+// gives an EMPTY shadow set and `k` binds to a same-file `class Key` — a wrong
+// edge that BINDS, which is invisible to every instrument on this issue (a bound
+// wrong edge never reaches bug-extractor; #7056). That was review finding F1.
+//
+// THE CHAIN STOPS EXACTLY WHERE KOTLIN'S SCOPING DOES, because over-refusing
+// deletes a CORRECT edge and a missing edge has no symptom at all — arm cpp's
+// equivalent refusal was wrong in both directions and only enumeration found it
+// (#7057). So the walk ascends only while the current declaration is `inner`,
+// and only to the nearest enclosing DECLARATION of any sort:
+//
+//	inner class in a generic class      → captures            (ascend)
+//	inner class in an inner class       → captures both levels (ascend twice)
+//	plain nested class                  → captures NOTHING; `T` there really
+//	                                      does name a same-file `class T`
+//	inner class whose enclosing decl is
+//	  an `object` / `companion object`  → captures NOTHING; an object holds no
+//	                                      type parameters and captures none.
+//	                                      Ascending to the nearest enclosing
+//	                                      CLASS rather than the nearest
+//	                                      enclosing DECLARATION would jump over
+//	                                      it and over-refuse.
+//	local class in a generic function   → mints no entity at all, so no field
+//	                                      and no edge in either direction; a
+//	                                      stated limit, not a rule.
+//
+// Every one of those forms is graded in both directions, with a real-type
+// positive control in each fixture, by TestKotlinFieldTypeRefs_NestingFormSpace.
+func kotlinVisibleTypeParameterNames(declNode ts.Node, src []byte) map[string]bool {
+	out := kotlinTypeParameterNames(declNode, src)
+	for cur := declNode; kotlinDeclarationIsInner(cur); {
+		encl := kotlinEnclosingDeclaration(cur)
+		// Only a CLASS carries type parameters to capture. Anything else —
+		// an object, a companion object, a function — ends the chain.
+		if encl == nil || encl.Type() != "class_declaration" {
+			return out
+		}
+		for name := range kotlinTypeParameterNames(encl, src) {
+			out[name] = true
+		}
+		cur = encl
+	}
+	return out
+}
+
+// kotlinDeclarationIsInner reports whether a declaration carries the `inner`
+// modifier, read from the CST (`modifiers > class_modifier > inner`) rather
+// than by scanning the declaration's source text, which would also match the
+// word inside a nested declaration's own header.
+func kotlinDeclarationIsInner(declNode ts.Node) bool {
+	if declNode == nil {
+		return false
+	}
+	for i := 0; i < int(declNode.ChildCount()); i++ {
+		mods := declNode.Child(i)
+		if mods.Type() != "modifiers" {
+			continue
+		}
+		for j := 0; j < int(mods.ChildCount()); j++ {
+			cm := mods.Child(j)
+			if cm.Type() != "class_modifier" {
+				continue
+			}
+			for k := 0; k < int(cm.ChildCount()); k++ {
+				if cm.Child(k).Type() == "inner" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// kotlinDeclarationBoundaries is the set of CST node types that END a type
+// parameter scope. The ascent in kotlinVisibleTypeParameterNames stops at the
+// NEAREST of these, and captures only when that nearest one is a class — so an
+// `object` or a `companion object` sitting between an inner class and a generic
+// class blocks the capture, as Kotlin does.
+var kotlinDeclarationBoundaries = map[string]bool{
+	"class_declaration":     true,
+	"object_declaration":    true,
+	"companion_object":      true,
+	"function_declaration":  true,
+	"anonymous_function":    true,
+	"object_literal":        true,
+	"secondary_constructor": true,
+}
+
+// kotlinEnclosingDeclaration returns the nearest ancestor declaration of
+// `node`, or nil at the top level.
+func kotlinEnclosingDeclaration(node ts.Node) ts.Node {
+	if node == nil {
+		return nil
+	}
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		if kotlinDeclarationBoundaries[p.Type()] {
+			return p
+		}
+	}
+	return nil
+}
+
 // kotlinTypeParameterNames returns the type-parameter names a class/object
-// declaration introduces, e.g. {"T", "R"} for `class Holder<T, R>`.
+// declaration introduces ITSELF, e.g. {"T", "R"} for `class Holder<T, R>`. It
+// is the immediate list only; kotlinVisibleTypeParameterNames adds the captured
+// ones and is what the emit sites use.
 func kotlinTypeParameterNames(declNode ts.Node, src []byte) map[string]bool {
 	out := map[string]bool{}
 	if declNode == nil {

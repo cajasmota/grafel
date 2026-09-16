@@ -245,8 +245,16 @@ class Holder {
 func TestKotlinFieldTypeRefs_TypeParameterIsNeverATargetEvenWhenShadowed(t *testing.T) {
 	// `class Holder<T>` declares T as a type parameter. A file that ALSO
 	// declares `class T` must not make `val item: T` bind to it. Java's arm
-	// pinned this as a KNOWN OVER-FIRE; Kotlin refuses it, because the
-	// declaration's `type_parameters` list is in hand at the emit site.
+	// pinned this as a KNOWN OVER-FIRE; Kotlin refuses it for the type
+	// parameters VISIBLE at the declaration, because it has the
+	// `type_parameters` list in hand at the emit site (see the nesting-form
+	// table below for exactly which enclosing lists count as visible).
+	//
+	// THIS TEST GRADES THE PRIMARY-CONSTRUCTOR ANCHOR ONLY. The body-property
+	// anchor is a SECOND call site passing the same shadow set and it is
+	// graded by its own test below — removing the filter from one anchor left
+	// the other's test green (review finding F2, mutant MR-1b), which is the
+	// mutually-masking-guards failure applied to this very guard.
 	src := `package p
 
 class T
@@ -260,6 +268,223 @@ class Holder<T>(val item: T, val real: Order)
 		// so the absent `item -> T` edge is a refusal and not a silent no-op.
 		"Holder.real -> scope:component:class:kotlin:H.kt:Order",
 	})
+}
+
+func TestKotlinFieldTypeRefs_TypeParameterIsNeverATargetFromABodyProperty(t *testing.T) {
+	// The BODY-PROPERTY anchor of the same guard, graded separately from the
+	// primary-constructor anchor above. `buildProperty` receives the shadow
+	// set through its own argument at its own call site (kotlin.go's
+	// class-body arm), so a mutant that drops it there — MR-1b in the review
+	// — must fail HERE and nowhere else.
+	//
+	// Held constant against the constructor row: the same shadow name `T`,
+	// the same rival `class T`, the same positive control. Only the ANCHOR
+	// varies, which is the axis the constructor row holds fixed.
+	src := `package p
+
+class T
+class Order
+
+class Holder<T> {
+    val item: T = q
+    val real: Order = z
+}
+`
+	recs := ktExtract(t, "H.kt", src)
+	ktAssertEdges(t, ktFieldTypeEdges(recs), []string{
+		"Holder.real -> scope:component:class:kotlin:H.kt:Order",
+	})
+}
+
+func TestKotlinFieldTypeRefs_NestingFormSpace(t *testing.T) {
+	// THE NESTING-FORM SPACE, enumerated in BOTH directions (review finding
+	// F1). Kotlin scoping is not "the immediate declaration's list": an
+	// `inner class` — and only an `inner class` — captures its enclosing
+	// CLASS's type parameters, so a field typed by one of them must be
+	// refused even though the shadow name appears nowhere on the inner
+	// declaration itself. Every other nesting form does NOT capture, and
+	// refusing there would silently DELETE a correct edge — a missing edge
+	// has no symptom, which is how arm cpp's equivalent refusal was wrong in
+	// both directions at once (#7057).
+	//
+	// So every row below carries `real: Order`, a real same-file type, as a
+	// positive control: a row asserting only an absence would pass if the
+	// pass emitted nothing at all.
+	//
+	// VARIED: the nesting form and whether the enclosing declaration is
+	// generic. HELD CONSTANT: the shadow name (`T`), the rival declaration
+	// (`class T`), the anchor (primary-constructor `val`, except the two rows
+	// that say otherwise), and the file.
+	cases := []struct {
+		name string
+		src  string
+		want []string
+	}{
+		{
+			// CAPTURES — the defect F1 named. `Inner` is inner, so `T` here
+			// is `Outer`'s type parameter, not `class T`.
+			name: "inner class in a generic outer, constructor anchor",
+			src: `class T
+class Order
+class Outer<T> {
+    inner class Inner(val x: T, val real: Order)
+}`,
+			want: []string{"Inner.real -> scope:component:class:kotlin:N.kt:Order"},
+		},
+		{
+			// CAPTURES — same, through the body-property anchor, and with the
+			// shadow name spelled as an ordinary type name (`Key`) to show
+			// this is not an exotic spelling.
+			name: "inner class in a generic outer, body-property anchor",
+			src: `class Key
+class Order
+class Cache<Key> {
+    inner class Entry {
+        val k: Key = q
+        val real: Order = z
+    }
+}`,
+			want: []string{"Entry.real -> scope:component:class:kotlin:N.kt:Order"},
+		},
+		{
+			// CAPTURES — two levels of `inner`. `C` captures `B`'s scope and
+			// `B`, being inner too, captures `A`'s.
+			name: "inner class inside an inner class, generic grandparent",
+			src: `class T
+class Order
+class A<T> {
+    inner class B {
+        inner class C(val x: T, val real: Order)
+    }
+}`,
+			want: []string{"C.real -> scope:component:class:kotlin:N.kt:Order"},
+		},
+		{
+			// DOES NOT CAPTURE — the outer declares no type parameters at
+			// all, so `T` is the same-file `class T` and the edge is CORRECT.
+			// This row is what fails if the walk adds the enclosing list
+			// unconditionally rather than reading it.
+			name: "inner class in a NON-generic outer",
+			src: `class T
+class Order
+class Outer {
+    inner class Inner(val x: T, val real: Order)
+}`,
+			want: []string{
+				"Inner.real -> scope:component:class:kotlin:N.kt:Order",
+				"Inner.x -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// DOES NOT CAPTURE — a nested class WITHOUT `inner` has no access
+			// to the outer's type parameters (Kotlin rejects `val x: T`
+			// there as an unresolved reference to the parameter), so `T`
+			// names the same-file class and the edge is CORRECT. The
+			// over-refusal direction.
+			name: "plain nested class in a generic outer",
+			src: `class T
+class Order
+class Outer<T> {
+    class Nested(val x: T, val real: Order)
+}`,
+			want: []string{
+				"Nested.real -> scope:component:class:kotlin:N.kt:Order",
+				"Nested.x -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// DOES NOT CAPTURE — same, nested inside a generic INTERFACE
+			// rather than a generic class. The enclosing declaration's node
+			// type is the same (`class_declaration`), so this row grades that
+			// the rule keys on `inner`, not on the enclosing subtype.
+			name: "plain nested class in a generic interface",
+			src: `class T
+class Order
+interface I<T> {
+    class N(val x: T, val real: Order)
+}`,
+			want: []string{
+				"N.real -> scope:component:class:kotlin:N.kt:Order",
+				"N.x -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// DOES NOT CAPTURE — an `object` declaration cannot take type
+			// parameters and does not capture the enclosing class's, so its
+			// body property's `T` is the same-file class. CORRECT edge.
+			name: "object declaration inside a generic class",
+			src: `class T
+class Order
+class Outer<T> {
+    object Obj {
+        val x: T = q
+        val real: Order = z
+    }
+}`,
+			want: []string{
+				"Obj.real -> scope:component:class:kotlin:N.kt:Order",
+				"Obj.x -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// DOES NOT CAPTURE ACROSS AN OBJECT — `P` is inner, but the
+			// declaration it is inner TO is an `object`, which holds no type
+			// parameters and captures none of `A`'s. Walking to the nearest
+			// enclosing CLASS instead of the nearest enclosing DECLARATION
+			// would over-refuse here and delete a correct edge.
+			name: "inner class inside an object inside a generic class",
+			src: `class T
+class Order
+class A<T> {
+    object O {
+        inner class P(val z: T, val real: Order)
+    }
+}`,
+			want: []string{
+				"P.real -> scope:component:class:kotlin:N.kt:Order",
+				"P.z -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// DOES NOT CAPTURE ACROSS A NON-INNER NESTED CLASS — the chain
+			// STOPS at `M`, which is not inner. `N` sees `M`'s parameters
+			// (none), never `A`'s.
+			name: "inner class inside a plain nested class inside a generic class",
+			src: `class T
+class Order
+class A<T> {
+    class M {
+        inner class N(val y: T, val real: Order)
+    }
+}`,
+			want: []string{
+				"N.real -> scope:component:class:kotlin:N.kt:Order",
+				"N.y -> scope:component:class:kotlin:N.kt:T",
+			},
+		},
+		{
+			// CAPTURES, and the inner's OWN list shadows the outer's. The
+			// refusal is right for either reason, so this row is here to pin
+			// that a union never loses the own list — a walk that REPLACED
+			// the own set with the captured one would still refuse `x`, so
+			// the row also carries `w: W`, the inner's SECOND own parameter,
+			// which only the own list can refuse.
+			name: "inner class with its own shadowing type parameter",
+			src: `class T
+class W
+class Order
+class A<T> {
+    inner class B<T, W>(val x: T, val w: W, val real: Order)
+}`,
+			want: []string{"B.real -> scope:component:class:kotlin:N.kt:Order"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			recs := ktExtract(t, "N.kt", "package p\n\n"+c.src+"\n")
+			ktAssertEdges(t, ktFieldTypeEdges(recs), c.want)
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -363,28 +588,61 @@ class Holder {
 // ---------------------------------------------------------------------------
 
 func TestKotlinFieldTypeRefs_TargetKindSpace(t *testing.T) {
-	// Each row declares one target construct and one field typed by it.
+	// Each row declares one target construct and one field typed by it, and
+	// names the Kind/Subtype the extractor ACTUALLY mints for it.
+	//
+	// That column exists because the source spelling and the extracted subtype
+	// are two different axes, and the labels alone conflated them: `annotation
+	// class` / `expect class` / `external class` — and `sealed`, `value` and
+	// `abstract`, probed identically — all land on SCOPE.Component/**class**,
+	// byte-identical to the plain `class` row (review, §8). Those rows vary the
+	// SOURCE SPELLING and nothing else; `wantKind` says so per row, so a label
+	// can no longer claim a distinction the content does not carry. The rows
+	// that genuinely move the extracted subtype are class / data_class /
+	// interface / object / enum / type_alias — six, not eleven.
 	rows := []struct {
 		label string
 		decl  string
-		want  bool
+		// wantRecords is EVERY record the extractor mints named `Tgt`, as
+		// "Kind/Subtype" in emission order — asserted so the row's claim
+		// about WHICH kind it exercises is observed rather than asserted in
+		// a comment. Empty = mints nothing named Tgt, which is itself the
+		// premise of that row's absent edge.
+		wantRecords []string
+		want        bool
 	}{
-		{"class", "class Tgt", true},
-		{"data class", "data class Tgt(val n: Int)", true},
-		{"interface", "interface Tgt", true},
-		{"object", "object Tgt", true},
-		{"enum class", "enum class Tgt { A, B }", true},
-		{"annotation class", "annotation class Tgt", true},
-		{"expect class", "expect class Tgt", true},
-		{"external class", "external class Tgt", true},
-		{"typealias", "typealias Tgt = String", true},
-		{"undeclared (nothing named Tgt)", "class Other", false},
-		{"top-level function", "fun Tgt(): Int = 1", false},
+		{"class", "class Tgt", []string{"SCOPE.Component/class"}, true},
+		{"data class", "data class Tgt(val n: Int)", []string{"SCOPE.Component/data_class"}, true},
+		{"interface", "interface Tgt", []string{"SCOPE.Component/interface"}, true},
+		{"object", "object Tgt", []string{"SCOPE.Component/object"}, true},
+		// The enum row is the one that mints TWO records; the edge binding
+		// anyway is the component-family half of the ambiguity rule.
+		{"enum class", "enum class Tgt { A, B }", []string{"SCOPE.Enum/enum", "SCOPE.Component/enum"}, true},
+		{"typealias", "typealias Tgt = String", []string{"SCOPE.Schema/type_alias"}, true},
+		// Source-spelling rows: same extracted subtype as `class` above.
+		{"annotation class (extracted as class)", "annotation class Tgt", []string{"SCOPE.Component/class"}, true},
+		{"expect class (extracted as class)", "expect class Tgt", []string{"SCOPE.Component/class"}, true},
+		{"external class (extracted as class)", "external class Tgt", []string{"SCOPE.Component/class"}, true},
+		{"sealed class (extracted as class)", "sealed class Tgt", []string{"SCOPE.Component/class"}, true},
+		{"value class (extracted as class)", "value class Tgt(val n: Int)", []string{"SCOPE.Component/class"}, true},
+		{"abstract class (extracted as class)", "abstract class Tgt", []string{"SCOPE.Component/class"}, true},
+		{"undeclared (nothing named Tgt)", "class Other", nil, false},
+		{"top-level function", "fun Tgt(): Int = 1", []string{"SCOPE.Operation/function"}, false},
 	}
 	for _, row := range rows {
 		t.Run(row.label, func(t *testing.T) {
 			src := "package p\n\n" + row.decl + "\n\nclass Holder {\n    val f: Tgt = x\n}\n"
 			recs := ktExtract(t, "H.kt", src)
+			var gotRecords []string
+			for i := range recs {
+				if recs[i].Name == "Tgt" {
+					gotRecords = append(gotRecords, recs[i].Kind+"/"+recs[i].Subtype)
+				}
+			}
+			if strings.Join(gotRecords, ",") != strings.Join(row.wantRecords, ",") {
+				t.Fatalf("%s: extractor minted Tgt as %v, row claims %v",
+					row.label, gotRecords, row.wantRecords)
+			}
 			got := ktFieldTypeEdges(recs)
 			if row.want {
 				ktAssertEdges(t, got, []string{
@@ -422,6 +680,58 @@ class Holder {
 		if recs[i].Name == "Named" || recs[i].Name == "Companion" {
 			t.Fatalf("companion object minted an entity named %q — the "+
 				"refusal above rests on it minting none", recs[i].Name)
+		}
+	}
+}
+
+func TestKotlinFieldTypeRefs_UnmintedDeclarationForms(t *testing.T) {
+	// Two Kotlin forms that DO declare something and are unreachable to this
+	// pass anyway. They are named because the not-a-declaration audit in
+	// field_type_refs.go is presented as an enumeration, and an enumeration
+	// with silent omissions is the same prose defect as an unqualified claim.
+	// Both are RECALL floors (a missing edge), not over-fires, and both are
+	// pre-existing extractor behaviour this arm neither introduced nor widened.
+	//
+	// Each half asserts its PREMISE — the wrong kind, the absent entity — so
+	// it cannot pass vacuously if the extractor later starts minting them.
+	src := `package p
+
+class Order
+
+fun interface Cb {
+    fun go()
+}
+
+fun outer() {
+    class Local(val o: Order)
+}
+
+class Holder {
+    val c: Cb = x
+    val real: Order = y
+}
+`
+	recs := ktExtract(t, "H.kt", src)
+	ktAssertEdges(t, ktFieldTypeEdges(recs), []string{
+		// The positive control: the pass IS emitting in this file, so the
+		// two absences below are refusals and not a dead pass.
+		"Holder.real -> scope:component:class:kotlin:H.kt:Order",
+	})
+	for i := range recs {
+		switch recs[i].Name {
+		case "Cb":
+			// The premise of `val c: Cb` producing nothing: `fun interface`
+			// is extracted as an Operation, which is not an admissible
+			// target kind. If it ever becomes a Component, this fires.
+			if recs[i].Kind != "SCOPE.Operation" {
+				t.Fatalf("fun interface Cb minted %s/%s — the missing "+
+					"`c -> Cb` edge rests on it being a SCOPE.Operation",
+					recs[i].Kind, recs[i].Subtype)
+			}
+		case "Local", "Local.o":
+			t.Fatalf("local class minted %q (%s/%s) — this arm's silence "+
+				"about local classes rests on them minting nothing",
+				recs[i].Name, recs[i].Kind, recs[i].Subtype)
 		}
 	}
 }
