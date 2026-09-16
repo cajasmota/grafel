@@ -51,7 +51,10 @@ var skipExemptions = map[string]string{
 	"internal/engine": "parses under a language computed at runtime " +
 		"(http_endpoint_client_ast.go and http_endpoint_client_constscope_6552.go " +
 		"pass a tsLang variable), so it can receive ANY grammar. Measured, not " +
-		"argued: mapping it to the java/kotlin/python it names as constants " +
+		"argued, and RE-measured on every run by " +
+		"TestEngineExemptionIsMeasuredNotArgued, which fails if these numbers " +
+		"drift (they were first taken at 84 sites and the package is now at " +
+		"92): mapping it to the java/kotlin/python it names as constants " +
 		"produces 15 FALSE failures over 14 distinct names — arrow_function, " +
 		"lexical_declaration, member_expression and 11 more JS/TS names that " +
 		"are live under the grammars the runtime path reaches. Unmappable by " +
@@ -104,7 +107,8 @@ func (m Miss) String() string {
 type Result struct {
 	Sites          []Site
 	Dynamic        []Site
-	Sinks          []string // the discovered helper parameter positions
+	Sinks          []string // parameter positions whose ARGUMENT is a node-type literal
+	Sources        []string // parameter positions that RECEIVE a node-type value
 	Registrations  []Registration
 	GrammarsForDir map[string][]string
 
@@ -146,6 +150,7 @@ func Evaluate(scan Scan, regs []Registration, binds []ParseBinding, grammars map
 		Sites:          scan.Sites,
 		Dynamic:        scan.Dynamic,
 		Sinks:          scan.Sinks,
+		Sources:        scan.Sources,
 		Registrations:  regs,
 		GrammarsForDir: map[string][]string{},
 	}

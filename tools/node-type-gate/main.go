@@ -122,6 +122,24 @@
 // in one of those shapes, the gate will not check it; prefer a form it sees, or
 // extend the scan and grade the extension.
 //
+// # The one soundness limit
+//
+// Everything above is completeness. There is exactly one place this tool can be
+// WRONG rather than merely blind, and it is the `sources` fixpoint's unanimity
+// rule: a parameter becomes a node-type position when every call site passes a
+// node type, and "every call site" means every one calleeFunc resolves in a
+// package the loader read. Calls through a func value are not resolved, and
+// test files are not loaded (Tests: false). A helper whose only ordinary-string
+// caller sits in its own _test.go therefore looks unanimous when it is not, and
+// its literals get resolved against a grammar they were never node types for —
+// which can report a dead literal that is not one.
+//
+// It is latent, not live: no such shape is in the tree today. It is written
+// here rather than left to the reader because three review rounds of this file
+// have each turned up a comment that was false in the permissive direction, and
+// an unnamed soundness limit is the most expensive kind. The fix, if it ever
+// fires, is to load tests and model func values — not to add an exception.
+//
 // # Usage
 //
 //	go run ./tools/node-type-gate              # gate; exit 1 on a new dead literal

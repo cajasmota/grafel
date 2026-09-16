@@ -47,10 +47,15 @@ type Site struct {
 type Scan struct {
 	Sites   []Site
 	Dynamic []Site // same positions, Lit == "" — a variable or call reaches the sink
-	// Sinks is the discovered helper surface: "pkg.Func#i" for every parameter
-	// position the fixpoint decided is a node type. Reported so a failure can
-	// say whether the fixpoint found nothing or found the wrong thing.
-	Sinks []string
+	// Sinks and Sources are the discovered helper surface, "pkg.Func#i" per
+	// parameter position: Sinks are the positions whose ARGUMENT is a
+	// node-type literal, Sources the positions that RECEIVE a node-type value.
+	// Both are printed by -report under "helper surface", which is what makes
+	// "reported" true of them — a field nobody prints is exactly as invisible
+	// as a surface nobody scans, and "the fixpoint found nothing" must not look
+	// like "the fixpoint found the wrong thing".
+	Sinks   []string
+	Sources []string
 }
 
 // nodeTypeIfacePath is the package that declares the CST node interface every
@@ -78,10 +83,30 @@ type scanner struct {
 	// literals compared against that parameter INSIDE the callee are node
 	// types. `isKotlinDeclType(nx.Type())` is the real instance.
 	//
-	// A position qualifies only when it has at least one call site and EVERY
-	// call site passes a node-type value. A helper called once with n.Type()
-	// and once with an ordinary string is polymorphic, and treating its
-	// literals as node types would invent failures.
+	// A position qualifies only when it has at least one VISIBLE call site and
+	// every visible call site passes a node-type value. A helper called once
+	// with n.Type() and once with an ordinary string is polymorphic, and
+	// treating its literals as node types would invent failures.
+	//
+	// "VISIBLE" is doing real work in that sentence and is the fixpoint's one
+	// SOUNDNESS limit — every other limit in this tool is completeness-only.
+	// A call site is visible when calleeFunc resolves it, i.e. it is a direct
+	// call through an identifier or a selector, in a package the loader read.
+	// Two shapes are therefore NOT counted:
+	//
+	//	call through a func value   g := f; g(someString)
+	//	call from a _test.go        the loader runs with Tests: false
+	//
+	// The second is the likelier one in practice. If a helper's only
+	// ordinary-string caller lives in its own test file, the rule sees a
+	// unanimous node-type population that is not unanimous, resolves a plain
+	// string as a node type, and can report a dead literal that is not one —
+	// telling an author to file an issue for a non-defect.
+	//
+	// Latent, not live: no such shape exists in the tree today, which is what
+	// makes the narrow reading affordable. Widening it means loading tests
+	// (Tests: true roughly doubles the load) and modelling func values; if this
+	// ever fires wrongly, that is the fix, not an exception list.
 	sources map[paramKey]bool
 	// argSites / argNTSites count, per parameter position, how many call sites
 	// there are and how many of them pass a node-type value.
@@ -568,9 +593,12 @@ func (s *scanner) Run() Scan {
 			}
 		}
 		s.argSites, s.argNTSites = argSites, argNT
-		// EVERY call site must carry a node type. A helper called once with
-		// n.Type() and once with an ordinary string is polymorphic, and
-		// resolving its literals as node types would invent failures.
+		// Every VISIBLE call site must carry a node type — visible meaning
+		// resolved by calleeFunc, in a package the loader read (see the
+		// soundness note on the sources field; test files are not loaded).
+		// A helper called once with n.Type() and once with an ordinary string
+		// is polymorphic, and resolving its literals as node types would
+		// invent failures.
 		for k, n := range argSites {
 			if n > 0 && argNT[k] == n && !s.sources[k] {
 				s.sources[k] = true
@@ -610,7 +638,11 @@ func (s *scanner) Run() Scan {
 	for k := range s.sinks {
 		res.Sinks = append(res.Sinks, fmt.Sprintf("%s.%s#%d", k.fn.Pkg().Path(), k.fn.Name(), k.idx))
 	}
+	for k := range s.sources {
+		res.Sources = append(res.Sources, fmt.Sprintf("%s.%s#%d", k.fn.Pkg().Path(), k.fn.Name(), k.idx))
+	}
 	sort.Strings(res.Sinks)
+	sort.Strings(res.Sources)
 	sort.Slice(res.Sites, func(i, j int) bool { return siteLess(res.Sites[i], res.Sites[j]) })
 	sort.Slice(res.Dynamic, func(i, j int) bool { return siteLess(res.Dynamic[i], res.Dynamic[j]) })
 	return res

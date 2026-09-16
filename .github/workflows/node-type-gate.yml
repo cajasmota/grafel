@@ -90,11 +90,19 @@ jobs:
       # alias shapes (a local and a parameter holding a node type) are seen;
       # and that a polymorphic string helper is NOT mistaken for one.
       #
-      # The reporting path is graded here too, separately from detection. Three
+      # The reporting path is graded here too, separately from detection. FIVE
       # times in this PR the ungraded part turned out to be the printer: a
       # Result field nobody prints is exactly as invisible as a surface nobody
-      # scans, and deleting the whole skipped-surface block once left the suite
-      # green.
+      # scans, deleting the whole skipped-surface block once left the suite
+      # green, and grading a per-row label turned out not to grade the counter
+      # that aggregates those same rows. Both printers are now driven on
+      # hand-built inputs, and every number derived from other printed numbers
+      # is re-derived from the emitted text rather than matched as a string —
+      # a wrong number prints a perfectly well-formed line.
+      #
+      # Two claims that could go stale are computed rather than asserted: the
+      # engine exemption re-measures its own "15 false failures" from the tree,
+      # and the alias-form finding set is pinned in both directions.
       - name: Positive controls
         run: go test -count=1 -v ./tools/node-type-gate/
 

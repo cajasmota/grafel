@@ -171,6 +171,75 @@ func ntGatePolyCallerB(n ts.Node, s string) bool { return ntGatePolyCallee(`+sec
 	}
 }
 
+// TestSourcesUnanimityCountsOnlyVISIBLECallSites pins the tool's ONE soundness
+// limit, found by the #7076 round 3 review: "every call site" means every call
+// site calleeFunc resolves, in a package the loader read. A call through a func
+// value is not resolved, so a helper whose only ordinary-string caller takes
+// that shape looks unanimous when it is not, and its literals are resolved
+// against a grammar they were never node types for.
+//
+// The limit is documented in scan.go and in main.go's doc comment. Prose that
+// no test observes is the dominant defect class in this repo, so it is observed
+// here: this test asserts the WRONG answer on purpose, because that is the
+// answer the tool gives today. If someone loads tests or models func values,
+// this test fails and its message says to delete it — which is the point. A
+// pinned limitation that silently outlives its fix is the same dead prose a
+// stale baseline row is.
+//
+// VARIED: how the second, non-node-type call site is written — a direct call
+// (visible, and correctly suppresses derivation) versus a call through a func
+// value (invisible, and wrongly does not).
+// HELD CONSTANT: the callee, its literal, the first call site, the argument
+// itself (an ordinary string parameter in both), the package and the baseline.
+// Both rows pass the SAME value; only the syntax of the call differs.
+func TestSourcesUnanimityCountsOnlyVISIBLECallSites(t *testing.T) {
+	root := modRoot(t)
+	file := filepath.Join(root, "internal", "extractors", "scala", "field_type_refs.go")
+	const anchor = "func scalaFieldTypeCandidates(typeNode ts.Node, src []byte, typeParams map[string]bool) []string {"
+
+	mk := func(secondCall string) []byte {
+		return overlayReplace(t, file, anchor, `
+func ntGateVisCallee(t string) bool { return t == "ntgate_visibility_probe" }
+
+func ntGateVisCallerA(n ts.Node) bool { return ntGateVisCallee(n.Type()) }
+
+func ntGateVisCallerB(s string) bool { `+secondCall+` }
+
+`+anchor, 1)
+	}
+
+	rows := []struct {
+		name       string
+		secondCall string
+		wantDerive bool
+		why        string
+	}{
+		{
+			"direct call — visible, unanimity correctly broken",
+			`return ntGateVisCallee(s)`,
+			false,
+			"a resolvable call passing a plain string must stop the parameter being a node-type source",
+		},
+		{
+			"call through a func value — INVISIBLE, unanimity wrongly holds",
+			`g := ntGateVisCallee; return g(s)`,
+			true,
+			"THIS IS THE KNOWN UNSOUNDNESS. calleeFunc does not resolve a call through a func value, so the same plain string is not counted and the literal is resolved as a node type anyway. If this row now reports false, the limit has been FIXED: delete this test and the soundness paragraphs in scan.go and main.go that describe it",
+		},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			res := evalPkg(t, root, "./internal/extractors/scala",
+				map[string][]byte{file: mk(r.secondCall)}, emptyBaseline(t))
+			got := len(sitesFor(res, "ntgate_visibility_probe")) > 0
+			if got != r.wantDerive {
+				t.Errorf("derived the callee's literal as a node type = %v, want %v — %s.\nemitted:\n%s",
+					got, r.wantDerive, r.why, diagLines(res))
+			}
+		})
+	}
+}
+
 // aliasFindingsOnDisk is the EXACT set of alias-form dead literals the tree
 // carries today that the baseline does not already tolerate. It is checked in
 // so that enforceAliasForms=false cannot become a place for new dead literals

@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -172,4 +174,249 @@ func TestPrintVerdict_FloorBreachSaysTheVerdictIsMeaningless(t *testing.T) {
 		"the verdict below means nothing",
 		"node-type-gate: FAIL (count floor)",
 	)
+}
+
+// AGGREGATES ARE NOT GRADED BY GRADING THEIR ITEMS.
+//
+// #7076 round 3 named the pattern that had by then gone five deep in this one
+// PR: grading a per-item label does not grade the aggregate computed from those
+// items. M-P2 pinned the per-row "[baselined]" tag; the COUNTER that sums those
+// same rows stayed open, and folding the deferrals into it printed "77 misses =
+// 77 tolerated by the baseline + 0 alias-form" — laundering eleven fresh
+// findings as suppressed, which is exactly what the comment three lines above
+// that Fprintf forbids. The same round found printReport had no test at all, so
+// dropping a term from its accounting line printed a sum that disagreed with
+// the total one line above it, suite green.
+//
+// So: every number this tool prints that is derived from other numbers it
+// prints is checked HERE, by re-deriving it from the emitted text. Matching a
+// fixed string would not have caught either mutant — both print a well-formed
+// line with a wrong number in it.
+
+// numsIn pulls every integer out of one emitted line, found by a fragment.
+func numsIn(t *testing.T, out, fragment string) []int {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, fragment) {
+			continue
+		}
+		var got []int
+		for _, f := range regexp.MustCompile(`\d+`).FindAllString(line, -1) {
+			n, err := strconv.Atoi(f)
+			if err != nil {
+				t.Fatalf("bad integer %q in %q", f, line)
+			}
+			got = append(got, n)
+		}
+		return got
+	}
+	t.Fatalf("no emitted line contains %q:\n%s", fragment, out)
+	return nil
+}
+
+// reportFor renders printReport and returns the emitted text.
+func reportFor(res Result, grammars map[string]*Grammar) string {
+	var b bytes.Buffer
+	printReport(&b, res, grammars)
+	return b.String()
+}
+
+// reportFixture is one hand-built surface whose every headline number is known
+// by construction, so the emitted arithmetic can be checked against the input
+// rather than against itself.
+//
+// 6 sites: 3 resolved in a mapped dir, 2 whitelisted (ERROR and "") in that
+// same mapped dir, 1 in an unmapped dir. So total 6 = 3 resolved + 1 skipped +
+// 2 whitelisted.
+func reportFixture() (Result, map[string]*Grammar) {
+	mk := func(dir, lit, form string) Site {
+		return Site{Pkg: dir, Dir: dir, File: dir + "/x.go", Line: 1, Lit: lit, Form: form, Const: true}
+	}
+	const mapped, unmapped = "internal/extractors/scala", "internal/engine"
+	return Result{
+			Sites: []Site{
+				mk(mapped, "identifier", FormCmp),
+				mk(mapped, "block", FormCmp),
+				mk(mapped, "not_a_scala_node", FormSwitch),
+				mk(mapped, "ERROR", FormCmp),
+				mk(mapped, "", FormCmp),
+				mk(unmapped, "arrow_function", FormCmp),
+			},
+			Resolved:        3,
+			Distinct:        3,
+			DirsWithGrammar: []string{mapped},
+			GrammarsForDir:  map[string][]string{mapped: {"scala"}},
+			Skipped:         []SkippedDir{{Dir: unmapped, Sites: 1, Reason: "runtime language"}},
+			SkippedSites:    1,
+			Misses:          []Miss{{Site: mk(mapped, "not_a_scala_node", FormSwitch), Grammars: []string{"scala"}}},
+			Failures:        []Miss{{Site: mk(mapped, "not_a_scala_node", FormSwitch), Grammars: []string{"scala"}}},
+			Sinks:           []string{"a/b.IsKind#1", "a/b.Match#0"},
+			Sources:         []string{"a/b.IsDeclType#0"},
+		}, map[string]*Grammar{
+			"scala": {Key: "scala", Kinds: map[string]bool{"identifier": true, "block": true}},
+		}
+}
+
+// TestPrintReport_AccountingReconcilesWithTheTotal is the printReport half of
+// blocker 1. The accounting line exists ONLY to let a reader check the headline
+// numbers against each other; an accounting line that does not add up is worse
+// than none, because it is read as a confirmation.
+//
+// VARIED: nothing — this is a single-surface arithmetic check, and its input is
+// hand-built precisely so every term is known independently of the code under
+// test.
+// HELD CONSTANT: everything; the assertion is that the emitted sum equals the
+// emitted total AND that each term equals what the fixture put in.
+func TestPrintReport_AccountingReconcilesWithTheTotal(t *testing.T) {
+	res, grammars := reportFixture()
+	out := reportFor(res, grammars)
+
+	total := numsIn(t, out, "  total ")
+	if len(total) < 1 || total[0] != len(res.Sites) {
+		t.Fatalf("total line does not report %d sites: %v\n%s", len(res.Sites), total, out)
+	}
+	acct := numsIn(t, out, "  accounting ")
+	if len(acct) != 4 {
+		t.Fatalf("accounting line has %d numbers, want 4 (resolved, skipped, whitelisted, sum): %v\n%s", len(acct), acct, out)
+	}
+	resolved, skipped, whitelisted, sum := acct[0], acct[1], acct[2], acct[3]
+
+	// Each term against the fixture, so a mutant cannot satisfy the identity by
+	// moving two terms at once.
+	if resolved != res.Resolved {
+		t.Errorf("accounting reports %d resolved, want %d", resolved, res.Resolved)
+	}
+	if skipped != res.SkippedSites {
+		t.Errorf("accounting reports %d skipped, want %d", skipped, res.SkippedSites)
+	}
+	if whitelisted != 2 {
+		t.Errorf("accounting reports %d whitelisted, want 2 — the fixture has one ERROR and one empty literal in a MAPPED package", whitelisted)
+	}
+	// The identity itself, both ways: the printed sum must be the sum of the
+	// printed terms, and it must equal the printed total.
+	if got := resolved + skipped + whitelisted; got != sum {
+		t.Errorf("accounting terms sum to %d but the line prints %d", got, sum)
+	}
+	if sum != total[0] {
+		t.Errorf("accounting sums to %d but the total one line above says %d sites — an accounting line that does not reconcile is read as a confirmation and is worse than none.\n%s", sum, total[0], out)
+	}
+}
+
+// TestPrintReport_TagsMissesAndNamesTheSkippedSurface covers the rest of
+// printReport's output, so "the report prints nothing at all" cannot pass the
+// arithmetic test above vacuously.
+func TestPrintReport_TagsMissesAndNamesTheSkippedSurface(t *testing.T) {
+	res, grammars := reportFixture()
+	out := reportFor(res, grammars)
+	wantAll(t, out,
+		"== derived surface ==",
+		"== grammar keys per package ==",
+		"helper surface",
+		"internal/extractors/scala",
+		"== packages with sites but no derivable grammar ==",
+		"internal/engine",
+		"== misses ==",
+		"[NEW      ]",
+		"not_a_scala_node",
+	)
+	// A baselined miss must be tagged differently from a new one. Same
+	// aggregate/label distinction as above, in the other direction: the per-row
+	// tag is what the counter in printVerdict aggregates.
+	res.Misses[0].Baselined = true
+	res.Failures = nil
+	out = reportFor(res, grammars)
+	if strings.Contains(out, "[NEW      ]") {
+		t.Errorf("a baselined miss is still tagged NEW:\n%s", out)
+	}
+	wantAll(t, out, "[baselined]")
+}
+
+// TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral is the printVerdict
+// half of blocker 1, and the direct kill for M-P4.
+//
+// A baselined miss is SUPPRESSED — somebody decided not to fix it. An alias-form
+// miss is DEFERRED — nobody has decided anything yet, it is waiting on an issue.
+// Printing the second as the first launders a fresh finding as a triaged one,
+// and it is the aggregate of exactly the per-row tag that M-P2 already pins.
+//
+// VARIED across the fixture's three misses: the disposition of each one
+// (baselined / alias-deferred / new). That is the only axis the miss line
+// reports, and every mutant on it moves a miss from one bucket to another.
+// HELD CONSTANT: the package, the file, the grammars, and the literal shape —
+// the misses differ ONLY in disposition, so a wrong count cannot be blamed on
+// anything else.
+func TestPrintVerdict_MissLineSeparatesSuppressionFromDeferral(t *testing.T) {
+	if enforceAliasForms {
+		t.Skip("enforceAliasForms is true: alias misses are failures now, and this line's deferral term is retired. Delete this test with the constant.")
+	}
+	mk := func(lit string, alias, baselined bool) Miss {
+		return Miss{
+			Site:      Site{Dir: "internal/extractors/swift", File: "internal/extractors/swift/swift.go", Line: 7, Lit: lit, Form: FormCmp, Alias: alias},
+			Grammars:  []string{"swift"},
+			Baselined: baselined,
+		}
+	}
+	suppressed := mk("old_known_dead", false, true)
+	deferred := mk("attributes", true, false)
+	brandNew := mk("brand_new_dead", false, false)
+	res := Result{
+		Resolved:    3000,
+		Distinct:    900,
+		AliasSites:  230,
+		Misses:      []Miss{suppressed, deferred, brandNew},
+		Failures:    []Miss{brandNew},
+		AliasMisses: []Miss{deferred},
+	}
+	out := verdictFor(res)
+
+	n := numsIn(t, out, "misses = ")
+	if len(n) != 4 {
+		t.Fatalf("miss line has %d numbers, want 4 (total, baselined, alias-deferred, new): %v\n%s", len(n), n, out)
+	}
+	total, baselined, alias, fresh := n[0], n[1], n[2], n[3]
+	if total != 3 {
+		t.Errorf("miss line reports %d misses, want 3", total)
+	}
+	if baselined != 1 {
+		t.Errorf("miss line reports %d tolerated by the baseline, want 1. Folding the alias deferrals into this counter launders fresh findings as suppressed — the thing the comment above the Fprintf forbids.", baselined)
+	}
+	if alias != 1 {
+		t.Errorf("miss line reports %d alias-form deferrals, want 1", alias)
+	}
+	if fresh != 1 {
+		t.Errorf("miss line reports %d new, want 1", fresh)
+	}
+	if got := baselined + alias + fresh; got != total {
+		t.Errorf("miss line terms sum to %d but it reports %d total misses:\n%s", got, total, out)
+	}
+	// And the words must still say which is which: a reader who sees the right
+	// numbers under the wrong labels is misled just as badly.
+	wantAll(t, out, "tolerated by the baseline", "reported not enforced", "new")
+}
+
+// TestPrintReport_NamesBothFixpointSurfaces keeps the two fixpoints from being
+// invisible. `Sinks` used to say "Reported" in its doc comment and was printed
+// nowhere, and `sources` had no exported field at all (#7076 round 3). A miss
+// count cannot distinguish "the fixpoint found nothing" from "the fixpoint
+// found the wrong thing", so both counts are printed and both are checked here
+// — separately, because one number standing in for two is how the distinction
+// got lost in the first place.
+//
+// VARIED: which fixpoint a position belongs to (two sinks, one source) — an
+// asymmetric fixture on purpose, so a line that prints the same count twice, or
+// swaps the two, cannot pass.
+// HELD CONSTANT: the rest of the surface.
+func TestPrintReport_NamesBothFixpointSurfaces(t *testing.T) {
+	res, grammars := reportFixture()
+	out := reportFor(res, grammars)
+	n := numsIn(t, out, "helper surface")
+	if len(n) != 2 {
+		t.Fatalf("helper-surface line has %d numbers, want 2 (sinks, sources): %v\n%s", len(n), n, out)
+	}
+	if n[0] != len(res.Sinks) {
+		t.Errorf("reports %d sink positions, want %d", n[0], len(res.Sinks))
+	}
+	if n[1] != len(res.Sources) {
+		t.Errorf("reports %d source positions, want %d — the sources fixpoint added in this PR had no exported field and no output at all", n[1], len(res.Sources))
+	}
 }

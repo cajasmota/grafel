@@ -144,6 +144,12 @@ func printReport(w io.Writer, res Result, grammars map[string]*Grammar) {
 	fmt.Fprintf(w, "  accounting %6d resolved + %d in packages with no grammar + %d whitelisted (ERROR/MISSING/\"\") = %d\n",
 		res.Resolved, res.SkippedSites, whitelisted, res.Resolved+res.SkippedSites+whitelisted)
 
+	// The two fixpoints' output. Printed because "the fixpoint found nothing"
+	// and "the fixpoint found the wrong thing" are different bugs that look
+	// identical from a miss count alone.
+	fmt.Fprintf(w, "  helper surface %d sink position(s) (argument is a node-type literal) / %d source position(s) (parameter receives a node type)\n",
+		len(res.Sinks), len(res.Sources))
+
 	fmt.Fprintln(w, "== grammar keys per package ==")
 	for _, dir := range res.DirsWithGrammar {
 		fmt.Fprintf(w, "  %-40s %s\n", dir, strings.Join(res.GrammarsForDir[dir], ","))
