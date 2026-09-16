@@ -57,6 +57,21 @@ namespace AspNetCoreMini.Services
         public void Touch() {}
     }
 
+    // #7068 review round 3 — the F-A hazard, CI-gated.
+    //
+    // The foreach arm must not take a name some OTHER binding form already
+    // bound. local_declaration_statement is the only binding form the extractor
+    // collects, so an earlier revision guarded by consulting its own local-type
+    // map — which answers "did we TYPE this name?", not "is this name TAKEN?".
+    // A using statement was invisible to it, so Drain below emitted
+    // AuditConn.Close as AuditEntry.Close: an Order-shaped fabrication on a type
+    // that has no such method, replacing an edge that had been CORRECT.
+    public class AuditConn : System.IDisposable
+    {
+        public void Close() {}
+        public void Dispose() {}
+    }
+
     public class AuditLog
     {
         public void Replay(System.Collections.Generic.List<AuditEntry> entries)
@@ -64,6 +79,22 @@ namespace AspNetCoreMini.Services
             foreach (AuditEntry entry in entries)
             {
                 entry.Touch();
+            }
+        }
+
+        private AuditConn OpenConn() { return null; }
+
+        // NOTE ON LEGALITY, because it is load-bearing and unverified: no C#
+        // compiler exists in this environment. This rests on one rule — a
+        // foreach variable's scope is its own statement, so the sibling using
+        // statement may reuse the name `c` without CS0136. Every fixture in
+        // this arm rests on that same rule; none has been compiler-checked.
+        public void Drain(System.Collections.Generic.List<AuditEntry> entries)
+        {
+            foreach (AuditEntry c in entries) { }
+            using (AuditConn c = OpenConn())
+            {
+                c.Close();
             }
         }
     }

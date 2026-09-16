@@ -427,63 +427,191 @@ namespace Shop
 
 // TestCSharp_Foreach7068_ForeachNeverClobbersALocal grades defect 3: this pass
 // runs after the local_declaration_statement pass over the same map, so a plain
-// `out[name] = typ` overwrote a local's binding REGARDLESS of source order —
+// `out[name] = typ` overwrote an existing binding REGARDLESS of source order —
 // turning a previously-correct `Order.Ship` into `Line.Ship`. That would have
 // been a regression minted by #7068, not a pre-existing condition.
 //
-// Both source orders are asserted, because the two passes are separate walks
-// and the review's point was precisely that source order does not protect you.
+// TWO AXES ARE VARIED HERE, and the second exists because varying only the
+// first is what let a real regression through review:
+//
+//  1. SOURCE ORDER (local-first / foreach-first). The two passes are separate
+//     walks, so source order does not protect you.
+//
+//  2. THE KIND OF PRIOR BINDING. An earlier revision varied ONLY source order
+//     and held the binding form constant at `local_declaration_statement` in
+//     both rows — then generalised the result to "a name already bound is
+//     never touched". `local_declaration_statement` is the ONLY binding form
+//     this extractor collects, so that guard consulted our own `out` map and
+//     answered "did we TYPE this name?" rather than "is this name TAKEN?".
+//     Measured consequence: `using (Conn c = Open()) { c.Close(); }` beside
+//     `foreach (Order c in orders)` emitted `Order.Close` on an `Order` with
+//     no `Close`, where the arm-off tree emitted the correct `Conn.Close`.
+//     Each row below is a DIFFERENT binding form reaching the same collision.
+//
+// COMPILER CAVEAT, stated because it is load-bearing and could not be removed:
+// there is NO C# COMPILER in this environment, so no fixture here has been
+// compiler-checked. Every row rests on one language rule — a `foreach`
+// variable's scope is its own statement, so a SIBLING block or statement may
+// reuse the name without CS0136. Rows are restricted to forms where that rule
+// is the only thing in question.
+//
+// DELIBERATELY NOT WRITTEN, rather than written on an unchecked premise:
+//
+//   - `out var c` / `out T c` (declaration_expression). An `out` declaration is
+//     scoped to the ENCLOSING BLOCK, which encloses the sibling `foreach`, so
+//     the collision is very likely CS0136 and no such program exists to grade.
+//   - lambda parameters and local-function parameters. Whether a lambda or
+//     local-function parameter may reuse a sibling `foreach` variable's name is
+//     a shadowing rule this author could not demonstrate without a compiler.
+//
+// csNamesBoundOutsideForeach DOES cover all three of those node types, so the
+// behaviour is implemented; it is the GRADING that is missing, and a mutant
+// removing `parameter`, `implicit_parameter` or `declaration_expression` from
+// that list survives this suite. Settling it needs `csc`.
 func TestCSharp_Foreach7068_ForeachNeverClobbersALocal(t *testing.T) {
-	cases := []struct {
-		name string
-		body string
+	// Each case is one PRIOR BINDING FORM, in both source orders relative to
+	// the foreach that tries to take its name.
+	forms := []struct {
+		name   string
+		decl   string // binds `o` to Order and calls o.Ship()
+		detail string
 	}{
-		{"local-first", `
-            { Order o = Get(); o.Ship(); }
-            foreach (Line o in lines) { o.Touch(); }`},
-		{"foreach-first", `
-            foreach (Line o in lines) { o.Touch(); }
-            { Order o = Get(); o.Ship(); }`},
+		{
+			"local-declaration",
+			"{ Order o = Get(); o.Ship(); }",
+			"variable_declarator, typed — the only form the locals pass collects",
+		},
+		{
+			"untyped-var-local",
+			"{ var o = Get(); o.Ship(); }",
+			"variable_declarator whose type inferImplicitLocalType cannot derive " +
+				"(a plain call RHS, #4685), so the name is a local declaration that " +
+				"never enters `out` — the ledger must record names regardless of typing",
+		},
+		{
+			"using-statement",
+			"using (Order o = Get()) { o.Ship(); }",
+			"variable_declarator reached through a using_statement, which the " +
+				"extractor does not collect at all",
+		},
+		{
+			"catch-clause",
+			"try { } catch (Order o) { o.Ship(); }",
+			"catch_declaration — a binding node type of its own",
+		},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			src := `
+	for _, f := range forms {
+		for _, order := range []string{"prior-first", "foreach-first"} {
+			t.Run(f.name+"/"+order, func(t *testing.T) {
+				loop := "foreach (Line o in lines) { o.Touch(); }"
+				body := f.decl + "\n            " + loop
+				if order == "foreach-first" {
+					body = loop + "\n            " + f.decl
+				}
+				src := `
+using System;
 using System.Collections.Generic;
 
 namespace Shop
 {
-    public class Order { public void Ship() {} }
+    public class Order : IDisposable { public void Ship() {} public void Dispose() {} }
     public class Line  { public void Touch() {} }
 
     public class Runner
     {
         private Order Get() { return null; }
 
-        // CONTROL — a foreach with no colliding local, in the same file.
+        // CONTROL — a foreach with no colliding prior binding, same file.
         public void Control(List<Line> lines)
         {
             foreach (Line c in lines) { c.Touch(); }
         }
 
         public void M(List<Line> lines)
-        {` + c.body + `
+        {
+            ` + body + `
         }
     }
 }
 `
-			ents := runCSharp(t, src)
-			if got := fe7068Targets(t, ents, "Runner.Control"); !csHasTarget(got, "Line.Touch") {
-				t.Fatalf("CONTROL Runner.Control: missing CALLS -> Line.Touch; got %v", got)
-			}
-			got := fe7068Targets(t, ents, "Runner.M")
-			if !csHasTarget(got, "Order.Ship") {
-				t.Errorf("Runner.M/%s: the foreach binding clobbered the local `Order o` — "+
-					"a previously-correct edge was broken; got %v", c.name, got)
-			}
-			if csHasTarget(got, "Line.Ship") {
-				t.Errorf("Runner.M/%s: emitted the WRONG dotted target Line.Ship; got %v", c.name, got)
-			}
-		})
+				ents := runCSharp(t, src)
+				if got := fe7068Targets(t, ents, "Runner.Control"); !csHasTarget(got, "Line.Touch") {
+					t.Fatalf("CONTROL Runner.Control: missing CALLS -> Line.Touch; got %v", got)
+				}
+				got := fe7068Targets(t, ents, "Runner.M")
+				if csHasTarget(got, "Line.Ship") {
+					t.Errorf("%s/%s (%s): the foreach binding took a name already bound and "+
+						"emitted the WRONG dotted target Line.Ship; got %v",
+						f.name, order, f.detail, got)
+				}
+				// `o` is bound by the prior form, so the foreach must refuse it.
+				// Whether o.Ship() then comes out typed depends on whether that
+				// form is one the extractor types at all — which is exactly the
+				// point: refusing costs nothing a bare leaf did not already cost,
+				// and the resolver's same-file tier launders a bare leaf (#7071).
+				if !csHasTarget(got, "Order.Ship") && !csHasTarget(got, "Ship") {
+					t.Errorf("%s/%s (%s): o.Ship() produced neither Order.Ship nor a bare "+
+						"Ship; got %v", f.name, order, f.detail, got)
+				}
+			})
+		}
+	}
+}
+
+// TestCSharp_Foreach7068_UsingBindingKeepsItsReceiver is the F-A regression in
+// its measured form, at the extractor boundary.
+//
+// `Conn` is the only declarer of `Close` in the file, so the BARE `Close` the
+// arm-off tree emits is laundered to the correct `Conn.Close` by the resolver's
+// same-file leaf-name tier (#7071). An earlier revision of this arm took the
+// name `c` — bound by a `using`, which the extractor does not collect — and
+// emitted `Order.Close` instead, on an `Order` that has no `Close`: a correct
+// edge turned into a fabricated dotted one. Measured end to end through
+// `grafel quality`, not only here.
+//
+// The assertion is deliberately on the FORBIDDEN target rather than on a
+// required dotted one: what this arm owes is not to type `c`, but never to
+// type it WRONG.
+func TestCSharp_Foreach7068_UsingBindingKeepsItsReceiver(t *testing.T) {
+	src := `
+using System;
+using System.Collections.Generic;
+
+namespace Shop
+{
+    public class Order { public void Ship() {} }
+    public class Conn : IDisposable { public void Close() {} public void Dispose() {} }
+
+    public class Runner
+    {
+        private Conn Open() { return null; }
+
+        // CONTROL — a foreach whose name nothing else binds, same file.
+        public void Control(List<Order> orders)
+        {
+            foreach (Order o in orders) { o.Ship(); }
+        }
+
+        public void M(List<Order> orders)
+        {
+            foreach (Order c in orders) { }
+            using (Conn c = Open()) { c.Close(); }
+        }
+    }
+}
+`
+	ents := runCSharp(t, src)
+	if got := fe7068Targets(t, ents, "Runner.Control"); !csHasTarget(got, "Order.Ship") {
+		t.Fatalf("CONTROL Runner.Control: missing CALLS -> Order.Ship; got %v", got)
+	}
+	got := fe7068Targets(t, ents, "Runner.M")
+	if csHasTarget(got, "Order.Close") {
+		t.Errorf("Runner.M: the foreach took `c`, a name bound by a using statement, and "+
+			"retargeted c.Close() to Order.Close — Order has no Close; got %v", got)
+	}
+	if !csHasTarget(got, "Close") {
+		t.Errorf("Runner.M: expected the bare leaf CALLS -> Close, which the resolver's "+
+			"same-file tier binds to Conn.Close; got %v", got)
 	}
 }
 
@@ -613,7 +741,14 @@ namespace Shop
 {
     public class Order { public void Ship() {} }
 
-    public class Box<T>
+    public interface IProcessable { void Process(); }
+
+    // The where-clause is load-bearing for COMPILABILITY, not for the
+    // parse: an unconstrained T makes o.Process() CS1061, so the fixture
+    // would assert fabrication on input no compiler accepts. A constrained T
+    // parses identically (type=identifier), so the node shape under test is
+    // unchanged and the program is now one that can exist.
+    public class Box<T> where T : IProcessable
     {
         // CONTROL — a real same-file type in the same class, which must bind.
         public void Typed(List<Order> orders)

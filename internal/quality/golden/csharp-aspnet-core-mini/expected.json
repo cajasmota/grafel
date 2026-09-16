@@ -65,6 +65,20 @@
       "source_file": "Services/UserService.cs",
       "must_exist": true,
       "note": "#7068. Holds the only foreach in the entire golden corpus."
+    },
+    {
+      "name": "AuditConn.Close",
+      "kind": "SCOPE.Operation",
+      "source_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068 round 3. The receiver the using statement binds in AuditLog.Drain."
+    },
+    {
+      "name": "AuditLog.Drain",
+      "kind": "SCOPE.Operation",
+      "source_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068 round 3. A foreach and a using statement competing for the name `c`."
     }
   ],
   "expected_relationships": [
@@ -126,7 +140,11 @@
     { "from_name": "AuditLog.Replay", "from_kind": "SCOPE.Operation", "from_file": "Services/UserService.cs",
       "kind": "CALLS", "to_name": "AuditEntry.Touch", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
       "must_exist": true,
-      "note": "#7068 POSITIVE HALF. `foreach (AuditEntry entry in entries) { entry.Touch(); }` must type the loop variable, emit the dotted target and bind it to the same-file operation. The extractor matched `for_each_statement`, a node type tree-sitter-c-sharp does not have (it is `foreach_statement`), so the literal was UNPAIRED, the arm had never executed, no foreach loop variable was ever typed, and this edge came out as the bare leaf `Touch`. This is the only foreach in the golden corpus, so before this row nothing in CI graded the arm at all." }
+      "note": "#7068 POSITIVE HALF. `foreach (AuditEntry entry in entries) { entry.Touch(); }` must type the loop variable, emit the dotted target and bind it to the same-file operation. The extractor matched `for_each_statement`, a node type tree-sitter-c-sharp does not have (it is `foreach_statement`), so the literal was UNPAIRED, the arm had never executed, no foreach loop variable was ever typed, and this edge came out as the bare leaf `Touch`. This is the only foreach in the golden corpus, so before this row nothing in CI graded the arm at all." },
+    { "from_name": "AuditLog.Drain", "from_kind": "SCOPE.Operation", "from_file": "Services/UserService.cs",
+      "kind": "CALLS", "to_name": "AuditConn.Close", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068 round 3, the F-A regression gated. `c` is bound by a using statement AND by a sibling foreach. The foreach arm must refuse the name, leaving a bare `Close` that the resolver's same-file tier binds to the only Close in the file. An earlier revision guarded this by consulting the extractor's own local-type map, which does not contain using-statement bindings, so the foreach took `c` and emitted AuditEntry.Close instead — a correct edge turned into a fabricated one on a type with no such method." }
   ],
   "forbidden_relationships": [
     { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
@@ -148,6 +166,10 @@
     { "from_name": "AuditLog.Replay", "from_kind": "SCOPE.Operation", "from_file": "Services/UserService.cs",
       "kind": "CALLS", "to_name": "AuditNote.Touch", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
       "must_exist": false,
-      "note": "#7068 DISCRIMINATION. The loop variable is an AuditEntry, so the call must reach AuditEntry.Touch and never the competitor. Without this row a receiver-typing rule that picked any same-named method would score 14/14 on recall; with it, the two CALLS rows together pin WHICH of the two identically-named operations the type selects." }
+      "note": "#7068 DISCRIMINATION. The loop variable is an AuditEntry, so the call must reach AuditEntry.Touch and never the competitor. Without this row a receiver-typing rule that picked any same-named method would score 14/14 on recall; with it, the two CALLS rows together pin WHICH of the two identically-named operations the type selects." },
+    { "from_name": "AuditLog.Drain", "from_kind": "SCOPE.Operation", "from_file": "Services/UserService.cs",
+      "kind": "CALLS", "to_bare_name": "AuditEntry.Close",
+      "must_exist": false,
+      "note": "#7068 round 3, the F-A regression's exact residue. AuditEntry has no Close, so this target binds to nothing and sits in the graph as a dangling fabrication — the direction #7056 is about. Paired with the must_exist AuditConn.Close row above: together they pin that the foreach arm REFUSED a name a using statement had already bound, rather than merely that some Close edge exists." }
   ]
 }

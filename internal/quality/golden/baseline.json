@@ -30,12 +30,12 @@
       "relationship_extracted_total": 49
     },
     "csharp-aspnet-core-mini": {
-      "entity_found": 8,
-      "entity_expected": 9,
-      "relationship_found": 14,
-      "relationship_expected": 14,
-      "entity_extracted_total": 55,
-      "relationship_extracted_total": 104
+      "entity_found": 10,
+      "entity_expected": 11,
+      "relationship_found": 15,
+      "relationship_expected": 15,
+      "entity_extracted_total": 61,
+      "relationship_extracted_total": 117
     },
     "csharp-hangfire-mini": {
       "entity_found": 5,
