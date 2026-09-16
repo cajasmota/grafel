@@ -355,14 +355,37 @@ import json, glob, sys, os
 tmp = sys.argv[1]
 paths = sorted(glob.glob(os.path.join(tmp, "run*.json")))
 recalls = []
+hits = []
 for p in paths:
     try:
         with open(p) as fh:
             d = json.load(fh)
         recalls.append((d.get("entity_recall", 0.0), d.get("relationship_recall", 0.0)))
+        # Both keys, read separately: they are separate fields and a veto
+        # watching only one would leave the runs of the other key truncated
+        # exactly as before. (No apostrophes in this heredoc: bash 3.2 scans
+        # command-substitution bodies for quotes even inside a <<'PY' heredoc,
+        # and one lone quote makes the whole script unparseable.)
+        hits.append(int(d.get("forbidden_hits", 0)) > 0
+                    or int(d.get("forbidden_entity_hits", 0)) > 0)
     except Exception:
         pass
 if len(recalls) < 3:
+    print("no"); sys.exit(0)
+# #7084. A forbidden hit in ANY completed run vetoes the short-circuit.
+#
+# This predicate used to look at recall alone, and the loop it controls is the
+# one that produces the evidence the forbidden gate reads. Most fixtures ARE
+# recall-stable, so QUALITY_RUNS=5 was in practice 3, and a row firing with
+# p~0.4 went unseen 21.6% of the time rather than 7.8%. Aggregating the counts
+# with max fixes what happens to the runs that were taken; it cannot recover a
+# run the loop decided not to take.
+#
+# Recall stability is unchanged: the veto can only make the loop run LONGER.
+# Cheap in the case that matters — a fixture with a forbidden hit is already
+# failing, so the extra runs buy offenders for the union at no cost to a green
+# run, which never has a hit to veto with.
+if any(hits):
     print("no"); sys.exit(0)
 er = [r[0] for r in recalls]
 rr = [r[1] for r in recalls]
