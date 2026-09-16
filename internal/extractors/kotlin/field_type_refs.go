@@ -78,10 +78,14 @@ import (
 // are pre-existing extractor ceilings, neither is introduced or widened here,
 // and both are RECALL floors — a missing edge, never a wrong one:
 //
-//   - `fun interface Cb` — extracted as SCOPE.Operation/function, not as a
-//     Component, so `val c: Cb` produces no edge. It is also a COLLIDER: it
-//     makes a same-named `typealias Cb` ambiguous on the alias tier, which the
-//     all-kinds count there already handles correctly.
+//   - `fun interface Cb` — mints NO entity for the interface itself. The walk
+//     has no case for the node, so only its MEMBERS surface, and they surface
+//     BARE (`go`, not `Cb.go`) because no parentType is in scope for them.
+//     `val c: Cb` therefore produces no edge. PROBED, not taken on report: the
+//     review described this form as a SCOPE.Operation named `Cb` and hence a
+//     collider for a same-named typealias, and neither half is what the
+//     extractor does — nothing named `Cb` is emitted at all, so it cannot
+//     collide with anything.
 //   - a LOCAL class (`fun f() { class Local(val o: Order) }`) — mints no
 //     entity, so it is neither a target nor a source: its `val o` is not a
 //     field record at all, and the type parameters of the enclosing generic
@@ -168,6 +172,17 @@ const kotlinFieldTargetRefKind = "field_target_type"
 // extractor → resolver. Invariant: a Kind ABSENT from this set cannot make a
 // component-space ref ambiguous, so widening componentKindFamily upstream
 // without widening this would let the pass emit a stub that dangles.
+//
+// EVERY ENTRY IS GRADED, through the call site rather than by reading this map:
+// Unit_EveryAddressFamilyEntryMakesARefAmbiguous drives one rival record per
+// entry and asserts the target is blanked, with a non-family rival as the
+// table's positive control. Three of them — the BARE Component / View / Model
+// spellings — were ungraded until the review found dropping all three left the
+// suite green (MR-5); no Kotlin producer emits a bare-kinded record, so no
+// source fixture can reach them. What is still NOT checked anywhere is that
+// this duplicate and resolve's componentKindFamily stay in sync; that is the
+// cost of the deliberate non-import above, and it is a claim about upstream,
+// not about this file.
 var kotlinComponentAddressFamily = map[string]bool{
 	"Component": true, "Class": true, "View": true, "Model": true,
 	"SCOPE.Component": true, "SCOPE.Class": true,

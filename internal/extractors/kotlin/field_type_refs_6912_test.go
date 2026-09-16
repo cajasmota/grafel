@@ -717,22 +717,31 @@ class Holder {
 		// two absences below are refusals and not a dead pass.
 		"Holder.real -> scope:component:class:kotlin:H.kt:Order",
 	})
+	// Both premises are ABSENCES of a record, asserted directly, so neither
+	// half can pass because some other rule already caused the missing edge.
+	// `Cb` is checked by NAME and not by kind: the extractor mints nothing
+	// named Cb at all (probed — the review's description of it as a
+	// SCOPE.Operation named Cb, and therefore a collider, is not what the
+	// extractor does), and `go` surfaces BARE because no parentType is in
+	// scope inside a `fun interface` body.
+	sawBareMember := false
 	for i := range recs {
 		switch recs[i].Name {
 		case "Cb":
-			// The premise of `val c: Cb` producing nothing: `fun interface`
-			// is extracted as an Operation, which is not an admissible
-			// target kind. If it ever becomes a Component, this fires.
-			if recs[i].Kind != "SCOPE.Operation" {
-				t.Fatalf("fun interface Cb minted %s/%s — the missing "+
-					"`c -> Cb` edge rests on it being a SCOPE.Operation",
-					recs[i].Kind, recs[i].Subtype)
-			}
+			t.Fatalf("fun interface minted an entity named Cb (%s/%s) — the "+
+				"missing `c -> Cb` edge rests on it minting none",
+				recs[i].Kind, recs[i].Subtype)
 		case "Local", "Local.o":
 			t.Fatalf("local class minted %q (%s/%s) — this arm's silence "+
 				"about local classes rests on them minting nothing",
 				recs[i].Name, recs[i].Kind, recs[i].Subtype)
+		case "go":
+			sawBareMember = true
 		}
+	}
+	if !sawBareMember {
+		t.Fatal("expected the fun interface's member `go` to surface bare — " +
+			"if it stopped surfacing, the fixture no longer exercises the form")
 	}
 }
 
