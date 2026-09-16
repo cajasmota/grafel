@@ -31,6 +31,10 @@ type Site struct {
 	Line int
 	Lit  string
 	Form string
+	// Alias is true when the literal was reached through a value that HOLDS a
+	// node type rather than through a syntactic `x.Type()` call — a local
+	// (`t := n.Type(); t == "…"`) or a parameter fed one. See aliasNote.
+	Alias bool
 	// Const distinguishes a folded constant (Const true, Lit its value —
 	// including the empty string) from a position the scanner could not fold
 	// (Const false). Without it a `""` sentinel and a dynamic position would be
@@ -65,8 +69,24 @@ type scanner struct {
 	nodeIface *types.Interface
 
 	// sinks is the fixpoint set of (func, param index) pairs whose argument is
-	// a node type. Discovered, never hand-listed.
+	// a node type. Discovered, never hand-listed. This is the ARGUMENT
+	// direction: the caller's literal flows INTO a node-type position.
 	sinks map[paramKey]bool
+
+	// sources is the opposite direction, and it is what closes the #7076-r2
+	// blind spot: (func, param index) pairs that RECEIVE a node-type value, so
+	// literals compared against that parameter INSIDE the callee are node
+	// types. `isKotlinDeclType(nx.Type())` is the real instance.
+	//
+	// A position qualifies only when it has at least one call site and EVERY
+	// call site passes a node-type value. A helper called once with n.Type()
+	// and once with an ordinary string is polymorphic, and treating its
+	// literals as node types would invent failures.
+	sources map[paramKey]bool
+	// argSites / argNTSites count, per parameter position, how many call sites
+	// there are and how many of them pass a node-type value.
+	argSites   map[paramKey]int
+	argNTSites map[paramKey]int
 
 	// keyTables is the set of variables indexed by a node-type call
 	// (`set[n.Type()]`) or searched by one (`slices.Contains(s, n.Type())`).
@@ -88,6 +108,9 @@ func newScanner(fset *token.FileSet, modRoot string, pkgs []*packages.Package) *
 		fset:       fset,
 		modRoot:    modRoot,
 		sinks:      map[paramKey]bool{},
+		sources:    map[paramKey]bool{},
+		argSites:   map[paramKey]int{},
+		argNTSites: map[paramKey]int{},
 		keyTables:  map[types.Object]bool{},
 		composites: map[types.Object][]*ast.CompositeLit{},
 		appends:    map[types.Object][]ast.Expr{},
@@ -130,6 +153,22 @@ func (s *scanner) isNodeTypeCall(info *types.Info, e ast.Expr) bool {
 		return false
 	}
 	return types.Implements(t, s.nodeIface) || types.Implements(types.NewPointer(t), s.nodeIface)
+}
+
+// isNodeTypeValue reports whether e evaluates to a node type: either the call
+// `x.Type()` itself, or a value known to hold one (ntLocals). It is the
+// generalisation of isNodeTypeCall that the round-2 review's blocker required —
+// `t := n.Type(); t == "…"` is a node-type comparison that neither the old scan
+// nor a `.Type() == "…"` grep can see.
+func (s *scanner) isNodeTypeValue(info *types.Info, e ast.Expr, ntLocals map[types.Object]bool) bool {
+	if s.isNodeTypeCall(info, e) {
+		return true
+	}
+	if len(ntLocals) == 0 {
+		return false
+	}
+	obj := identObj(info, e)
+	return obj != nil && ntLocals[obj]
 }
 
 func astUnparen(e ast.Expr) ast.Expr {
@@ -236,15 +275,23 @@ func identObj(info *types.Info, e ast.Expr) types.Object {
 
 // position is one node-type position discovered inside a function body.
 type position struct {
-	expr ast.Expr
-	form string
+	expr  ast.Expr
+	form  string
+	alias bool
 }
 
 // analyzeFunc collects the node-type positions of one function body under the
 // current sink set, and reports which of the function's own parameters are
 // thereby node-type parameters.
-func (s *scanner) analyzeFunc(info *types.Info, body *ast.BlockStmt, ftype *ast.FuncType) ([]position, map[int]bool) {
+// argFeed records one call-site argument, and whether it carried a node type.
+type argFeed struct {
+	key paramKey
+	nt  bool
+}
+
+func (s *scanner) analyzeFunc(info *types.Info, fn *types.Func, body *ast.BlockStmt, ftype *ast.FuncType) ([]position, map[int]bool, []argFeed) {
 	var out []position
+	var feeds []argFeed
 
 	// alias maps a local (a range variable, or a plain copy) back to the value
 	// it came from, so `for _, k := range kinds` still attributes a hit on k to
@@ -272,6 +319,43 @@ func (s *scanner) analyzeFunc(info *types.Info, body *ast.BlockStmt, ftype *ast.
 		return true
 	})
 
+	// ntLocals: values in this body that HOLD a node type. Seeded from the
+	// function's own parameters that every caller feeds a node type into, then
+	// grown through plain assignment (`t := n.Type()`, `u := t`). Iterated
+	// because an assignment can precede or follow the one it depends on.
+	ntLocals := map[types.Object]bool{}
+	for i, obj := range paramObjects(info, ftype) {
+		if s.sources[paramKey{fn, i}] {
+			ntLocals[obj] = true
+		}
+	}
+	for pass := 0; pass < 8; pass++ {
+		grew := false
+		ast.Inspect(body, func(n ast.Node) bool {
+			as, ok := n.(*ast.AssignStmt)
+			if !ok {
+				return true
+			}
+			for i, lhs := range as.Lhs {
+				if i >= len(as.Rhs) {
+					break
+				}
+				l := identObj(info, lhs)
+				if l == nil || ntLocals[l] {
+					continue
+				}
+				if s.isNodeTypeValue(info, as.Rhs[i], ntLocals) {
+					ntLocals[l] = true
+					grew = true
+				}
+			}
+			return true
+		})
+		if !grew {
+			break
+		}
+	}
+
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.BinaryExpr:
@@ -279,21 +363,26 @@ func (s *scanner) analyzeFunc(info *types.Info, body *ast.BlockStmt, ftype *ast.
 				return true
 			}
 			if s.isNodeTypeCall(info, x.X) {
-				out = append(out, position{x.Y, FormCmp})
+				out = append(out, position{x.Y, FormCmp, false})
 			} else if s.isNodeTypeCall(info, x.Y) {
-				out = append(out, position{x.X, FormCmp})
+				out = append(out, position{x.X, FormCmp, false})
+			} else if s.isNodeTypeValue(info, x.X, ntLocals) {
+				out = append(out, position{x.Y, FormCmp, true})
+			} else if s.isNodeTypeValue(info, x.Y, ntLocals) {
+				out = append(out, position{x.X, FormCmp, true})
 			}
 		case *ast.SwitchStmt:
-			if x.Tag == nil || !s.isNodeTypeCall(info, x.Tag) {
+			if x.Tag == nil || !s.isNodeTypeValue(info, x.Tag, ntLocals) {
 				return true
 			}
+			viaAlias := !s.isNodeTypeCall(info, x.Tag)
 			for _, cl := range x.Body.List {
 				cc, ok := cl.(*ast.CaseClause)
 				if !ok {
 					continue
 				}
 				for _, e := range cc.List {
-					out = append(out, position{e, FormSwitch})
+					out = append(out, position{e, FormSwitch, viaAlias})
 				}
 			}
 		case *ast.IndexExpr:
@@ -302,7 +391,7 @@ func (s *scanner) analyzeFunc(info *types.Info, body *ast.BlockStmt, ftype *ast.
 				return true
 			}
 			if obj := identObj(info, x.X); obj != nil && s.keyTables[obj] {
-				out = append(out, position{x.Index, FormMapLookup})
+				out = append(out, position{x.Index, FormMapLookup, false})
 			}
 		case *ast.CallExpr:
 			callee := calleeFunc(info, x)
@@ -315,8 +404,10 @@ func (s *scanner) analyzeFunc(info *types.Info, body *ast.BlockStmt, ftype *ast.
 				if sig != nil && sig.Variadic() && sig.Params().Len() > 0 && idx >= sig.Params().Len()-1 {
 					idx = sig.Params().Len() - 1
 				}
-				if s.sinks[paramKey{callee, idx}] {
-					out = append(out, position{arg, FormHelper})
+				k := paramKey{callee, idx}
+				feeds = append(feeds, argFeed{key: k, nt: s.isNodeTypeValue(info, arg, ntLocals)})
+				if s.sinks[k] {
+					out = append(out, position{arg, FormHelper, false})
 				}
 			}
 		}
@@ -351,7 +442,29 @@ func (s *scanner) analyzeFunc(info *types.Info, body *ast.BlockStmt, ftype *ast.
 			obj = alias[obj]
 		}
 	}
-	return out, hit
+	return out, hit, feeds
+}
+
+// paramObjects lists a function's parameters by declaration index.
+func paramObjects(info *types.Info, ftype *ast.FuncType) map[int]types.Object {
+	out := map[int]types.Object{}
+	if ftype == nil || ftype.Params == nil {
+		return out
+	}
+	idx := 0
+	for _, fld := range ftype.Params.List {
+		if len(fld.Names) == 0 {
+			idx++
+			continue
+		}
+		for _, nm := range fld.Names {
+			if o := info.ObjectOf(nm); o != nil {
+				out[idx] = o
+			}
+			idx++
+		}
+	}
+	return out
 }
 
 // tablePositions yields the keys of every composite literal, and every appended
@@ -379,14 +492,14 @@ func (s *scanner) tablePositions() map[*packages.Package][]position {
 		for _, cl := range s.composites[obj] {
 			for _, elt := range cl.Elts {
 				if kv, ok := elt.(*ast.KeyValueExpr); ok {
-					out[p] = append(out[p], position{kv.Key, FormMapLookup})
+					out[p] = append(out[p], position{kv.Key, FormMapLookup, false})
 				} else {
-					out[p] = append(out[p], position{elt, FormMapLookup})
+					out[p] = append(out[p], position{elt, FormMapLookup, false})
 				}
 			}
 		}
 		for _, e := range s.appends[obj] {
-			out[p] = append(out[p], position{e, FormMapLookup})
+			out[p] = append(out[p], position{e, FormMapLookup, false})
 		}
 	}
 	return out
@@ -428,16 +541,40 @@ func (s *scanner) Run() Scan {
 	s.collectTables()
 	us := s.units()
 
+	// Two mutually-dependent fixpoints, run together:
+	//   sinks   — a parameter whose ARGUMENT is a node-type literal.
+	//   sources — a parameter that RECEIVES a node-type value, which makes
+	//             literals compared against it inside the callee node types.
+	// sources feeds ntLocals, ntLocals decides which arguments count as
+	// node-type values, and that decides sources. Iterate until neither grows.
 	for {
 		grew := false
+		argSites := map[paramKey]int{}
+		argNT := map[paramKey]int{}
 		for _, u := range us {
-			_, hits := s.analyzeFunc(u.pkg.TypesInfo, u.body, u.ftype)
+			_, hits, feeds := s.analyzeFunc(u.pkg.TypesInfo, u.fn, u.body, u.ftype)
 			for i := range hits {
 				k := paramKey{u.fn, i}
 				if !s.sinks[k] {
 					s.sinks[k] = true
 					grew = true
 				}
+			}
+			for _, f := range feeds {
+				argSites[f.key]++
+				if f.nt {
+					argNT[f.key]++
+				}
+			}
+		}
+		s.argSites, s.argNTSites = argSites, argNT
+		// EVERY call site must carry a node type. A helper called once with
+		// n.Type() and once with an ordinary string is polymorphic, and
+		// resolving its literals as node types would invent failures.
+		for k, n := range argSites {
+			if n > 0 && argNT[k] == n && !s.sources[k] {
+				s.sources[k] = true
+				grew = true
 			}
 		}
 		if !grew {
@@ -460,7 +597,7 @@ func (s *scanner) Run() Scan {
 		}
 	}
 	for _, u := range us {
-		poss, _ := s.analyzeFunc(u.pkg.TypesInfo, u.body, u.ftype)
+		poss, _, _ := s.analyzeFunc(u.pkg.TypesInfo, u.fn, u.body, u.ftype)
 		for _, p := range poss {
 			add(u.pkg, p)
 		}
@@ -499,11 +636,12 @@ func (s *scanner) siteFor(p *packages.Package, pos position) Site {
 		file = filepath.ToSlash(rel)
 	}
 	site := Site{
-		Pkg:  p.PkgPath,
-		Dir:  filepath.ToSlash(filepath.Dir(file)),
-		File: file,
-		Line: tp.Line,
-		Form: pos.form,
+		Alias: pos.alias,
+		Pkg:   p.PkgPath,
+		Dir:   filepath.ToSlash(filepath.Dir(file)),
+		File:  file,
+		Line:  tp.Line,
+		Form:  pos.form,
 	}
 	// Constant folding: a `const K = string(types.X)` still yields a string
 	// constant here, so hiding a literal behind a converted constant cannot

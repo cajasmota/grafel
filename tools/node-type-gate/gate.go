@@ -6,6 +6,25 @@ import (
 	"strings"
 )
 
+// enforceAliasForms decides whether an alias-form dead literal FAILS the gate
+// or is only reported.
+//
+// It is false, and that is a dated, conditional state, not a design. The alias
+// shapes (`t := n.Type(); t == "…"` and a parameter fed `n.Type()`) were
+// invisible to this scan until #7076 round 2, and invisible to the
+// `.Type() == "…"` grep that had been offered as evidence the surface was
+// complete — two methods sharing one blind spot are one confirmation, not two.
+// On the shape's first honest look it found 11 un-baselined dead literals in 7
+// mapped packages. Those are real findings; they are being filed as their own
+// issues.
+//
+// Flipping this to true is the whole point and should happen as soon as those
+// findings have issue numbers and `known-defect` baseline rows. It is NOT a
+// permanent two-tier gate: TestAliasEnforcementWouldFailOnExactlyTheKnownSet
+// pins the exact set that flipping it would red, so this constant cannot
+// quietly become a way to keep new dead literals green.
+const enforceAliasForms = false
+
 // runtimeKinds are node kinds tree-sitter produces at parse time but does not
 // list in any grammar's symbol table. A gate that does not whitelist these
 // reports a false alarm on the first file that tests for a parse error.
@@ -33,14 +52,19 @@ var skipExemptions = map[string]string{
 		"(http_endpoint_client_ast.go and http_endpoint_client_constscope_6552.go " +
 		"pass a tsLang variable), so it can receive ANY grammar. Measured, not " +
 		"argued: mapping it to the java/kotlin/python it names as constants " +
-		"produces 15 FALSE failures — arrow_function, lexical_declaration, " +
-		"member_expression and 12 more JS/TS names that are live under the " +
-		"grammars the runtime path reaches. Unmappable by construction.",
+		"produces 15 FALSE failures over 14 distinct names — arrow_function, " +
+		"lexical_declaration, member_expression and 11 more JS/TS names that " +
+		"are live under the grammars the runtime path reaches. Unmappable by " +
+		"construction.",
 	"internal/treesitter": "is the parser itself, not a consumer of one. Its " +
-		"literals are in the #6736 kotlin annotation repair, which runs inside " +
+		"13 sites are the #6736 kotlin annotation repair, which runs inside " +
 		"the generic Parse under an `if language == \"kotlin\"` guard rather " +
-		"than through a parse call of its own, so the package has no single " +
-		"grammar to be resolved against.",
+		"than through a parse call of its own. That guard binds the surface to " +
+		"kotlin as tightly as a parse call would, so this is NOT \"no single " +
+		"grammar can be derived\" — it is a special case the derivation does " +
+		"not model and that is not yet worth modelling for one package. Named " +
+		"and counted rather than argued away; if a second package ever needs " +
+		"it, teach parseLangArg about the guard instead of adding a row here.",
 }
 
 // SkippedDir is one package that produced node-type literals the gate did not
@@ -66,6 +90,10 @@ type Miss struct {
 	Grammars  []string // every grammar the package can receive
 	Baselined bool
 }
+
+// Alias reports whether the literal was reached through a value holding a node
+// type rather than a syntactic x.Type() call.
+func (m Miss) Alias() bool { return m.Site.Alias }
 
 func (m Miss) String() string {
 	return fmt.Sprintf("%s:%d: node type %q resolves in none of package %s's grammars [%s] (form=%s)",
@@ -100,6 +128,16 @@ type Result struct {
 	// UnreviewedSkips is the subset of Skipped with no exemption. Non-empty
 	// fails the gate.
 	UnreviewedSkips []SkippedDir
+
+	// AliasSites counts the literals reached through an alias — a local or a
+	// parameter that HOLDS a node type rather than a syntactic x.Type() call.
+	// Before #7076 round 2 this whole shape was invisible to the scan AND to
+	// the `.Type() == "…"` grep that was offered as evidence of completeness.
+	AliasSites int
+	// AliasMisses is the subset of Misses reached through an alias. Reported
+	// separately because the shape is newly visible and its findings have not
+	// been triaged; see enforceAliasForms.
+	AliasMisses []Miss
 }
 
 // Evaluate applies the resolve rule to a derived surface.
@@ -150,6 +188,9 @@ func Evaluate(scan Scan, regs []Registration, binds []ParseBinding, grammars map
 			continue
 		}
 		res.Resolved++
+		if s.Alias {
+			res.AliasSites++
+		}
 		distinct[s.Dir+"\x00"+s.Lit] = true
 		found := false
 		for _, k := range keys {
@@ -166,9 +207,19 @@ func Evaluate(scan Scan, regs []Registration, binds []ParseBinding, grammars map
 			m.Baselined = true
 		}
 		res.Misses = append(res.Misses, m)
-		if !m.Baselined {
-			res.Failures = append(res.Failures, m)
+		if m.Alias() {
+			res.AliasMisses = append(res.AliasMisses, m)
 		}
+		if m.Baselined {
+			continue
+		}
+		// An alias-form miss fails only once the shape's first-run findings
+		// have been triaged — see enforceAliasForms. Until then it is reported
+		// in full, never suppressed.
+		if m.Alias() && !enforceAliasForms {
+			continue
+		}
+		res.Failures = append(res.Failures, m)
 	}
 	res.Distinct = len(distinct)
 	res.StaleBaseline = base.Unmatched()

@@ -19,7 +19,7 @@ import (
 // controls cover the other four modes (wrong files, wrong content, no
 // detection, no action).
 //
-// Measured on the tree at the time of writing: 3081 resolved sites. The floor
+// Measured on the tree at the time of writing: 3322 resolved sites. The floor
 // is set well below that so ordinary deletions do not trip it, and far above
 // zero so a broken loader does.
 const minResolvedSites = 1500
@@ -35,7 +35,7 @@ func printVerdict(w io.Writer, res Result) {
 	// unchecked package that nobody can see is indistinguishable from one that
 	// does not exist (#7076 review, finding 1).
 	if len(res.Skipped) > 0 {
-		fmt.Fprintf(w, "node-type-gate: %d sites in %d package(s) were NOT checked (no grammar could be derived):\n",
+		fmt.Fprintf(w, "node-type-gate: %d sites in %d package(s) were NOT checked (no grammar was derived for them):\n",
 			res.SkippedSites, len(res.Skipped))
 		for _, sk := range res.Skipped {
 			why := sk.Reason
@@ -50,9 +50,44 @@ func printVerdict(w io.Writer, res Result) {
 			sk.Dir, sk.Sites)
 	}
 
-	baselined := len(res.Misses) - len(res.Failures)
-	fmt.Fprintf(w, "node-type-gate: %d misses, %d tolerated by the baseline, %d new\n",
-		len(res.Misses), baselined, len(res.Failures))
+	// The alias surface, reported on EVERY run. These literals were invisible
+	// to this scan AND to the `.Type() == "…"` grep offered as evidence of
+	// completeness, until #7076 round 2 — two methods sharing one blind spot
+	// are one confirmation, not two. Counting them is the point: a shape
+	// nobody can see is indistinguishable from one that does not exist.
+	fmt.Fprintf(w, "node-type-gate: %d of the CHECKED sites were reached through an alias (a local or parameter holding a node type, not a syntactic x.Type() call)\n",
+		res.AliasSites)
+	if len(res.AliasMisses) > 0 {
+		verb := "REPORTED, not enforced"
+		if enforceAliasForms {
+			verb = "enforced"
+		}
+		fmt.Fprintf(w, "node-type-gate: %d alias-form dead literal(s) — %s (see enforceAliasForms):\n",
+			len(res.AliasMisses), verb)
+		for _, m := range res.AliasMisses {
+			tag := ""
+			if m.Baselined {
+				tag = " [baselined]"
+			}
+			fmt.Fprintf(w, "  %s:%d %q in %s%s\n", m.File, m.Line, m.Lit, m.Dir, tag)
+		}
+	}
+
+	// Reconcile every miss explicitly. "tolerated by the baseline" must not
+	// absorb the alias findings: they are NOT baselined, they are un-enforced
+	// pending their issues, and conflating the two would make a suppression and
+	// a deferral look alike.
+	baselined, deferred := 0, 0
+	for _, m := range res.Misses {
+		switch {
+		case m.Baselined:
+			baselined++
+		case m.Alias() && !enforceAliasForms:
+			deferred++
+		}
+	}
+	fmt.Fprintf(w, "node-type-gate: %d misses = %d tolerated by the baseline + %d alias-form, reported not enforced + %d new\n",
+		len(res.Misses), baselined, deferred, len(res.Failures))
 
 	for _, m := range res.Failures {
 		fmt.Fprintf(w, "::error file=%s,line=%d::%s\n", m.File, m.Line, m.String())
@@ -93,8 +128,21 @@ func printReport(w io.Writer, res Result, grammars map[string]*Grammar) {
 	for _, f := range forms {
 		fmt.Fprintf(w, "  form %-10s %6d sites\n", f, byForm[f])
 	}
+	whitelisted := 0
+	for _, s := range res.Sites {
+		if len(res.GrammarsForDir[s.Dir]) == 0 {
+			continue
+		}
+		if s.Lit == "" || runtimeKinds[s.Lit] {
+			whitelisted++
+		}
+	}
 	fmt.Fprintf(w, "  total      %6d sites / %d distinct literals / %d files / %d dynamic positions\n",
 		len(res.Sites), len(distinct), len(files), len(res.Dynamic))
+	// Make the three headline numbers add up for a reader: every derived site
+	// is resolved, skipped for want of a grammar, or whitelisted.
+	fmt.Fprintf(w, "  accounting %6d resolved + %d in packages with no grammar + %d whitelisted (ERROR/MISSING/\"\") = %d\n",
+		res.Resolved, res.SkippedSites, whitelisted, res.Resolved+res.SkippedSites+whitelisted)
 
 	fmt.Fprintln(w, "== grammar keys per package ==")
 	for _, dir := range res.DirsWithGrammar {

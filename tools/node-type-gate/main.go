@@ -83,11 +83,11 @@
 //
 // # The shapes the scan does not recognise
 //
-// The four forms are an enumeration, not a closure: a literal can reach a
-// node-type comparison through a shape the scan does not model, and then it is
-// invisible even in a fully mapped package. Measured by the #7076 review, all
-// injected into internal/extractors/scala against the real baseline, with a
-// plain `n.Type() == "…"` control failing in the same run:
+// The forms are an enumeration, not a closure: a literal can reach a node-type
+// comparison through a shape the scan does not model, and then it is invisible
+// even in a fully mapped package. Measured by the #7076 review, all injected
+// into internal/extractors/scala against the real baseline, with a plain
+// `n.Type() == "…"` control failing in the same run:
 //
 //	closure parameter      f := func(k string) bool { return n.Type() == k }; f("…")   not flagged, seen as dynamic
 //	strings.EqualFold      strings.EqualFold(n.Type(), "…")                            not flagged, NO TRACE AT ALL
@@ -95,12 +95,32 @@
 //	range over a slice lit for _, k := range []string{"…"} { n.Type() == k }            not flagged, seen as dynamic
 //	interface dispatch     i.Want("…"), impl does p.n.Type() == kind                    not flagged, seen as dynamic
 //
-// This is a COMPLETENESS limit, not a soundness one — none of it makes the gate
-// fire wrongly, and the grep cross-check being zero in both directions is
-// evidence the `cmp` surface is complete as written. But a future author adding
-// a helper should know which shapes are seen. If you add a matcher in one of
-// these shapes, the gate will not check it; prefer one of the four, or extend
-// the scan and grade the extension.
+// Two more shapes were on that list until #7076 round 2, and how they got off
+// it is the more useful half of this section:
+//
+//	local alias            t := n.Type(); t == "…"                                      NOW SEEN, reported as alias
+//	parameter alias        f(n.Type()), with the literal inside f                       NOW SEEN, reported as alias
+//
+// Both were invisible to this scan AND to the `.Type() == "…"` grep that had
+// been offered here as evidence the `cmp` surface was complete. That claim is
+// deleted, because it was never evidence: the scan and the grep were both
+// syntactic and shared exactly one blind spot, so they were ONE confirmation,
+// not two. Two methods that agree because they cannot see the same thing agree
+// about nothing. The shapes are now derived by the `sources` fixpoint in
+// scan.go and, on their first honest look, produced ten un-baselined dead
+// literals in seven mapped packages that neither method had ever reported.
+//
+// Alias-form findings are REPORTED and not enforced for now — see
+// enforceAliasForms in gate.go for why, and for the test that keeps that state
+// from becoming a hiding place. They are counted in every run, so the shape can
+// never again be invisible.
+//
+// The remaining five shapes are a COMPLETENESS limit, not a soundness one —
+// none of them makes the gate fire wrongly. But there is no diagnostic for a
+// blind spot: it looks exactly like a clean tree, which is why the list above
+// is written down rather than inferred from a green run. If you add a matcher
+// in one of those shapes, the gate will not check it; prefer a form it sees, or
+// extend the scan and grade the extension.
 //
 // # Usage
 //

@@ -18,7 +18,7 @@ name: node-type gate
 # The gate loads 793 packages with full type information. Measured at ~13 s
 # warm, which is cheap for a job and much too slow to sit inside `go test ./...`
 # on three platforms. The job is the whole-tree run; the package's own tests are
-# the four positive controls, and they are small enough to live in the suite.
+# the positive controls, and they are small enough to live in the suite.
 #
 # SCOPE: node-type literal resolution only. Red here is always a fact about this
 # tree, never a flake, but it is NOT always the same fact. Exit 1 (the gate's own
@@ -31,6 +31,10 @@ name: node-type gate
 #      it and it has no entry in skipExemptions — an unreviewed blind spot; or
 #   4. the scan read fewer sites than its floor, i.e. the gate is not looking at
 #      the tree and its verdict means nothing.
+# It does NOT exit 1 on an alias-form dead literal. Those are printed in full on
+# every run and deliberately not enforced yet (see enforceAliasForms); the set of
+# them is pinned by a test, so a NEW one turns the test leg red even though it
+# leaves this job green.
 # Exit 2 (the tool could not run) means one of: the packages failed to load; the
 # loader-integrity guard fired (a package parsed but its type information is
 # absent or incomplete); a grammar in the registry is not an official-adapter
@@ -76,13 +80,21 @@ jobs:
 
       # The controls run FIRST and are not optional. A green gate whose controls
       # are broken is worth nothing: the failure mode of a scan-and-assert-
-      # absence tool is to find nothing for the wrong reason. The seven assert
-      # that the scala defect of #7064 is detected; that re-introducing #7068's
+      # absence tool is to find nothing for the wrong reason. They assert that
+      # the scala defect of #7064 is detected; that re-introducing #7068's
       # for_each_statement fails; that a stale baseline row fails; that a NEW
       # dead literal is not suppressed by the baseline; that a literal reached
       # through a converted constant is still folded; that a literal valid in
-      # one of a multi-grammar package's grammars does NOT fire; and that the
-      # internal/custom lane is resolved rather than silently skipped.
+      # one of a multi-grammar package's grammars does NOT fire; that the
+      # internal/custom lane is resolved rather than silently skipped; that both
+      # alias shapes (a local and a parameter holding a node type) are seen;
+      # and that a polymorphic string helper is NOT mistaken for one.
+      #
+      # The reporting path is graded here too, separately from detection. Three
+      # times in this PR the ungraded part turned out to be the printer: a
+      # Result field nobody prints is exactly as invisible as a surface nobody
+      # scans, and deleting the whole skipped-surface block once left the suite
+      # green.
       - name: Positive controls
         run: go test -count=1 -v ./tools/node-type-gate/
 

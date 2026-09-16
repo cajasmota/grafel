@@ -616,11 +616,13 @@ func TestControl_CustomLanePackageIsResolved(t *testing.T) {
 // CONTROL 7 — a package that cannot be mapped must be NAMED, and an unnamed one
 // must fail.
 //
-// This is the half of finding 1 that outlives the kotlin mapping. Some packages
-// genuinely have no single grammar (internal/engine parses under a runtime
-// language; internal/treesitter IS the parser). Skipping those is a reviewed
-// decision only while the list of them is closed and each entry carries a
-// reason. A directory that produces sites and appears in neither the grammar
+// This is the half of finding 1 that outlives the kotlin mapping. Two packages
+// are skipped today: internal/engine parses under a runtime-computed language
+// and genuinely has no single grammar, and internal/treesitter IS the parser —
+// its kotlin surface is bound by an `if language == "kotlin"` guard the
+// derivation does not model, which is a special case not worth one, not an
+// impossibility. Skipping either is a reviewed decision only while the list is
+// closed and each entry carries a reason that is true of it. A directory that produces sites and appears in neither the grammar
 // map nor skipExemptions must turn the gate red, or the silence comes back.
 //
 // Driven on a synthetic surface so each axis moves alone.
