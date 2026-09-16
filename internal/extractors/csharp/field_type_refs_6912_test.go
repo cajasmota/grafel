@@ -317,26 +317,33 @@ public class Holder { public Widget W { get; set; } }
 // KNOWN DEFECT, and they are the only assertions in this file that describe
 // behaviour that is WRONG.
 //
-// "Declared in this same file" is a FILE-scoped check with no namespace and no
-// type-parameter scope behind it. Two consequences, both found in review of
-// #6912 and both reproduced here:
+// "Declared in this same file" is a FILE-scoped check with NO NAMESPACE scope
+// behind it, so `namespace A { class Customer }` + `namespace B { class Order {
+// Customer Buyer } }` in one file emits an edge, though App.B.Order cannot see
+// App.A.Customer without a `using`. That is WORSE than a dangling edge by the
+// same logic that chose this pass's address: the edge BINDS, so it never reaches
+// `bug-extractor` and no disposition figure will ever surface it. Measured
+// incidence on the corpora is ZERO — aspnetcore-mvc has 12 multi-namespace .cs
+// files and emits no field-type edge inside any of them; aspnetcore-realworld
+// and WakeOnLAN have none at all — which is why the behaviour is recorded here
+// rather than fixed.
 //
-//  1. `namespace A { class Customer }` + `namespace B { class Order { Customer
-//     Buyer } }` in one file emits an edge, though App.B.Order cannot see
-//     App.A.Customer without a `using`.
-//  2. A type PARAMETER named after a same-file class (`class Box<Customer>`)
-//     binds the parameter to the class.
+// This test is expected to FAIL when the follow-up fixes it. That is the point:
+// it makes the limitation observable at the code, and a fix has to come here and
+// say so rather than changing behaviour silently.
 //
-// Both are WORSE than a dangling edge by the same logic that chose this pass's
-// address: the edge BINDS, so it never reaches `bug-extractor` and no
-// disposition figure will ever surface it. Measured incidence on the corpora is
-// ZERO — aspnetcore-mvc has 12 multi-namespace .cs files and emits no field-type
-// edge inside any of them; aspnetcore-realworld and WakeOnLAN have none at all
-// — which is why the behaviour is recorded here rather than fixed in this arm.
-//
-// These two tests are expected to FAIL when the follow-up fixes them. That is
-// the point: they make the limitation observable at the code, and a fix has to
-// come here and say so rather than changing behaviour silently.
+// THE SECOND KNOWN OVER-FIRE THAT USED TO LIVE HERE IS GONE (#7041). A type
+// PARAMETER named after a same-file class (`class Box<Customer>` beside `class
+// Customer`) no longer binds the parameter to the class:
+// TestCsharpFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType was a
+// hard `t.Fatalf` asserting the WRONG edge was present, and it is DELETED rather
+// than worked around, as its own message instructed. Its replacement is
+// field_type_refs_7041_test.go, which asserts the absence in java's two-fixture
+// shape — a colliding and a non-colliding fixture, each with a control edge — so
+// "the over-fire is still here" and "the producer stopped working entirely" fail
+// differently. The prose this leaves behind is corrected in three places, not
+// left standing: the WHAT THE CHECK IS NOT block in field_type_refs.go, the
+// paragraph above, and issue #7041 itself.
 func TestCsharpFieldTypeRefs_KnownOverFire_NamespaceScopeIsNotConsulted(t *testing.T) {
 	const src = `namespace App.A { public class Customer { public string N { get; set; } } }
 namespace App.B { public class Order { public Customer Buyer { get; set; } } }
@@ -346,21 +353,6 @@ namespace App.B { public class Order { public Customer Buyer { get; set; } } }
 	if got := fieldTypeRefEdges(t, recs); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("KNOWN over-fire changed shape — if namespace scope is now consulted, "+
 			"delete this test and say so\n got: %v\nwant: %v", got, want)
-	}
-}
-
-func TestCsharpFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType(t *testing.T) {
-	const src = `namespace App.Models;
-
-public class Customer { public string N { get; set; } }
-
-public class Box<Customer> { public Customer Item { get; set; } }
-`
-	recs := extractCSFiles(t, map[string]string{"F.cs": src})
-	want := []string{"Box.Item -> scope:component:class:csharp:F.cs:Customer"}
-	if got := fieldTypeRefEdges(t, recs); strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("KNOWN over-fire changed shape — if type-parameter scope is now "+
-			"consulted, delete this test and say so\n got: %v\nwant: %v", got, want)
 	}
 }
 

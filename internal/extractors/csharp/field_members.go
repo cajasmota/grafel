@@ -77,7 +77,17 @@ func emitFieldMembers(
 		// THIS FILE into REFERENCES edges once the walk has seen every
 		// declaration. Nothing is decided here: a field may be declared before
 		// the type it names.
-		if cands := csTypeRefCandidates(typeNode, src); len(cands) > 0 {
+		//
+		// Issue #7041 — minus the names bound as TYPE PARAMETERS at this
+		// field's position, which shadow any same-file declaration of the same
+		// name. THE SHADOW SET IS COMPUTED FROM `typeNode` ITSELF rather than
+		// threaded in from csharp.go's caller: typeNode is the field's own type
+		// expression, so its lexical parent chain reaches the declaring type —
+		// and every enclosing one — for ALL THREE anchors (property_declaration,
+		// field_declaration's variable_declaration, and a record's positional
+		// `parameter`) without the caller learning anything new, and without a
+		// fourth anchor added later being able to forget to pass it.
+		if cands := csTypeRefCandidates(typeNode, src, csVisibleTypeParameterNames(typeNode, src)); len(cands) > 0 {
 			fields[len(fields)-1].Metadata[csFieldTypeRefsMetaKey] = cands
 		}
 	}
