@@ -910,11 +910,82 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 // collectLocalVarTypes walks descendants of body and returns
 // local-name → declared leaf type for local_declaration_statement
 // nodes. Implicitly-typed `var` declarations are not bound.
+//
+// AMBIGUOUS NAMES ARE REFUSED, NOT GUESSED (#7072). findAllNodes is a FLAT
+// descendant walk and the map is keyed by BARE NAME, so this pass has no model
+// of block scope whatsoever: two locals of the same name in SIBLING blocks
+//
+//	{ Order o = GetOrder(); o.Process(); }
+//	{ Customer o = GetCustomer(); o.Process(); }
+//
+// both write `o`, and before this change whichever declarator the walk reached
+// last simply won. The loser's call then carried a receiver type that name
+// never had at that site — and because the winner is a REAL same-file type,
+// the dotted edge BINDS. Bind rate, orphan rate and dangle count all score it
+// as a success, which is the #7056 signature: the failure is invisible to
+// every metric that would otherwise catch it.
+//
+// The rule is therefore the one this file already applies one case over: when
+// a name maps to two DIFFERENT types, drop the name entirely and let its calls
+// fall back to their bare leaf. The argument is csNonBindableTypeKeyword's
+// verbatim — "emitting `var.Process` … is strictly worse than the bare
+// `Process` that not binding produces, because a dotted target leaves the
+// resolver's bare-name class and is scored as a confident bind (#7071)" — and
+// a WRONG dotted receiver is that same hazard, not a lesser one: a fabricated
+// `var.Process` at least dangles, while `Customer.Process` on a real Customer
+// binds. The `foreach` arm below reaches the same answer by the same route
+// (feTypes/feAmbiguous), and csNamesBoundOutsideForeach exists only because
+// collision-refusal was already the convention there, implemented as a word
+// list. This is that convention finally implemented as the thing #7068's own
+// note said it needed: "that needs scope, not a word list" — with the honest
+// caveat that this is still not scope, only the refusal a scope would license.
+//
+// SAME-NAME/SAME-TYPE IS NOT A COLLISION. Two blocks each declaring `Order o`
+// agree on the answer, so refusing them would be pure recall loss for no
+// soundness gain; the ledger compares TYPES, not names.
+//
+// NESTED SHADOWING is treated identically to sibling reuse, because a flat
+// walk cannot tell them apart. An inner block redeclaring an outer name with a
+// different type is believed to be CS0136 and not a compilable program at all
+// — DERIVED FROM THE SPEC AND UNDERIVED BY EXECUTION, since no C# compiler
+// exists in this environment (the `dynamic` note in csNonBindableTypeKeyword
+// records its own language question the same way). If that is right, refusing
+// costs nothing real; if it is wrong, the cost is an outer binding degraded to
+// a bare leaf, which is the honest direction. Recovering it would need the
+// real thing.
+//
+// WHAT A REAL SYMBOL TABLE WOULD COST, since refusal is the cheaper of two
+// defensible answers and the more expensive one is not wrong: a block-scoped
+// table means walking the body RECURSIVELY instead of via findAllNodes,
+// pushing a frame at every scope-introducing node (block, for, foreach, using,
+// fixed, switch_section, lambda body, local_function_statement body, catch
+// clause), resolving each call site against the frame stack LIVE at that
+// site's position rather than against one flat map — which in turn means
+// extractCallRelationships can no longer take a prebuilt map, so the
+// `params win over locals` merge at its head has to become the bottom frame of
+// that stack. That is a restructuring of two functions plus every binding form
+// in csNamesBoundOutsideForeach's enumeration, and it buys correct receivers
+// in exactly the cases this refusal drops. It is the right end state; it is
+// not this change, and nothing here blocks it — a table that resolves per-site
+// simply stops consulting the ambiguity ledger.
+//
+// CORPUS INCIDENCE IS ZERO: 0 colliding pairs in 3721 `.cs` files (measured).
+// This is a soundness guard, not a recall fix, and on this corpus a guard that
+// never fires and one that always fires are indistinguishable — which is why
+// the fixtures grade BOTH directions.
 func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
 	out := map[string]string{}
+	// Two-stage ledger, mirroring feTypes/feAmbiguous below: candidates are
+	// accumulated first and only the unambiguous ones are published to `out`.
+	// It cannot be done in one stage against `out` directly, because the
+	// `foreach` arm reads `out` and a name must be ABSENT from it — not
+	// present-then-deleted at some later point in the walk — for that arm to
+	// see a consistent map.
+	localTypes := map[string]string{}
+	localAmbiguous := map[string]bool{}
 	for _, decl := range findAllNodes(body, "local_declaration_statement") {
 		vd := findChildByType(decl, "variable_declaration")
 		if vd == nil {
@@ -960,8 +1031,21 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 					continue
 				}
 			}
-			out[name] = typ
+			// #7072: same name, DIFFERENT type ⇒ ambiguous, refuse both.
+			// The flag is STICKY — a third declarator agreeing with the first
+			// must not clear it, since the disagreeing one is still out there.
+			if prev, seen := localTypes[name]; seen && prev != typ {
+				localAmbiguous[name] = true
+				continue
+			}
+			localTypes[name] = typ
 		}
+	}
+	for name, typ := range localTypes {
+		if localAmbiguous[name] {
+			continue
+		}
+		out[name] = typ
 	}
 	// `foreach (T x in xs)` — bind loop variable.
 	//
@@ -1068,9 +1152,15 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	//      unopposed. "0 changed-target rows" is therefore a CORPUS
 	//      OBSERVATION, not a structural proof — it was stated as the latter in
 	//      an earlier revision of this comment and that was wrong.
-	//      The flat map also still cannot model block scope, so a
-	//      same-name/different-type collision degrades to a bare leaf rather
-	//      than to a wrong dotted target.
+	//      The flat map also still cannot model block scope. When this
+	//      sentence was first written it went on to say that a
+	//      same-name/different-type collision therefore "degrades to a bare
+	//      leaf rather than to a wrong dotted target", and that was FALSE of
+	//      the locals pass it appeared to describe: only the `foreach` arm
+	//      refused such a name, while two colliding LOCALS were resolved
+	//      last-writer-wins into a confident wrong receiver. #7072 made the
+	//      claim true by giving the locals pass its own ambiguity ledger; see
+	//      the refusal note at the head of this function.
 	//
 	// Forms that DO bind — the enumerated space, NOT proven exhaustive:
 	// identifier (`Order o`), predefined_type (`string s`), generic_name
