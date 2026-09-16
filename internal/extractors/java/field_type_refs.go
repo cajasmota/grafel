@@ -177,12 +177,17 @@ import (
 //     emit an edge asserting `item`'s declared type was that class. It is not:
 //     `T` is the parameter, which shadows the outer declaration. The refusal
 //     lives in javaVisibleTypeParameterNames; see it for Java's scoping rule,
-//     why that rule is NOT kotlin's, and the javac evidence behind it. What is
-//     still NOT modelled, and is a stated limit rather than an accident: a
-//     METHOD's own type parameters (`<T> void f(T x)`), because no field entity
-//     is ever emitted inside a method body — local-class and method-local
-//     declarations produce no SCOPE.Schema/field record at all, so there is no
-//     anchor for such a name to reach. Modelling them would be unreachable code.
+//     why that rule is NOT kotlin's, and the javac evidence behind it. Because
+//     that ascent carries NO declaration-kind list and matches on
+//     `type_parameters` alone, it also collects a METHOD's and a CONSTRUCTOR's
+//     own parameters (`<T> void f(T x)`) — those two are among the five grammar
+//     nodes that carry the list. That behaviour is present and correct but can
+//     never FIRE, because no field entity is emitted inside a method body: a
+//     local class and an anonymous class declared in a method both produce zero
+//     SCOPE.Schema/field records (probed, not assumed), so no anchor exists for
+//     such a name to reach. An earlier revision of this bullet said method
+//     parameters were "not modelled" and that modelling them "would be
+//     unreachable code" — both wrong about the code, in opposite directions.
 //   - IT DOES NOT INFLATE PAST ONE EDGE PER (field, target). A field written
 //     `Map<Order, Order>` yields the candidate `Order` twice and emits ONE edge.
 
@@ -340,19 +345,30 @@ func javaFieldTypeCandidates(typ ts.Node, src []byte, typeParams map[string]bool
 // class in a field initializer, redeclared name, an inner class with its OWN
 // differently-named list that STILL uses the outer's — the input that grades
 // the ascent past a non-empty nearest list, found by scoring a mutant ALIVE —
-// generic inner of a non-generic outer) and ..._StaticContext (the four forms above). The controls that stop
-// the ascent from over-refusing are `InnerFlatN.ft` and `SiblingN.st`: both sit
-// OUTSIDE any declaration binding the name, so both must keep their edge — an
-// implementation that refused a name file-wide once it had seen it anywhere
-// deletes exactly those two rows.
+// generic inner of a non-generic outer) and ..._StaticContext (four forms).
+//
+// THE CONTROLS THAT STOP THE ASCENT FROM OVER-REFUSING name a type that IS
+// bound as a parameter elsewhere in the same file, at a position where it is
+// NOT in scope, so the edge must be KEPT: `Plain.t`, `InnerFlatN.ft`,
+// `SiblingN.st`, `pf` (anonymous-class field), `PlainP.t` and — at the RECORD
+// HEADER COMPONENT emit site — `PlainRP.t`. An implementation that refused a
+// name file-wide once it had seen it anywhere deletes exactly those rows. The
+// record-anchor one was missing until review: the rows sitting there named
+// types that are never parameters, so they graded producer LIVENESS, and the
+// identical "descend from the root" mutation was DEAD at the class-field anchor
+// and ALIVE at the record one. Both emit sites now carry a scoping control.
 //
 // NO DECLARATION-KIND LIST. The ascent matches on `type_parameters` alone
 // rather than enumerating class_declaration / interface_declaration /
-// record_declaration, because only a declaration that introduces parameters
-// carries that child and its scope is exactly that declaration's subtree. A
-// kind list would be four more matcher strings to keep true against the
-// grammar, and the scala arm shipped two that did not exist in its grammar at
-// all — dead code a mutant could not kill. (`object_creation_expression` and a
+// record_declaration. That is not only cheaper, it is what makes the ascent
+// SOUND rather than lucky: EXACTLY FIVE grammar nodes carry a `type_parameters`
+// child — class_declaration, interface_declaration, record_declaration,
+// method_declaration and constructor_declaration — and every one of them scopes
+// those parameters over precisely its OWN SUBTREE. So the lexical parent chain
+// IS the scope chain, and matching the list node alone cannot miss a binder or
+// invent one. A kind list would be five more matcher strings to keep true
+// against the grammar, and the scala arm shipped two that did not exist in its
+// grammar at all — dead code a mutant could not kill. (`object_creation_expression` and a
 // generic invocation carry `type_arguments`, a different node type, so an
 // anonymous class's field is shadowed by its ENCLOSING declaration's list and
 // not by the arguments at its own `new` site.)

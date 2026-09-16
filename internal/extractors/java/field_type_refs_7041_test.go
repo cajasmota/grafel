@@ -11,9 +11,42 @@ package java_test
 // from "the producer stopped working entirely". EVERY fixture below carries
 // that control and a stronger one: each source declares a REAL same-file type
 // whose field edge MUST be present in the same `want` set. A pass that stopped
-// emitting altogether fails every table here, and a pass that refuses too much
-// fails the named control row rather than silently deleting an edge — which is
-// the direction #7056 established no instrument we own can see.
+// emitting altogether fails every table here.
+//
+// THREE CONTROL KINDS, AND THEY ARE NOT INTERCHANGEABLE. Review found this
+// header claiming that "a pass that refuses too much fails a named control row"
+// — true at the class-field anchor, FALSE at the record-component anchor,
+// because the rows filed there graded a different property. Every "control" row
+// in this file is now classified by WHAT IT VARIES, not by where it sits:
+//
+//   - LIVENESS. Names a type that is NEVER a parameter in its file
+//     (`Box.ok => Order`). Says the producer still runs at that anchor / in
+//     that form. Says NOTHING about scoping. This is the deleted pin's `H2.java`
+//     idea and it is the WEAKEST of the three.
+//   - SCOPING. Names a type that IS bound as a parameter somewhere in the same
+//     file, at a position where it is NOT in scope, so the edge must be KEPT:
+//     `Plain.t => T`, `InnerFlatN.ft => TN`, `SiblingN.st => TN`, `pf => TN`,
+//     `PlainP.t => TP`, `PlainRP.t => TP`. Only these grade whether the shadow
+//     set is scoped to the field's POSITION.
+//   - BOUND-HARVESTING. Names a type that appears INSIDE a `type_parameters`
+//     subtree without being a parameter name — a bound: `Bounded.ok => Order`,
+//     `Multi.a => A`, `Multi.b => B`, `RecD.ok => OrderD`. These grade that the
+//     name extraction takes DIRECT children of `type_parameter` only.
+//
+// The last two are the over-refusal direction — the one #7056 established no
+// instrument we own can see. A control row grades the property it VARIES, not
+// the property it is filed under.
+//
+// AUDIT OF THE EMIT-SITE AXIS, done after the review finding rather than
+// assumed. This pass has exactly two emit sites for a SCOPE.Schema/field
+// record: buildField (java.go:1527 — class fields AND anonymous-class fields)
+// and walk's record header component (java.go:492). Both now carry a SCOPING
+// control (`Plain.t`/`InnerFlatN.ft`/`SiblingN.st`/`pf`/`PlainP.t`, and
+// `PlainRP.t`) AND a BOUND-HARVESTING control (`Bounded.ok`/`Multi.a`/`Multi.b`,
+// and `RecD.ok`, whose record was given a bound for exactly that reason). The
+// identical anchor-gated "descend from the file root" mutant is DEAD at both:
+// at the class field it drops five named rows, at the record component it drops
+// exactly `PlainRP.t => TP`.
 //
 // JAVA'S SCOPING RULE, DERIVED FROM THE JLS AND VERIFIED WITH javac 25.0.3
 // (evidence in the PR body; each claim below was compiled, not recalled):
@@ -138,7 +171,15 @@ func TestJavaFieldTypeRefs_7041_TypeParameterFormSpace(t *testing.T) {
 // header component (walk's record_declaration arm is a completely separate
 // emit site, so a fix wired only into buildField passes table 1 whole).
 //
-// HELD CONSTANT: one parameter named `TD`, one control type `OrderD`, one file.
+// HELD CONSTANT: one parameter named `TD`, one control type `OrderD`, one file
+// — AND, stated plainly because a review found this table implying otherwise,
+// THE DIRECTION. This table varies the anchor for the REFUSAL direction only
+// (`BoxD.item`, `RecD.item`). Its `OrderD` rows are LIVENESS controls: `OrderD`
+// is never a type parameter in this file, so they say the producer still runs
+// at each anchor — they say nothing about whether the shadow set is SCOPED to
+// the field's position. The over-refusal direction at the record anchor is
+// varied in TABLE 5 (`PlainRP.t => TP`), which is where the missing grader was
+// added; do not read this table as covering it.
 //
 // THE FORMS THAT CANNOT APPEAR ARE STATED, NOT OMITTED. javac 25.0.3:
 //
@@ -158,17 +199,23 @@ func TestJavaFieldTypeRefs_7041_DeclaringFormSpace(t *testing.T) {
 	recs := extractJavaFT(t, map[string]string{path: `class OrderD {}
 class TD {}
 class BoxD<TD> { TD item; OrderD ok; }
-record RecD<TD>(TD item, OrderD ok) {}
+record RecD<TD extends OrderD>(TD item, OrderD ok) {}
 interface IFD<TD> { OrderD CONST = null; }
 enum ED { X }
 @interface AnnD { String value(); }
 `})
 	const f = path + ":"
 	javaFTWantEqual(t, javaFTEdges(recs), []string{
-		// class anchor: parameter refused, control kept.
+		// class anchor: parameter refused, LIVENESS control kept.
 		f + "BoxD.ok => OrderD",
 		// RECORD HEADER COMPONENT anchor — the second emit site.
 		// RecD.item is the parameter and must be refused there too.
+		// `RecD` was given the bound `<TD extends OrderD>` in review so
+		// this row is also the BOUND-HARVESTING control at the record
+		// anchor: `OrderD` sits inside the `type_parameters` subtree
+		// without being a parameter name, so a collector taking
+		// DESCENDANTS of `type_parameter` deletes this edge here as well
+		// as the three at the class anchor in table 1.
 		f + "RecD.ok => OrderD",
 		// IFD.CONST: no field entity exists, so no row in either
 		// direction. ED and AnnD cannot be generic at all.
@@ -188,12 +235,23 @@ enum ED { X }
 // HELD CONSTANT: the parameter name is always `TN`, the control type always
 // `OrderN`, one file, `class` throughout.
 //
-// THE CONTROLS ARE THE LAST THREE ROWS. `InnerFlatN.ft` and `SiblingN.st` are
-// OUTSIDE any declaration that binds `TN`, so `TN` there really is `class TN`
-// and the edges MUST survive — javac agrees (a sibling class referring to the
-// top-level type compiles, rc=0). An ascent that ran past the declaration
-// boundary, or that refused a name globally once it had seen it anywhere in the
-// file, deletes exactly those two rows.
+// THE SCOPING CONTROLS ARE `InnerFlatN.ft`, `SiblingN.st` AND `pf`. All three
+// sit OUTSIDE any declaration that binds `TN`, so `TN` there really is
+// `class TN` and the edges MUST survive — javac agrees (rc=0). An ascent that
+// ran past the declaration boundary, or that refused a name globally once it
+// had seen it anywhere in the file, deletes exactly those three rows.
+//
+// `pf` WAS ADDED IN REVIEW and is the anonymous-class-field twin of the other
+// two. Before it, the only anonymous-anchor row was `aok => OrderN`, whose type
+// is never a parameter in this file — so it graded producer LIVENESS at that
+// anchor and not the SCOPING of the shadow set, the same conflation the review
+// found at the record anchor (see table 5). Unlike the record component, an
+// anonymous class's field goes through the SAME emit site as a class field
+// (buildField, java.go:1527), so this row is not an independent grader of a
+// third call site; what it does grade is that the ascent crosses an
+// `object_creation_expression` + `class_body` boundary and still stops at the
+// enclosing declaration — `PlainOuterN` binds nothing, so `pf` keeps its edge
+// while `af`, in the identical position inside `OuterN<TN>`, does not.
 //
 // THIS SOURCE COMPILES (javac 25.0.3, rc=0) — including the anonymous class in
 // the instance-field initializer and the inner class that shadows `TN` again.
@@ -210,6 +268,7 @@ class OuterN<TN> {
   class BothN<UN> { TN bt; UN bu; OrderN bok; }
 }
 class PlainOuterN {
+  Runnable panon = new Runnable() { TN pf; OrderN pok; public void run() {} };
   class InnerGenN<TN> { TN gt; OrderN gok; }
   class InnerFlatN { TN ft; OrderN fok; }
 }
@@ -221,8 +280,14 @@ class SiblingN { TN st; OrderN sok; }
 		f + "OuterN.ok => OrderN",
 		// An ANONYMOUS class in an instance-field initializer does emit
 		// field entities in this extractor, with BARE names (no owner).
-		// It is lexically inside OuterN, so TN is the parameter there.
+		// It is lexically inside OuterN, so TN is the parameter there:
+		// `af` refused, `aok` kept (LIVENESS at this anchor).
 		f + "aok => OrderN",
+		// SCOPING at the anonymous anchor — the same position inside a
+		// NON-generic outer. `pf` MUST keep its edge; `pok` is the
+		// liveness control beside it.
+		f + "pf => TN",
+		f + "pok => OrderN",
 		// INNER class of a generic class — captures, per JLS 8.1.2, and
 		// javac compiles it. `it` refused.
 		f + "InnerN.iok => OrderN",
@@ -281,15 +346,23 @@ class SiblingN { TN st; OrderN sok; }
 // nested records/interfaces/enums — and this table pins that the extractor's
 // answer on such input is refusal rather than a wrong binding.
 //
-// VARIED: the static-context form — an explicit `static` nested class, a nested
-// record (implicitly static, JLS 8.10.1), a member class of a generic interface
-// (implicitly static, JLS 9.5), a static class nested two levels down, and a
-// nested class inside a static nested class.
+// VARIED — FOUR forms, one per fixture declaration, counted against the source
+// rather than described from memory: an explicit `static` nested class
+// (`NestedS`), a nested record (implicitly static, JLS 8.10.1 — `NRecS`), an
+// inner class nested inside a `static` nested class (`DeepS.DeeperS`), and a
+// member class of a generic interface (implicitly static, JLS 9.5 — `CInIS`).
+// An earlier revision of this comment listed FIVE, adding the inner-then-static
+// shape (`class Mid { static class Deep { … } }`, javac row 6 above) which is
+// NOT in the fixture. It is refused by the same union ascent and is not
+// separately distinguishable, so the label was claiming more than the content
+// rather than hiding a gap — corrected here rather than papered over.
 //
-// HELD CONSTANT: the parameter name `TS`, the control type `OrderS`, one file.
-//
-// The controls are the `OrderS` rows: they prove the producer still runs inside
-// every one of these forms, so a row's absence means refusal and not silence.
+// HELD CONSTANT: the parameter name `TS`, the control type `OrderS`, one file,
+// and — stated, not implied — THE DIRECTION. The `OrderS` rows are LIVENESS
+// controls only: `OrderS` is never a parameter in this file, so they prove the
+// producer still runs inside every one of these forms (a row's absence means
+// refusal, not silence) and nothing more. The SCOPING direction for the class
+// and record anchors is graded in tables 3 and 5.
 func TestJavaFieldTypeRefs_7041_NestingFormSpace_StaticContext(t *testing.T) {
 	const path = "NestStatic.java"
 	recs := extractJavaFT(t, map[string]string{path: `class OrderS {}
@@ -311,29 +384,64 @@ interface IFaceS<TS> { class CInIS { TS ci; OrderS cok; } }
 }
 
 // ---------------------------------------------------------------------------
-// TABLE 5 — THE POSITION OF THE COLLIDING DECLARATION, which every table above
-// holds constant at "before the generic one".
+// TABLE 5 — THE POSITION OF THE COLLIDING DECLARATION, and THE EMIT SITE OF
+// THE OVER-REFUSAL CONTROL.
 //
-// VARIED: the colliding `class TP` is declared AFTER the generic class that
-// shadows its name, and after the plain class that legitimately references it.
-// This is the axis the two-pass design (stash at walk, attach after) exists
+// VARIED, axis 1: the colliding `class TP` is declared AFTER the generic class
+// that shadows its name, and after the declarations that legitimately reference
+// it. This is the axis the two-pass design (stash at walk, attach after) exists
 // for, and holding it constant everywhere else would leave it ungraded.
 //
-// HELD CONSTANT: single parameter, class anchor, one file, control `OrderP`.
+// VARIED, axis 2 — ADDED IN REVIEW, and the reason this table is no longer
+// "class anchor" HELD CONSTANT: the SCOPING direction is graded at BOTH emit
+// sites. `PlainRP.t => TP` is a RECORD HEADER COMPONENT (java.go:492) naming a
+// type parameter that is bound elsewhere in the file but NOT in this record's
+// ancestry, so the edge must be KEPT — the record-anchor twin of
+// `PlainP.t => TP`.
+//
+// WHY THAT ROW EXISTS AND WHAT WAS WRONG WITHOUT IT. Table 2 varies the anchor
+// for the REFUSAL direction (`RecD.item`, and `NRecS.nr` in table 4) and, before
+// this row, held it constant for the OVER-REFUSAL direction: every row grading
+// the SCOPING of the shadow set — a name that IS a parameter somewhere in the
+// file whose edge must nonetheless survive — sat on a class field. The two
+// record-anchor rows that looked like controls (`RecD.ok`, `NRecS.nrok`) name
+// types that are never a parameter in their files, so they grade producer
+// LIVENESS, not scoping. Different property. A reviewer applied the identical
+// "descend from the file root instead of ascending from this field" mutation at
+// each anchor: DEAD at the class field (four named rows), ALIVE at the record
+// component — a correct edge silently deleted with the whole suite green, the
+// direction #7056 says no instrument we own can see. A control row grades the
+// property it VARIES, not the property it is filed under.
+//
+// HELD CONSTANT: single parameter name `TP`, one file, control `OrderP`, and
+// the colliding declaration's kind (`class`).
 //
 // THIS SOURCE COMPILES (javac 25.0.3, rc=0) — Java has no forward-declaration
-// requirement.
+// requirement, and a record component may name a top-level type declared later.
 func TestJavaFieldTypeRefs_7041_CollidingDeclarationComesLast(t *testing.T) {
 	const path = "Later.java"
 	recs := extractJavaFT(t, map[string]string{path: `class BoxP<TP> { TP item; OrderP ok; }
+record BoxRP<TP>(TP item, OrderP ok) {}
 class PlainP { TP t; OrderP ok; }
+record PlainRP(TP t, OrderP ok) {}
 class TP {}
 class OrderP {}
 `})
 	const f = path + ":"
 	javaFTWantEqual(t, javaFTEdges(recs), []string{
+		// REFUSED at both anchors: BoxP.item (class field) and
+		// BoxRP.item (record component) are their declaration's own
+		// parameter, and `class TP` — declared LAST — would have been
+		// their target.
 		f + "BoxP.ok => OrderP",
+		f + "BoxRP.ok => OrderP",
+		// SCOPING CONTROL, class field anchor.
 		f + "PlainP.t => TP",
 		f + "PlainP.ok => OrderP",
+		// SCOPING CONTROL, RECORD COMPONENT anchor. `PlainRP` declares
+		// no parameters, so `TP` here is `class TP` and the edge MUST
+		// survive. This is the row the review's MA mutant deletes.
+		f + "PlainRP.t => TP",
+		f + "PlainRP.ok => OrderP",
 	})
 }
