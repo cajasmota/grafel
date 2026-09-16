@@ -121,6 +121,14 @@ func ParseBaseline(r io.Reader) (*Baseline, error) {
 		if e.Note == "" {
 			return nil, fmt.Errorf("baseline line %d: every entry needs a note saying why it is tolerated: %q", lineNo, raw)
 		}
+		// known-defect is the only class that tolerates a REAL bug. It is
+		// acceptable only while each row hands off to a tracked fix, so the
+		// rule is enforced here rather than by an on-disk test — a check that
+		// lives only in a test over the current file grades nothing on the day
+		// the file has no such row, which is exactly when someone adds one.
+		if e.Class == "known-defect" && !strings.Contains(e.Note, "#") {
+			return nil, fmt.Errorf("baseline line %d: a known-defect row must name its issue (e.g. #7068) in the note: %q", lineNo, e.Note)
+		}
 		if _, dup := b.byKey[e.key()]; dup {
 			return nil, fmt.Errorf("baseline line %d: duplicate entry for %s %q in %s", lineNo, e.Dir, e.Lit, e.File)
 		}

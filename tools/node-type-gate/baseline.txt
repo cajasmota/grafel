@@ -25,7 +25,6 @@
 # THIS IS NOT A PLACE TO PUT A NEW DEAD LITERAL. Every row here is a defect
 # someone chose not to fix yet, each with its own follow-up.
 paired-with-correct-name | internal/extractors/csharp     | this_expression                        | internal/extractors/csharp/csharp.go:787                    | the live anonymous node is spelled "this" and is tested on the same line
-known-defect             | internal/extractors/csharp     | for_each_statement                     | internal/extractors/csharp/csharp.go:967                    | #7068 — the grammar spells it foreach_statement and there is no second arm, so no foreach loop variable is ever typed; own graded fix, do not batch
 paired-with-correct-name | internal/extractors/golang     | method_spec                            | internal/extractors/golang/extractor.go:1905                | live name method_elem is the first argument of the same findAll call
 paired-with-correct-name | internal/extractors/groovy     | class_declaration                      | internal/extractors/groovy/groovy.go:88                     | live name class_definition is in the same case
 unreachable-code         | internal/extractors/groovy     | method_declaration                     | internal/extractors/groovy/groovy.go:118                    | sole arm, so it never fires; methods are extracted through the live function_definition path instead, which leaves buildMethod and everything under it unreachable

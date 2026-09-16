@@ -242,30 +242,58 @@ func TestControl_ScalaVariantTypeParameterIsDetected(t *testing.T) {
 	}
 }
 
-// CONTROL 2 — #7068, the one dead literal with observable behaviour.
+// CONTROL 2 — #7068, the dead literal that had observable behaviour.
 //
-// csharp.go matches "for_each_statement"; tree-sitter-c-sharp spells it
-// "foreach_statement", so collectLocalVarTypes never binds a foreach loop
-// variable and every CALLS edge from such a body keeps a bare-name target.
+// csharp.go used to match "for_each_statement"; tree-sitter-c-sharp spells it
+// "foreach_statement", so collectLocalVarTypes never bound a foreach loop
+// variable and every CALLS edge out of such a body kept a bare-name target.
+// #7070 fixed it on main while this gate was being built — and the gate caught
+// that itself: its baseline row for the literal stopped matching and turned the
+// run red with "the literal was fixed or moved, delete the row". The row is
+// gone.
 //
-// This control runs in BOTH directions, which is what separates a pin from a
-// skip: with an empty baseline the gate must name the literal; with the real
-// baseline it must be tolerated AND its row must say #7068; and once the
-// literal is corrected the row must go stale, so the baseline cannot outlive
-// the defect it describes.
+// So this control is now a REGRESSION PIN rather than a detection demo, which
+// is strictly the stronger thing: put the wrong spelling back and require the
+// gate to name it. If anyone re-introduces #7068 — a revert, a bad merge, or
+// the same mistake in a new arm — this fails.
 //
-// VARIED across the three sub-assertions: the baseline (empty / real) and the
-// source (as-shipped / corrected).
-// HELD CONSTANT: the file, the literal's position, the package, the form.
-func TestControl_CSharpForEachStatementIsDetected(t *testing.T) {
+// It also asserts the corrected spelling resolves cleanly. Without that half,
+// the control would pass just as happily against a gate that fires on
+// everything.
+//
+// VARIED across the two halves: the spelling in the source (as-shipped /
+// wrong), which flips the required verdict.
+// HELD CONSTANT: the file, the package, the call, the form (helper), and the
+// baseline — the real one, because the pin must hold against the file that
+// ships.
+func TestControl_CSharpForEachStatementRegressionIsCaught(t *testing.T) {
 	root := modRoot(t)
 	const suffix = "csharp/csharp.go"
+	file := filepath.Join(root, "internal", "extractors", "csharp", "csharp.go")
 
-	// (a) Detected at all, with an empty baseline.
-	res := evalPkg(t, root, "./internal/extractors/csharp", nil, emptyBaseline(t))
+	// The shipped spelling resolves: no miss, no failure.
+	clean := evalPkg(t, root, "./internal/extractors/csharp", nil, realBaseline(t, root))
+	for _, m := range clean.Misses {
+		if strings.Contains(m.Lit, "each_statement") {
+			t.Errorf("the shipped tree already reports %q: %s", m.Lit, m.String())
+		}
+	}
+	if len(sitesFor(clean, "foreach_statement")) == 0 {
+		t.Fatalf("the corrected literal was never derived, so the pin below would be vacuous.\n%s", diagLines(clean))
+	}
+
+	// Re-introduce #7068 exactly: the loop-variable lookup, and only it.
+	patched := overlayReplace(t,
+		file,
+		`for _, fr := range findAllNodes(body, "foreach_statement") {`,
+		`for _, fr := range findAllNodes(body, "for_each_statement") {`,
+		1)
+	res := evalPkg(t, root, "./internal/extractors/csharp",
+		map[string][]byte{file: patched}, realBaseline(t, root))
+
 	d := findDiag(res, suffix, "for_each_statement")
 	if d == nil {
-		t.Fatalf("gate did not flag for_each_statement.\nderived sites for that literal: %v\nsinks naming findAllNodes: %v\nemitted:\n%s",
+		t.Fatalf("re-introducing #7068 did not fail the gate.\nderived sites for that literal: %v\nsinks naming findAllNodes: %v\nemitted:\n%s",
 			sitesFor(res, "for_each_statement"), sinksNaming(res, "findAllNodes"), diagLines(res))
 	}
 	if d.Dir != "internal/extractors/csharp" {
@@ -277,50 +305,46 @@ func TestControl_CSharpForEachStatementIsDetected(t *testing.T) {
 	if !strings.Contains(d.String(), "for_each_statement") || !strings.Contains(d.String(), "csharp.go") {
 		t.Errorf("diagnostic does not name both the literal and the file: %s", d.String())
 	}
+	if !res.Failed() {
+		t.Error("Failed() is false despite the re-introduced defect")
+	}
+}
 
-	// (b) Tolerated by the real baseline, with a row that names the issue.
-	real := realBaseline(t, root)
-	res2 := evalPkg(t, root, "./internal/extractors/csharp", nil, real)
-	if d := findDiag(res2, suffix, "for_each_statement"); d != nil {
-		t.Errorf("baselined literal still fails the gate: %s", d.String())
+// TestControl_StaleBaselineRowFailsTheGate is the other half Control 2 used to
+// carry, kept as its own control now that #7068 is fixed: a baseline row whose
+// literal no longer exists must turn the gate red, so the list shrinks when a
+// defect is fixed instead of quietly outliving it.
+//
+// This is not hypothetical. It is exactly what happened when #7070 landed
+// mid-build: the row for for_each_statement stopped matching and the gate said
+// so, unprompted.
+//
+// VARIED: whether the baseline carries a row nothing in the tree hits.
+// HELD CONSTANT: the package, the source (unmodified), and everything else
+// about the run.
+func TestControl_StaleBaselineRowFailsTheGate(t *testing.T) {
+	root := modRoot(t)
+	withGhost, err := ParseBaseline(strings.NewReader(
+		"not-a-node-type | internal/extractors/csharp | grafel_ghost_row_7065 | internal/extractors/csharp/csharp.go:1 | a row nothing matches\n"))
+	if err != nil {
+		t.Fatalf("ParseBaseline: %v", err)
 	}
-	var row *BaselineEntry
-	for i := range real.Entries {
-		if real.Entries[i].Lit == "for_each_statement" {
-			row = &real.Entries[i]
-		}
+	res := evalPkg(t, root, "./internal/extractors/csharp", nil, withGhost)
+	if len(res.StaleBaseline) != 1 || res.StaleBaseline[0].Lit != "grafel_ghost_row_7065" {
+		t.Fatalf("a baseline row matching nothing was not reported stale: %v", res.StaleBaseline)
 	}
-	if row == nil {
-		t.Fatal("baseline has no row for for_each_statement")
-	}
-	if row.Class != "known-defect" {
-		t.Errorf("for_each_statement is classed %q, want known-defect — it is the one dead literal with observable behaviour", row.Class)
-	}
-	if !strings.Contains(row.Note, "7068") {
-		t.Errorf("for_each_statement row does not name its issue: %q", row.Note)
+	if !res.Failed() {
+		t.Error("a stale row must fail the gate; that is the mechanism that makes the baseline shrink")
 	}
 
-	// (c) Correct the literal and the baseline row must go stale. Without this
-	// the baseline would silently outlive the fix.
-	file := filepath.Join(root, "internal", "extractors", "csharp", "csharp.go")
-	patched := overlayReplace(t, file, `"for_each_statement"`, `"foreach_statement"`, 1)
-	fresh := realBaseline(t, root)
-	res3 := evalPkg(t, root, "./internal/extractors/csharp",
-		map[string][]byte{file: patched}, fresh)
-	if findDiag(res3, suffix, "for_each_statement") != nil {
-		t.Error("the corrected source still reports for_each_statement")
-	}
-	stale := false
-	for _, e := range res3.StaleBaseline {
-		if e.Lit == "for_each_statement" {
-			stale = true
+	// Negative control: every row of the checked-in baseline that names this
+	// package does match. Without it, an Unmatched() that returns everything
+	// would satisfy the assertion above.
+	real := evalPkg(t, root, "./internal/extractors/csharp", nil, realBaseline(t, root))
+	for _, e := range real.StaleBaseline {
+		if e.Dir == "internal/extractors/csharp" {
+			t.Errorf("the checked-in baseline has a stale csharp row: %s %q in %s", e.Dir, e.Lit, e.File)
 		}
-	}
-	if !stale {
-		t.Errorf("fixing the literal did not make its baseline row stale.\nemitted:\n%s", diagLines(res3))
-	}
-	if !res3.Failed() {
-		t.Error("a stale baseline row must fail the gate; that is the mechanism that makes the list shrink")
 	}
 }
 

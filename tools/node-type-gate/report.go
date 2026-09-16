@@ -15,11 +15,11 @@ import (
 
 // minResolvedSites is a count floor. It does not prove the gate works — a scan
 // can read the right number of the wrong things — but it does catch the first
-// and cheapest vacuity mode: the scan silently read nothing. The four positive
+// and cheapest vacuity mode: the scan silently read nothing. The positive
 // controls cover the other four modes (wrong files, wrong content, no
 // detection, no action).
 //
-// Measured on the tree at the time of writing: 2896 resolved sites. The floor
+// Measured on the tree at the time of writing: 3081 resolved sites. The floor
 // is set well below that so ordinary deletions do not trip it, and far above
 // zero so a broken loader does.
 const minResolvedSites = 1500

@@ -30,6 +30,7 @@ func TestBaselineParser_Rejects(t *testing.T) {
 		{"location is not file:line", "paired-with-correct-name | internal/extractors/lua | function_statement | internal/extractors/lua/lua.go | note", "file:line"},
 		{"no justification", "paired-with-correct-name | internal/extractors/lua | function_statement | internal/extractors/lua/lua.go:175 |", "needs a note"},
 		{"duplicate key", ok + "\n" + ok, "duplicate"},
+		{"known-defect with no issue reference", "known-defect | internal/extractors/lua | function_statement | internal/extractors/lua/lua.go:175 | someone will get to it", "must name its issue"},
 	}
 	for _, r := range rows {
 		t.Run(r.name, func(t *testing.T) {
@@ -268,23 +269,21 @@ func TestExitCode(t *testing.T) {
 	}
 }
 
-// TestBaselineOnDisk_EveryKnownDefectNamesAnIssue: the known-defect class is
-// the one that tolerates a real bug. It is only acceptable while each row hands
-// off to a tracked fix.
-func TestBaselineOnDisk_EveryKnownDefectNamesAnIssue(t *testing.T) {
+// TestBaselineOnDisk_ClassesInUse records which baseline classes the checked-in
+// file actually uses, so a reviewer can see the shape of the list without
+// reading 48 rows. It asserts only what must always hold: the file parses (the
+// parser enforces the class vocabulary, the justification, and the
+// issue-reference rule for known-defect), and it is not empty — an empty
+// baseline would mean the gate is green for a reason nobody checked.
+func TestBaselineOnDisk_ClassesInUse(t *testing.T) {
 	root := modRoot(t)
 	b := realBaseline(t, root)
-	seen := 0
+	if len(b.Entries) == 0 {
+		t.Fatal("the checked-in baseline is empty; either every dead literal was fixed (delete this test with the file) or the file was not read")
+	}
+	counts := map[string]int{}
 	for _, e := range b.Entries {
-		if e.Class != "known-defect" {
-			continue
-		}
-		seen++
-		if !strings.Contains(e.Note, "#") {
-			t.Errorf("known-defect row %q in %s does not name an issue: %q", e.Lit, e.File, e.Note)
-		}
+		counts[e.Class]++
 	}
-	if seen == 0 {
-		t.Skip("no known-defect rows in the baseline — nothing to check")
-	}
+	t.Logf("%d rows: %v", len(b.Entries), counts)
 }
