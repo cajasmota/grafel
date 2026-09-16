@@ -1471,6 +1471,99 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 		record(childFieldText(fr, "name", src),
 			leafTypeName(fr.ChildByFieldName("type"), src))
 	}
+	// THREE MORE BINDERS, LEDGER-ONLY (#7097). Each of the following binds a
+	// name in a nested scope, and none of them typed a receiver before this
+	// change — so a same-name sibling local silently owned the name and its
+	// type was applied to call sites it never covered. MEASURED on compilable
+	// Java (the sibling `Order o` lives in its own block, so there is no JLS
+	// §6.4 conflict): all three emitted `Order.b` for the inner `o.b()`, a
+	// WRONG receiver on a real same-file type, which binds and which every
+	// bind/orphan/dangle metric scores as a success (#7056).
+	//
+	// They are recorded with an EMPTY type — "bound here, type unknown" —
+	// which disagrees with every real type and therefore poisons the name,
+	// exactly as an untyped `var` declarator does. That is deliberately NOT
+	// the same as typing them, and the standalone controls
+	// (TestJava7097_*AloneUnchanged) pin that: each construct alone still
+	// emits the bare leaf, as it did before. Per construct:
+	//
+	//	lambda parameter    genuinely untypeable in the dominant form
+	//	                    (`o -> o.b()`, and `(o, p) -> …`): the grammar
+	//	                    carries no type at all. "" is the only honest
+	//	                    entry, so there is nothing to decide here.
+	//	catch parameter     a declared type exists, but `catch_type` is a
+	//	                    UNION (`catch (A | B e)`) whose leftmost arm is
+	//	                    not "the" type; picking one is the guess #7094
+	//	                    refused to make, and leafTypeName has no
+	//	                    catch_type case. "" until a decision covers the
+	//	                    union.
+	//	try-with-resources  a single declared leaf type IS derivable here,
+	//	                    so this is the one arm where typing is possible
+	//	                    rather than a guess. It is still recorded as ""
+	//	                    because typing it is a RECALL ADDITION with its
+	//	                    own grading obligation, not part of removing a
+	//	                    wrong bind, and this diff stays disjoint from
+	//	                    #7091/#7096. The cost of that choice is not
+	//	                    prose: TestJava7097_TryWithResourcesSameTypeCost
+	//	                    OBSERVES the recall a same-type sibling loses to
+	//	                    the poison, so the fixture moves when the
+	//	                    behaviour does.
+	//
+	// Node spellings are DERIVED from the grammar by dumping a parse tree,
+	// not assumed — a matcher naming a node the grammar lacks is a silent
+	// no-op. `go run ./tools/node-type-gate` is the standing check.
+
+	// `try (Customer o = new Customer()) { … }` — resource_specification
+	// holds `resource` children with `type`/`name`/`value` fields. A resource
+	// that is a plain existing variable (`try (existing) { … }`) has NO
+	// `name` field, so childFieldText yields "" and record no-ops: that form
+	// binds nothing and must not poison the outer name.
+	for _, res := range findAllNodes(body, "resource") {
+		record(childFieldText(res, "name", src), "")
+	}
+	// `catch (MyEx o) { … }` — catch_clause holds a catch_formal_parameter
+	// whose `name` field is the bound identifier (its type sits in an
+	// unnamed `catch_type` child, not a `type` field).
+	for _, cfp := range findAllNodes(body, "catch_formal_parameter") {
+		record(childFieldText(cfp, "name", src), "")
+	}
+	// `cs.forEach(o -> o.b())` — lambda_expression's `parameters` field is
+	// one of three shapes: a bare `identifier` (single inferred parameter),
+	// `inferred_parameters` (`(o, p) -> …`), or `formal_parameters`
+	// (`(Customer o) -> …`, the only typed shape). All three bind — but this
+	// arm does NOT poison every binder they can hold: `formal_parameters`
+	// also admits a `spread_parameter` (a varargs lambda,
+	// `(Customer... o) -> …`), which the `formal_parameter` guard below
+	// skips, so that name still cedes to a same-name sibling. MEASURED on
+	// this tree, unchanged by this diff: `use((Customer... o) -> o.clone2())`
+	// beside an `Order o` sibling emits `Order.clone2` both before and after
+	// d1552ac26 — a wrong receiver this arm was believed to have removed.
+	// That hole is #7102, kept OUT of this diff on purpose so its gate stays
+	// attributable; no fixture here grades it.
+	for _, lam := range findAllNodes(body, "lambda_expression") {
+		params := lam.ChildByFieldName("parameters")
+		if params == nil {
+			continue
+		}
+		switch params.Type() {
+		case "identifier":
+			record(strings.TrimSpace(string(src[params.StartByte():params.EndByte()])), "")
+		case "inferred_parameters":
+			for i := 0; i < int(params.NamedChildCount()); i++ {
+				p := params.NamedChild(i)
+				if p != nil && p.Type() == "identifier" {
+					record(strings.TrimSpace(string(src[p.StartByte():p.EndByte()])), "")
+				}
+			}
+		case "formal_parameters":
+			for i := 0; i < int(params.NamedChildCount()); i++ {
+				p := params.NamedChild(i)
+				if p != nil && p.Type() == "formal_parameter" {
+					record(childFieldText(p, "name", src), "")
+				}
+			}
+		}
+	}
 	out := map[string]string{}
 	for name, typ := range cand {
 		if ambiguous[name] {
