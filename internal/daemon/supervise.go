@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,17 +100,115 @@ func engineChildCommand(selfExe, root string) *exec.Cmd {
 //     and inherited verbatim → both resolve <tmp>/state.
 //
 // root is retained in the signature (it is Layout.Root, threaded from the
-// supervisor) for the test seam and future non-layout-switching uses, but is
-// deliberately NOT written into the child env.
+// supervisor). It is used to locate the daemon's own log sinks for the child's
+// standard handles (see engineChildSink, #7083), but is still deliberately
+// NOT written into the child env.
 func defaultEngineChildCommand(selfExe, root string) *exec.Cmd {
-	_ = root // intentionally not exported to the child env; see doc comment.
 	cmd := exec.Command(selfExe, "engine", "--foreground")
 	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Standard handles: the daemon's OWN sinks, never the inherited ones
+	// (#7083), and stdout/stderr stay SPLIT the way the platform's own service
+	// definition splits them. See engineChildSink. A nil Stdout/Stderr is
+	// os/exec's documented "connect the child to os.DevNull" — the deliberate
+	// fallback when a sink cannot be opened. Leaving the field nil (rather
+	// than storing a nil *os.File) matters: os/exec takes its *os.File branch
+	// on a typed nil, whose Fd() is ^uintptr(0), which is #7083's own defect.
+	if out := engineChildSink(logPathForRoot(root)); out != nil {
+		cmd.Stdout = out
+	}
+	if errSink := engineChildSink(errPathForRoot(root)); errSink != nil {
+		cmd.Stderr = errSink
+	}
 	cmd.SysProcAttr = engineChildSysProcAttr()
 	executil.NoWindow(cmd)
 	return cmd
+}
+
+// engineChildSinkCache caches the engine child's log sinks per path.
+//
+// A sink has to outlive defaultEngineChildCommand (os/exec duplicates the
+// descriptor/handle into the child at Start, but the *os.File stays the
+// PARENT's to close) and the constructor has no completion hook — the seam
+// returns only an *exec.Cmd. Opening one per spawn would therefore leak a
+// descriptor per relaunch in a crash loop. One sink per path, opened lazily
+// and held for the life of the process, is what the daemon actually wants
+// anyway: these are the same append-only files its own logger and its service
+// definition write, under the no-rotation contract (#2300, see layoutFromRoot).
+var engineChildSinkCache = struct {
+	mu     sync.Mutex
+	byPath map[string]*os.File
+}{}
+
+// engineChildSink returns the file the engine child's stdout (or stderr) is
+// wired to, opened for APPEND so it never truncates what the daemon's own
+// logger has already written there — the byte-offset contract in #2300. It
+// returns nil when there is no usable owned sink, which leaves the
+// corresponding cmd field nil, i.e. os.DevNull.
+//
+// #7083: the child used to inherit os.Stdout/os.Stderr, so whether the daemon
+// could run its own engine depended on a property of whatever launched it —
+// one it does not control and never checks. os/exec passes those *os.Files to
+// StartProcess, which DUPLICATES the underlying descriptor/handle into the
+// child; on Windows duplicating an unusable handle fails and the spawn fails
+// with it. A process started by `Start-Process -WindowStyle Hidden` with no
+// -Redirect* flag runs under UseShellExecute=true and has no standard handles
+// at all — and run() treats a failed spawn as a crash, so it backs off,
+// retries, and gives up.
+//
+// The daemon therefore OWNS the handles it hands down, unconditionally. It
+// does not probe the inherited ones: there is no portable way to ask whether a
+// handle the parent was given is usable (the reliable test is to use it, which
+// is the failure being avoided), and a probe would leave a second, untested
+// code path for exactly the launcher shape we cannot reproduce in CI.
+//
+// The destinations are the daemon's own two log files, which keeps the split
+// the platform service definitions already make: launchd's plist sends the
+// daemon's stdout to daemon.log and its stderr to daemon.err
+// (internal/daemon/service/launchd_darwin.go), and daemon.err is the file
+// `grafel status` and `grafel doctor` tell users to read after a failure. An
+// engine-child panic therefore lands where the product says it will, on every
+// launcher — including `grafel start` and systemd, which previously sent it to
+// daemon.log and to the journal respectively.
+//
+// The log DIRECTORY is never created here: <root>/logs must already exist
+// (EnsureLayout makes it before serve starts). The log FILE is created if
+// absent, as O_CREATE implies. An empty root, a missing log directory, or an
+// unopenable path yields nil rather than an inherited handle.
+func engineChildSink(path string) *os.File {
+	// An empty root would make path relative ("logs/daemon.log"), so a stray
+	// logs/ directory in the daemon's cwd would receive and cache engine output.
+	if path == "" || !filepath.IsAbs(path) {
+		return nil
+	}
+
+	engineChildSinkCache.mu.Lock()
+	defer engineChildSinkCache.mu.Unlock()
+	if f, ok := engineChildSinkCache.byPath[path]; ok {
+		return f
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		// Not cached: a later spawn retries, in case the directory appears.
+		return nil
+	}
+	if engineChildSinkCache.byPath == nil {
+		engineChildSinkCache.byPath = make(map[string]*os.File)
+	}
+	engineChildSinkCache.byPath[path] = f
+	return f
+}
+
+// closeEngineChildSinksForTest closes and drops every cached engine-child log
+// sink. Tests that point a sink at a t.TempDir root call it in cleanup, so the
+// directory can be removed on Windows (where an open file blocks removal).
+// Production never calls it: the daemon holds its sink for its whole life.
+func closeEngineChildSinksForTest() {
+	engineChildSinkCache.mu.Lock()
+	defer engineChildSinkCache.mu.Unlock()
+	for path, f := range engineChildSinkCache.byPath {
+		_ = f.Close()
+		delete(engineChildSinkCache.byPath, path)
+	}
 }
 
 // SetEngineChildCommandForTest overrides how the supervisor spawns the engine

@@ -52,14 +52,14 @@ func DefaultLayout() (Layout, error) {
 		// Test / agent isolation mode — use root for everything including socket.
 		socketDir := filepath.Join(root, "sockets")
 		socketPath := filepath.Join(socketDir, "daemon.sock")
-		logDir := filepath.Join(root, "logs")
+		logDir := logDirForRoot(root)
 		return Layout{
 			Root:       root,
 			SocketDir:  socketDir,
 			SocketPath: socketPath,
 			PIDPath:    filepath.Join(root, "daemon.pid"),
 			LogDir:     logDir,
-			LogPath:    filepath.Join(logDir, "daemon.log"),
+			LogPath:    logPathForRoot(root),
 		}, nil
 	}
 
@@ -78,7 +78,7 @@ func DefaultLayout() (Layout, error) {
 		SocketDir:  filepath.Dir(socketPath),
 		SocketPath: socketPath,
 		PIDPath:    filepath.Join(root, "daemon.pid"),
-		LogDir:     filepath.Join(root, "logs"),
-		LogPath:    filepath.Join(root, "logs", "daemon.log"),
+		LogDir:     logDirForRoot(root),
+		LogPath:    logPathForRoot(root),
 	}, nil
 }

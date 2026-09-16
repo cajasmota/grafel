@@ -67,6 +67,33 @@ func EnsureLayout(l Layout) error {
 	return nil
 }
 
+// logDirForRoot, logPathForRoot and errPathForRoot are the ONE definition of
+// the daemon's log-file locations inside a root. Every construction of a
+// Layout goes through them — DefaultLayout in paths_unix.go and
+// paths_windows.go, and layoutFromRoot below — so a caller holding only a root
+// (the engine supervisor's child-command constructor, #7083) derives the same
+// paths the daemon itself will use, and cannot drift from them.
+//
+// The launchd plist in internal/daemon/service/launchd_darwin.go spells
+// daemon.log and daemon.err a second time, in its StandardOutPath /
+// StandardErrorPath template. That is a separate spelling in a different
+// package's template text: moving a basename here means moving it there too.
+func logDirForRoot(root string) string {
+	return filepath.Join(root, "logs")
+}
+
+// logPathForRoot returns the daemon's stdout log inside root.
+func logPathForRoot(root string) string {
+	return filepath.Join(logDirForRoot(root), "daemon.log")
+}
+
+// errPathForRoot returns the daemon's stderr log inside root. It is the file
+// launchd's StandardErrorPath names, and the surface `grafel status` and
+// `grafel doctor` point users at when they report a failure ("see daemon.err").
+func errPathForRoot(root string) string {
+	return filepath.Join(logDirForRoot(root), "daemon.err")
+}
+
 // layoutFromRoot builds a Layout rooted at root. Used by DefaultLayout
 // on all platforms when GRAFEL_DAEMON_ROOT is set.
 func layoutFromRoot(root, socketPath string) Layout {
@@ -74,7 +101,7 @@ func layoutFromRoot(root, socketPath string) Layout {
 	if socketPath != "" && !isWindowsPipePath(socketPath) {
 		socketDir = filepath.Dir(socketPath)
 	}
-	logDir := filepath.Join(root, "logs")
+	logDir := logDirForRoot(root)
 	// No-rotation contract (issue #2300):
 	// daemon.log grows monotonically by design. The bench harness
 	// (skills/grafel-graph-quality/prompts/03-with-mcp-run.md) uses
@@ -90,6 +117,6 @@ func layoutFromRoot(root, socketPath string) Layout {
 		SocketPath: socketPath,
 		PIDPath:    filepath.Join(root, "daemon.pid"),
 		LogDir:     logDir,
-		LogPath:    filepath.Join(logDir, "daemon.log"),
+		LogPath:    logPathForRoot(root),
 	}
 }
