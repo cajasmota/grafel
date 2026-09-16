@@ -24,7 +24,6 @@ type Miss struct {
 	Site
 	Grammars  []string // every grammar the package can receive
 	Baselined bool
-	Class     string // baseline class, when Baselined
 }
 
 func (m Miss) String() string {
@@ -36,6 +35,7 @@ func (m Miss) String() string {
 type Result struct {
 	Sites          []Site
 	Dynamic        []Site
+	Sinks          []string // the discovered helper parameter positions
 	Registrations  []Registration
 	GrammarsForDir map[string][]string
 
@@ -56,6 +56,7 @@ func Evaluate(scan Scan, regs []Registration, grammars map[string]*Grammar, base
 	res := Result{
 		Sites:          scan.Sites,
 		Dynamic:        scan.Dynamic,
+		Sinks:          scan.Sinks,
 		Registrations:  regs,
 		GrammarsForDir: map[string][]string{},
 	}
@@ -69,7 +70,6 @@ func Evaluate(scan Scan, regs []Registration, grammars map[string]*Grammar, base
 	sort.Strings(res.DirsWithGrammar)
 
 	distinct := map[string]bool{}
-	seenMiss := map[string]bool{}
 	for _, s := range scan.Sites {
 		keys := res.GrammarsForDir[s.Dir]
 		if len(keys) == 0 {
@@ -100,10 +100,6 @@ func Evaluate(scan Scan, regs []Registration, grammars map[string]*Grammar, base
 		}
 		res.Misses = append(res.Misses, m)
 		if !m.Baselined {
-			k := s.Dir + "\x00" + s.Lit + "\x00" + s.File
-			if !seenMiss[k] {
-				seenMiss[k] = true
-			}
 			res.Failures = append(res.Failures, m)
 		}
 	}

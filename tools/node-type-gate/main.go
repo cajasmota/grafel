@@ -70,6 +70,7 @@
 //
 //	go run ./tools/node-type-gate              # gate; exit 1 on a new dead literal
 //	go run ./tools/node-type-gate -report      # the full derived surface
+//	go run ./tools/node-type-gate -sites       # every site, for cross-checking against a grep
 //	go run ./tools/node-type-gate -update      # rewrite baseline.txt line numbers
 package main
 
@@ -229,6 +230,45 @@ func loadSurfaceWithConfig(cfg *packages.Config, root string, patterns []string)
 	// graph, which is a superset of both.
 	var all []*packages.Package
 	packages.Visit(pkgs, nil, func(p *packages.Package) { all = append(all, p) })
+
+	// LOADER INTEGRITY. go/packages can return a package whose files parsed but
+	// whose type information is absent or incomplete — an export-data miss, a
+	// half-populated dependency — WITHOUT attaching anything to p.Errors. Every
+	// literal in such a package then silently fails `types.Implements`, the scan
+	// under-counts, and the gate reports OK for the worst possible reason.
+	//
+	// A package we are about to walk (Syntax non-empty) must therefore carry
+	// complete type information, and so must everything it imports. Failing
+	// here is always better than a quiet under-count: this whole tool exists
+	// because a pass that produces *something* reads as success.
+	var degraded []string
+	for _, p := range all {
+		if len(p.Syntax) == 0 {
+			continue
+		}
+		switch {
+		case p.Types == nil:
+			degraded = append(degraded, p.PkgPath+": parsed but has no type information")
+		case !p.Types.Complete():
+			degraded = append(degraded, p.PkgPath+": type information is incomplete")
+		case p.TypesInfo == nil || p.TypesInfo.Types == nil || p.TypesInfo.Uses == nil || p.TypesInfo.Defs == nil:
+			degraded = append(degraded, p.PkgPath+": types.Info is not populated")
+		}
+		for path, imp := range p.Imports {
+			if imp.Types == nil {
+				degraded = append(degraded, p.PkgPath+": import "+path+" has no type information")
+			} else if !imp.Types.Complete() {
+				degraded = append(degraded, p.PkgPath+": import "+path+" is incomplete")
+			}
+		}
+	}
+	if len(degraded) > 0 {
+		sort.Strings(degraded)
+		if len(degraded) > 10 {
+			degraded = append(degraded[:10], fmt.Sprintf("... and %d more", len(degraded)-10))
+		}
+		return nil, fmt.Errorf("the package load is degraded, so the scan would under-count silently:\n  %s", strings.Join(degraded, "\n  "))
+	}
 
 	s := newScanner(cfg.Fset, root, all)
 	if !s.findNodeIface() {

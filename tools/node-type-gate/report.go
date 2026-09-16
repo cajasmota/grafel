@@ -1,14 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/constant"
 	"go/types"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/atomicfile"
 )
 
 // minResolvedSites is a count floor. It does not prove the gate works — a scan
@@ -153,19 +155,14 @@ func updateBaseline(path string, base *Baseline, res Result) error {
 			base.Entries[i].Line = l
 		}
 	}
-	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := base.Format(&buf, baselineHeader); err != nil {
 		return err
 	}
-	if err := base.Format(f, baselineHeader); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, filepath.Clean(path))
+	// atomicfile rather than a hand-rolled "<dest>.tmp" + rename: a
+	// deterministic temp name is shared by every concurrent writer aiming at
+	// the same destination, and #6018's guard test rejects it outright.
+	return atomicfile.WriteFile(filepath.Clean(path), buf.Bytes(), 0o644)
 }
 
 func stringVal(tv types.TypeAndValue) (string, error) {

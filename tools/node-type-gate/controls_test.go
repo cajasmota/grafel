@@ -131,9 +131,41 @@ func diagLines(res Result) string {
 		fmt.Fprintf(&b, "  stale: %s %q %s\n", e.Dir, e.Lit, e.File)
 	}
 	if b.Len() == 0 {
-		return "  (no diagnostics)\n"
+		b.WriteString("  (no diagnostics)\n")
 	}
+	// A "nothing was flagged" failure is ambiguous on its own: the literal may
+	// have resolved, or it may never have been derived. Say which.
+	byForm := map[string]int{}
+	for _, s := range res.Sites {
+		byForm[s.Form]++
+	}
+	fmt.Fprintf(&b, "  derived: %d sites (%v), %d resolved, %d sinks, grammars %v\n",
+		len(res.Sites), byForm, res.Resolved, len(res.Sinks), res.GrammarsForDir)
 	return b.String()
+}
+
+// sinksNaming lists the discovered helper parameter positions whose function
+// name contains want. "the fixpoint never found the helper" and "the helper was
+// found but the call site was not" are different bugs and must not look alike.
+func sinksNaming(res Result, want string) []string {
+	var out []string
+	for _, s := range res.Sinks {
+		if strings.Contains(s, want) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// sitesFor lists every derived site for one literal, whatever its verdict.
+func sitesFor(res Result, lit string) []Site {
+	var out []Site
+	for _, s := range res.Sites {
+		if s.Lit == lit {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // CONTROL 1 — the scala defect that prompted #7065.
@@ -219,7 +251,8 @@ func TestControl_CSharpForEachStatementIsDetected(t *testing.T) {
 	res := evalPkg(t, root, "./internal/extractors/csharp", nil, emptyBaseline(t))
 	d := findDiag(res, suffix, "for_each_statement")
 	if d == nil {
-		t.Fatalf("gate did not flag for_each_statement.\nemitted:\n%s", diagLines(res))
+		t.Fatalf("gate did not flag for_each_statement.\nderived sites for that literal: %v\nsinks naming findAllNodes: %v\nemitted:\n%s",
+			sitesFor(res, "for_each_statement"), sinksNaming(res, "findAllNodes"), diagLines(res))
 	}
 	if d.Dir != "internal/extractors/csharp" {
 		t.Errorf("attributed to %q, want internal/extractors/csharp", d.Dir)

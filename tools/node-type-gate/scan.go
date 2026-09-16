@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/token"
@@ -42,6 +43,10 @@ type Site struct {
 type Scan struct {
 	Sites   []Site
 	Dynamic []Site // same positions, Lit == "" — a variable or call reaches the sink
+	// Sinks is the discovered helper surface: "pkg.Func#i" for every parameter
+	// position the fixpoint decided is a node type. Reported so a failure can
+	// say whether the fixpoint found nothing or found the wrong thing.
+	Sinks []string
 }
 
 // nodeTypeIfacePath is the package that declares the CST node interface every
@@ -465,6 +470,10 @@ func (s *scanner) Run() Scan {
 			add(p, pos)
 		}
 	}
+	for k := range s.sinks {
+		res.Sinks = append(res.Sinks, fmt.Sprintf("%s.%s#%d", k.fn.Pkg().Path(), k.fn.Name(), k.idx))
+	}
+	sort.Strings(res.Sinks)
 	sort.Slice(res.Sites, func(i, j int) bool { return siteLess(res.Sites[i], res.Sites[j]) })
 	sort.Slice(res.Dynamic, func(i, j int) bool { return siteLess(res.Dynamic[i], res.Dynamic[j]) })
 	return res
