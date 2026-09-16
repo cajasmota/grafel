@@ -22,6 +22,7 @@ import importlib.util
 import io
 import json
 import os
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -1957,6 +1958,265 @@ class ExtractedTotalsAreGatedInTheGrowthDirection(unittest.TestCase):
                     # the two subtests cannot be satisfied by one branch.
                     self.assertIn(missing, str(ctx.exception))
                     self.assertIn("demo-mini", str(ctx.exception))
+
+
+# ---------------------------------------------------------------------------
+# #7084 — the merge step in scripts/quality/run.sh, driven directly.
+# ---------------------------------------------------------------------------
+
+RUN_SH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run.sh")
+
+AGGREGATOR_OPEN = 'python3 - "$tmpdir" "$json" "$name" <<\'PY\''
+
+
+def extract_aggregator():
+    """Slice the per-fixture merge program out of run.sh.
+
+    The program is a heredoc inside a shell script, so it cannot be imported.
+    Copying it into this file would test a COPY: the run.sh text could go back
+    to the median and every case below would stay green. So the real bytes are
+    sliced out and executed. The slice is asserted, not assumed — a heredoc
+    that has moved or been renamed must fail loudly here rather than yield an
+    empty program that "passes" everything.
+    """
+    with open(RUN_SH) as fh:
+        lines = fh.read().splitlines()
+    opens = [i for i, ln in enumerate(lines) if AGGREGATOR_OPEN in ln]
+    if len(opens) != 1:
+        raise AssertionError(
+            f"expected exactly 1 aggregator heredoc in run.sh, found {len(opens)} "
+            f"— the merge step moved; this harness is measuring nothing")
+    start = opens[0] + 1
+    end = None
+    for i in range(start, len(lines)):
+        if lines[i] == "PY":
+            end = i
+            break
+    if end is None:
+        raise AssertionError("aggregator heredoc in run.sh is unterminated")
+    body = "\n".join(lines[start:end]) + "\n"
+    # Content floor. An extraction that silently produced a stub would exit 0
+    # on every input and read as a clean gate.
+    for token in ("forbidden_hits", "forbidden_entity_hits", "sys.exit(2)"):
+        if token not in body:
+            raise AssertionError(
+                f"extracted aggregator does not mention {token!r} — the slice is wrong")
+    return body
+
+
+def merge_runs(tmp, runs, fixture_name="demo-mini"):
+    """Run the real run.sh merge program over `runs` (a list of report dicts).
+
+    Returns (exit code, merged report dict or None).
+    """
+    rundir = os.path.join(tmp, "runs")
+    os.makedirs(rundir, exist_ok=True)
+    for i, rep in enumerate(runs):
+        with open(os.path.join(rundir, f"run{i}.json"), "w") as fh:
+            json.dump(rep, fh)
+    prog = os.path.join(tmp, "aggregator_under_test.py")
+    with open(prog, "w") as fh:
+        fh.write(extract_aggregator())
+    out = os.path.join(tmp, "merged.json")
+    env = dict(os.environ)
+    env["QUALITY_RUN_STAMP"] = STAMP
+    proc = subprocess.run(
+        [sys.executable, prog, rundir, out, fixture_name],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    merged = None
+    if os.path.exists(out):
+        with open(out) as fh:
+            merged = json.load(fh)
+    return proc.returncode, merged
+
+
+def run_report(**extra):
+    """One per-run report as `grafel quality --json` writes it."""
+    rep = {
+        "fixture": "demo-mini", "run_stamp": STAMP,
+        "entity_recall": 0.4, "relationship_recall": 0.0,
+        "entity_found": 4, "entity_expected": 10,
+        "relationship_found": 0, "relationship_expected": 0,
+        "forbidden_hits": 0, "forbidden_entity_hits": 0,
+        "entity_extracted_total": 12, "relationship_extracted_total": 7,
+    }
+    rep.update(extra)
+    return rep
+
+
+class MinorityFiringRowIsConstructible(unittest.TestCase):
+    """POSITIVE CONTROL for the cases below.
+
+    Every assertion in `ForbiddenHitsSurviveTheMerge` rests on one premise:
+    that this harness can build a set of runs in which a forbidden row fires in
+    a MINORITY of them — the only shape the median erases. If the premise were
+    false (all five runs identical, say) the direction-1 cases would be graded
+    by a fixture that cannot express the defect, and would pass on the broken
+    code too.
+    """
+
+    RUNS = [0, 0, 1, 0, 1]
+
+    def test_the_fixture_shape_is_a_minority_and_the_median_erases_it(self):
+        firing = [n for n in self.RUNS if n > 0]
+        self.assertEqual(len(self.RUNS), 5, "the default QUALITY_RUNS is 5")
+        self.assertGreater(len(firing), 0, "no run fires; there is nothing to erase")
+        self.assertLess(
+            len(firing), len(self.RUNS) / 2,
+            "the row fires in half or more of the runs — the median would keep "
+            "it, so this fixture cannot express the defect")
+        self.assertEqual(
+            int(statistics.median(self.RUNS)), 0,
+            "the median of this fixture is non-zero, so the OLD aggregator "
+            "would have caught it and direction 1 grades nothing")
+
+
+class ForbiddenHitsSurviveTheMerge(unittest.TestCase):
+    """#7084. `forbidden_*` is aggregated across runs with MAX, not the median.
+
+    `forbidden_relationships` is the only mechanism this repo has for "this
+    edge is wrong", and it is documented as ALWAYS FATAL. ratchet.py fails on
+    `forbidden > 0`, so with a 5-run median a row firing in two runs merged to
+    0 and the gate never saw it — the guarantee was silently conditional on the
+    defect being deterministic, which #7077/#7072/#7079 are not.
+
+    Each case asserts the EMITTED FAILURE TEXT out of `check`, not the merged
+    integer: the integer is the thing under edit, so asserting on it would
+    grade the edit against itself.
+    """
+
+    EDGE_MSG = "demo-mini: 1 forbidden relationship hit(s) — always fatal"
+    ENT_MSG = "demo-mini: 1 forbidden entity row(s) fired — always fatal"
+
+    def _merge_then_check(self, runs):
+        """Merge `runs` with run.sh's own program, then grade the merged report
+        with ratchet.check. Returns (aggregator rc, check rc, check stderr)."""
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            golden, reports, baseline = make_fixture(root)
+            agg_rc, merged = merge_runs(root, runs)
+            self.assertIsNotNone(merged, "the aggregator wrote no merged report")
+            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                json.dump(merged, fh)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = ratchet.check(golden, reports, baseline)
+            return agg_rc, rc, err.getvalue(), merged
+
+    @staticmethod
+    def _runs(counts, key="forbidden_hits"):
+        offender = {"from": "A", "to": "B", "kind": "SCOPE.Calls"}
+        if key == "forbidden_entity_hits":
+            detail_key, offender = "forbidden_entities", {"name": "A", "kind": "SCOPE.Component"}
+        else:
+            detail_key = "forbidden"
+        out = []
+        for n in counts:
+            extra = {key: n}
+            if n > 0:
+                extra[detail_key] = [offender]
+            out.append(run_report(**extra))
+        return out
+
+    def test_a_row_firing_in_a_minority_of_runs_fails_the_gate(self):
+        """Direction 1. Two of five runs saw the wrong edge; the graph
+        contained it. On the median this merged to 0 and `check` printed OK."""
+        _agg_rc, rc, err, _ = self._merge_then_check(self._runs([0, 0, 1, 0, 1]))
+        self.assertIn(
+            self.EDGE_MSG, err,
+            "a forbidden EDGE row that fired in 2 of 5 runs was not named by "
+            "the gate — the always-fatal guarantee is conditional on the "
+            "defect being deterministic")
+        self.assertEqual(rc, 2)
+
+    def test_an_entity_row_firing_in_a_minority_of_runs_fails_the_gate(self):
+        """The same direction for the ENTITY key. The two counts are separate
+        keys and separate reads; fixing one and leaving the other is exactly
+        the shape that survived here before."""
+        _agg_rc, rc, err, _ = self._merge_then_check(
+            self._runs([0, 0, 1, 0, 1], key="forbidden_entity_hits"))
+        self.assertIn(self.ENT_MSG, err)
+        self.assertEqual(rc, 2)
+
+    def test_a_row_firing_in_no_run_still_passes(self):
+        """Direction 2, the negative control. "Make it stricter" must not
+        become "fire on everything": a gate that is always red is as
+        uninformative as one that is never red."""
+        _agg_rc, rc, err, merged = self._merge_then_check(self._runs([0, 0, 0, 0, 0]))
+        self.assertEqual(rc, 0, f"a clean five-run merge was failed: {err}")
+        self.assertNotIn("forbidden", err)
+        self.assertNotIn(
+            "forbidden", merged,
+            "a clean merge carried an offender array")
+        self.assertEqual(merged["forbidden_hits"], 0)
+        self.assertEqual(merged["forbidden_hits_runs"], 0)
+        self.assertEqual(merged["forbidden_entity_hits_runs"], 0)
+
+    def test_a_row_firing_in_every_run_fails_with_the_message_it_has_today(self):
+        """Direction 2's other half. The unanimous case is the one that already
+        worked; its wording is what operators and #6488's own tests read. A
+        change that made the minority case fatal by rewording the unanimous one
+        would break every reader for no reason."""
+        _agg_rc, rc, err, _ = self._merge_then_check(self._runs([1, 1, 1, 1, 1]))
+        self.assertEqual(rc, 2)
+        self.assertIn(self.EDGE_MSG, err)
+
+    def test_the_merged_report_names_the_intermittent_offender_and_its_run_count(self):
+        """Fatal is not the same as visible. The detail arrays are inherited
+        from one arbitrary run (`reports[-1]`), so a row that did not fire in
+        THAT run would be counted by the scalar and named by nothing — and a
+        reader could not tell a row that fired once from one that fired five
+        times. Asserted on the merged document because that is the artefact a
+        human opens, not on the failure text."""
+        with tempfile.TemporaryDirectory() as root:
+            # The offender fires only in run 1, so the LAST run — the one whose
+            # detail arrays are inherited — did not see it.
+            runs = self._runs([0, 1, 0, 0, 0])
+            _rc, merged = merge_runs(root, runs)
+        self.assertEqual(merged["forbidden_hits"], 1)
+        self.assertEqual(
+            merged["forbidden_hits_runs"], 1,
+            "the merged report does not say how many runs saw the row fire")
+        self.assertEqual(
+            merged.get("forbidden"), [{"from": "A", "to": "B", "kind": "SCOPE.Calls"}],
+            "the offender seen only in a non-final run is absent from the "
+            "merged report's detail array")
+
+    def test_the_aggregator_itself_fails_a_minority_row_in_strict_mode(self):
+        """The OTHER grader. `check` is not the only consumer: run.sh reads the
+        merge program's own exit status, and in strict mode that status alone
+        decides the fixture. A fix that satisfied the ratchet but left the
+        aggregator exiting 0 would leave strict mode blind.
+
+        Recall is held at full here (found == expected) so the aggregator's
+        recall branch cannot be the thing producing the exit code — otherwise
+        both cases would exit 2 and neither would be about forbidden hits.
+        """
+        full = {"entity_found": 10, "entity_expected": 10}
+        for label, counts, want in (("clean", [0, 0, 0, 0, 0], 0),
+                                    ("minority", [0, 0, 1, 0, 1], 2)):
+            with self.subTest(case=label):
+                runs = [run_report(forbidden_hits=n, **full) for n in counts]
+                with tempfile.TemporaryDirectory() as root:
+                    rc, _merged = merge_runs(root, runs)
+                self.assertEqual(
+                    rc, want,
+                    f"the aggregator returned {rc} for the {label} case")
+
+    def test_the_recall_metrics_are_still_medianed(self):
+        """Scope guard. Recall is a number with real jitter and the median is
+        right for it; if this edit had reached entity_found, a single unlucky
+        run would red the build. The odd run out is deliberately the LAST one
+        so `merged` inheriting `base` cannot satisfy this by accident."""
+        with tempfile.TemporaryDirectory() as root:
+            runs = [run_report(entity_found=n) for n in (4, 4, 4, 4, 1)]
+            _rc, merged = merge_runs(root, runs)
+        self.assertEqual(
+            merged["entity_found"], 4,
+            "entity_found is no longer the median — one bad run now reds the gate")
+        self.assertEqual(merged["entity_recall_min"], 0.4)
+        self.assertEqual(merged["entity_recall_max"], 0.4)
 
 
 if __name__ == "__main__":
