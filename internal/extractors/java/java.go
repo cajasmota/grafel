@@ -1280,24 +1280,151 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 
 // collectLocalVarTypes walks the descendants of a method/constructor
 // body and returns a map of local-variable-name → declared leaf type
-// for every local_variable_declaration node. Used by the receiver
-// binder so calls like `Owner owner = new Owner(); owner.setId(...)`
-// resolve to "Owner.setId".
+// for every local_variable_declaration node, plus every
+// enhanced_for_statement loop variable. Used by the receiver binder so
+// calls like `Owner owner = new Owner(); owner.setId(...)` resolve to
+// "Owner.setId".
 //
-// Variable declarations using `var` (Java 10+) are not typed here —
-// inferring the type would require chasing the initialiser expression,
-// which is out of scope. Multi-declarator declarations bind every
-// variable to the declared type. Re-declarations within nested blocks
-// produce a last-writer-wins shape; Java forbids re-declaring a name
-// already in the enclosing block, so the only collisions in practice
-// are loop-local rebinds in different sibling blocks — both bind to
-// the same type in idiomatic code, and the conservative pick still
-// matches.
+// Variable declarations using `var` (Java 10+) are typed only when the
+// initialiser is a direct `new ClassName(...)`; anything else leaves the
+// name untyped (see the declarator loop). Multi-declarator declarations
+// bind every variable to the declared type.
+//
+// AMBIGUOUS NAMES ARE REFUSED, NOT GUESSED (#7094). findAllNodes is a FLAT
+// descendant walk and this map is keyed by BARE NAME, so the pass has no
+// model of block scope at all. Two locals of the same name in SIBLING blocks
+//
+//	{ Order o = new Order();       o.a(); }
+//	{ Customer o = new Customer(); o.b(); }
+//
+// both write `o`, and before this change one of them simply won — MEASURED as
+// the first-in-source declarator, because findAllNodes is a stack DFS that
+// pops siblings right-to-left, so the earlier declaration overwrites the later
+// one. Which one wins is an artefact of the traversal, not a decision. The
+// loser's call then carried a receiver type that name never had at that site:
+// `o.b()` in the second block came out as `Order.b`. Because the winner is a
+// REAL same-file type the dotted edge BINDS, so bind rate, orphan rate and
+// dangle count all score it as a success — the #7056 signature, invisible to
+// every metric that would otherwise catch it.
+//
+// The rule is therefore the one the C# twin adopted in #7072: when a name maps
+// to two DIFFERENT types, drop the name entirely and let its calls fall back
+// to their bare leaf. A dotted target leaves the resolver's bare-name class
+// and is scored as a confident bind (#7071), so a WRONG dotted receiver is
+// that same hazard rather than a lesser one — a fabricated `var.b` at least
+// dangles, while `Order.b` on a real Order does not.
+//
+// AN UNTYPED DECLARATION POISONS THE NAME TOO. "We could not type this
+// declaration" is not "no declaration happened here". A `var` whose initialiser
+// is not a direct `new` (a factory call) produces no type, and it used to skip
+// the name outright — MEASURED emitting `Order.b` on the sibling's type, in
+// BOTH source orders. It now enters the ledger instead.
+//
+// C#'s twin had a SECOND shape here: a declared type leafTypeName has no case
+// for (a `ref` local). NO JAVA INSTANCE OF THAT SHAPE WAS FOUND. leafTypeName's
+// switch covers every `_unannotated_type` the grammar produces, and a leading
+// annotation is hoisted into the declaration's modifiers rather than producing
+// an `annotated_type` type field — `@NonNull Customer o`, `final Customer o`,
+// `Customer @NonNull [] o`, `List<@A Customer> o` and `@NonNull var o` were all
+// measured reducing to a non-empty leaf. An empty declType is therefore routed
+// through the ledger defensively and that arm is UNGRADED: nothing was found
+// that reaches it. Recorded rather than claimed.
+//
+// Such names enter the ledger with an EMPTY type, which disagrees with
+// every real type, so the refusal holds in either source order. Publishing an
+// empty type is inert on its own: receiverTypeName masks empty lookups
+// (`ok && t != ""`) and javaCallTarget falls back to the bare method when the
+// receiver comes back empty — which is what TestIssue4682_NegativeFactoryReceiver
+// grades. Hence no `typ == ""` arm in the publish loop: it would fire only
+// where the real guard already fires and would leave both ungraded.
+//
+// SAME-NAME/SAME-TYPE IS NOT A COLLISION. Two blocks each declaring `Order o`
+// agree on the answer, so refusing them would be pure recall loss for no
+// soundness gain; the ledger compares TYPES, not names.
+//
+// THE ENHANCED-FOR ARM IS IN THE SAME LEDGER, which is where this differs from
+// the C# fix. C# has two refusal mechanisms over one map because its `foreach`
+// arm already had an ambiguity ledger and a claimed-elsewhere word list of its
+// own. Java's loop-variable arm had NEITHER: it was a bare `out[name] = typ`
+// running AFTER the declaration walk, so it overwrote unconditionally —
+// MEASURED, `for (Customer o : cs)` beside a local `Order o` bound BOTH sites
+// to Customer. One ledger fed by both arms is therefore the right shape here,
+// and it is also simpler: nothing reads `out` mid-walk any more.
+//
+// THE TWO-STAGE FORM IS LOAD-BEARING. A one-stage delete-on-collision against
+// `out` cannot work, because the ambiguous SET is the only thing that
+// remembers a name ONCE disagreed. Deleting the entry destroys that memory, so
+// a third declarator agreeing with the first finds no entry, sees no conflict
+// and RESURRECTS the wrong binding for the middle one. That is graded, not
+// asserted: TestJava7094_AmbiguityIsStickyAcrossAnAgreeingRedeclaration kills
+// the one-stage form.
+//
+// NESTED SHADOWING is treated identically to sibling reuse, because a flat
+// walk cannot tell them apart, AND IT COSTS REAL RECALL. An earlier revision of
+// this comment said Java "forbids an inner block from redeclaring a name
+// already in scope, so a compilable program cannot contain that case". That is
+// FALSE, and it was load-bearing — it is how a reader concludes there is
+// nothing here to grade. JLS §6.4 restricts redeclaration only within the
+// DIRECTLY ENCLOSING method, constructor or initializer block; a local or
+// anonymous CLASS BODY is a new class scope and may legally shadow. The calls
+// inside such a body are attributed to the enclosing method entity, so this
+// flat walk reaches straight across the class boundary:
+//
+//	Order o = new Order();
+//	o.a();                                   // was Order.a, now bare `a`
+//	Runnable r = new Runnable() {
+//	  public void run() { Customer o = new Customer(); o.b(); }
+//	};
+//
+// MEASURED, on compilable Java, with the control (inner variable renamed)
+// still emitting `Order.a` and `Customer.b` — so the loss is caused by
+// cross-class-boundary poisoning, not by the fixture. Recorded as a FIXTURE
+// (TestJava7094_ClassBodyShadowingCostsRecall) rather than as prose, so the
+// cost is observed and moves when the behaviour does.
+//
+// The behaviour is left as-is deliberately: refusing across a class boundary
+// is defensible and recall loss is the honest direction, whereas the
+// alternative is guessing which of two real types a name has. Recovering it
+// needs the symbol table described below, which would stop the walk at the
+// class boundary for free.
+//
+// WHAT A REAL SYMBOL TABLE WOULD COST, since refusal is the cheaper of two
+// defensible answers and the more expensive one is not wrong: a block-scoped
+// table means walking the body RECURSIVELY instead of via findAllNodes,
+// pushing a frame at every scope-introducing node (block, for, enhanced_for,
+// try-with-resources, catch clause, switch block, lambda body), and resolving
+// each call site against the frame stack LIVE at that site's position rather
+// than against one flat map — which means extractCallRelationships can no
+// longer take a prebuilt map and its `params win over locals` merge has to
+// become the bottom frame of that stack. That is the right end state; nothing
+// here blocks it, since a per-site table simply stops consulting this ledger.
+//
+// BOTH DIRECTIONS ARE GRADED BY FIXTURES. A collision guard that never fires
+// and one that always fires are indistinguishable on a corpus where the
+// incidence is near zero, so the fixtures pin both.
 func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
-	out := map[string]string{}
+	// Two-stage ledger: candidates accumulate here and only unambiguous
+	// names are published to `out`. See the stickiness note above for why
+	// the ambiguous set cannot be replaced by deleting from `out`.
+	cand := map[string]string{}
+	ambiguous := map[string]bool{}
+	// record notes one binding of name→typ. typ == "" means "bound here,
+	// type unknown", which disagrees with every real type. The ambiguity
+	// flag is STICKY — a later declarator agreeing with the first must not
+	// clear it, since the disagreeing one is still out there.
+	record := func(name, typ string) {
+		if name == "" {
+			return
+		}
+		if prev, seen := cand[name]; seen && prev != typ {
+			ambiguous[name] = true
+			return
+		}
+		cand[name] = typ
+	}
 	for _, decl := range findAllNodes(body, "local_variable_declaration") {
 		declType := leafTypeName(decl.ChildByFieldName("type"), src)
 		// `var` (Java 10+) carries no declared leaf type. Mirror the TS/JS
@@ -1308,8 +1435,12 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 		// modern-JUnit idiom `var controller = new XController(mock);`).
 		// Any other RHS — a factory/builder call (`MyFactory.create()`), a
 		// method chain, a cast, a literal — leaves the `var` local
-		// unresolved (declared-type-or-`new` conservatism; first-binding
-		// wins per declarator).
+		// unresolved. An empty declType (a type node leafTypeName has no
+		// case for, e.g. an `annotated_type`) takes the same route.
+		//
+		// READ "unresolved" AT METHOD SCOPE, NOT DECLARATION SCOPE (#7094):
+		// an unresolved declarator still reaches the ledger below, so it
+		// poisons its name rather than ceding it to a same-name sibling.
 		isVar := declType == "var" || declType == ""
 		for i := 0; i < int(decl.ChildCount()); i++ {
 			ch := decl.Child(i)
@@ -1322,29 +1453,27 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 			}
 			typ := declType
 			if isVar {
+				// May be "" when the RHS defeats inference. That empty
+				// result must NOT skip the ledger — see above.
 				typ = newExprClassName(ch.ChildByFieldName("value"), src)
-				if typ == "" {
-					continue
-				}
 			}
-			if typ == "" || typ == "var" {
-				continue
-			}
-			out[name] = typ
+			record(name, typ)
 		}
 	}
 	// `enhanced_for_statement` (`for (Owner o : owners) { ... }`) — bind
-	// the loop variable to its declared type so calls inside the body
-	// can be receiver-typed.
+	// the loop variable to its declared type so calls inside the body can
+	// be receiver-typed. Same ledger as the declaration walk: this arm used
+	// to overwrite `out` unconditionally.
 	for _, fr := range findAllNodes(body, "enhanced_for_statement") {
-		typ := leafTypeName(fr.ChildByFieldName("type"), src)
-		if typ == "" {
+		record(childFieldText(fr, "name", src),
+			leafTypeName(fr.ChildByFieldName("type"), src))
+	}
+	out := map[string]string{}
+	for name, typ := range cand {
+		if ambiguous[name] {
 			continue
 		}
-		name := childFieldText(fr, "name", src)
-		if name != "" {
-			out[name] = typ
-		}
+		out[name] = typ
 	}
 	return out
 }
