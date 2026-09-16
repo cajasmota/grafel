@@ -1245,13 +1245,36 @@ func csNonBindableTypeKeyword(declType string) bool {
 //	exists in this environment. Writing those rows on an unchecked premise is
 //	the defect class this change exists to fix; a named gap costs less.
 //
-//	OVER-REFUSAL (a NON-colliding name must be left alone) — graded for every
-//	entry, by TestCSharp_Foreach7068_NonCollidingBindingIsKept. Those fixtures
-//	need no shadowing at all, so their legality is not in question. Over-refusal
-//	is the safe direction (it drops a receiver type rather than fabricating
-//	one), but "safe" is not "graded": nothing observed it until it was asked
-//	for, and this ledger is exactly the kind of list that grows until it starts
-//	swallowing names it was never meant to touch.
+//	OVER-REFUSAL (a NON-colliding name must be left alone) — covered in
+//	AGGREGATE by the CONTROL row of essentially every test in
+//	foreach_localvar_7068_test.go, and per-binding-form by
+//	TestCSharp_Foreach7068_NonCollidingBindingIsKept.
+//
+//	BE PRECISE ABOUT WHAT THAT TABLE ADDED, because an earlier revision of this
+//	comment was not. It claimed the over-refusal direction had been "graded by
+//	nothing" before it existed. That is FALSE and scoring says so: a mutant
+//	refusing every `foreach` name unconditionally, and one claiming every
+//	identifier in the body, were BOTH already DEAD against the previous
+//	revision's tests — 21 failing lines across 11 distinct tests, killed by
+//	their CONTROL rows. Those controls are `t.Fatalf`, so the subtests abort
+//	before any refusal assertion runs; even the narrow reading ("they passed
+//	every refusal row") is not observed. What the table adds is per-form
+//	resolution: which binding form over-refuses, rather than that something
+//	does.
+//
+//	AND IT DOES NOT GRADE ANY INDIVIDUAL ENTRY. Its rows hold constant that the
+//	bound name differs from the loop variable, and the loop variable is bound
+//	ONLY by the `foreach_statement` — which is deliberately not on this list —
+//	so no widening of any entry here can put that name in the ledger. Adding
+//	`foreach_statement` to the list, the textbook over-refusal, is DEAD but
+//	PASSES that table. Read it as grading the aggregate direction with
+//	per-form diagnostics, not as a per-entry gate.
+//
+//	Over-refusal is in any case the safe direction — it drops a receiver type
+//	rather than fabricating one — and since this arm never ran before #7068 it
+//	can only add. The reason to keep watching it is that this ledger is a list
+//	that has grown under review twice, and a growing list eventually swallows
+//	names it was never meant to touch.
 //
 // `foreach_statement` is deliberately absent: its own loop variables are the
 // names being offered, and collecting them would make every `foreach` refuse

@@ -1006,25 +1006,44 @@ namespace Shop
 // TestCSharp_Foreach7068_NonCollidingBindingIsKept is F-2, and it grades the
 // direction every other table in this file structurally cannot.
 //
-// THE HELD-CONSTANT AXIS. Every row in every other table places the prior
-// binding where a collision is PLAUSIBLE — same name, sibling scope — and then
-// asserts a wrong dotted target is absent. `ForeachNeverClobbersALocal` accepts
-// `Order.Ship` OR a bare `Ship` by design, precisely because whether the prior
-// form types the receiver is not its subject. So nothing in this file could
-// detect the ledger becoming TOO BROAD: a ledger that refused every foreach
-// name unconditionally passed every refusal row.
+// WHAT THESE ROWS ADD, stated carefully because the first version of this
+// header overclaimed it and the overclaim is the exact defect class this PR
+// exists to fix.
 //
-// These rows invert it. The prior binding uses a DIFFERENT name, so a collision
-// is IMPOSSIBLE, and the assertion is that the loop KEEPS its receiver type —
-// `Order.Ship` present, bare `Ship` absent.
+// The header said the over-refusal direction "was graded by nothing" before
+// this table. That is FALSE, and scoring says so. Restoring the previous
+// revision's test file and re-scoring two over-refusal mutants against it:
 //
-// Why this matters even though over-refusal is the safe direction: the arm never
-// ran on main, so it can only add, and a dropped receiver costs unrealized
-// recall rather than emitting anything wrong. But "safe" is not "graded". This
-// ledger is a list that grows every time a review finds another binding form —
-// twice so far — and the failure mode of a growing list is that it eventually
-// swallows names it was never meant to touch. Nothing observed that until it was
-// asked for.
+//	refuse every foreach name unconditionally  → DEAD, 21 failing lines
+//	claim every identifier in the body         → DEAD, 21 failing lines
+//
+// both across 11 distinct tests, killed by their CONTROL rows — including
+// `ForeachNeverClobbersALocal`, which the old header named as structurally
+// incapable of detecting over-refusal. Sharper still: those controls are
+// `t.Fatalf`, so under those mutants the subtest ABORTS before any refusal
+// assertion executes. Even the narrow reading — "the refusal rows passed" — is
+// not something anyone observed.
+//
+// What this table actually adds is PER-FORM RESOLUTION. Previously a
+// too-broad ledger failed a control somewhere and said only "something
+// over-refuses"; these rows say WHICH binding form does, one row each, with no
+// shadowing anywhere in the fixtures — so unlike every other table here their
+// legality does not rest on the sibling-scope rule, and the absent C# compiler
+// does not weaken them.
+//
+// WHAT IT DOES NOT GRADE: any individual ledger entry. VARIED = the binding
+// form; HELD CONSTANT = the bound name differs from the loop variable `o`. `o`
+// is bound only by the `foreach_statement`, which is deliberately not on the
+// ledger, so no entry-level widening can put `o` into it. Proof rather than
+// argument: adding `"foreach_statement"` to the ledger's node list — the
+// textbook over-refusal — is DEAD, but it does NOT fail this table. Across the
+// round-4 mutant set this table was never a unique killer.
+//
+// Over-refusal remains the safe direction: the arm never ran before #7068, so
+// it can only add, and a dropped receiver costs unrealized recall rather than
+// emitting anything wrong. The reason to keep the rows is that this ledger has
+// grown under review twice, and a growing list eventually swallows names it was
+// never meant to touch.
 //
 // LEGALITY: unlike every other table here, these fixtures involve NO shadowing
 // whatsoever — each prior binding has a name the foreach does not use — so their
