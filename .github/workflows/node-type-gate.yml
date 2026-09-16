@@ -20,16 +20,27 @@ name: node-type gate
 # on three platforms. The job is the whole-tree run; the package's own tests are
 # the four positive controls, and they are small enough to live in the suite.
 #
-# SCOPE: node-type literal resolution only. Red here means exactly one of three
-# facts about this tree:
+# SCOPE: node-type literal resolution only. Red here is always a fact about this
+# tree, never a flake, but it is NOT always the same fact. Exit 1 (the gate's own
+# verdict) means one of:
 #   1. a string literal in a node-type position names no node in ANY grammar its
 #      package can receive, and no baseline row covers it;
-#   2. a baseline row matches nothing any more — the literal was fixed or moved,
-#      so the row must be deleted; or
-#   3. the scan read fewer sites than its floor, i.e. the gate is not looking at
+#   2. a baseline row matches nothing any more — the literal was fixed (delete
+#      the row) or the file/package was renamed (rewrite the row's path);
+#   3. a package produced node-type literals but no grammar could be derived for
+#      it and it has no entry in skipExemptions — an unreviewed blind spot; or
+#   4. the scan read fewer sites than its floor, i.e. the gate is not looking at
 #      the tree and its verdict means nothing.
-# All three are facts, not flakes. Do not add a step here that can fail for any
-# other reason.
+# Exit 2 (the tool could not run) means one of: the packages failed to load; the
+# loader-integrity guard fired (a package parsed but its type information is
+# absent or incomplete); a grammar in the registry is not an official-adapter
+# language; or baseline.txt does not parse. And the first step can fail on its
+# own terms — a positive control regressing.
+#
+# That list is exhaustive as of this header, and it is written out because a
+# header promising fewer shapes than the job can produce is what gets a gate
+# muted the first time it produces one more. Do not add a step here that can fail
+# for a reason not on this list without extending the list.
 #
 # IF THIS GOES RED on a literal you believe is fine: it is not "fine" unless a
 # grammar the package receives really has that node. Check with a CST dump. The
@@ -65,11 +76,13 @@ jobs:
 
       # The controls run FIRST and are not optional. A green gate whose controls
       # are broken is worth nothing: the failure mode of a scan-and-assert-
-      # absence tool is to find nothing for the wrong reason. These four assert
-      # that the scala defect of #7064 is detected, that #7068's
-      # for_each_statement is detected, that a NEW dead literal is not
-      # suppressed by the baseline, and that a literal valid in one of a
-      # multi-grammar package's grammars does not fire.
+      # absence tool is to find nothing for the wrong reason. The seven assert
+      # that the scala defect of #7064 is detected; that re-introducing #7068's
+      # for_each_statement fails; that a stale baseline row fails; that a NEW
+      # dead literal is not suppressed by the baseline; that a literal reached
+      # through a converted constant is still folded; that a literal valid in
+      # one of a multi-grammar package's grammars does NOT fire; and that the
+      # internal/custom lane is resolved rather than silently skipped.
       - name: Positive controls
         run: go test -count=1 -v ./tools/node-type-gate/
 

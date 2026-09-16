@@ -31,6 +31,25 @@ func printVerdict(w io.Writer, res Result) {
 		fmt.Fprintf(w, "::error::node-type-gate read only %d sites (floor %d). The scan is not looking at the tree; the verdict below means nothing.\n",
 			res.Resolved, minResolvedSites)
 	}
+	// The skipped surface is printed on EVERY run, not only under -report: an
+	// unchecked package that nobody can see is indistinguishable from one that
+	// does not exist (#7076 review, finding 1).
+	if len(res.Skipped) > 0 {
+		fmt.Fprintf(w, "node-type-gate: %d sites in %d package(s) were NOT checked (no grammar could be derived):\n",
+			res.SkippedSites, len(res.Skipped))
+		for _, sk := range res.Skipped {
+			why := sk.Reason
+			if why == "" {
+				why = "NO EXEMPTION — this package is not in skipExemptions"
+			}
+			fmt.Fprintf(w, "  %-28s %4d sites — %s\n", sk.Dir, sk.Sites, why)
+		}
+	}
+	for _, sk := range res.UnreviewedSkips {
+		fmt.Fprintf(w, "::error::%s produced %d node-type literal sites but no grammar could be derived for it, and it has no entry in skipExemptions. Either derive its grammar (a constant language passed to treesitter.Parse is picked up automatically) or add an exemption saying why it cannot be mapped. A silently skipped package is the defect this gate exists to catch.\n",
+			sk.Dir, sk.Sites)
+	}
+
 	baselined := len(res.Misses) - len(res.Failures)
 	fmt.Fprintf(w, "node-type-gate: %d misses, %d tolerated by the baseline, %d new\n",
 		len(res.Misses), baselined, len(res.Failures))
@@ -39,7 +58,11 @@ func printVerdict(w io.Writer, res Result) {
 		fmt.Fprintf(w, "::error file=%s,line=%d::%s\n", m.File, m.Line, m.String())
 	}
 	for _, e := range res.StaleBaseline {
-		fmt.Fprintf(w, "::error::stale baseline row: %s %q in %s no longer matches anything. If the literal was fixed or moved, delete the row.\n",
+		fmt.Fprintf(w, "::error::stale baseline row: %s %q in %s no longer matches anything. "+
+			"If the literal was FIXED, delete the row. If the file or package was RENAMED or the literal MOVED, "+
+			"rewrite this row's dir/path to the new location — deleting it would leave the literal unbaselined and "+
+			"still failing. -update does NOT rewrite paths: it only refreshes the line number of a row whose "+
+			"(dir, literal, file) key already matches.\n",
 			e.Dir, e.Lit, e.File)
 	}
 	switch {
@@ -79,6 +102,13 @@ func printReport(w io.Writer, res Result, grammars map[string]*Grammar) {
 	}
 	fmt.Fprintf(w, "  (%d packages, %d distinct grammar keys registered; %d grammars in the parser registry)\n",
 		len(res.DirsWithGrammar), countKeys(res.GrammarsForDir), len(grammars))
+
+	if len(res.Skipped) > 0 {
+		fmt.Fprintln(w, "== packages with sites but no derivable grammar ==")
+		for _, sk := range res.Skipped {
+			fmt.Fprintf(w, "  %-28s %4d sites\n", sk.Dir, sk.Sites)
+		}
+	}
 
 	var dynamicRegs []Registration
 	for _, r := range res.Registrations {
@@ -129,13 +159,21 @@ const baselineHeader = `# node-type-gate baseline — literals that name no node
 # nothing FAILS the gate — that is what makes this list shrink. Fix a literal,
 # then delete its row.
 #
-# KNOWN GRANULARITY LIMIT: because the key ignores the line, one row tolerates
-# every occurrence of that literal in that file. A SECOND dead occurrence of an
-# already-listed literal in an already-listed file is therefore suppressed. Any
-# other new dead literal — new name, or the same name in a different file or
-# package — fails the gate. Per-line keying was rejected because an edit above
-# an entry would turn CI red for no reason, and a gate that cries wolf gets
-# switched off.
+# KNOWN GRANULARITY LIMIT, quantified: because the key ignores the line, one row
+# tolerates every occurrence of that literal in that file. 48 rows currently
+# cover 64 sites, so 16 tolerated sites have no row of their own, and a SECOND
+# dead occurrence of an already-listed literal in an already-listed file is
+# suppressed. Any other new dead literal — new name, or the same name in a
+# different file or package — fails the gate. Per-line keying was rejected
+# because an edit above an entry would turn CI red for no reason, and a gate that
+# cries wolf gets switched off. The ratio is the cost of that choice; if it grows
+# much past 64/48, revisit it.
+#
+# A RENAME is the case to be careful with. Moving a file or package makes every
+# row naming it go stale AND makes its literals newly unbaselined, so you get
+# both error kinds at once. Rewrite the dir/path in each affected row — do NOT
+# just delete the stale rows, and do not expect -update to do it: -update only
+# refreshes the LINE of a row whose (dir, literal, file) key already matches.
 #
 # THIS IS NOT A PLACE TO PUT A NEW DEAD LITERAL. Every row here is a defect
 # someone chose not to fix yet, each with its own follow-up.

@@ -18,6 +18,20 @@ var registerFuncs = map[string]bool{
 	"github.com/cajasmota/grafel/internal/extractors.Register": true,
 }
 
+// parseLangArg maps a parse entry point to the index of its language
+// argument. A package that calls it with a CONSTANT language is bound to that
+// grammar as directly as an extractor is bound by its Register call — it is
+// literally the key the parser factory dispatches on — so it is derived the
+// same way rather than hand-listed.
+//
+// This is what maps internal/custom/kotlin: the custom lane registers under
+// synthetic keys ("custom_kotlin_ktor_routes") that are not grammar names and
+// parses for itself, so Register-derivation alone leaves it with no grammar and
+// its 11 kotlin literals unchecked (#7076 review, finding 1).
+var parseLangArg = map[string]int{
+	"github.com/cajasmota/grafel/internal/treesitter.Parse": 2,
+}
+
 // extraGrammarKeys records grammar keys a package receives through a route
 // other than its own Register call. There is exactly one, and it is not
 // derivable from the registry: internal/extractors/incremental.go (and the
@@ -90,6 +104,84 @@ func (s *scanner) findRegistrations() []Registration {
 	return out
 }
 
+// ParseBinding is one call to a parse entry point, recording which grammar the
+// calling package's trees come from.
+type ParseBinding struct {
+	Dir  string
+	Key  string // "" when the language argument is not a constant
+	File string
+	Line int
+}
+
+// findParseBindings derives package → grammar from the parse call sites. A
+// non-constant language is recorded with Key == "": that package's trees can be
+// ANY grammar, so it cannot be soundly mapped, and saying so is the point.
+func (s *scanner) findParseBindings() []ParseBinding {
+	var out []ParseBinding
+	for _, p := range s.pkgs {
+		info := p.TypesInfo
+		if info == nil {
+			continue
+		}
+		for _, f := range p.Syntax {
+			ast.Inspect(f, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				fn := calleeFunc(info, call)
+				if fn == nil || fn.Pkg() == nil {
+					return true
+				}
+				idx, ok := parseLangArg[fn.Pkg().Path()+"."+fn.Name()]
+				if !ok || idx >= len(call.Args) {
+					return true
+				}
+				tp := s.fset.Position(call.Pos())
+				file := tp.Filename
+				if rel, err := filepath.Rel(s.modRoot, file); err == nil && !strings.HasPrefix(rel, "..") {
+					file = filepath.ToSlash(rel)
+				}
+				b := ParseBinding{
+					Dir:  filepath.ToSlash(filepath.Dir(file)),
+					File: file,
+					Line: tp.Line,
+				}
+				if tv, ok := info.Types[call.Args[idx]]; ok && tv.Value != nil {
+					b.Key = constStringOf(tv)
+				}
+				out = append(out, b)
+				return true
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Dir != out[j].Dir {
+			return out[i].Dir < out[j].Dir
+		}
+		if out[i].File != out[j].File {
+			return out[i].File < out[j].File
+		}
+		return out[i].Line < out[j].Line
+	})
+	return out
+}
+
+// dirsWithDynamicParse is the set of package directories that parse under a
+// language they compute at runtime. Such a package can receive ANY grammar, so
+// resolving its literals against the subset it happens to name as constants
+// would report a live literal as dead. They are unmappable BY CONSTRUCTION, not
+// by omission, and the gate names them rather than hiding them.
+func dirsWithDynamicParse(bs []ParseBinding) map[string][]ParseBinding {
+	out := map[string][]ParseBinding{}
+	for _, b := range bs {
+		if b.Key == "" {
+			out[b.Dir] = append(out[b.Dir], b)
+		}
+	}
+	return out
+}
+
 // Grammar is one grammar's symbol table, read from the same ts.Language handle
 // the daemon parses with.
 type Grammar struct {
@@ -127,9 +219,17 @@ func (e *grammarErr) Error() string {
 }
 
 // grammarKeysFor returns the grammar keys a package's node-type literals may be
-// resolved against: every language it registers for that has a grammar, plus
-// the documented extra routes.
-func grammarKeysFor(dir string, regs []Registration, grammars map[string]*Grammar) []string {
+// resolved against: every language it registers for, every language it parses
+// with as a constant, and the documented extra routes.
+//
+// Returns nil for a package with a dynamic parse language — see
+// dirsWithDynamicParse. Mapping such a package to the subset of grammars it
+// names as constants would be worse than not mapping it: a literal that is live
+// under a grammar reached through the runtime path would be reported dead.
+func grammarKeysFor(dir string, regs []Registration, binds []ParseBinding, grammars map[string]*Grammar) []string {
+	if len(dirsWithDynamicParse(binds)[dir]) > 0 {
+		return nil
+	}
 	seen := map[string]bool{}
 	for _, r := range regs {
 		if r.Dir != dir || r.Key == "" {
@@ -137,6 +237,14 @@ func grammarKeysFor(dir string, regs []Registration, grammars map[string]*Gramma
 		}
 		if _, ok := grammars[r.Key]; ok {
 			seen[r.Key] = true
+		}
+	}
+	for _, b := range binds {
+		if b.Dir != dir || b.Key == "" {
+			continue
+		}
+		if _, ok := grammars[b.Key]; ok {
+			seen[b.Key] = true
 		}
 	}
 	if len(seen) > 0 {

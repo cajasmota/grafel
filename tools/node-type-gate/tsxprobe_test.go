@@ -35,7 +35,7 @@ func TestJavascriptPackageResolvesAgainstTsx(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	keys := grammarKeysFor(dir, surf.Registrations, g)
+	keys := grammarKeysFor(dir, surf.Registrations, surf.ParseBindings, g)
 	has := map[string]bool{}
 	for _, k := range keys {
 		has[k] = true

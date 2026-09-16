@@ -14,13 +14,21 @@
 # nothing FAILS the gate — that is what makes this list shrink. Fix a literal,
 # then delete its row.
 #
-# KNOWN GRANULARITY LIMIT: because the key ignores the line, one row tolerates
-# every occurrence of that literal in that file. A SECOND dead occurrence of an
-# already-listed literal in an already-listed file is therefore suppressed. Any
-# other new dead literal — new name, or the same name in a different file or
-# package — fails the gate. Per-line keying was rejected because an edit above
-# an entry would turn CI red for no reason, and a gate that cries wolf gets
-# switched off.
+# KNOWN GRANULARITY LIMIT, quantified: because the key ignores the line, one row
+# tolerates every occurrence of that literal in that file. 48 rows currently
+# cover 64 sites, so 16 tolerated sites have no row of their own, and a SECOND
+# dead occurrence of an already-listed literal in an already-listed file is
+# suppressed. Any other new dead literal — new name, or the same name in a
+# different file or package — fails the gate. Per-line keying was rejected
+# because an edit above an entry would turn CI red for no reason, and a gate that
+# cries wolf gets switched off. The ratio is the cost of that choice; if it grows
+# much past 64/48, revisit it.
+#
+# A RENAME is the case to be careful with. Moving a file or package makes every
+# row naming it go stale AND makes its literals newly unbaselined, so you get
+# both error kinds at once. Rewrite the dir/path in each affected row — do NOT
+# just delete the stale rows, and do not expect -update to do it: -update only
+# refreshes the LINE of a row whose (dir, literal, file) key already matches.
 #
 # THIS IS NOT A PLACE TO PUT A NEW DEAD LITERAL. Every row here is a defect
 # someone chose not to fix yet, each with its own follow-up.

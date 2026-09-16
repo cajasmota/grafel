@@ -191,7 +191,7 @@ func TestEvaluate_ResolveRules(t *testing.T) {
 		{"in neither grammar", site("pkg/multi", "nowhere"), "", true, true},
 		{"single-grammar package, present", site("pkg/solo", "real_alpha"), "", false, false},
 		{"single-grammar package, absent", site("pkg/solo", "real_beta"), "", true, true},
-		{"package with no grammar at all", site("pkg/none", "nowhere"), "", false, false},
+		{"package with no grammar at all (skip accounting held constant)", site("pkg/none", "nowhere"), "", false, false},
 		{"ERROR is a runtime kind, in no symbol table", site("pkg/multi", "ERROR"), "", false, false},
 		{"MISSING is a runtime kind, in no symbol table", site("pkg/multi", "MISSING"), "", false, false},
 		{"the empty string is a sentinel, never a node kind", site("pkg/multi", ""), "", false, false},
@@ -204,11 +204,16 @@ func TestEvaluate_ResolveRules(t *testing.T) {
 			if err != nil {
 				t.Fatalf("baseline: %v", err)
 			}
-			res := Evaluate(Scan{Sites: []Site{r.site}}, regs, grammars, base)
+			res := Evaluate(Scan{Sites: []Site{r.site}}, regs, nil, grammars, base)
 			// StaleBaseline is not the axis under test here; the "baselined
 			// under a different literal" row would otherwise fail for two
 			// reasons at once and grade neither.
 			res.StaleBaseline = nil
+			// Nor is the skip accounting: "pkg/none" is correctly an unreviewed
+			// skip and would make that row red for a second, unrelated reason.
+			// That axis is owned by TestEvaluate_SkippedPackagesMustBeNamed,
+			// which varies it deliberately; here it is held constant.
+			res.UnreviewedSkips = nil
 			if got := res.Failed(); got != r.wantFail {
 				t.Errorf("Failed() = %v, want %v (failures: %v)", got, r.wantFail, res.Failures)
 			}

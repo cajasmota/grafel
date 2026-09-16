@@ -29,14 +29,28 @@
 //     position (discovered to a fixpoint, never hand-listed), and the keys of
 //     a table indexed by x.Type(). Literals are CONSTANT-FOLDED through
 //     types.Info, so hiding one behind `const K = string(types.X)` cannot
-//     silently zero the site count. The switch and helper forms alone are 2.6x
-//     the surface a grep for `.Type() == "…"` can see.
+//     silently zero the site count. The switch and helper forms alone are 1.81x
+//     the surface a grep for `.Type() == "…"` can see (1547 + 447 sites against
+//     1100 (file,line,literal) triples grep finds in internal/extractors); the
+//     whole scan is 2.86x it. Note the scope of the claim: the scan collects
+//     every literal in FOUR ENUMERATED SHAPES, not every literal in a node-type
+//     position — see "What this gate does NOT catch".
 //   - RESOLVE. Against the node-kind symbol table of every grammar the package
 //     can actually receive, read from the same ts.Language handles the daemon
 //     parses with (treesitter.GrammarLanguages). The package → grammar mapping
-//     is derived from the extractor.Register call sites crossed with that
-//     registry; multi-grammar packages are handled per-grammar (cpp → c+cpp,
+//     is derived from two kinds of call site crossed with that registry: the
+//     extractor.Register calls, and the constant language passed to
+//     treesitter.Parse (which is what maps the internal/custom lane, whose
+//     packages register under synthetic keys and parse for themselves).
+//     Multi-grammar packages are handled per-grammar (cpp → c+cpp,
 //     javascript → javascript+typescript+tsx, hcl → hcl+terraform).
+//   - ACCOUNT FOR WHAT IS NOT CHECKED. A package that produces node-type
+//     literals but has no derivable grammar is reported by directory and site
+//     count on every run, and FAILS the gate unless it carries a written
+//     exemption in skipExemptions. It is NOT assumed that such a package's
+//     strings are therefore not node types: internal/custom/kotlin's 11 are,
+//     and an earlier version of this tool skipped them in silence under a
+//     comment claiming otherwise (#7076 review, finding 1).
 //   - FAIL, only when a literal resolves in NONE of its package's grammars and
 //     no baseline row covers it. A literal absent from one grammar but present
 //     in another is never a failure: C++-only names in the shared c/cpp
@@ -63,14 +77,37 @@
 //
 // It also does not check field names (ChildByFieldName), does not model which
 // grammar internal/engine's runtime dispatch selects, and says nothing about
-// the 58-odd positions where the compared value is not a constant — those are
-// reported as dynamic rather than silently dropped.
+// the 67 positions where the compared value is not a constant — those are
+// reported as dynamic (counted in every run, listed by -dynamic and -sites)
+// rather than silently dropped.
+//
+// # The shapes the scan does not recognise
+//
+// The four forms are an enumeration, not a closure: a literal can reach a
+// node-type comparison through a shape the scan does not model, and then it is
+// invisible even in a fully mapped package. Measured by the #7076 review, all
+// injected into internal/extractors/scala against the real baseline, with a
+// plain `n.Type() == "…"` control failing in the same run:
+//
+//	closure parameter      f := func(k string) bool { return n.Type() == k }; f("…")   not flagged, seen as dynamic
+//	strings.EqualFold      strings.EqualFold(n.Type(), "…")                            not flagged, NO TRACE AT ALL
+//	table as a parameter   func(tbl map[string]bool, n ts.Node) { tbl[n.Type()] }       not flagged, NO TRACE AT ALL
+//	range over a slice lit for _, k := range []string{"…"} { n.Type() == k }            not flagged, seen as dynamic
+//	interface dispatch     i.Want("…"), impl does p.n.Type() == kind                    not flagged, seen as dynamic
+//
+// This is a COMPLETENESS limit, not a soundness one — none of it makes the gate
+// fire wrongly, and the grep cross-check being zero in both directions is
+// evidence the `cmp` surface is complete as written. But a future author adding
+// a helper should know which shapes are seen. If you add a matcher in one of
+// these shapes, the gate will not check it; prefer one of the four, or extend
+// the scan and grade the extension.
 //
 // # Usage
 //
 //	go run ./tools/node-type-gate              # gate; exit 1 on a new dead literal
 //	go run ./tools/node-type-gate -report      # the full derived surface
 //	go run ./tools/node-type-gate -sites       # every site, for cross-checking against a grep
+//	go run ./tools/node-type-gate -dynamic     # every position whose value is not a constant
 //	go run ./tools/node-type-gate -update      # rewrite baseline.txt line numbers
 package main
 
@@ -108,6 +145,7 @@ func main() {
 		report       = flag.Bool("report", false, "print the full derived surface instead of only the verdict")
 		update       = flag.Bool("update", false, "rewrite the baseline's line numbers from the current tree")
 		dumpSites    = flag.Bool("sites", false, "dump every derived site as file:line<TAB>literal<TAB>form, for cross-checking the surface against a grep")
+		dumpDynamic  = flag.Bool("dynamic", false, "dump every node-type position whose value is not a constant")
 	)
 	flag.Parse()
 
@@ -137,7 +175,7 @@ func main() {
 		fatal(err)
 	}
 
-	res := Evaluate(loaded.Scan, loaded.Registrations, grammars, base)
+	res := Evaluate(loaded.Scan, loaded.Registrations, loaded.ParseBindings, grammars, base)
 
 	if *update {
 		if err := updateBaseline(bp, base, res); err != nil {
@@ -153,6 +191,13 @@ func main() {
 		}
 		for _, s := range res.Dynamic {
 			fmt.Printf("%s:%d\t<dynamic>\t%s\n", s.File, s.Line, s.Form)
+		}
+		return
+	}
+
+	if *dumpDynamic {
+		for _, s := range res.Dynamic {
+			fmt.Printf("%s:%d\t%s\n", s.File, s.Line, s.Form)
 		}
 		return
 	}
@@ -173,6 +218,7 @@ func fatal(err error) {
 type Surface struct {
 	Scan          Scan
 	Registrations []Registration
+	ParseBindings []ParseBinding
 }
 
 // LoadSurface loads the packages under patterns (rooted at root) and derives
@@ -274,7 +320,11 @@ func loadSurfaceWithConfig(cfg *packages.Config, root string, patterns []string)
 	if !s.findNodeIface() {
 		return nil, fmt.Errorf("could not locate the %s.Node interface in the loaded package set — the scan would report zero sites for the wrong reason", nodeTypeIfacePath)
 	}
-	return &Surface{Scan: s.Run(), Registrations: s.findRegistrations()}, nil
+	return &Surface{
+		Scan:          s.Run(),
+		Registrations: s.findRegistrations(),
+		ParseBindings: s.findParseBindings(),
+	}, nil
 }
 
 func findModuleRoot() (string, error) {

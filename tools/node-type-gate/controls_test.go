@@ -109,7 +109,7 @@ func evalPkg(t *testing.T, root, pattern string, overlay map[string][]byte, base
 	if err != nil {
 		t.Fatalf("load %s: %v", pattern, err)
 	}
-	return Evaluate(surf.Scan, surf.Registrations, testGrammars(t), base)
+	return Evaluate(surf.Scan, surf.Registrations, surf.ParseBindings, testGrammars(t), base)
 }
 
 // findDiag returns the emitted failure for (fileSuffix, literal), or nil.
@@ -337,6 +337,25 @@ func TestControl_StaleBaselineRowFailsTheGate(t *testing.T) {
 		t.Error("a stale row must fail the gate; that is the mechanism that makes the baseline shrink")
 	}
 
+	// The REMEDIATION TEXT is part of the behaviour, not decoration. A rename
+	// produces both error kinds at once — the #7076 review measured 13
+	// new-dead-literal errors plus 10 stale rows from renaming one lua file —
+	// and the old text said only "delete the row", which fixes neither half and
+	// silently loses the baseline coverage. Assert on what is actually emitted;
+	// prose no test observes is how the wrong advice survived review once.
+	var out bytes.Buffer
+	printVerdict(&out, res)
+	text := out.String()
+	for _, want := range []string{
+		"RENAMED",
+		"rewrite this row's dir/path",
+		"-update does NOT rewrite paths",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the stale-row diagnostic does not mention %q; a rename would be misdirected.\ngot:\n%s", want, text)
+		}
+	}
+
 	// Negative control: every row of the checked-in baseline that names this
 	// package does match. Without it, an Unmatched() that returns everything
 	// would satisfy the assertion above.
@@ -518,4 +537,194 @@ func TestControl_LiteralPresentInOneGrammarOfAPackageDoesNotFail(t *testing.T) {
 			}
 		})
 	}
+}
+
+// CONTROL 6 — the custom lane is checked, not silently skipped.
+//
+// The #7076 review's first finding: internal/custom/kotlin holds 11 kotlin
+// node-type literals, got no grammar key (it registers under the synthetic key
+// "custom_kotlin_ktor_routes" and parses for itself), and was skipped in
+// SILENCE. A brand-new dead literal there produced failures=0, ExitCode=0,
+// under a comment asserting such packages "never receive a tree-sitter tree" —
+// which was false for it. That is the gate's own version of the defect it
+// exists to catch.
+//
+// The mapping is now DERIVED from the package's own parse call
+// (`factory.Parse(ctx, content, "kotlin")`), not hand-listed, so a new custom
+// package that parses with a constant language is covered the day it lands.
+//
+// VARIED against Control 3, which injects the same kind of defect into a
+// package mapped through extractor.Register: this one is mapped through a parse
+// call instead, which is the derivation that did not exist before.
+// HELD CONSTANT: the injected literal's shape (cmp), the real baseline, and the
+// required verdict.
+func TestControl_CustomLanePackageIsResolved(t *testing.T) {
+	root := modRoot(t)
+	const dir = "internal/custom/kotlin"
+	file := filepath.Join(root, "internal", "custom", "kotlin", "ktor_routes.go")
+	const injected = "grafel_no_such_node_custom_7065"
+
+	// Premise: the package really is mapped now, and mapped to kotlin.
+	clean := evalPkg(t, root, "./internal/custom/kotlin", nil, realBaseline(t, root))
+	keys := clean.GrammarsForDir[dir]
+	if len(keys) != 1 || keys[0] != "kotlin" {
+		t.Fatalf("%s resolves against %v, want [kotlin] — derived from its factory.Parse(…, \"kotlin\") call", dir, keys)
+	}
+	// Premise: it really does contribute sites, so the verdict is not vacuous.
+	if n := len(sitesFor(clean, "call_expression")); n == 0 {
+		t.Fatalf("no sites derived from %s; the control below would grade nothing.\n%s", dir, diagLines(clean))
+	}
+	// Premise: it is not reported as skipped.
+	for _, sk := range clean.Skipped {
+		if sk.Dir == dir {
+			t.Fatalf("%s is still being skipped (%d sites, reason %q)", dir, sk.Sites, sk.Reason)
+		}
+	}
+	// Scoped to this package: a single-package load cannot match the baseline's
+	// rows for other packages, so StaleBaseline is noise here, and only failures
+	// attributed to this dir are meaningful.
+	for _, m := range clean.Failures {
+		if m.Dir == dir {
+			t.Errorf("the shipped custom lane is not clean: %s", m.String())
+		}
+	}
+
+	// The reviewer's N2: a new dead literal here must now fail.
+	patched := overlayReplace(t,
+		file,
+		`if node.Type() == "call_expression" {`,
+		`if node.Type() == "`+injected+`" {`,
+		1)
+	res := evalPkg(t, root, "./internal/custom/kotlin",
+		map[string][]byte{file: patched}, realBaseline(t, root))
+
+	d := findDiag(res, "custom/kotlin/ktor_routes.go", injected)
+	if d == nil {
+		t.Fatalf("a dead literal in the custom lane did not fail the gate — it is being skipped again.\nskipped: %+v\nemitted:\n%s", res.Skipped, diagLines(res))
+	}
+	if d.Dir != dir {
+		t.Errorf("attributed to %q, want %q", d.Dir, dir)
+	}
+	if got := strings.Join(d.Grammars, ","); got != "kotlin" {
+		t.Errorf("resolved against %q, want kotlin", got)
+	}
+	if !res.Failed() {
+		t.Error("Failed() is false despite an un-baselined miss in the custom lane")
+	}
+}
+
+// CONTROL 7 — a package that cannot be mapped must be NAMED, and an unnamed one
+// must fail.
+//
+// This is the half of finding 1 that outlives the kotlin mapping. Some packages
+// genuinely have no single grammar (internal/engine parses under a runtime
+// language; internal/treesitter IS the parser). Skipping those is a reviewed
+// decision only while the list of them is closed and each entry carries a
+// reason. A directory that produces sites and appears in neither the grammar
+// map nor skipExemptions must turn the gate red, or the silence comes back.
+//
+// Driven on a synthetic surface so each axis moves alone.
+//
+// VARIED, one per row: whether the directory has a grammar, and whether it has
+// an exemption. Row "mapped" is the negative control — without it, a gate that
+// failed on every directory would pass every other row.
+// HELD CONSTANT: the literal (valid in the grammar, so it can never be a miss),
+// the file, the line, the form, and the empty baseline — so the only thing that
+// can make a row red is the skip accounting.
+func TestEvaluate_SkippedPackagesMustBeNamed(t *testing.T) {
+	grammars := map[string]*Grammar{
+		"alpha": {Key: "alpha", Kinds: map[string]bool{"real_alpha": true}},
+	}
+	exemptDir := ""
+	for d := range skipExemptions {
+		exemptDir = d
+		break
+	}
+	if exemptDir == "" {
+		t.Fatal("skipExemptions is empty; this test would grade nothing")
+	}
+	rows := []struct {
+		name        string
+		dir         string
+		regs        []Registration
+		wantFail    bool
+		wantSkipped bool
+		wantUnnamed bool
+	}{
+		{"mapped to a grammar", "pkg/mapped", []Registration{{Dir: "pkg/mapped", Key: "alpha"}}, false, false, false},
+		{"unmapped and exempt", exemptDir, nil, false, true, false},
+		{"unmapped and NOT exempt", "internal/custom/brandnew", nil, true, true, true},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			site := Site{Pkg: r.dir, Dir: r.dir, File: r.dir + "/x.go", Line: 3, Lit: "real_alpha", Form: FormCmp, Const: true}
+			base, err := ParseBaseline(strings.NewReader(""))
+			if err != nil {
+				t.Fatalf("baseline: %v", err)
+			}
+			res := Evaluate(Scan{Sites: []Site{site}}, r.regs, nil, grammars, base)
+
+			if got := res.Failed(); got != r.wantFail {
+				t.Errorf("Failed() = %v, want %v (unreviewed: %+v)", got, r.wantFail, res.UnreviewedSkips)
+			}
+			if got := len(res.Skipped) > 0; got != r.wantSkipped {
+				t.Errorf("reported as skipped = %v, want %v", got, r.wantSkipped)
+			}
+			if got := len(res.UnreviewedSkips) > 0; got != r.wantUnnamed {
+				t.Errorf("reported as an unreviewed skip = %v, want %v", got, r.wantUnnamed)
+			}
+			if r.wantSkipped {
+				if len(res.Skipped) != 1 || res.Skipped[0].Dir != r.dir {
+					t.Fatalf("skipped = %+v, want exactly %s", res.Skipped, r.dir)
+				}
+				if res.SkippedSites != 1 {
+					t.Errorf("SkippedSites = %d, want 1 — the unchecked surface must be counted, not just listed", res.SkippedSites)
+				}
+				if res.Skipped[0].Exempt() != !r.wantUnnamed {
+					t.Errorf("Exempt() = %v, want %v", res.Skipped[0].Exempt(), !r.wantUnnamed)
+				}
+			}
+			// A skipped site is never counted as resolved: the gate must not
+			// claim credit for a surface it did not look at.
+			if r.wantSkipped && res.Resolved != 0 {
+				t.Errorf("Resolved = %d for a skipped package, want 0", res.Resolved)
+			}
+		})
+	}
+}
+
+// TestSkipExemptionsOnDisk_AreAllStillNeeded keeps the exemption list closed in
+// the other direction: a row for a package that is now mapped, or that no
+// longer produces sites, is dead prose and must be deleted. Without this the
+// list only ever grows, which is how the silence comes back.
+func TestSkipExemptionsOnDisk_AreAllStillNeeded(t *testing.T) {
+	root := modRoot(t)
+	surf, err := LoadSurface(root, scanPatterns)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	grammars := testGrammars(t)
+	base, err := ParseBaseline(strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+	res := Evaluate(surf.Scan, surf.Registrations, surf.ParseBindings, grammars, base)
+
+	used := map[string]bool{}
+	for _, sk := range res.Skipped {
+		used[sk.Dir] = true
+	}
+	for dir, reason := range skipExemptions {
+		if !used[dir] {
+			t.Errorf("skipExemptions has a row for %s, but that directory is not skipped any more (it is mapped, or produces no sites). Delete the row; its reason %q is now dead prose.", dir, reason)
+		}
+		if reason == "" {
+			t.Errorf("skipExemptions[%s] has no reason", dir)
+		}
+	}
+	// And the live tree must have no unreviewed skip.
+	if len(res.UnreviewedSkips) > 0 {
+		t.Errorf("unreviewed skips on the real tree: %+v", res.UnreviewedSkips)
+	}
+	t.Logf("skipped surface: %d sites across %v", res.SkippedSites, used)
 }
