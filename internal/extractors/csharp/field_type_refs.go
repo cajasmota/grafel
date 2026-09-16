@@ -80,8 +80,12 @@ import (
 // inside `Box`. The refusal lives in csVisibleTypeParameterNames; see it for
 // C#'s scoping rule, why that rule is NOT kotlin's, java's or rust's, the
 // grammar evidence behind it, and — since no C# compiler exists on the machine
-// this was written on — exactly which rows are UNVERIFIED and what would settle
-// them. The known-wrong pin
+// this was written on — which rows are UNVERIFIED and what would settle them.
+// There are TWO such rows, and BOTH are named there: the `static` nested class
+// (Sn4) and the same-file attribute class on a type parameter (G13). An earlier
+// revision of this sentence promised "exactly which rows" while the block below
+// named Sn4 alone, leaving G13's unverified status recorded in the test file
+// only — corrected on review of #7075. The known-wrong pin
 // (TestCsharpFieldTypeRefs_KnownOverFire_TypeParameterShadowsSameFileType, a
 // hard `t.Fatalf` asserting the wrong edge WAS present) was deleted with the fix
 // and replaced by field_type_refs_7041_test.go.
@@ -170,12 +174,16 @@ func csTypeRefCandidates(typ ts.Node, src []byte, typeParams map[string]bool) []
 // interface_declaration and delegate_declaration, and §7.7.1 makes the inner
 // declaration SHADOW the outer name. A nested type declaration is part of the
 // enclosing class_body, so a nested type's members are inside the outer
-// parameters' scope. Microsoft's own "Generic Classes" guidance states it
-// directly — a type nested in a generic class can depend on the enclosing type's
-// type parameters — and the compiler carries diagnostic CS0693 ("type parameter
-// 'T' has the same name as the type parameter from outer type") precisely
+// parameters' scope. Microsoft's COMPILER-MESSAGE page for CS0693 ("type
+// parameter 'T' has the same name as the type parameter from outer type") says
+// it directly — it describes "a generic member (such as a method or NESTED
+// TYPE) … inside a generic class" — and the diagnostic exists at all precisely
 // BECAUSE the outer parameter is visible in the nested declaration. At the CLR
 // level `Outer<T>.Inner` is `Outer`1+Inner`, generic over the same T.
+// (An earlier revision of this comment cited the "Generic Classes" guidance
+// page for the nested-type claim. It was checked on review and DOES NOT MENTION
+// NESTED TYPES; the citation was wrong and is corrected here rather than
+// quietly dropped.)
 //
 // That is the same IMPLEMENTATION as java's arm and a DIFFERENT justification,
 // and the difference matters because three sibling arms have three incompatible
@@ -209,6 +217,13 @@ func csTypeRefCandidates(typ ts.Node, src []byte, typeParams map[string]bool) []
 //     the parameter and refusing is right; if illegal, no program exercises the
 //     row. What would settle it: `csc` on
 //     `class Order{} class O<Order>{ static class S { public static Order A; } }`.
+//   - `[Mark]` on a type parameter where `class Mark : System.Attribute` is
+//     declared in the SAME FILE (fixture G13). Legal by the default
+//     AttributeUsage (all targets) and the optional-`Attribute`-suffix lookup
+//     rule — NOT DEMONSTRATED. Safe either way for the same reason as Sn4, and
+//     the KEEP half (`Mark` must still bind in field position, which is what
+//     kills a descendant-walk collector) only gets stronger if the form is
+//     legal. What would settle it: `csc` on that snippet.
 //   - NOT WRITTEN, and named rather than guessed: using a type parameter in
 //     generic-CONSTRUCTOR position (`class B<D> { D<int,int> f; }`) — believed
 //     illegal, so no fixture asserts anything about it; and a shadowing

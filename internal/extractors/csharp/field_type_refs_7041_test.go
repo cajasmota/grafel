@@ -25,29 +25,53 @@ import (
 // nobody audits. So they are named:
 //
 //	TestCsharpFieldTypeRefs_7041_ParameterFormSpace
-//	  VARIES          the FORM of the parameter declaration (plain, two-name,
-//	                  constrained, multi-constrained, variance-annotated,
-//	                  attributed), the DECLARATION KIND carrying the list
-//	                  (class / struct / interface / record), the ANCHOR
-//	                  (property · field · record positional parameter) and
-//	                  CANDIDATE MULTIPLICITY (1 candidate · refused-first ·
-//	                  refused-middle · refused-last), and the field-type SYNTAX
-//	                  the candidate sits in (bare, nullable, array, tuple,
-//	                  generic argument, generic constructor position).
-//	  HELD CONSTANT   nesting depth (top-level declarations only — that axis is
-//	                  the whole of the next table) and namespace (one
-//	                  file-scoped namespace; namespace scope is a SEPARATE
-//	                  known over-fire, still pinned).
+//	  VARIES          the FORM of the parameter declaration — plain (G1),
+//	                  two-name (G2), constrained (G3), multi-constrained (G4),
+//	                  variance-annotated (G5), attributed (G9, G13); the
+//	                  DECLARATION KIND carrying the list — class (G1), struct
+//	                  (G6), interface (G5), record (G7, G11); the ANCHOR —
+//	                  property (G1), field (G6.A, PlainS.X), record positional
+//	                  (G7, G11, PlainR.X); CANDIDATE MULTIPLICITY — one
+//	                  candidate (G1.Shadowed), refused-first (G12.Pair),
+//	                  refused-middle (G10.M, G11.M), refused-last (G10.R,
+//	                  G11.R); and the field-type SYNTAX the candidate sits in —
+//	                  bare (G1), nullable (G8), array (G12.Arr), tuple
+//	                  (G12.Pair), generic argument (G10, G11).
+//	  HELD CONSTANT   nesting depth — every declaration in this file is
+//	                  top-level, so EVERY binder here is the field's OWN
+//	                  declaring type; the ascent is the whole of the next table,
+//	                  and multiplicity is varied there too for that reason.
+//	                  Namespace — one file-scoped namespace; namespace scope is
+//	                  a SEPARATE known over-fire, still pinned.
+//	                  Generic-CONSTRUCTOR position is varied only as a KEPT
+//	                  candidate (`Dict` in G10/G11): a type parameter in
+//	                  constructor position is the omitted illegal form, named in
+//	                  field_type_refs.go rather than guessed at.
 //
 //	TestCsharpFieldTypeRefs_7041_NestingFormSpace
 //	  VARIES          nesting DEPTH (1 and 2 levels), whether the nested
 //	                  declaration carries its OWN non-empty list, the nested
 //	                  declaration KIND (class · record), the `static` modifier,
-//	                  and the DIRECTION (ancestor-generic → refuse;
-//	                  non-ancestor-generic → keep).
-//	  HELD CONSTANT   parameter form (plain, unconstrained — graded by the table
-//	                  above) and candidate multiplicity at most rows; the two
-//	                  rows that vary it are marked.
+//	                  the DIRECTION (ancestor-generic → refuse;
+//	                  non-ancestor-generic → keep), the ANCHOR (property ·
+//	                  field · record positional) and — added after review —
+//	                  CANDIDATE MULTIPLICITY, at four rows and three anchors:
+//	                  Inner1.Mm (refused MIDDLE, property, depth 1), Inner1.Pf
+//	                  (refused FIRST, field, depth 1), Deep2.Ml (refused LAST,
+//	                  property, depth 2) and R6.Mr (refused MIDDLE, RECORD
+//	                  anchor, depth 1).
+//	  HELD CONSTANT   parameter form — every list in this file is plain and
+//	                  unconstrained, which is the previous table's axis.
+//
+// AN UNMET CLAIM IN THIS BLOCK IS WORSE THAN AN UNNAMED AXIS. The revision
+// reviewed on #7075 said of the nesting table that candidate multiplicity was
+// held constant "at most rows; the two rows that vary it are marked" — AND NO
+// SUCH ROWS EXISTED. All 17 field anchors had a single bare-identifier type, so
+// along the ascent "drop the refused candidate" and "drop the whole field" were
+// still the same function, and mutant MX was ALIVE with both suites green. The
+// block exists so a reader can tell what is graded without re-deriving it; a
+// block that asserts coverage it does not have turns the audit tool into the
+// thing needing an audit. Every axis named above now points at rows that exist.
 //
 // EVERY row is classified below by WHAT IT VARIES, under three kinds:
 //
@@ -66,15 +90,22 @@ import (
 // absent). Rows whose LEGALITY is load-bearing are marked UNVERIFIED-LEGALITY
 // with the reason; forms whose legality is in doubt and whose behaviour would be
 // load-bearing are NOT written at all and are named as omissions in
-// field_type_refs.go. Every form used below is a plain generic
+// field_type_refs.go. EXACTLY TWO rows below rest on a legality that is not
+// demonstrated — `Sn4` (a `static` nested class inside a generic one) and `G13`
+// (a same-file attribute class applied to a type parameter) — and both are
+// marked at the row, named in field_type_refs.go's UNVERIFIED block, and safe
+// in either branch. EVERY OTHER form below is a plain generic
 // class/struct/record/interface with a type parameter shadowing a same-file
-// type, whose legality is not in doubt.
+// type, whose legality is not in doubt. (An earlier revision of this sentence
+// said "every form", which the two marked rows contradict.)
 
 const ft7041FormPath = "P.cs"
 
 // ft7041FormSrc — the parameter-form space. `Order` is the name bound as a type
-// parameter in most declarations; `Real`, `IThing` and `Keep` are ordinary
-// same-file types that must stay bindable everywhere.
+// parameter in most declarations; `Real`, `IThing`, `Keep`, `Dict` and `Mark`
+// are ordinary same-file types that must stay bindable everywhere. (`Dict` is
+// itself generic: its own `A`/`B` collide with nothing, and it is the KEPT
+// candidate in generic-CONSTRUCTOR position for the multiplicity rows.)
 const ft7041FormSrc = `namespace App;
 
 public class Order { public string N { get; set; } }
@@ -257,16 +288,22 @@ func TestCsharpFieldTypeRefs_7041_ParameterFormSpace(t *testing.T) {
 const ft7041NestPath = "N.cs"
 
 // ft7041NestSrc — the NESTING space. C#'s rule is derived and stated in
-// field_type_refs.go; this fixture grades it in both directions.
+// field_type_refs.go; this fixture grades it in both directions. `Order`,
+// `Real`, `Keep` and `Dict` are ordinary same-file types; `Order` is ALSO bound
+// as a type parameter by SEVEN declarations here (N1, N2, N3, N4, N6, Inner5,
+// G7n), which is what makes N5.A and Sib7.A real over-refusal controls rather
+// than liveness rows. `Dict` carries the mixed-candidate rows added after
+// review of #7075.
 const ft7041NestSrc = `namespace App;
 
 public class Order { public string N { get; set; } }
 public class Real { public string N { get; set; } }
 public class Keep { public string N { get; set; } }
+public class Dict<A, B> { }
 
-public class N1<Order> { public class Inner1 { public Order A { get; set; } public Real B { get; set; } } }
+public class N1<Order> { public class Inner1 { public Order A { get; set; } public Real B { get; set; } public Dict<Order, Real> Mm { get; set; } public (Order, Real) Pf; } }
 
-public class N2<Order> { public class Mid2 { public class Deep2 { public Order A { get; set; } public Real B { get; set; } } } }
+public class N2<Order> { public class Mid2 { public class Deep2 { public Order A { get; set; } public Real B { get; set; } public Dict<Real, Order> Ml { get; set; } } } }
 
 public class N3<Order> { public class Inner3<Real> { public Order A { get; set; } public Real B { get; set; } public Keep C { get; set; } } }
 
@@ -274,7 +311,7 @@ public class N4<Order> { public static class Sn4 { public static Order A; public
 
 public class N5 { public Order A { get; set; } public class Inner5<Order> { public Order B { get; set; } public Real C { get; set; } } }
 
-public class N6<Order> { public record R6(Order A, Real B); }
+public class N6<Order> { public record R6(Order A, Real B, Dict<Order, Real> Mr); }
 
 public class N7 { public class G7n<Order> { public Keep K { get; set; } } public class Sib7 { public Order A { get; set; } public Real B { get; set; } } }
 `
@@ -286,9 +323,26 @@ public class N7 { public class G7n<Order> { public Keep K { get; set; } } public
 //	                                  parameter (C#'s rule; see the production
 //	                                  comment for the spec citation)
 //	Inner1.B                 [LIVE]
+//	Inner1.Mm                [REFUSE+KEEP] MULTIPLICITY UNDER THE ASCENT.
+//	                                  `Dict<Order, Real>` in a nested class:
+//	                                  three candidates, the refused one in the
+//	                                  MIDDLE, at the PROPERTY anchor. Both
+//	                                  `Dict` and `Real` must survive. This is
+//	                                  the row that separates "drop the refused
+//	                                  candidate" from "drop the whole field"
+//	                                  when the binder is an ANCESTOR rather than
+//	                                  the field's own declaring type — the
+//	                                  distinction ParameterFormSpace structurally
+//	                                  cannot make, because every binder there is
+//	                                  the declaring type itself.
+//	Inner1.Pf                [REFUSE+KEEP] the same, refused FIRST, at the FIELD
+//	                                  anchor: `(Order, Real) Pf` keeps `Real`.
 //	Deep2.A                  [REFUSE] depth 2 — grades that the ascent does not
 //	                                  stop after one level
 //	Deep2.B                  [LIVE]
+//	Deep2.Ml                 [REFUSE+KEEP] multiplicity at DEPTH 2, refused
+//	                                  LAST: `Dict<Real, Order>` keeps `Dict` and
+//	                                  `Real`.
 //	Inner3.A                 [REFUSE] ascent PAST A NON-EMPTY NEAREST LIST. This
 //	                                  is the row java found by scoring a mutant
 //	                                  ALIVE: without it, every "ascent" row could
@@ -322,6 +376,10 @@ public class N7 { public class G7n<Order> { public Keep K { get; set; } } public
 //	                                  in a generic class) — the anchor java had
 //	                                  ungraded for scoping
 //	R6.B                     [LIVE]
+//	R6.Mr                    [REFUSE+KEEP] multiplicity at the RECORD anchor
+//	                                  under the ascent, refused MIDDLE. Without
+//	                                  this row the record anchor graded the
+//	                                  ascent only in the one-candidate shape.
 //	Sib7.A                   [KEEP]   the SIBLING control: the generic
 //	                                  declaration is a sibling, not an ancestor,
 //	                                  so nothing is shadowed
@@ -332,12 +390,19 @@ func TestCsharpFieldTypeRefs_7041_NestingFormSpace(t *testing.T) {
 	const cls = "scope:component:class:csharp:N.cs:"
 	want := []string{
 		"Deep2.B -> " + cls + "Real",
+		"Deep2.Ml -> " + cls + "Dict",
+		"Deep2.Ml -> " + cls + "Real",
 		"G7n.K -> " + cls + "Keep",
 		"Inner1.B -> " + cls + "Real",
+		"Inner1.Mm -> " + cls + "Dict",
+		"Inner1.Mm -> " + cls + "Real",
+		"Inner1.Pf -> " + cls + "Real",
 		"Inner3.C -> " + cls + "Keep",
 		"Inner5.C -> " + cls + "Real",
 		"N5.A -> " + cls + "Order",
 		"R6.B -> " + cls + "Real",
+		"R6.Mr -> " + cls + "Dict",
+		"R6.Mr -> " + cls + "Real",
 		"Sib7.A -> " + cls + "Order",
 		"Sib7.B -> " + cls + "Real",
 		"Sn4.B -> " + cls + "Real",
@@ -362,6 +427,29 @@ func TestCsharpFieldTypeRefs_7041_NestingFormSpace(t *testing.T) {
 			if strings.HasPrefix(e, field+" -> ") {
 				t.Errorf("%s names a type parameter of an ENCLOSING declaration "+
 					"and must carry NO field-type edge, got %q", field, e)
+			}
+		}
+	}
+
+	// THE MIXED-CANDIDATE ROWS, asserted per (field, TARGET) rather than per
+	// field: these fields DO keep edges, so the whole-field loop above cannot
+	// express them. Each names a shadowed ANCESTOR parameter alongside real
+	// same-file types, so the refused candidate must go and its neighbours must
+	// stay. Added after review: the previous revision graded multiplicity only
+	// in ParameterFormSpace, where every binder is the field's OWN declaring
+	// type — so along the ASCENT, "drop the refused candidate" and "drop the
+	// whole field" were still the same function. Mutant MX (drop the whole
+	// field when an ancestor OTHER than the declaring type shadows a candidate)
+	// was ALIVE against the previous revision with both suites green.
+	for _, forbidden := range []string{
+		"Inner1.Mm -> " + cls + "Order", // refused MIDDLE, property anchor, depth 1
+		"Inner1.Pf -> " + cls + "Order", // refused FIRST,  field anchor,    depth 1
+		"Deep2.Ml -> " + cls + "Order",  // refused LAST,   property anchor, depth 2
+		"R6.Mr -> " + cls + "Order",     // refused MIDDLE, RECORD anchor,   depth 1
+	} {
+		for _, e := range got {
+			if e == forbidden {
+				t.Errorf("mixed-candidate row leaked the shadowed candidate: %q", e)
 			}
 		}
 	}
