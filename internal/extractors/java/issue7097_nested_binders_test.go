@@ -1,0 +1,294 @@
+// issue7097_nested_binders_test.go — three more Java constructs bind a name in
+// a nested scope and must participate in collectLocalVarTypes' ambiguity
+// ledger (issue #7097, following #7094/#7095).
+//
+// The ledger introduced by #7094 was fed by exactly two binder forms,
+// `local_variable_declaration` and `enhanced_for_statement`. A try-with-
+// resources resource, a catch-clause parameter and a lambda parameter each
+// bind a name too, and none of them was in the ledger — so each LOST the name
+// to a same-name sibling local and the sibling's type was applied to a call
+// site it never covered.
+//
+// MEASURED ON THIS TREE BEFORE THE CHANGE, on compilable Java (each `Order o`
+// lives in its own block, so there is no JLS §6.4 conflict with the nested
+// binder):
+//
+//	try-with-resources  `try (Customer o = new Customer()) { o.b(); }`
+//	                    beside `{ Order o = …; o.a(); }`  →  "Order.b"
+//	                    IN BOTH SOURCE ORDERS
+//	catch parameter     `catch (MyEx o) { o.b(); }`       →  "Order.b"
+//	lambda parameter    `cs.forEach(o -> o.b())`          →  "Order.b"
+//
+// `Order.b` is a WRONG receiver on a real same-file type: it binds, and every
+// bind/orphan/dangle metric scores it as a success (#7056). Fixtures are the
+// only instrument — corpus incidence for this family measured 0 — so both
+// directions are graded, per construct, and every assertion is on the EMITTED
+// EDGE (Relationships[].ToID for CALLS) rather than on the ledger's contents.
+//
+// ALSO MEASURED BEFORE THE CHANGE, and deliberately UNCHANGED after it: each
+// construct ALONE emits the bare leaf `b`. None of them ever typed itself;
+// they could only ever lose to a sibling. The *AloneUnchanged fixtures pin
+// that, so a later change that starts typing these binders has to move a
+// fixture rather than slip through.
+
+package java_test
+
+import "testing"
+
+// ---------------------------------------------------------------------------
+// try-with-resources
+// ---------------------------------------------------------------------------
+
+// COLLIDING — the resource must poison the name, in BOTH source orders (a
+// first-writer-wins traversal makes the two orders behave differently, which
+// is how #7094's `var` hole was found).
+func TestJava7097_TryWithResourcesSiblingCollisionRefuses(t *testing.T) {
+	localFirst := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run() {
+    { Order o = new Order(); o.a(); }
+    try (Customer o = new Customer()) { o.b(); }
+  }
+}
+`)
+	j7094MustNotCall(t, localFirst, "Order.b", "Order.a", "Customer.a")
+	j7094MustCall(t, localFirst, "a", "b")
+
+	resourceFirst := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run() {
+    try (Customer o = new Customer()) { o.b(); }
+    { Order o = new Order(); o.a(); }
+  }
+}
+`)
+	j7094MustNotCall(t, resourceFirst, "Order.b", "Order.a", "Customer.a")
+	j7094MustCall(t, resourceFirst, "a", "b")
+}
+
+// STANDALONE CONTROL — unchanged. A resource has a declared type and COULD be
+// typed, but this change does not type it: `o.b()` still emits the bare leaf.
+func TestJava7097_TryWithResourcesAloneUnchanged(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Customer { void b() {} }
+class Svc {
+  void run() {
+    try (Customer o = new Customer()) { o.b(); }
+  }
+}
+`)
+	j7094MustCall(t, rels, "b")
+	j7094MustNotCall(t, rels, "Customer.b")
+}
+
+// ALWAYS-FIRES CONTROL — an EXISTING-VARIABLE resource (`try (o) { … }`,
+// Java 9+) binds nothing: it names a variable declared elsewhere. The resource
+// arm must not poison it, or the local's own type is lost. The grammar's
+// `resource` node has no `name` field in this shape, which is what makes the
+// arm a no-op here; a matcher that took the resource's text instead would
+// refuse this and this fixture would go red.
+func TestJava7097_ExistingVariableResourceStillBinds(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order implements AutoCloseable { void a() {} public void close() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    try (o) { o.a(); }
+  }
+}
+`)
+	j7094MustCall(t, rels, "Order.a")
+}
+
+// THE PRICE OF NOT TYPING THE RESOURCE, observed rather than asserted in
+// prose. A same-type sibling (`Order o` local, `Order o` resource) used to
+// bind BOTH sites — the local's type covered the resource's call by accident,
+// and it happened to be right. Poisoning with "" costs that: both sites now
+// fall back to the bare leaf. This is the honest direction (the ledger refuses
+// rather than guesses), and it is the fixture that must MOVE if a later change
+// gives the resource its declared type — at which point the expectation here
+// becomes "Order.a" and "Order.c".
+func TestJava7097_TryWithResourcesSameTypeCost(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order implements AutoCloseable { void a() {} void c() {} public void close() {} }
+class Svc {
+  void run() {
+    { Order o = new Order(); o.a(); }
+    try (Order o = new Order()) { o.c(); }
+  }
+}
+`)
+	j7094MustCall(t, rels, "a", "c")
+	j7094MustNotCall(t, rels, "Order.a", "Order.c")
+}
+
+// ---------------------------------------------------------------------------
+// catch-clause parameter
+// ---------------------------------------------------------------------------
+
+// COLLIDING — the catch parameter must poison the name.
+func TestJava7097_CatchParameterSiblingCollisionRefuses(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class MyEx extends Exception { void b() {} }
+class Svc {
+  void run() {
+    { Order o = new Order(); o.a(); }
+    try { mk(); } catch (MyEx o) { o.b(); }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b", "Order.a", "MyEx.a")
+	j7094MustCall(t, rels, "a", "b")
+}
+
+// MULTI-CATCH — `catch (A | B o)` binds one name with NO single type, which is
+// the reason the arm records "" rather than a leaf: there is no leftmost arm
+// to prefer. It must refuse the sibling's type just like the single-type form.
+func TestJava7097_MultiCatchParameterAlsoRefuses(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class AEx extends Exception { void b() {} }
+class BEx extends Exception { void b() {} }
+class Svc {
+  void run() {
+    { Order o = new Order(); o.a(); }
+    try { mk(); } catch (AEx | BEx o) { o.b(); }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b", "Order.a", "AEx.b", "BEx.b")
+	j7094MustCall(t, rels, "a", "b")
+}
+
+// STANDALONE CONTROL — unchanged: a catch parameter alone emits the bare leaf.
+func TestJava7097_CatchParameterAloneUnchanged(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class MyEx extends Exception { void b() {} }
+class Svc {
+  void run() {
+    try { mk(); } catch (MyEx o) { o.b(); }
+  }
+}
+`)
+	j7094MustCall(t, rels, "b")
+	j7094MustNotCall(t, rels, "MyEx.b")
+}
+
+// ALWAYS-FIRES CONTROL — a catch parameter named `e` must poison `e` and
+// NOTHING ELSE. The outer `Order o` is CAPTURED INSIDE the catch body on
+// purpose: that is what separates "poison the bound name" from "poison every
+// identifier under the clause". A control that called `o.a()` outside the
+// clause cannot see the difference — it was written that way first, and an
+// over-broad arm that walks every `identifier` under `catch_clause` survived
+// it. With the capture, that arm loses `Order.a` and this fixture goes red.
+func TestJava7097_CatchParameterDoesNotPoisonOtherNames(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class MyEx extends Exception {}
+class Svc {
+  void run() {
+    Order o = new Order();
+    try { mk(); } catch (MyEx e) { o.a(); }
+  }
+}
+`)
+	j7094MustCall(t, rels, "Order.a")
+}
+
+// ---------------------------------------------------------------------------
+// lambda parameter
+// ---------------------------------------------------------------------------
+
+// COLLIDING — the single inferred parameter (`o -> …`, the dominant shape,
+// where the grammar's `parameters` field is a bare `identifier`).
+func TestJava7097_LambdaParameterSiblingCollisionRefuses(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run(java.util.List<Customer> cs) {
+    { Order o = new Order(); o.a(); }
+    cs.forEach(o -> o.b());
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b", "Order.a", "Customer.a")
+	j7094MustCall(t, rels, "a", "b")
+}
+
+// COLLIDING — `inferred_parameters` (`(o, p) -> …`), a DIFFERENT grammar node
+// from the bare-identifier shape above. Held constant: the sibling, the types,
+// the call. Varied: only the parameter-list shape, so a verdict here can only
+// be explained by that node.
+func TestJava7097_LambdaInferredParameterListRefuses(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run(java.util.Map<String, Customer> cs) {
+    { Order o = new Order(); o.a(); }
+    cs.forEach((k, o) -> o.b());
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b", "Order.a", "Customer.a")
+	j7094MustCall(t, rels, "a", "b")
+}
+
+// COLLIDING — `formal_parameters` (`(Customer o) -> …`), the third and only
+// TYPED lambda shape, and again a distinct grammar node. It is recorded as ""
+// like the other two: this change removes a wrong bind, it does not add
+// typing.
+func TestJava7097_LambdaTypedParameterListRefuses(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run(java.util.List<Customer> cs) {
+    { Order o = new Order(); o.a(); }
+    cs.forEach((Customer o) -> o.b());
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b", "Order.a", "Customer.a")
+	j7094MustCall(t, rels, "a", "b")
+}
+
+// STANDALONE CONTROL — unchanged: a lambda parameter alone emits the bare leaf.
+func TestJava7097_LambdaParameterAloneUnchanged(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Customer { void b() {} }
+class Svc {
+  void run(java.util.List<Customer> cs) {
+    cs.forEach(o -> o.b());
+  }
+}
+`)
+	j7094MustCall(t, rels, "b")
+	j7094MustNotCall(t, rels, "Customer.b")
+}
+
+// ALWAYS-FIRES CONTROL — a lambda parameter named `p` must poison `p` and
+// NOTHING ELSE. As in the catch control, the outer `Order o` is CAPTURED IN
+// THE LAMBDA BODY: capturing is what distinguishes an arm that reads the
+// `parameters` field from one that walks every `identifier` under the
+// lambda_expression. Without the capture the over-broad arm survives — it did,
+// on the first draft of this fixture.
+func TestJava7097_LambdaParameterDoesNotPoisonOtherNames(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+class Svc {
+  void run(java.util.List<Customer> cs) {
+    Order o = new Order();
+    cs.forEach(p -> o.a());
+  }
+}
+`)
+	j7094MustCall(t, rels, "Order.a")
+}
