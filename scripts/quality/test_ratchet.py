@@ -2752,6 +2752,85 @@ class KnownBadIsNotAOneWayValve(unittest.TestCase):
                 self.assertIn("declares 2 known_bad row(s)", text)
 
 
+class KnownBadOutputShapeIsGraded(unittest.TestCase):
+    """The SHAPE of the two lines this channel emits, not merely their content.
+
+    Print-on-success is the entire anti-rot mechanism here: a known-bad row
+    cannot quietly rot because a reader sees it on every green run. The bracket
+    is where a reader looks for a tracking id, and a line that fills it with a
+    sentence of prose degrades exactly the affordance the mechanism exists to
+    provide.
+
+    Asserting that the issue and the note are both PRESENT does not grade that.
+    Three role swaps were ALIVE against a suite that did:
+
+      * green line, issue <-> note: emitted
+        `[phantom yul operation ...]  #6425` instead of
+        `[#6425]  phantom yul operation ...`;
+      * STOPPED FIRING line, label <-> issue;
+      * STOPPED FIRING line, class <-> label.
+
+    Each is observable, none is equivalent, and all three left 81 tests green.
+    So the assertion is on the ASSEMBLED substring, in order, with the brackets
+    where they belong.
+
+    A note on why this is not covered by the Go side: these are two DIFFERENT
+    green-print surfaces. internal/quality reports pin `WriteHuman`, which is
+    what a developer running `grafel quality` by hand reads; this pins
+    `ratchet.py`, which is what CI reads. Neither substitutes for the other and
+    each needs its own content assertion.
+    """
+
+    def _gate_output(self, rep, cls):
+        with tempfile.TemporaryDirectory() as root, chdir(root):
+            os.environ["QUALITY_RUN_STAMP"] = STAMP
+            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+            golden, reports, baseline = make_fixture(root)
+            declare_known_bad(golden, 1, cls=cls)
+            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                json.dump(rep, fh)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = ratchet.check(golden, reports, baseline)
+            return rc, out.getvalue() + err.getvalue()
+
+    def test_the_green_line_puts_the_issue_in_the_bracket_and_the_note_after(self):
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                rc, text = self._gate_output(kb_report(cls=cls), cls)
+                self.assertEqual(rc, 0, f"premise broken, this is not a green run:\n{text}")
+                want = f"{cls} {kb_label(cls)}  [{KB_ISSUE}]  {KB_NOTE}"
+                self.assertIn(
+                    want, text,
+                    f"the passing gate does not emit the known-bad row in the "
+                    f"documented shape.\n  want substring: {want!r}\n  got:\n{text}")
+                # Said twice on purpose, because the first assertion would also
+                # hold if the bracket happened to contain the issue AND the
+                # prose. The bracket is a tracking-id slot.
+                self.assertNotIn(
+                    f"[{KB_NOTE}]", text,
+                    "the note is inside the bracket — that is where a reader looks "
+                    "for the tracking id, and prose there degrades the one "
+                    "affordance print-on-success exists to give")
+
+    def test_the_stopped_firing_line_reads_class_label_then_the_issue(self):
+        """The RED surface has the same exposure, and it was ungraded on TWO
+        role pairs rather than one. It carries no note, so there is no
+        issue/note pair to confuse — but `class`, `label` and `issue` are three
+        interpolations in one line and only their presence was asserted."""
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                rep = kb_report(cls=cls, known_bad_hits=0, known_bad=[],
+                                known_bad_silent=[kb_row(cls=cls)])
+                rc, text = self._gate_output(rep, cls)
+                self.assertEqual(rc, 2, f"premise broken, this is not a red run:\n{text}")
+                want = f"known_bad {cls} {kb_label(cls)} STOPPED FIRING [{KB_ISSUE}]"
+                self.assertIn(
+                    want, text,
+                    f"the failing gate does not emit the silent row in the "
+                    f"documented shape.\n  want substring: {want!r}\n  got:\n{text}")
+
+
 class UpdateBaselineCannotLaunderAKnownBad(unittest.TestCase):
     """The forgetting vector, answered by NOT recording the figure.
 
