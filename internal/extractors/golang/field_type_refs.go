@@ -200,12 +200,34 @@ import (
 //     deleting the candidate handling outright would make it skip too.
 //
 //     STILL OUT OF SCOPE, deliberately: the STRUCT-ANCHORED DEPENDS_ON
-//     (extractStructFieldDependencies) and the embedded-field EXTENDS both
-//     resolve a bare name against knownTypeNames and so still treat a type
-//     parameter as a same-file type. Re-pointing either is a different blast
-//     radius, as with qualified names in point 3 above. The boundary is a graded
-//     fact rather than a claim: see
-//     TestGoFieldTypeRefs_7041_EmbeddedFieldAndDependsOnAreUntouched.
+//     (extractStructFieldDependencies) resolves a bare name against
+//     knownTypeNames and so still treats a type parameter as a same-file type.
+//     Re-pointing it is a different blast radius, as with qualified names in
+//     point 3 above. THAT half is a graded fact rather than a claim:
+//     TestGoFieldTypeRefs_7041_EmbeddedFieldAndDependsOnAreUntouched asserts
+//     the pass's full output as `[Base T]`, so narrowing it turns that row RED.
+//
+//     THE EMBEDDED-FIELD EXTENDS IS NOT MAKING THE SAME CLAIM, and an earlier
+//     revision of this comment wrongly bundled it in. EXTENDS cannot treat a
+//     type parameter as a same-file type in any Go that COMPILES:
+//       - `type Box[T any] struct { T }` (and `{ *T }`) would over-fire —
+//         innermostTypeName returns "T", knownTypeNames["T"] is true, and
+//         `Box -EXTENDS-> T` is emitted — but the compiler rejects both
+//         ("embedded field type cannot be a (pointer to a) type parameter"),
+//         so no indexable Go reaches this path;
+//       - the one LEGAL way a type parameter reaches an embedded field is
+//         through an instantiation, `struct { Holder[T] }` or
+//         `struct { *Holder[T] }`, and innermostTypeName rejects the `[` whole,
+//         so NO EXTENDS is emitted at all — not to Holder, not to T. That is a
+//         separate, pre-existing recall gap (a legal embed losing its EXTENDS),
+//         not the wrong-binding this arm is about.
+//     So the cited test's EXTENDS row embeds a REAL same-file type on purpose
+//     and grades "EXTENDS is unmoved by this arm" — which is all it claims.
+//     Recorded because the reasoning error is the portable part: adding
+//     `&& !typeParams[base]` to the embedded-field gate in struct_fields.go
+//     kills NO test, and the only input that distinguishes it does not compile.
+//     A mutant with no legal distinguishing input must be recorded as
+//     unreachable, never killed with a manufactured invalid-Go fixture.
 //   - AN ANONYMOUS NESTED STRUCT OR INTERFACE IS NOT A TARGET AND CONTRIBUTES
 //     NONE. `Inner struct { A Order }` yields nothing: `Order` is the declared
 //     type of `Inner.A`, not of `Inner`, and emitting `Inner → Order` with
@@ -522,11 +544,17 @@ func attachGoFieldTypeRefs(records []types.EntityRecord, filePath string) []type
 // type_parameter_declaration with two `identifier` children, so the loop takes
 // every one rather than the first.
 //
-// SCOPE. The list is looked up as a DIRECT child of the declaration node, so the
-// scope is exactly Go's: a parameter shadows within its own declaration and
-// nowhere else. A sibling `type Other struct { Val T }` in the same file still
-// binds to the package-scope `T`, and a generic FUNCTION's parameters shadow
-// nothing this pass anchors on.
+// SCOPE. The scope is exactly Go's — a parameter shadows within its own
+// declaration and nowhere else — and what delivers that is the CALL SITE
+// handing this function the one `type_spec` being walked, NOT the fact that the
+// list is read as a direct child. Swapping the direct-child scan for a
+// whole-subtree findAll kills no test, because a type_parameter_list cannot
+// nest inside another declaration's type_spec here; the directness is a
+// tidiness, not the guarantee. The guarantee IS graded: a file-global union of
+// every declaration's parameters reds six leaves — the scope-reach rows (a
+// sibling `type Other struct { Val T }` must still bind to the package-scope
+// `T`), the row proving a generic FUNCTION's parameters shadow nothing this
+// pass anchors on, and the predeclared-identifier row.
 //
 // Callers this pass has: extractTypes hands it the `type_spec` of each struct
 // declaration. Generic functions and methods on generic receivers are not

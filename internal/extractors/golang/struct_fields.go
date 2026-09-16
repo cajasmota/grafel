@@ -187,9 +187,13 @@ func extractStructFieldEntities(
 					}
 					kept = append(kept, c)
 				}
-				if len(kept) > 0 {
-					fields[len(fields)-1].Metadata[goFieldTypeRefsMetaKey] = kept
-				}
+				// Stashed unconditionally, empty slice included:
+				// attachGoFieldTypeRefs deletes this key before it looks at
+				// the value and then guards on len(cands) == 0, and it is the
+				// key's ONLY reader, so an empty stash can never be observed
+				// and never leaves the package. A `len(kept) > 0` guard here
+				// would be a no-op.
+				fields[len(fields)-1].Metadata[goFieldTypeRefsMetaKey] = kept
 			}
 		}
 	}
