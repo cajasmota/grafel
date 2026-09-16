@@ -1530,8 +1530,16 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// `cs.forEach(o -> o.b())` — lambda_expression's `parameters` field is
 	// one of three shapes: a bare `identifier` (single inferred parameter),
 	// `inferred_parameters` (`(o, p) -> …`), or `formal_parameters`
-	// (`(Customer o) -> …`, the only typed shape). All three bind, so all
-	// three poison.
+	// (`(Customer o) -> …`, the only typed shape). All three bind — but this
+	// arm does NOT poison every binder they can hold: `formal_parameters`
+	// also admits a `spread_parameter` (a varargs lambda,
+	// `(Customer... o) -> …`), which the `formal_parameter` guard below
+	// skips, so that name still cedes to a same-name sibling. MEASURED on
+	// this tree, unchanged by this diff: `use((Customer... o) -> o.clone2())`
+	// beside an `Order o` sibling emits `Order.clone2` both before and after
+	// d1552ac26 — a wrong receiver this arm was believed to have removed.
+	// That hole is #7102, kept OUT of this diff on purpose so its gate stays
+	// attributable; no fixture here grades it.
 	for _, lam := range findAllNodes(body, "lambda_expression") {
 		params := lam.ChildByFieldName("parameters")
 		if params == nil {

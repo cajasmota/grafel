@@ -165,6 +165,38 @@ class Svc {
 	j7094MustCall(t, rels, "a", "b")
 }
 
+// THE PRICE OF NOT TYPING THE CATCH PARAMETER — the same cost the
+// try-with-resources fixture records, measured in a second place. A SAME-type
+// sibling (`MyEx o` local, `MyEx o` catch parameter) used to bind BOTH sites:
+// the local's type covered the catch body's call by accident, and it happened
+// to be right. Poisoning with "" costs that.
+//
+// MEASURED ON THIS TREE, this exact source, with only java.go swapped between
+// d1552ac26 and its parent:
+//
+//	pre-change   MyEx.a, MyEx.c
+//	post-change  bare a, bare c
+//
+// This is the honest direction — the ledger REFUSES rather than guesses, and
+// for catch the guess is not even available (`catch_type` is a union, see the
+// arm's comment in java.go). It is recorded here rather than argued in prose
+// because a cost nothing observes is a cost nobody can see change: this is the
+// fixture that must MOVE if a later change gives a catch parameter a type, at
+// which point the expectation becomes "MyEx.a" and "MyEx.c".
+func TestJava7097_CatchParameterSameTypeCost(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class MyEx extends Exception { void a() {} void c() {} }
+class Svc {
+  void run() {
+    { MyEx o = new MyEx(); o.a(); }
+    try { mk(); } catch (MyEx o) { o.c(); }
+  }
+}
+`)
+	j7094MustCall(t, rels, "a", "c")
+	j7094MustNotCall(t, rels, "MyEx.a", "MyEx.c")
+}
+
 // STANDALONE CONTROL — unchanged: a catch parameter alone emits the bare leaf.
 func TestJava7097_CatchParameterAloneUnchanged(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
@@ -271,6 +303,73 @@ class Svc {
 `)
 	j7094MustCall(t, rels, "b")
 	j7094MustNotCall(t, rels, "Customer.b")
+}
+
+// THE PRICE OF NOT TYPING THE LAMBDA PARAMETER, inferred shape — a same-type
+// sibling (`Customer o` local, `o -> …` lambda parameter) used to bind BOTH
+// sites by accident.
+//
+// MEASURED ON THIS TREE, this exact source, with only java.go swapped between
+// d1552ac26 and its parent:
+//
+//	pre-change   Customer.a, Customer.c
+//	post-change  bare a, bare c
+//
+// Honest direction again: for THIS shape the grammar carries no type at all,
+// so "" is the only entry there is and the loss is unavoidable rather than
+// chosen. The fixture exists so the loss is observed; it moves only if a
+// change starts INFERRING a lambda parameter's type from the functional
+// interface, which is a different (and much larger) project than reading a
+// declared one.
+func TestJava7097_LambdaInferredParameterSameTypeCost(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Customer { void a() {} void c() {} }
+class Svc {
+  void run(java.util.List<Customer> cs) {
+    { Customer o = new Customer(); o.a(); }
+    cs.forEach(o -> o.c());
+  }
+}
+`)
+	j7094MustCall(t, rels, "a", "c")
+	j7094MustNotCall(t, rels, "Customer.a", "Customer.c")
+}
+
+// THE PRICE OF NOT TYPING THE LAMBDA PARAMETER, TYPED shape — kept as its own
+// fixture rather than folded into the inferred one above, for the same reason
+// the three collision fixtures are separate: `formal_parameters` is a DIFFERENT
+// grammar node handled by a DIFFERENT arm of the switch, so a verdict on one
+// says nothing about the other. It also has a different MOVE CONDITION, which
+// is the whole job of these cost fixtures: here the type `Customer` is
+// literally present in the source, so this row can move the moment someone
+// reads `formal_parameter`'s `type` field — the inferred row above cannot move
+// without whole-program functional-interface inference. One fixture covering
+// both would go red for two unrelated reasons and could not say which.
+//
+// MEASURED ON THIS TREE, this exact source, with only java.go swapped between
+// d1552ac26 and its parent:
+//
+//	pre-change   Customer.a, Customer.c
+//	post-change  bare a, bare c
+//
+// This is the least defensible of the three costs and it is recorded as such:
+// the ledger refuses a type it could have read. That is deliberate — typing
+// the binder is a recall ADDITION with its own grading obligation, not part of
+// removing a wrong bind — and THIS fixture is what must move when that
+// addition lands, at which point the expectation becomes "Customer.a" and
+// "Customer.c".
+func TestJava7097_LambdaTypedParameterSameTypeCost(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Customer { void a() {} void c() {} }
+class Svc {
+  void run(java.util.List<Customer> cs) {
+    { Customer o = new Customer(); o.a(); }
+    cs.forEach((Customer o) -> o.c());
+  }
+}
+`)
+	j7094MustCall(t, rels, "a", "c")
+	j7094MustNotCall(t, rels, "Customer.a", "Customer.c")
 }
 
 // ALWAYS-FIRES CONTROL — a lambda parameter named `p` must poison `p` and
