@@ -204,6 +204,24 @@ type ForbiddenEntityHit struct {
 	MatchedSubtype    string
 }
 
+// KnownBadResult is one `known_bad` row and what this run observed of it
+// (#7056). Class is "relationship" or "entity"; Label is the row rendered the
+// way report.go renders it; Issue and Note are the row/s own, and LoadFixture
+// refuses a known_bad row without both.
+type KnownBadResult struct {
+	Class string
+	Label string
+	Issue string
+	Note  string
+	// Fired reports whether the row matched this run. False is the failing
+	// state — see Report.KnownBad.
+	Fired bool
+	// MatchedID is the offending edge or entity ID when the row fired, empty
+	// otherwise. It is read from the graph, never copied from the row, so an
+	// underspecified row still names one offender.
+	MatchedID string
+}
+
 // RelationshipResult records the outcome of evaluating one
 // ExpectedRelationship.
 //
@@ -291,6 +309,34 @@ type Report struct {
 	// diagnoses, and folding them into one counter would also silently move
 	// the meaning of the `forbidden_hits` key every baseline already records.
 	ForbiddenEntityHits []ForbiddenEntityHit
+
+	// KnownBad is every row the fixture declared `known_bad` (#7056), edge and
+	// entity alike, WITH ITS VERDICT — fired or silent. Both halves are needed
+	// and neither substitutes for the other:
+	//
+	//   * a FIRED row is the recorded finding doing its job. It is kept out of
+	//     ForbiddenHits / ForbiddenEntityHits so it is not fatal, and it is
+	//     reported by name on every run so it cannot rot unseen.
+	//   * a SILENT row is a FAILURE. The row asserts a defect the graph still
+	//     has; if the graph no longer has it, either the defect was fixed and
+	//     the row must be amended into an ordinary forbidden row, or the
+	//     producer that emitted the offending edge quietly died and the row
+	//     stopped firing for a reason nobody wanted. Those two look identical
+	//     from here, and that is exactly why a human has to come back.
+	//
+	// Modelled as one slice carrying a verdict, rather than a hits slice and a
+	// silent slice, because the closed set of declared rows is the fact the
+	// gate needs: a silent row is only discoverable against the declaration,
+	// and a report that carried hits alone could not express "this row was
+	// supposed to fire and did not".
+	//
+	// Edges and entities share the slice, distinguished by Class. Unlike
+	// forbidden_hits (#6488 arm B) there is no existing key whose meaning a
+	// merge would move — every key here is new — and the gate treats the two
+	// identically, so splitting them would buy two counters that are always
+	// read together. Class keeps the diagnosis separable, which was arm B's
+	// actual argument.
+	KnownBad []KnownBadResult
 
 	// Nice-to-have stats — surfaced separately so authors see what they
 	// could add without being penalised on must-have recall.
@@ -487,6 +533,21 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// reporting a near-miss as a hit is the whole failure mode being avoided.
 	for _, fe := range fix.ForbiddenEntities {
 		ent, _ := resolveEntity(fe)
+		// #7056. A known_bad row is graded, not excused: it is recorded with
+		// its verdict whether or not it fired, and a silent one fails the gate
+		// from ratchet.py. It never reaches ForbiddenEntityHits, which is the
+		// always-fatal counter.
+		if fe.KnownBad {
+			kb := KnownBadResult{
+				Class: "entity", Label: fe.Name + " (" + fe.Kind + ")",
+				Issue: fe.Issue, Note: fe.Note, Fired: ent != nil,
+			}
+			if ent != nil {
+				kb.MatchedID = ent.ID
+			}
+			rep.KnownBad = append(rep.KnownBad, kb)
+			continue
+		}
 		if ent == nil {
 			continue
 		}
@@ -753,6 +814,18 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 	// the fixture's forbidden patterns.
 	for _, fb := range fix.ForbiddenRelationships {
 		match, fromOk, toOk, _ := resolveExpectedEdge(fb)
+		// #7056, edge side. Same rule as the entity loop above.
+		if fb.KnownBad {
+			kb := KnownBadResult{
+				Class: "relationship", Label: relLabel(fb),
+				Issue: fb.Issue, Note: fb.Note, Fired: match != nil,
+			}
+			if match != nil {
+				kb.MatchedID = match.ID
+			}
+			rep.KnownBad = append(rep.KnownBad, kb)
+			continue
+		}
 		if match != nil {
 			rep.ForbiddenHits = append(rep.ForbiddenHits, RelationshipResult{
 				Expected:     fb,

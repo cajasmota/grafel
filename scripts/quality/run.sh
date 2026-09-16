@@ -367,7 +367,15 @@ for p in paths:
         # command-substitution bodies for quotes even inside a <<'PY' heredoc,
         # and one lone quote makes the whole script unparseable.)
         hits.append(int(d.get("forbidden_hits", 0)) > 0
-                    or int(d.get("forbidden_entity_hits", 0)) > 0)
+                    or int(d.get("forbidden_entity_hits", 0)) > 0
+                    # #7056. A known_bad row that did NOT fire in this run
+                    # vetoes the short-circuit too, and for the mirror-image
+                    # reason. The gate fails a row that is silent in EVERY
+                    # run, so truncating the loop at 3 would let an
+                    # intermittent producer be declared dead on the strength
+                    # of three samples. Taking more runs can only turn a
+                    # false RED into a green; it can never hide a firing row.
+                    or bool(d.get("known_bad_silent")))
     except Exception:
         pass
 if len(recalls) < 3:
@@ -496,13 +504,54 @@ merged["forbidden_entity_hits"]          = max_forbidden_ent_hits
 # intermittent row is the one a reader most needs to see named.
 merged["forbidden_hits_runs"]            = firing_runs("forbidden_hits")
 merged["forbidden_entity_hits_runs"]     = firing_runs("forbidden_entity_hits")
-for _key in ("forbidden", "forbidden_entities"):
+for _key in ("forbidden", "forbidden_entities", "known_bad"):
     _union = union_offenders(_key)
     if _union:
         merged[_key] = _union
     else:
         merged.pop(_key, None)
 merged["runs_executed"]                  = runs_executed
+# #7056. The known-bad counters follow the extracted totals, not the recall
+# figures: absent means the binary predates the channel, which is a different
+# fact from a fixture that declares no known_bad rows, and ratchet.py tells
+# them apart by the key being missing. Defaulting either to 0 would let a
+# stale binary read as a fixture with nothing to grade.
+#
+# The HITS count is aggregated with max, on #7084 grounds: a row that fired in
+# any run fired.
+for _kb in ("known_bad_hits", "known_bad_declared"):
+    if all(_kb in r for r in reports):
+        merged[_kb] = max_int(_kb)
+    else:
+        merged.pop(_kb, None)
+
+
+def silent_in_every_run(key):
+    """Rows this key reported in EVERY run, first-seen order.
+
+    The INTERSECTION, deliberately, and it is the exact complement of the
+    union used for the firing side. A known_bad row that fired even once is
+    alive; only a row no run saw fire has stopped firing, and that is the
+    claim the gate turns red on. A union here would fail the gate on any
+    intermittent producer, and a median would be #7084 re-entered.
+    """
+    keep = None
+    for r in reports:
+        cur = {}
+        for item in r.get(key) or []:
+            cur[json.dumps(item, sort_keys=True)] = item
+        if keep is None:
+            keep = cur
+        else:
+            keep = dict((k, v) for k, v in keep.items() if k in cur)
+    return list((keep or {}).values())
+
+
+_silent = silent_in_every_run("known_bad_silent")
+if _silent:
+    merged["known_bad_silent"] = _silent
+else:
+    merged.pop("known_bad_silent", None)
 # #6488 arm D. The extracted totals are GATE metrics now (ratchet.py compares
 # them against a recorded ceiling), so they are medianed like every other gated
 # scalar rather than inherited from `base` — which is reports[-1], one
@@ -544,6 +593,12 @@ if max_forbidden_hits > 0:
 # edge. It is checked separately because it is a separate key — folding it into
 # forbidden_hits would move the meaning of a number every baseline records.
 if max_forbidden_ent_hits > 0:
+    regressed = True
+# #7056. A known_bad row that fired is NOT a regression — that is the whole
+# point of the channel, and note there is no arm for it here. A known_bad row
+# that went silent in every run IS one: strict mode has its own grader and
+# would otherwise be blind to the direction ratchet.py fails.
+if _silent:
     regressed = True
 if regressed:
     sys.exit(2)
