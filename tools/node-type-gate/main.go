@@ -1,0 +1,410 @@
+// Command node-type-gate fails the build when a tree-sitter matcher names a
+// node type that the grammar does not have.
+//
+// # The defect it exists to catch
+//
+// Every tree-sitter predicate in this repo is a string literal compared against
+// a grammar node kind. A literal naming a node the grammar does not have is a
+// SILENT NO-OP: the guard stops guarding, the pass still runs, records and
+// edges are still emitted, and every recall-shaped instrument we own reports
+// success because something was produced. The scala arm of #6912 shipped
+//
+//	case "variant_type_parameter", "type_parameter":
+//
+// against tree-sitter-scala, which spells them covariant_type_parameter and
+// contravariant_type_parameter. The guard was dead for the language's dominant
+// generic form and emitted a wrong edge that BOUND; 26/26 bound was reported.
+// It was found by a reviewer dumping the CST, not by the suite. #7065 has the
+// audit: 42 genuine dead literals, one of them behaviour-visible (#7068,
+// csharp's for_each_statement where the grammar says foreach_statement).
+//
+// # How it works
+//
+// Derive → resolve → fail.
+//
+//   - DERIVE. An AST scan with full type information (go/packages) over
+//     ./internal/... and ./cmd/..., collecting every string literal that sits
+//     in a node-type position: a comparison against x.Type(), a case of
+//     switch x.Type(), an argument to a helper whose parameter reaches such a
+//     position (discovered to a fixpoint, never hand-listed), and the keys of
+//     a table indexed by x.Type(). Literals are CONSTANT-FOLDED through
+//     types.Info, so hiding one behind `const K = string(types.X)` cannot
+//     silently zero the site count. The switch and helper forms alone are 1.81x
+//     the surface a grep for `.Type() == "…"` can see (1547 + 447 sites against
+//     1100 (file,line,literal) triples grep finds in internal/extractors); the
+//     whole scan is 2.86x it. Note the scope of the claim: the scan collects
+//     every literal in FOUR ENUMERATED SHAPES, not every literal in a node-type
+//     position — see "What this gate does NOT catch".
+//   - RESOLVE. Against the node-kind symbol table of every grammar the package
+//     can actually receive, read from the same ts.Language handles the daemon
+//     parses with (treesitter.GrammarLanguages). The package → grammar mapping
+//     is derived from two kinds of call site crossed with that registry: the
+//     extractor.Register calls, and the constant language passed to
+//     treesitter.Parse (which is what maps the internal/custom lane, whose
+//     packages register under synthetic keys and parse for themselves).
+//     Multi-grammar packages are handled per-grammar (cpp → c+cpp,
+//     javascript → javascript+typescript+tsx, hcl → hcl+terraform).
+//   - ACCOUNT FOR WHAT IS NOT CHECKED. A package that produces node-type
+//     literals but has no derivable grammar is reported by directory and site
+//     count on every run, and FAILS the gate unless it carries a written
+//     exemption in skipExemptions. It is NOT assumed that such a package's
+//     strings are therefore not node types: internal/custom/kotlin's 11 are,
+//     and an earlier version of this tool skipped them in silence under a
+//     comment claiming otherwise (#7076 review, finding 1).
+//   - FAIL, only when a literal resolves in NONE of its package's grammars and
+//     no baseline row covers it. A literal absent from one grammar but present
+//     in another is never a failure: C++-only names in the shared c/cpp
+//     package and TS-only names in the shared js/ts/tsx package are legitimate
+//     and number in the dozens.
+//
+// ERROR and MISSING are whitelisted: tree-sitter produces them at parse time
+// and lists them in no symbol table. The empty string is a sentinel, never a
+// node kind, and is not reported.
+//
+// # What this gate does NOT catch
+//
+// It is structurally blind to a matcher that names a REAL node that is the
+// WRONG node. #7063 is the shape: the kotlin nesting table held the nested
+// declaration's class_modifier constant, so four modifiers went ungraded — every
+// literal involved resolves perfectly. Likewise a literal that can never be a
+// child of the node under test (right name, wrong parent) resolves and passes.
+//
+// The complement is the #7065 audit's SECOND detector, which stays a review
+// requirement rather than being replaced by this tool: for any matcher on a
+// load-bearing name, make it unmatchable and assert at least one test dies.
+// Zero deaths is the signature of dead code. That detector catches the
+// wrong-node class this one cannot, and it needs no machinery.
+//
+// It also does not check field names (ChildByFieldName), does not model which
+// grammar internal/engine's runtime dispatch selects, and says nothing about
+// the 67 positions where the compared value is not a constant — those are
+// reported as dynamic (counted in every run, listed by -dynamic and -sites)
+// rather than silently dropped.
+//
+// # The shapes the scan does not recognise
+//
+// The forms are an enumeration, not a closure: a literal can reach a node-type
+// comparison through a shape the scan does not model, and then it is invisible
+// even in a fully mapped package. Measured by the #7076 review, all injected
+// into internal/extractors/scala against the real baseline, with a plain
+// `n.Type() == "…"` control failing in the same run:
+//
+//	closure parameter      f := func(k string) bool { return n.Type() == k }; f("…")   not flagged, seen as dynamic
+//	strings.EqualFold      strings.EqualFold(n.Type(), "…")                            not flagged, NO TRACE AT ALL
+//	table as a parameter   func(tbl map[string]bool, n ts.Node) { tbl[n.Type()] }       not flagged, NO TRACE AT ALL
+//	range over a slice lit for _, k := range []string{"…"} { n.Type() == k }            not flagged, seen as dynamic
+//	interface dispatch     i.Want("…"), impl does p.n.Type() == kind                    not flagged, seen as dynamic
+//
+// Two more shapes were on that list until #7076 round 2, and how they got off
+// it is the more useful half of this section:
+//
+//	local alias            t := n.Type(); t == "…"                                      NOW SEEN, reported as alias
+//	parameter alias        f(n.Type()), with the literal inside f                       NOW SEEN, reported as alias
+//
+// Both were invisible to this scan AND to the `.Type() == "…"` grep that had
+// been offered here as evidence the `cmp` surface was complete. That claim is
+// deleted, because it was never evidence: the scan and the grep were both
+// syntactic and shared exactly one blind spot, so they were ONE confirmation,
+// not two. Two methods that agree because they cannot see the same thing agree
+// about nothing. The shapes are now derived by the `sources` fixpoint in
+// scan.go and, on their first honest look, produced ten un-baselined dead
+// literals in seven mapped packages that neither method had ever reported.
+//
+// Alias-form findings are REPORTED and not enforced for now — see
+// enforceAliasForms in gate.go for why, and for the test that keeps that state
+// from becoming a hiding place. They are counted in every run, so the shape can
+// never again be invisible.
+//
+// The remaining five shapes are a COMPLETENESS limit, not a soundness one —
+// none of them makes the gate fire wrongly. But there is no diagnostic for a
+// blind spot: it looks exactly like a clean tree, which is why the list above
+// is written down rather than inferred from a green run. If you add a matcher
+// in one of those shapes, the gate will not check it; prefer a form it sees, or
+// extend the scan and grade the extension.
+//
+// # The one soundness limit
+//
+// Everything above is completeness. There is exactly one place this tool can be
+// WRONG rather than merely blind, and it is the `sources` fixpoint's unanimity
+// rule: a parameter becomes a node-type position when every call site passes a
+// node type, and "every call site" means every one calleeFunc resolves in a
+// package the loader read. Calls through a func value are not resolved, and
+// test files are not loaded (Tests: false). A helper whose only ordinary-string
+// caller sits in its own _test.go therefore looks unanimous when it is not, and
+// its literals get resolved against a grammar they were never node types for —
+// which can report a dead literal that is not one.
+//
+// It is latent, not live: no such shape is in the tree today. It is written
+// here rather than left to the reader because three review rounds of this file
+// have each turned up a comment that was false in the permissive direction, and
+// an unnamed soundness limit is the most expensive kind. The fix, if it ever
+// fires, is to load tests and model func values — not to add an exception.
+//
+// # Usage
+//
+//	go run ./tools/node-type-gate              # gate; exit 1 on a new dead literal
+//	go run ./tools/node-type-gate -report      # the full derived surface
+//	go run ./tools/node-type-gate -sites       # every site, for cross-checking against a grep
+//	go run ./tools/node-type-gate -dynamic     # every position whose value is not a constant
+//	go run ./tools/node-type-gate -update      # rewrite baseline.txt line numbers
+package main
+
+import (
+	"flag"
+	"fmt"
+	"go/token"
+	"go/types"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"golang.org/x/tools/go/packages"
+)
+
+// scanPatterns are the only trees scanned. The repo root is NOT scanned:
+// .claude/worktrees/ holds full checkouts of this repository, and including it
+// would multiply every count.
+var scanPatterns = []string{"./internal/...", "./cmd/..."}
+
+const loadMode = packages.NeedName |
+	packages.NeedFiles |
+	packages.NeedCompiledGoFiles |
+	packages.NeedImports |
+	packages.NeedDeps |
+	packages.NeedSyntax |
+	packages.NeedTypes |
+	packages.NeedTypesInfo
+
+func main() {
+	var (
+		baselinePath = flag.String("baseline", "", "path to baseline.txt (default: alongside this tool)")
+		modRoot      = flag.String("root", "", "module root (default: discovered from the working directory)")
+		report       = flag.Bool("report", false, "print the full derived surface instead of only the verdict")
+		update       = flag.Bool("update", false, "rewrite the baseline's line numbers from the current tree")
+		dumpSites    = flag.Bool("sites", false, "dump every derived site as file:line<TAB>literal<TAB>form, for cross-checking the surface against a grep")
+		dumpDynamic  = flag.Bool("dynamic", false, "dump every node-type position whose value is not a constant")
+	)
+	flag.Parse()
+
+	root := *modRoot
+	if root == "" {
+		r, err := findModuleRoot()
+		if err != nil {
+			fatal(err)
+		}
+		root = r
+	}
+	bp := *baselinePath
+	if bp == "" {
+		bp = filepath.Join(root, "tools", "node-type-gate", "baseline.txt")
+	}
+
+	loaded, err := LoadSurface(root, scanPatterns)
+	if err != nil {
+		fatal(err)
+	}
+	grammars, err := loadGrammars()
+	if err != nil {
+		fatal(err)
+	}
+	base, err := readBaseline(bp)
+	if err != nil {
+		fatal(err)
+	}
+
+	res := Evaluate(loaded.Scan, loaded.Registrations, loaded.ParseBindings, grammars, base)
+
+	if *update {
+		if err := updateBaseline(bp, base, res); err != nil {
+			fatal(err)
+		}
+		fmt.Printf("node-type-gate: baseline refreshed at %s\n", bp)
+		return
+	}
+
+	if *dumpSites {
+		for _, s := range res.Sites {
+			fmt.Printf("%s:%d\t%s\t%s\n", s.File, s.Line, s.Lit, s.Form)
+		}
+		for _, s := range res.Dynamic {
+			fmt.Printf("%s:%d\t<dynamic>\t%s\n", s.File, s.Line, s.Form)
+		}
+		return
+	}
+
+	if *dumpDynamic {
+		for _, s := range res.Dynamic {
+			fmt.Printf("%s:%d\t%s\n", s.File, s.Line, s.Form)
+		}
+		return
+	}
+
+	if *report {
+		printReport(os.Stdout, res, grammars)
+	}
+	printVerdict(os.Stdout, res)
+	os.Exit(ExitCode(res))
+}
+
+func fatal(err error) {
+	fmt.Fprintf(os.Stderr, "node-type-gate: %v\n", err)
+	os.Exit(2)
+}
+
+// Surface is a loaded, scanned tree.
+type Surface struct {
+	Scan          Scan
+	Registrations []Registration
+	ParseBindings []ParseBinding
+}
+
+// LoadSurface loads the packages under patterns (rooted at root) and derives
+// the node-type literal surface from them.
+func LoadSurface(root string, patterns []string) (*Surface, error) {
+	fset := token.NewFileSet()
+	cfg := &packages.Config{
+		Mode:  loadMode,
+		Dir:   root,
+		Fset:  fset,
+		Tests: false,
+	}
+	return loadSurfaceWithConfig(cfg, root, patterns)
+}
+
+// LoadSurfaceOverlay is LoadSurface with an in-memory overlay applied. It is
+// how the positive controls inject a defect into a real extractor file without
+// mutating the working tree.
+func LoadSurfaceOverlay(root string, patterns []string, overlay map[string][]byte) (*Surface, error) {
+	fset := token.NewFileSet()
+	cfg := &packages.Config{
+		Mode:    loadMode,
+		Dir:     root,
+		Fset:    fset,
+		Tests:   false,
+		Overlay: overlay,
+	}
+	return loadSurfaceWithConfig(cfg, root, patterns)
+}
+
+func loadSurfaceWithConfig(cfg *packages.Config, root string, patterns []string) (*Surface, error) {
+	pkgs, err := packages.Load(cfg, patterns...)
+	if err != nil {
+		return nil, err
+	}
+	// Errors are fatal: a package that failed to type-check would silently
+	// contribute zero sites, which is the vacuity mode this whole tool exists
+	// to distrust.
+	var errs []string
+	packages.Visit(pkgs, nil, func(p *packages.Package) {
+		for _, e := range p.Errors {
+			errs = append(errs, p.PkgPath+": "+e.Error())
+		}
+	})
+	if len(errs) > 0 {
+		sort.Strings(errs)
+		if len(errs) > 10 {
+			errs = append(errs[:10], fmt.Sprintf("... and %d more", len(errs)-10))
+		}
+		return nil, fmt.Errorf("packages failed to load:\n  %s", strings.Join(errs, "\n  "))
+	}
+
+	// The scan needs the ts package (for the Node interface) and every package
+	// that defines a helper an extractor calls; Visit walks the whole reachable
+	// graph, which is a superset of both.
+	var all []*packages.Package
+	packages.Visit(pkgs, nil, func(p *packages.Package) { all = append(all, p) })
+
+	// LOADER INTEGRITY. go/packages can return a package whose files parsed but
+	// whose type information is absent or incomplete — an export-data miss, a
+	// half-populated dependency — WITHOUT attaching anything to p.Errors. Every
+	// literal in such a package then silently fails `types.Implements`, the scan
+	// under-counts, and the gate reports OK for the worst possible reason.
+	//
+	// A package we are about to walk (Syntax non-empty) must therefore carry
+	// complete type information, and so must everything it imports. Failing
+	// here is always better than a quiet under-count: this whole tool exists
+	// because a pass that produces *something* reads as success.
+	var degraded []string
+	for _, p := range all {
+		if len(p.Syntax) == 0 {
+			continue
+		}
+		switch {
+		case p.Types == nil:
+			degraded = append(degraded, p.PkgPath+": parsed but has no type information")
+		case !p.Types.Complete():
+			degraded = append(degraded, p.PkgPath+": type information is incomplete")
+		case p.TypesInfo == nil || p.TypesInfo.Types == nil || p.TypesInfo.Uses == nil || p.TypesInfo.Defs == nil:
+			degraded = append(degraded, p.PkgPath+": types.Info is not populated")
+		}
+		for path, imp := range p.Imports {
+			if imp.Types == nil {
+				degraded = append(degraded, p.PkgPath+": import "+path+" has no type information")
+			} else if !imp.Types.Complete() {
+				degraded = append(degraded, p.PkgPath+": import "+path+" is incomplete")
+			}
+		}
+	}
+	if len(degraded) > 0 {
+		sort.Strings(degraded)
+		if len(degraded) > 10 {
+			degraded = append(degraded[:10], fmt.Sprintf("... and %d more", len(degraded)-10))
+		}
+		return nil, fmt.Errorf("the package load is degraded, so the scan would under-count silently:\n  %s", strings.Join(degraded, "\n  "))
+	}
+
+	s := newScanner(cfg.Fset, root, all)
+	if !s.findNodeIface() {
+		return nil, fmt.Errorf("could not locate the %s.Node interface in the loaded package set — the scan would report zero sites for the wrong reason", nodeTypeIfacePath)
+	}
+	return &Surface{
+		Scan:          s.Run(),
+		Registrations: s.findRegistrations(),
+		ParseBindings: s.findParseBindings(),
+	}, nil
+}
+
+func findModuleRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no go.mod found above %s", dir)
+		}
+		dir = parent
+	}
+}
+
+func readBaseline(path string) (*Baseline, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ParseBaseline(strings.NewReader(""))
+		}
+		return nil, err
+	}
+	defer f.Close()
+	b, err := ParseBaseline(f)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return b, nil
+}
+
+func constStringOf(tv types.TypeAndValue) string {
+	if tv.Value == nil {
+		return ""
+	}
+	s, err := stringVal(tv)
+	if err != nil {
+		return ""
+	}
+	return s
+}

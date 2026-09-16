@@ -1,0 +1,82 @@
+# node-type-gate baseline — literals that name no node in ANY grammar their
+# package can receive, and that the gate therefore tolerates. Generated from the
+# #7065 audit; see tools/node-type-gate/main.go for what the gate does and does
+# not catch.
+#
+# Format:  class | package dir | literal | file:line | why it is tolerated
+# Classes: unreachable-code           the dead name makes a code path unreachable
+#          paired-with-correct-name   a live name in the same matcher does the work
+#          not-a-node-type            the string is not a grammar node name at all
+#          known-defect               dead AND behaviour-visible; the note names its issue
+#
+# The matching key is (dir, literal, file); the line number is documentation,
+# refreshed by 'go run ./tools/node-type-gate -update'. A row that matches
+# nothing FAILS the gate — that is what makes this list shrink. Fix a literal,
+# then delete its row.
+#
+# KNOWN GRANULARITY LIMIT, quantified: because the key ignores the line, one row
+# tolerates every occurrence of that literal in that file. 48 rows currently
+# cover 64 sites, so 16 tolerated sites have no row of their own, and a SECOND
+# dead occurrence of an already-listed literal in an already-listed file is
+# suppressed. Any other new dead literal — new name, or the same name in a
+# different file or package — fails the gate. Per-line keying was rejected
+# because an edit above an entry would turn CI red for no reason, and a gate that
+# cries wolf gets switched off. The ratio is the cost of that choice; if it grows
+# much past 64/48, revisit it.
+#
+# A RENAME is the case to be careful with. Moving a file or package makes every
+# row naming it go stale AND makes its literals newly unbaselined, so you get
+# both error kinds at once. Rewrite the dir/path in each affected row — do NOT
+# just delete the stale rows, and do not expect -update to do it: -update only
+# refreshes the LINE of a row whose (dir, literal, file) key already matches.
+#
+# THIS IS NOT A PLACE TO PUT A NEW DEAD LITERAL. Every row here is a defect
+# someone chose not to fix yet, each with its own follow-up.
+paired-with-correct-name | internal/extractors/csharp     | this_expression                        | internal/extractors/csharp/csharp.go:787                    | the live anonymous node is spelled "this" and is tested on the same line
+paired-with-correct-name | internal/extractors/golang     | method_spec                            | internal/extractors/golang/extractor.go:1905                | live name method_elem is the first argument of the same findAll call
+paired-with-correct-name | internal/extractors/groovy     | class_declaration                      | internal/extractors/groovy/groovy.go:88                     | live name class_definition is in the same case
+unreachable-code         | internal/extractors/groovy     | method_declaration                     | internal/extractors/groovy/groovy.go:118                    | sole arm, so it never fires; methods are extracted through the live function_definition path instead, which leaves buildMethod and everything under it unreachable
+unreachable-code         | internal/extractors/groovy     | formal_parameters                      | internal/extractors/groovy/groovy.go:432                    | inside extractMethodSignature, reached only from buildMethod, reached only from the dead method_declaration arm above
+unreachable-code         | internal/extractors/groovy     | generic_type                           | internal/extractors/groovy/groovy.go:439                    | inside extractMethodSignature; unreachable for the same reason as formal_parameters
+unreachable-code         | internal/extractors/groovy     | type_identifier                        | internal/extractors/groovy/groovy.go:439                    | inside extractMethodSignature; unreachable for the same reason as formal_parameters
+unreachable-code         | internal/extractors/groovy     | void_type                              | internal/extractors/groovy/groovy.go:439                    | inside extractMethodSignature; unreachable for the same reason as formal_parameters
+unreachable-code         | internal/extractors/groovy     | modifiers                              | internal/extractors/groovy/groovy.go:446                    | inside extractMethodSignature; unreachable for the same reason as formal_parameters
+unreachable-code         | internal/extractors/groovy     | abstract                               | internal/extractors/groovy/groovy.go:456                    | inside extractMethodSignature's modifier switch; unreachable for the same reason as formal_parameters
+paired-with-correct-name | internal/extractors/groovy     | import_declaration                     | internal/extractors/groovy/groovy.go:481                    | live name groovy_import is tested in the same expression
+paired-with-correct-name | internal/extractors/groovy     | block                                  | internal/extractors/groovy/groovy.go:706                    | live name closure is tested in the same expression
+paired-with-correct-name | internal/extractors/java       | scoped_absolute_identifier             | internal/extractors/java/references.go:575                  | a Rust node name; the live scoped_identifier/scoped_type_identifier are in the same case
+paired-with-correct-name | internal/extractors/javascript | object_expression                      | internal/extractors/javascript/angular_nav_lifecycle.go:505 | an ESTree/Babel name; the live tree-sitter name object is in the same matcher
+paired-with-correct-name | internal/extractors/javascript | template_literal                       | internal/extractors/javascript/discriminator.go:165         | an ESTree/Babel name; the live tree-sitter name template_string is in the same matcher
+paired-with-correct-name | internal/extractors/javascript | enum_member                            | internal/extractors/javascript/extractor.go:1682            | the live enum_assignment/property_identifier/identifier branch above handles every real member
+paired-with-correct-name | internal/extractors/javascript | template_literal                       | internal/extractors/javascript/extractor.go:2422            | an ESTree/Babel name; the live tree-sitter name template_string is in the same matcher
+paired-with-correct-name | internal/extractors/javascript | object_expression                      | internal/extractors/javascript/navigation.go:202            | an ESTree/Babel name; the live tree-sitter name object is in the same matcher
+paired-with-correct-name | internal/extractors/javascript | template_literal                       | internal/extractors/javascript/next_dynamic.go:149          | an ESTree/Babel name; the live tree-sitter name template_string is in the same matcher
+paired-with-correct-name | internal/extractors/javascript | template_literal                       | internal/extractors/javascript/react_internals.go:183       | an ESTree/Babel name; the live tree-sitter name template_string is in the same matcher
+paired-with-correct-name | internal/extractors/javascript | template_literal                       | internal/extractors/javascript/translation_key.go:173       | an ESTree/Babel name; the live tree-sitter name template_string is in the same matcher
+paired-with-correct-name | internal/extractors/javascript | function_body                          | internal/extractors/javascript/validation_linkage.go:385    | live name statement_block is in the same case
+paired-with-correct-name | internal/extractors/kotlin     | function_value_parameter               | internal/extractors/kotlin/references.go:670                | live name parameter is in the same case
+paired-with-correct-name | internal/extractors/lua        | function_statement                     | internal/extractors/lua/lua.go:175                          | legacy name; the live function_declaration arm in the same switch does the extraction (note the comments' polarity is inverted — the arm labelled legacy is the live one)
+paired-with-correct-name | internal/extractors/lua        | local_function                         | internal/extractors/lua/lua.go:204                          | legacy name; the live function_declaration arm in the same switch covers the local form too
+paired-with-correct-name | internal/extractors/lua        | function_body                          | internal/extractors/lua/lua.go:228                          | legacy name; live name block is tested in the same expression
+unreachable-code         | internal/extractors/lua        | function_name                          | internal/extractors/lua/lua.go:263                          | inside buildFunctionStatement, whose only caller is the dead function_statement arm at lua.go:175
+unreachable-code         | internal/extractors/lua        | parameter_list                         | internal/extractors/lua/lua.go:294                          | inside buildFunctionStatement, whose only caller is the dead function_statement arm at lua.go:175
+paired-with-correct-name | internal/extractors/lua        | function_arguments                     | internal/extractors/lua/lua.go:441                          | legacy name; live name arguments is in the same case
+paired-with-correct-name | internal/extractors/lua        | string_argument                        | internal/extractors/lua/lua.go:452                          | legacy name; the live function_arguments/arguments arm in the same switch is the reachable path
+paired-with-correct-name | internal/extractors/lua        | variable_declarator                    | internal/extractors/lua/lua.go:531                          | legacy name; live name variable_list is in the same switch
+paired-with-correct-name | internal/extractors/lua        | tableconstructor                       | internal/extractors/lua/lua.go:644                          | legacy name; live name table_constructor is in the same case
+paired-with-correct-name | internal/extractors/lua        | function_call_paren                    | internal/extractors/lua/lua.go:784                          | legacy name; live name arguments is in the same case
+paired-with-correct-name | internal/extractors/php        | namespace_use_group_clause             | internal/extractors/php/php.go:565                          | renamed upstream to namespace_use_group; live name namespace_use_clause is tested in the same expression
+paired-with-correct-name | internal/extractors/php        | anonymous_function_creation_expression | internal/extractors/php/tests.go:178                        | renamed upstream to anonymous_function, which is in the same case
+paired-with-correct-name | internal/extractors/proto      | required                               | internal/extractors/proto/proto.go:923                      | proto2 keyword; the vendored grammar is proto3-only, and the live repeated/optional are in the same case
+paired-with-correct-name | internal/extractors/proto      | map_type                               | internal/extractors/proto/proto.go:925                      | live name type is in the same case and does emit map<k,v> field types correctly
+paired-with-correct-name | internal/extractors/python     | newline                                | internal/extractors/python/config_module.go:204             | the grammar's newline rule is hidden (_newline) so no child is ever one; the live comment arm shares the case
+paired-with-correct-name | internal/extractors/python     | identifier_pattern                     | internal/extractors/python/exception_flow.go:202            | a Rust node name; the live block/comment names share the case
+paired-with-correct-name | internal/extractors/ruby       | command                                | internal/extractors/ruby/exception_flow.go:73               | an ex-upstream ruby name; the live name call is in the same matcher
+paired-with-correct-name | internal/extractors/ruby       | command                                | internal/extractors/ruby/ruby.go:288                        | an ex-upstream ruby name; the live name call is in the same matcher
+paired-with-correct-name | internal/extractors/ruby       | method_call                            | internal/extractors/ruby/ruby.go:288                        | an ex-upstream ruby name; the live call is the first argument of the same findAllNodes call
+paired-with-correct-name | internal/extractors/scala      | case_class_definition                  | internal/extractors/scala/constantset.go:103                | no such node: a case class parses as a plain class_definition, which is tested alongside it (scala.go:144 falls back to a source-text prefix check)
+paired-with-correct-name | internal/extractors/scala      | tuple                                  | internal/extractors/scala/constantset.go:442                | live names tuple_expression/tuple_pattern are in the same case
+paired-with-correct-name | internal/extractors/scala      | number                                 | internal/extractors/scala/constantset.go:520                | live names integer_literal/floating_point_literal are in the same case
+paired-with-correct-name | internal/extractors/scala      | null                                   | internal/extractors/scala/constantset.go:522                | live name null_literal is in the same case
+paired-with-correct-name | internal/extractors/scala      | case_modifier                          | internal/extractors/scala/constantset.go:548                | live name modifiers is tested in the same expression
+paired-with-correct-name | internal/extractors/scala      | case_class_definition                  | internal/extractors/scala/scala.go:142                      | no such node: a case class parses as a plain class_definition, which is tested alongside it (scala.go:144 falls back to a source-text prefix check)
