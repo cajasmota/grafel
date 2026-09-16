@@ -2319,7 +2319,7 @@ func (idx Index) lookupStatusHintTier(stub, relKind string) (id string, status i
 		if qid == "" {
 			return "", statusAmbiguous, ""
 		}
-		// EVIDENCE tier (#7071): the extractor minted this address and the
+		// EVIDENCE (#7071) — the extractor minted this address and the
 		// resolver matched it exactly. No marker.
 		return qid, statusRewritten, ""
 	}
@@ -2328,7 +2328,7 @@ func (idx Index) lookupStatusHintTier(stub, relKind string) (id string, status i
 	// prefix and resolved through the location/member indexes — bypasses
 	// the kind / name path entirely.
 	if id, st, handled := idx.lookupStructural(stub); handled {
-		// EVIDENCE tier (#7071): a structural address, likewise minted by
+		// EVIDENCE (#7071) — a structural address, likewise minted by
 		// the extractor. No marker.
 		return id, st, ""
 	}
@@ -2337,7 +2337,7 @@ func (idx Index) lookupStatusHintTier(stub, relKind string) (id string, status i
 	if kind != "" {
 		if bucket, ok := idx.byKind[kind]; ok {
 			if id, ok := bucket[name]; ok {
-				// EVIDENCE tier (#7071): the stub carried an explicit
+				// EVIDENCE (#7071) — the stub carried an explicit
 				// "Kind:Name" and the kind bucket answered on both halves.
 				return id, statusRewritten, ""
 			}

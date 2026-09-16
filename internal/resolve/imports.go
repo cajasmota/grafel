@@ -1372,12 +1372,18 @@ func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string
 		// bind to an unrelated function named `leaf` in module x.
 		//
 		// #7071 — MEASURED, and the guard does NOT prevent what this
-		// comment says it prevents. It checks only that the CLASS is in the
-		// module, which is trivially true whenever the from-import above
-		// resolved; the bind is still "the unique entity named `leaf`
-		// anywhere in module x", so `Helper.format()` binds a module-level
-		// `format` that is no member of `Helper`. The receiver type is
-		// known here and thrown away.
+		// comment says it prevents. It checks only that the CLASS RESOLVES
+		// in the module, never that `leaf` is a MEMBER of it, so
+		// `Helper.format()` binds a module-level `format` that is no member
+		// of `Helper`. The receiver type is known here and thrown away.
+		//
+		// An earlier revision of this note said the guard is "trivially
+		// true whenever the from-import above resolved". That absolute is
+		// FALSE and review produced the counter-example: lookupModuleEntity
+		// refuses on an ambiguous (module, name) tuple, so a class name that
+		// is ambiguous in its own module makes this fallback DECLINE and the
+		// stub survive. Both halves are now graded — see
+		// TestBindTier_ImportCrossModuleCallTarget_7071.
 		//
 		// Marked rather than repaired: requiring class membership changes
 		// which edges exist, and this change must not add or remove one.
@@ -1634,18 +1640,24 @@ func isCSharpImportSource(entityLang, callerFile string, props types.Props) bool
 // is the default export of a single-component file.
 //
 // Caller MUST gate on lang ∈ {javascript, typescript}.
-func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool) {
+func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, BindTier, bool) {
+	// EVIDENCE (#7071) — the minted (module, leaf) split, matched exactly.
 	if id, ok := t.ResolveDottedImportTarget(dotted); ok {
-		return id, true
+		return id, "", true
 	}
 	// default-leaf fallback: try (module, last-segment(module)).
+	//
+	// GUESS TIER (#7071) from here down — the minted leaf `default` is
+	// DISCARDED and the module path's last segment is substituted for it,
+	// on the convention this function's own doc names. See
+	// BindTierImportJSDefaultBasename.
 	dot := strings.LastIndexByte(dotted, '.')
 	if dot <= 0 || dot == len(dotted)-1 {
-		return "", false
+		return "", "", false
 	}
 	leaf := dotted[dot+1:]
 	if leaf != "default" {
-		return "", false
+		return "", "", false
 	}
 	module := dotted[:dot]
 	innerDot := strings.LastIndexByte(module, '.')
@@ -1656,10 +1668,10 @@ func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool
 		basename = module[innerDot+1:]
 	}
 	if basename == "" {
-		return "", false
+		return "", "", false
 	}
 	if id, ok := t.lookupModuleEntityCaseFold(module, basename); ok {
-		return id, true
+		return id, BindTierImportJSDefaultBasename, true
 	}
 	// `<dir>/index.ts` barrel case: try the parent directory's last
 	// segment instead. `src.features.new-note.index.default` →
@@ -1669,7 +1681,7 @@ func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool
 	// owns the default export.
 	if basename == "index" {
 		if innerDot <= 0 {
-			return "", false
+			return "", "", false
 		}
 		parentModule := module[:innerDot]
 		parentDot := strings.LastIndexByte(parentModule, '.')
@@ -1680,11 +1692,34 @@ func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool
 			parentBase = parentModule[parentDot+1:]
 		}
 		if parentBase == "" {
-			return "", false
+			return "", "", false
 		}
-		return t.lookupModuleEntityCaseFold(parentModule, parentBase)
+		if id, ok := t.lookupModuleEntityCaseFold(parentModule, parentBase); ok {
+			return id, BindTierImportJSDefaultBasename, true
+		}
+		return "", "", false
 	}
-	return t.lookupModuleEntityCaseFold(module, basename)
+	// #7071 — this line DUPLICATES the early return above: same function,
+	// same arguments, same result. With both present the early one always
+	// wins, so this stamp can never be observed and a mutant on it is ALIVE
+	// AND EQUIVALENT.
+	//
+	// DEMONSTRATED, not reasoned: forcing the early return to decline
+	// (`ok && false`) leaves every assertion in
+	// TestBindTier_ImportsLadderRungs_7071 green, because THIS line answers
+	// identically. That is the positive control for the equivalence claim —
+	// the two sites are interchangeable, so no input distinguishes them and
+	// manufacturing a fixture to kill this one would be grading a branch
+	// production cannot enter.
+	//
+	// Pre-existing shape, not introduced here; deleting dead code is a
+	// separate change from classifying live rungs. The two OBSERVABLE
+	// stamps are the early return above and the barrel-case block, and
+	// both are separately graded.
+	if id, ok := t.lookupModuleEntityCaseFold(module, basename); ok {
+		return id, BindTierImportJSDefaultBasename, true
+	}
+	return "", "", false
 }
 
 // lookupModuleEntityCaseFold tries exact (module, name); if it misses,
@@ -1836,9 +1871,12 @@ func normaliseIdent(s string) string {
 // rely on the strict ResolveDottedImportTarget semantics where plain
 // module imports without a leaf binding stay unresolved. Issue #485
 // PHP wave-3.
-func (t ImportTable) ResolveDottedImportTargetForPHP(dotted string) (string, bool) {
+func (t ImportTable) ResolveDottedImportTargetForPHP(dotted string) (string, BindTier, bool) {
+	// EVIDENCE (#7071) — ResolveDottedImportTarget matches the (module,
+	// leaf) split of the address the extractor minted, with a uniqueness
+	// sentinel. Both halves came from the source text.
 	if id, ok := t.ResolveDottedImportTarget(dotted); ok {
-		return id, true
+		return id, "", true
 	}
 	return t.resolveNamespaceTarget(dotted)
 }
@@ -1853,10 +1891,10 @@ func (t ImportTable) ResolveDottedImportTargetForPHP(dotted string) (string, boo
 // preferring SCOPE.Component over other kinds via the same ordering
 // applied at insert time (preferEntityKind). Returns ("", false) when
 // no entity in that namespace is indexed.
-func (t ImportTable) resolveNamespaceTarget(dotted string) (string, bool) {
+func (t ImportTable) resolveNamespaceTarget(dotted string) (string, BindTier, bool) {
 	bucket, ok := t.entitiesByModuleName[dotted]
 	if !ok || len(bucket) == 0 {
-		return "", false
+		return "", "", false
 	}
 	var picked string
 	for _, id := range bucket {
@@ -1865,9 +1903,13 @@ func (t ImportTable) resolveNamespaceTarget(dotted string) (string, bool) {
 		}
 	}
 	if picked == "" {
-		return "", false
+		return "", "", false
 	}
-	return picked, true
+	// GUESS TIER (#7071) — the namespace is minted evidence; WHICH member
+	// of it this returns is not. The loop is a min(), not a uniqueness
+	// check: two equally valid candidates do not make it decline. See
+	// BindTierImportNamespaceRepresentative.
+	return picked, BindTierImportNamespaceRepresentative, true
 }
 
 // isPHPFQNMethodShape reports whether s looks like a PHP FQN-method
@@ -2124,10 +2166,15 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				rel.ToID = id
-				// #7071 — this line is a FUNNEL for three rungs, one of
-				// which is evidence. The tier value carries the deciding
-				// rung's own verdict and is blank for rung 1, so stamping
-				// here marks only what a guess produced.
+				// #7071 — this line is a FUNNEL. ResolveBareCallTarget
+				// returns FOUR distinct verdicts: blank for the explicit
+				// from-import binding, and three tiers —
+				// java-canonical-file-tiebreak (rung 1's ambiguity
+				// tie-break, promoted from "evidence" in round 3 when
+				// review demonstrated the argument for it false),
+				// import-plain-module-attr and import-wildcard. The tier
+				// value carries the deciding rung's own verdict, so
+				// stamping here marks only what a guess produced.
 				if tier != "" {
 					rel.Properties.Set(types.PropBindTier, string(tier))
 					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, tier)
@@ -2238,20 +2285,37 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				var (
 					id string
 					ok bool
-					// #7071 — set by the Java canonical tie-break rung
-					// below and by nothing else. Every other rung in this
-					// ladder resolves a qualifier the extractor minted, so
-					// they leave it blank and the funnel stamps nothing.
+					// #7071 — carries the deciding rung's verdict out to
+					// the funnel below.
+					//
+					// An earlier revision of this comment said "every other
+					// rung in this ladder resolves a qualifier the extractor
+					// minted", which was a BLANKET EVIDENCE CLASSIFICATION
+					// asserted over a set nobody had enumerated — the same
+					// defect as the "every pass stamps this key" universal
+					// deleted from internal/types/bindtier.go in the same
+					// commit, just scoped to a file. Review demonstrated it
+					// false of three rungs by running them.
+					//
+					// There is no claim here about the ladder as a whole.
+					// Each rung is classified at its own site, and a rung
+					// carrying neither a tier nor an "EVIDENCE (#7071)" note
+					// is unclassified, not vouched for.
 					importTier BindTier
 				)
 				if isPHP {
-					id, ok = tbl.ResolveDottedImportTargetForPHP(normalized)
+					id, importTier, ok = tbl.ResolveDottedImportTargetForPHP(normalized)
 				} else if isJSImportSource(callerFile) {
-					id, ok = tbl.ResolveDottedImportTargetForJS(normalized)
+					id, importTier, ok = tbl.ResolveDottedImportTargetForJS(normalized)
 				} else {
+					// EVIDENCE (#7071) — the minted (module, leaf) split,
+					// matched exactly through the per-module index.
 					id, ok = tbl.ResolveDottedImportTarget(normalized)
 					if !ok && isCSharpImportSource(e.Language, callerFile, rel.Properties) {
-						id, ok = tbl.resolveNamespaceTarget(normalized)
+						// The SECOND call site of the namespace rung; the
+						// PHP wrapper is the first. Same guess, two
+						// languages, two branches.
+						id, importTier, ok = tbl.resolveNamespaceTarget(normalized)
 					}
 					// Issue #778 — Java FQCN ambiguity tie-break.
 					// When the generic dotted-import lookup fails because
@@ -2288,6 +2352,10 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					// dotted paths are not widened.
 					if !ok && rel.Properties != nil &&
 						rel.Properties.Get("language") == "python" {
+						// EVIDENCE (#7071) — the WHOLE minted dotted path
+						// names a module, and moduleFileEntity maps that
+						// exact string to that module's file entity.
+						// Nothing is substituted or inferred.
 						id, ok = tbl.ResolvePythonModuleImport(normalized)
 					}
 					// #1991 — Python __init__.py re-exports of module
@@ -2312,6 +2380,15 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						if dot := strings.LastIndexByte(normalized, '.'); dot > 0 {
 							parent := normalized[:dot]
 							id, ok = tbl.ResolvePythonModuleImport(parent)
+							if ok {
+								// GUESS TIER (#7071) — note the argument:
+								// `parent`, not `normalized`. The named
+								// symbol was not found, so the edge is
+								// pointed at its PARENT MODULE instead. The
+								// target is not the thing the edge names.
+								// See BindTierImportPythonReexportParent.
+								importTier = BindTierImportPythonReexportParent
+							}
 						}
 					}
 				}
@@ -2319,8 +2396,10 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				rel.ToID = id
-				// #7071 — FUNNEL for the whole IMPORTS ladder; blank for
-				// every rung except the Java canonical tie-break.
+				// #7071 — FUNNEL for the whole IMPORTS ladder. It stamps
+				// whatever the deciding rung handed back and knows nothing
+				// about which rung that was; blank means that rung either
+				// carries an EVIDENCE note or has not been classified.
 				if importTier != "" {
 					rel.Properties.Set(types.PropBindTier, string(importTier))
 					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, importTier)
@@ -2549,6 +2628,16 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord, stats
 				if id == "" {
 					continue
 				}
+				// EVIDENCE (#7071) — the candidate directories come from
+				// `use` statements the extractor resolved, and this loop
+				// REFUSES on disagreement (`conflict`) rather than picking.
+				// The dir is the qualifier; it was not inferred from the
+				// leaf name. Contrast the crate-wide rung below, which is
+				// reached only after every offered dir has declined.
+				//
+				// internal/types/bindtier.go names this site; it carried no
+				// note until review of #7078 round 3 found the list naming
+				// sites that did not exist.
 				if resolved == "" {
 					resolved = id
 				} else if resolved != id {

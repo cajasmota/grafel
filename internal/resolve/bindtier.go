@@ -221,6 +221,52 @@ const (
 	// wrong for the rest is the mislabelling this whole key exists to end.
 	BindTierJavaCanonicalFileTiebreak BindTier = "java-canonical-file-tiebreak"
 
+	// BindTierImportNamespaceRepresentative — imports.go
+	// resolveNamespaceTarget, reached from ResolveDottedImportTargetForPHP
+	// and from the C# arm of the IMPORTS ladder.
+	//
+	// The WEAKEST rule in this enumeration, weaker even than
+	// BindTierImportWildcard. It binds a dotted namespace import to the
+	// LEXICOGRAPHICALLY LOWEST entity id in that namespace's bucket, with
+	// NO uniqueness sentinel of any kind: two equally valid candidates do
+	// not make it decline, they make it sort. Its own doc calls the result
+	// "a stable representative entity" — stable and arbitrary are not
+	// opposites.
+	//
+	// The extractor DID mint the namespace, and that half is real evidence.
+	// What is guessed is which member of it the edge points at.
+	BindTierImportNamespaceRepresentative BindTier = "import-namespace-representative"
+
+	// BindTierImportJSDefaultBasename — imports.go
+	// ResolveDottedImportTargetForJS's `<module>.default` fallback.
+	//
+	// The extractor minted the leaf `default`; this rung DISCARDS it,
+	// substitutes the module path's last segment, and matches that
+	// case/dash/underscore-folded. The function's own comment says the
+	// quiet part: the basename "by convention matches the default export
+	// name in PascalCase component files". A convention is not a
+	// resolution.
+	//
+	// Distinctly stronger than BindTierImportNamespaceRepresentative, and
+	// kept separate for that reason: this one binds only on an unambiguous
+	// hit through the per-module index, so an off-convention default export
+	// stays unresolved instead of picking an arbitrary entity.
+	BindTierImportJSDefaultBasename BindTier = "import-js-default-basename"
+
+	// BindTierImportPythonReexportParent — imports.go, the #1991
+	// __init__.py re-export rung of the IMPORTS ladder.
+	//
+	// A different species from every other tier here. The others answer
+	// "WHICH candidate is the target"; this one answers "the named target
+	// cannot be found, so bind the PARENT MODULE instead". The edge ends up
+	// pointing at an entity that is not the thing it names — its own source
+	// calls the module "the closest live in-graph anchor we have", which is
+	// an honest description of a substitution.
+	//
+	// That is #7056's admissible-looking-carrier shape, the same one
+	// BindTierFileScopePlaceholder records, in a third place.
+	BindTierImportPythonReexportParent BindTier = "import-python-reexport-parent"
+
 	// BindTierRustCrateUniqueMember — imports.go
 	// ResolveRustCrossModuleCalls' crate-wide fallback (lookupUniqueMember).
 	// Reached only AFTER every candidate directory the import resolver
@@ -255,6 +301,9 @@ var AllBindTiers = []BindTier{
 	BindTierImportWildcard,
 	BindTierImportClassModuleAttr,
 	BindTierJavaCanonicalFileTiebreak,
+	BindTierImportNamespaceRepresentative,
+	BindTierImportJSDefaultBasename,
+	BindTierImportPythonReexportParent,
 	BindTierRustCrateUniqueMember,
 }
 

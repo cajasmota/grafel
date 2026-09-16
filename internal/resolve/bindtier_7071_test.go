@@ -842,19 +842,21 @@ func TestBindTier_AllTiersEnumerated_7071(t *testing.T) {
 		}
 		seen[tr] = true
 	}
-	if len(AllBindTiers) != 16 {
-		t.Fatalf("AllBindTiers has %d members, want 16 — adding or removing one is a scope "+
+	if len(AllBindTiers) != 19 {
+		t.Fatalf("AllBindTiers has %d members, want 19 — adding or removing one is a scope "+
 			"change that must be argued, not a silent edit.\n"+
 			"The enumeration is of GUESS TIERS ACROSS THE WHOLE RESOLVER, not of one file: "+
-			"ELEVEN in internal/resolve/refs.go (G1, G2, L1-L6, E1-E3) and FIVE in "+
+			"ELEVEN in internal/resolve/refs.go (G1, G2, L1-L6, E1-E3) and EIGHT in "+
 			"internal/resolve/imports.go (the Rust crate-wide rung; the plain-import and "+
 			"wildcard rungs shared by ResolveBareCallTarget and "+
 			"ResolveCrossFileReferenceTarget; ResolveCrossModuleCallTarget's same-class "+
-			"fallback; and the Java canonical file tie-break).\n"+
-			"Every one of the last four was found by REVIEW, not by the grounding, and each "+
-			"round of review found one more. If you are adding a seventeenth because you "+
-			"found another unclassified site, that is the expected outcome, not a surprise: "+
-			"say where it is and why it is a guess rather than evidence.",
+			"fallback; the Java canonical file tie-break; and the IMPORTS ladder's namespace "+
+			"representative, JS default-basename and Python re-export-parent rungs).\n"+
+			"TWELVE came from #7071's grounding and SEVEN were found by REVIEW — two in "+
+			"round 1, two in round 2, three in round 3. EVERY round has found more. So if "+
+			"you are adding a twentieth because you found another unclassified site, that is "+
+			"the EXPECTED outcome and not a surprise: say where it is and why it is a guess "+
+			"rather than evidence. There is no claim anywhere that this list is complete.",
 			len(AllBindTiers))
 	}
 }

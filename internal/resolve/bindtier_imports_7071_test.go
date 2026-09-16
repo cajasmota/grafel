@@ -73,9 +73,13 @@ func assertImportTier(t *testing.T, r *types.RelationshipRecord, st ImportResolv
 // value, counter). Only the IMPORTS edge that introduces the name changes —
 // which is what selects the rung.
 //
-// NOT VARIED, therefore NOT GRADED here: the Java canonical tie-break inside
-// rung 1, which is argued as evidence at source rather than measured. It is
-// the one judgement call in this pair and is called out in the PR body.
+// NOT VARIED here, and GRADED ELSEWHERE: the Java canonical tie-break
+// inside rung 1. Round 2 of this change argued it was evidence at source
+// rather than measuring it; round 3's review demonstrated that argument
+// false, and it is now a tier with its own rows in
+// TestBindTier_JavaCanonicalTiebreak_7071 below. This header used to say it
+// was "the one judgement call in this pair" — it is not a judgement call
+// any more, it is a measurement.
 // ---------------------------------------------------------------------------
 
 func TestBindTier_ImportPassCallsSite_7071(t *testing.T) {
@@ -409,6 +413,262 @@ func TestBindTier_ImportCrossModuleCallTarget_7071(t *testing.T) {
 		recs[3].Relationships[0].FromID = "iiiixmod00000024"
 		r, st := importsBind(t, recs, [2]int{3, 0})
 		assertImportTier(t, r, st, "iiiixmod00000022", BindTierImportClassModuleAttr)
+	})
+
+	t.Run("the guard DOES decline when the receiver class is ambiguous", func(t *testing.T) {
+		// The other half of the guard's behaviour, and the half a round-3
+		// comment got wrong by calling the guard "trivially true whenever
+		// the from-import above resolved". It is not: lookupModuleEntity
+		// refuses on an ambiguous (module, name) tuple, so a class name that
+		// collides inside its own module makes the fallback DECLINE.
+		//
+		// VARIED against the row above: `Helper` is ambiguous in `utils`
+		// (two entities of that name in the module).
+		// HELD CONSTANT: the caller, the edge, the leaf `format`, and the
+		// fact that `format` itself is still unique — so the only thing
+		// that can change the verdict is the receiver's ambiguity.
+		recs := []types.EntityRecord{
+			{ID: "iiiixmod00000031", Kind: "Component", Name: "Helper", SourceFile: "utils.py", Language: "python"},
+			{ID: "iiiixmod00000032", Kind: "Component", Name: "Helper", SourceFile: "utils.py", Language: "python"},
+			{ID: "iiiixmod00000033", Kind: "Operation", Name: "format", SourceFile: "utils.py", Language: "python"},
+			impRec("iiiixmod00000034", "SCOPE.Component", "app", "app.py",
+				types.RelationshipRecord{
+					FromID: "app.py", ToID: "utils.Helper", Kind: "IMPORTS",
+					Properties: types.Props{
+						{K: "imported_name", V: "Helper"}, {K: "local_name", V: "Helper"},
+						{K: "source_module", V: "utils"},
+					},
+				}),
+			impRec("iiiixmod00000035", "Operation", "main", "app.py", callEdge("Helper")),
+		}
+		recs[4].Relationships[0].FromID = "iiiixmod00000035"
+		r, st := importsBind(t, recs, [2]int{4, 0})
+		if r.ToID != "format" {
+			t.Fatalf("an ambiguous receiver class must make the same-class fallback decline, "+
+				"leaving the stub verbatim; got %q. If this bound, the guard is genuinely "+
+				"vacuous and the tier's doc comment should say so", r.ToID)
+		}
+		if got := r.Properties.Get(types.PropBindTier); got != "" {
+			t.Fatalf("a declined bind carried %s=%q", types.PropBindTier, got)
+		}
+		if len(st.BindTierCounts) != 0 {
+			t.Fatalf("a declined bind was counted: %v", st.BindTierCounts)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// The IMPORTS ladder — the three rungs round 3 covered with a blanket
+// EVIDENCE sentence instead of checking.
+//
+// That sentence ("every other rung in this ladder resolves a qualifier the
+// extractor minted") was the deleted universal's shape scoped to a file,
+// and review refuted it by RUNNING two of the three. Each rung is now
+// classified at its own site; these are the rows that observe it.
+//
+// VARIED across the three subtests: which rung answers — the PHP/C#
+// namespace representative, the JS `<module>.default` basename
+// substitution, and the Python re-export parent rebind.
+// HELD CONSTANT: every case drives the real BuildImportTable +
+// ResolveImports over one IMPORTS edge, and asserts the same triple —
+// bound target, tier value, counter.
+//
+// Each subtest ALSO pins the paired evidence rung of the same function
+// where one exists, because a tier value is only meaningful if its absence
+// is meaningful: a mutant that stamps the whole wrapper would satisfy the
+// guess row alone.
+// ---------------------------------------------------------------------------
+
+func TestBindTier_ImportsLadderRungs_7071(t *testing.T) {
+	t.Run("PHP namespace prefix binds an arbitrary representative — a guess", func(t *testing.T) {
+		// `use App\Sub;` names a NAMESPACE, not a class. Two classes live
+		// in it; the rung sorts and takes the lowest id. Both candidates
+		// are equally valid, and nothing declines.
+		recs := []types.EntityRecord{
+			{ID: "pppphpns0000001", Kind: "Component", Name: "Alpha",
+				SourceFile: "App/Sub/Alpha.php", Language: "php"},
+			{ID: "pppphpns0000002", Kind: "Component", Name: "Beta",
+				SourceFile: "App/Sub/Beta.php", Language: "php"},
+			{
+				ID: "pppphpns0000003", Kind: "SCOPE.Component", Name: "Main",
+				SourceFile: "App/Main.php", Language: "php",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "App/Main.php", ToID: `App\Sub`, Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "php"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{2, 0})
+		if r.ToID != "pppphpns0000001" && r.ToID != "pppphpns0000002" {
+			t.Fatalf("namespace import bound %q, want one of the two namespace members — "+
+				"if it bound nothing this row grades nothing", r.ToID)
+		}
+		assertImportTier(t, r, st, r.ToID, BindTierImportNamespaceRepresentative)
+	})
+
+	t.Run("PHP exact (module, leaf) is evidence", func(t *testing.T) {
+		// Same wrapper, one rung earlier: `use App\Sub\Alpha;` names the
+		// class, and the minted split matches it exactly. The single varied
+		// axis against the row above is whether the import names a class.
+		recs := []types.EntityRecord{
+			{ID: "pppphpev0000001", Kind: "Component", Name: "Alpha",
+				SourceFile: "App/Sub/Alpha.php", Language: "php"},
+			{
+				ID: "pppphpev0000002", Kind: "SCOPE.Component", Name: "Main",
+				SourceFile: "App/Main.php", Language: "php",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "App/Main.php", ToID: `App\Sub\Alpha`, Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "php"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{1, 0})
+		assertImportTier(t, r, st, "pppphpev0000001", "")
+	})
+
+	t.Run("C# namespace prefix — the namespace rung's SECOND call site", func(t *testing.T) {
+		// resolveNamespaceTarget is reached from two places: the PHP
+		// wrapper above, and this C#-gated arm of the else branch. Separate
+		// lines in separate branches, so grading the PHP one says nothing
+		// about this one — the lesson four earlier rounds of this change
+		// have each been taught once.
+		recs := []types.EntityRecord{
+			// C# entities reach entitiesByModuleName ONLY through the
+			// csharp_namespace property — modulesForFile derives nothing
+			// from a .cs path.
+			{ID: "cccsns000000001", Kind: "Component", Name: "Alpha",
+				SourceFile: "App/Sub/Alpha.cs", Language: "csharp",
+				Properties: map[string]string{"csharp_namespace": "App.Sub"}},
+			{ID: "cccsns000000002", Kind: "Component", Name: "Beta",
+				SourceFile: "App/Sub/Beta.cs", Language: "csharp",
+				Properties: map[string]string{"csharp_namespace": "App.Sub"}},
+			{
+				ID: "cccsns000000003", Kind: "SCOPE.Component", Name: "Main",
+				SourceFile: "App/Main.cs", Language: "csharp",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "App/Main.cs", ToID: "App.Sub", Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "csharp"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{2, 0})
+		if r.ToID != "cccsns000000001" && r.ToID != "cccsns000000002" {
+			t.Fatalf("C# namespace import bound %q, want one of the two namespace members", r.ToID)
+		}
+		assertImportTier(t, r, st, r.ToID, BindTierImportNamespaceRepresentative)
+	})
+
+	t.Run("JS `<module>.default` substitutes the file basename — a guess", func(t *testing.T) {
+		// The extractor minted the leaf `default`. The rung throws it away
+		// and matches the module's last path segment instead, case-folded.
+		// `ThemedText` is never named by the edge.
+		recs := []types.EntityRecord{
+			{ID: "jjjjsdef0000001", Kind: "Component", Name: "ThemedText",
+				SourceFile: "components/themed-text.tsx", Language: "typescript"},
+			{
+				ID: "jjjjsdef0000002", Kind: "SCOPE.Component", Name: "App",
+				SourceFile: "app/index.tsx", Language: "typescript",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "app/index.tsx", ToID: "components.themed-text.default", Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "typescript"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{1, 0})
+		assertImportTier(t, r, st, "jjjjsdef0000001", BindTierImportJSDefaultBasename)
+	})
+
+	t.Run("JS `<dir>/index.default` barrel — the SECOND stamp in the same function", func(t *testing.T) {
+		// BindTierImportJSDefaultBasename is stamped at three lines in
+		// ResolveDottedImportTargetForJS. The row above reaches the first;
+		// this one reaches the second, inside the `basename == "index"`
+		// barrel branch, which substitutes the PARENT directory's segment
+		// rather than the module's own. Two separate lines in two separate
+		// branches — grading one says nothing about the other, which is the
+		// lesson this change has now been taught at five different sites.
+		//
+		// The third stamp is unreachable as a success (it repeats the first
+		// lookup with identical arguments after that lookup has missed) and
+		// is labelled as such at the site; a mutant there is equivalent, and
+		// no fixture is manufactured for it.
+		//
+		// VARIED against the row above: the module path ends in `index`.
+		// HELD CONSTANT: the minted leaf is still `default`, the target is
+		// still a single component entity, and the assertion is the same
+		// triple.
+		recs := []types.EntityRecord{
+			{ID: "jjjjsbar0000001", Kind: "Component", Name: "new-note",
+				SourceFile: "src/features/new-note/index.tsx", Language: "typescript"},
+			{
+				ID: "jjjjsbar0000002", Kind: "SCOPE.Component", Name: "App",
+				SourceFile: "app/index2.tsx", Language: "typescript",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "app/index2.tsx", ToID: "src.features.new-note.index.default", Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "typescript"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{1, 0})
+		assertImportTier(t, r, st, "jjjjsbar0000001", BindTierImportJSDefaultBasename)
+	})
+
+	t.Run("JS named export is evidence", func(t *testing.T) {
+		// Same wrapper, first rung: the edge names the symbol, so nothing
+		// is substituted. Varies from the row above ONLY in the leaf.
+		recs := []types.EntityRecord{
+			{ID: "jjjjsevd0000001", Kind: "Component", Name: "ThemedText",
+				SourceFile: "components/themed-text.tsx", Language: "typescript"},
+			{
+				ID: "jjjjsevd0000002", Kind: "SCOPE.Component", Name: "App",
+				SourceFile: "app/index.tsx", Language: "typescript",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "app/index.tsx", ToID: "components.themed-text.ThemedText", Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "typescript"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{1, 0})
+		assertImportTier(t, r, st, "jjjjsevd0000001", "")
+	})
+
+	t.Run("Python re-export rebinds to the PARENT module — a guess", func(t *testing.T) {
+		// `acme.celery.app` names a module-level binding no entity carries.
+		// The rung strips `.app` and points the edge at the acme/celery.py
+		// FILE entity instead — a different thing from the one it names.
+		recs := []types.EntityRecord{
+			{ID: "yyypyreex000001", Kind: "SCOPE.Component", Subtype: "file", Name: "acme/celery.py",
+				SourceFile: "acme/celery.py", Language: "python"},
+			{
+				ID: "yyypyreex000002", Kind: "SCOPE.Component", Name: "init",
+				SourceFile: "acme/__init__.py", Language: "python",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "acme/__init__.py", ToID: "acme.celery.app", Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "python"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{1, 0})
+		assertImportTier(t, r, st, "yyypyreex000001", BindTierImportPythonReexportParent)
+	})
+
+	t.Run("Python whole-path module import is evidence", func(t *testing.T) {
+		// The #44 rung one step earlier: the WHOLE minted path names the
+		// module, matched exactly. Varies from the row above only in
+		// whether the path has a trailing symbol the graph cannot find.
+		recs := []types.EntityRecord{
+			{ID: "yyypyevd000001", Kind: "SCOPE.Component", Subtype: "file", Name: "acme/celery.py",
+				SourceFile: "acme/celery.py", Language: "python"},
+			{
+				ID: "yyypyevd000002", Kind: "SCOPE.Component", Name: "init",
+				SourceFile: "acme/__init__.py", Language: "python",
+				Relationships: []types.RelationshipRecord{{
+					FromID: "acme/__init__.py", ToID: "acme.celery", Kind: "IMPORTS",
+					Properties: types.Props{{K: "language", V: "python"}},
+				}},
+			},
+		}
+		r, st := importsBind(t, recs, [2]int{1, 0})
+		assertImportTier(t, r, st, "yyypyevd000001", "")
 	})
 }
 

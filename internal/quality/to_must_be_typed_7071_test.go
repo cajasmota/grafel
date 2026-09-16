@@ -175,8 +175,11 @@ func TestToMustBeTypedFallsThroughToAnEvidenceBoundEdge_7071(t *testing.T) {
 // `to_bare_name` is literally that entity id. diff.go's #6476 comment
 // anticipates and classifies exactly that authoring shape ("equal to some
 // entity's ID -> resolved, no complaint"), so it is not impossible — but
-// MEASURED over the golden set, ZERO of its 129 `to_bare_name` rows carry
-// an entity id, so nothing in the corpus reaches it today.
+// MEASURED over the golden set, ZERO of its 128 `to_bare_name` rows carry
+// an entity id, so nothing in the corpus reaches it today. (128, not 129:
+// the 129th occurrence of the string in the golden tree is prose inside
+// baseline.json's measured_on_note, not a row. Counted as 77
+// expected_relationships + 51 forbidden_relationships.)
 //
 // The rows below construct the combination directly. That makes the guard
 // defensive rather than load-bearing, and it makes MR3's DEAD verdict rest
