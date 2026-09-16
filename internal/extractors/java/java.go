@@ -1035,15 +1035,18 @@ func javaCallTarget(
 		// edges through their own code paths, so no class-level signal
 		// is lost.
 		//
-		// Falls back to the bare class name when the rightmost
-		// type_identifier could not be located (defensive — keeps the
-		// previous behaviour for malformed parses).
-		var className string
-		ids := findAllNodes(typ, "type_identifier")
-		if len(ids) > 0 {
-			n := ids[len(ids)-1]
-			className = string(src[n.StartByte():n.EndByte()])
-		} else {
+		// The LEAF type identifier is taken, so `new com.x.XController()`
+		// emits "XController.XController" and not "com.com" (#7096). The
+		// leaf is read structurally by leafTypeName — descending the
+		// generic / array / scoped shapes by the node's own children —
+		// rather than by indexing a flattened findAllNodes result, whose
+		// ordering is an implementation artefact of that walk.
+		//
+		// Falls back to the raw type text when leafTypeName cannot
+		// characterise the node (defensive — keeps the previous behaviour
+		// for malformed parses).
+		className := leafTypeName(typ, src)
+		if className == "" {
 			className = string(src[typ.StartByte():typ.EndByte()])
 		}
 		if className == "" {
@@ -1483,9 +1486,11 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 // initialiser shape. Used to type `var` locals (#4682, mirroring TS/JS #4680
 // and Python #4716): only a bare construction is trusted; factory/builder
 // calls, casts, chains, ternaries and literals stay unresolved so a `var`
-// receiver never types to a non-constructed class. The rightmost
-// type_identifier is taken (so `new com.x.XController(...)` → "XController",
-// matching javaCallTarget's object-creation handling).
+// receiver never types to a non-constructed class. The LEAF type identifier
+// is taken (so `new com.x.XController(...)` → "XController", matching
+// javaCallTarget's object-creation handling), read structurally via
+// leafTypeName; taking the last element of a flattened findAllNodes result
+// yielded the PACKAGE ROOT, so a qualified `var` typed to "com" (#7096).
 func newExprClassName(value ts.Node, src []byte) string {
 	if value == nil || value.Type() != "object_creation_expression" {
 		return ""
@@ -1494,9 +1499,8 @@ func newExprClassName(value ts.Node, src []byte) string {
 	if typ == nil {
 		return ""
 	}
-	if ids := findAllNodes(typ, "type_identifier"); len(ids) > 0 {
-		n := ids[len(ids)-1]
-		return string(src[n.StartByte():n.EndByte()])
+	if name := leafTypeName(typ, src); name != "" {
+		return name
 	}
 	return strings.TrimSpace(string(src[typ.StartByte():typ.EndByte()]))
 }
@@ -1528,11 +1532,33 @@ func leafTypeName(typ ts.Node, src []byte) string {
 			return leafTypeName(first, src)
 		}
 	case "scoped_type_identifier":
-		// `com.foo.Bar` — leaf is the rightmost type_identifier.
-		ids := findAllNodes(typ, "type_identifier")
-		if len(ids) > 0 {
-			n := ids[len(ids)-1]
-			return strings.TrimSpace(string(src[n.StartByte():n.EndByte()]))
+		// `com.foo.Bar` — the leaf is the node's LAST NAMED CHILD. The
+		// grammar is `seq(qualifier, '.', repeat(annotation), type_identifier)`
+		// (scoped_type_identifier declares no fields, so there is no
+		// ChildByFieldName to ask), which makes the trailing
+		// type_identifier the last named child even when the segment
+		// carries annotations — `com.foo.@Ann Bar` still yields "Bar".
+		//
+		// This used to index a flattened findAllNodes result at
+		// len-1 while calling that "the rightmost type_identifier".
+		// findAllNodes is a stack DFS that pushes children in index order
+		// and pops from the end, so its result is in REVERSE source order
+		// and len-1 is the LEFTMOST segment: `com.foo.Bar` reduced to
+		// "com", and a qualified receiver was then named after its
+		// package root (`com.getCounts`) — a plausible dotted target that
+		// binds confidently and wrong (#7096). Nothing pinned that
+		// ordering, so the dependency on it is removed rather than
+		// inverted.
+		//
+		// The child's text is read directly, with no test of its kind and
+		// no recursion: the grammar puts a type_identifier last in EVERY
+		// scoped shape it can produce (a generic or scoped qualifier sits
+		// before the dot, annotations before the identifier), so both a
+		// kind test and a recursive reduction would be arms nothing can
+		// reach — and an arm nothing can reach is an arm no fixture grades.
+		if n := int(typ.NamedChildCount()); n > 0 {
+			ch := typ.NamedChild(n - 1)
+			return strings.TrimSpace(string(src[ch.StartByte():ch.EndByte()]))
 		}
 	}
 	return ""
