@@ -48,7 +48,7 @@ func DefaultLayout() (Layout, error) {
 	// agree on the pipe name.
 	pipePath := transport.WindowsPipeName(root)
 
-	logDir := filepath.Join(root, "logs")
+	logDir := logDirForRoot(root)
 	// See no-rotation contract in layoutFromRoot (paths.go).
 	return Layout{
 		Root:       root,
@@ -56,6 +56,6 @@ func DefaultLayout() (Layout, error) {
 		SocketPath: pipePath,
 		PIDPath:    filepath.Join(root, "daemon.pid"),
 		LogDir:     logDir,
-		LogPath:    filepath.Join(logDir, "daemon.log"),
+		LogPath:    logPathForRoot(root),
 	}, nil
 }

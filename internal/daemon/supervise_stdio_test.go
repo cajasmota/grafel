@@ -21,27 +21,29 @@ import (
 // so the daemon's ability to spawn its own engine depended on a property of
 // its launcher that it neither controls nor checks. os/exec hands those
 // *os.Files to StartProcess, which duplicates the underlying descriptor/handle
-// into the child — and duplicating an INVALID one fails, so cmd.Start() fails
-// deterministically. supervise.go's run loop treats a failed spawn as a crash
-// (back off, retry), and a deterministic failure never recovers: it walks the
-// backoff to the ceiling and gives up. A Windows process launched by
-// `Start-Process -WindowStyle Hidden` with no -Redirect* flag runs under
-// UseShellExecute=true and has no valid standard handles at all.
+// into the child — and duplicating an unusable one fails on Windows, so
+// cmd.Start() fails deterministically. supervise.go's run loop treats a failed
+// spawn as a crash (back off, retry), and a deterministic failure never
+// recovers: it walks the backoff to the ceiling and gives up.
 //
-// The two graded directions:
+// The graded directions:
 //
-//   - TestEngineChildStdio_HealthyParentStillLogsToDaemonLog — the healthy
-//     `grafel start` shape (internal/cli/watcher_ctl.go's manual fork points
-//     the daemon's own stdout/stderr at daemon.log). Child output must still
-//     land in daemon.log. Green before AND after the fix: it is the
-//     no-regression direction.
-//   - TestEngineChildStdio_InvalidParentHandlesStillSpawns — the direction
-//     nothing graded: a parent whose standard handles are CLOSED must still
-//     spawn the child successfully, and the child's output must still reach
-//     the daemon's log. Red before the fix.
-//   - TestEngineChildStdio_UnopenableLogFallsBackAwayFromInherited — the
-//     fallback: when the owned sink cannot be opened, the spawn must still
-//     succeed (os.DevNull) and must NOT fall back to the inherited handle.
+//   - ..._HealthyParentKeepsTheLaunchdSplit — the no-regression direction, in
+//     the shape launchd actually installs (StandardOutPath=daemon.log,
+//     StandardErrorPath=daemon.err). Child stdout must still reach daemon.log
+//     and child stderr must still reach daemon.err, and NEITHER file may be
+//     truncated: the daemon's own logger has already written there. Green
+//     before AND after the fix.
+//   - ..._InvalidParentHandlesStillSpawns — the direction nothing graded: a
+//     parent whose standard handles are CLOSED must still spawn the child, and
+//     the child's output must still reach both owned files. Red before the fix.
+//   - ..._UnopenableSinksFallBackAwayFromInherited — the fallback: when the
+//     owned sinks cannot be opened, the cmd fields must be left nil (os/exec's
+//     os.DevNull), NOT set to a nil *os.File and NOT to the inherited handle.
+//   - ..._NonAbsoluteRootYieldsNoSink — an empty/relative root must not make
+//     the daemon adopt a logs/ directory in its cwd.
+//   - ..._SinksAreSharedAcrossSpawns — one sink per file, reused across
+//     relaunches, so a crash loop does not leak a descriptor per spawn.
 
 const (
 	engineStdioHelperEnv    = "GRAFEL_TEST_ENGINE_STDIO_HELPER"
@@ -73,7 +75,7 @@ func testBinary(t *testing.T) string {
 }
 
 // asEngineStdioHelper rewrites an already-constructed engine-child command's
-// ARGUMENTS so the test binary runs the helper process below, while KEEPING
+// ARGUMENTS so the test binary runs the helper process above, while KEEPING
 // the stdout/stderr and the program the production constructor chose. The
 // stdio wiring is the whole subject of these tests; the arguments are not, and
 // `grafel engine --foreground` is not something a unit test may run.
@@ -100,24 +102,24 @@ func withStdHandles(t *testing.T, out, errF *os.File, fn func()) {
 func daemonRootWithLogDir(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	// The production constructor caches an open sink per root. Registered
+	// The production constructor caches an open sink per path. Registered
 	// AFTER t.TempDir so it runs BEFORE TempDir's removal (cleanups are LIFO):
 	// Windows cannot remove a file that is still open.
 	t.Cleanup(closeEngineChildSinksForTest)
-	if err := os.MkdirAll(filepath.Join(root, "logs"), 0o700); err != nil {
+	if err := os.MkdirAll(logDirForRoot(root), 0o700); err != nil {
 		t.Fatalf("create logs dir: %v", err)
 	}
 	return root
 }
 
-func readDaemonLog(t *testing.T, root string) string {
+func readFileString(t *testing.T, path string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(root, "logs", "daemon.log"))
+	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ""
 		}
-		t.Fatalf("read daemon.log: %v", err)
+		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(b)
 }
@@ -146,47 +148,104 @@ func runEngineChildHelper(t *testing.T, cmd *exec.Cmd) error {
 	return nil
 }
 
-// TestEngineChildStdio_HealthyParentStillLogsToDaemonLog is the no-regression
-// direction: a daemon started the supported way (`grafel start` →
-// defaultManualForkStart, which points the daemon's own stdout/stderr at
-// layout.LogPath) must still see its engine child's output in daemon.log.
-func TestEngineChildStdio_HealthyParentStillLogsToDaemonLog(t *testing.T) {
+// assertChildStreamsLanded checks the artefact: the helper's stdout marker in
+// daemon.log, its stderr marker in daemon.err, and each marker ONLY in its own
+// file. Splitting them is the property launchd's plist defines
+// (StandardOutPath/StandardErrorPath) and the property `grafel status` and
+// `grafel doctor` depend on when they tell a user to read daemon.err.
+func assertChildStreamsLanded(t *testing.T, root string) {
+	t.Helper()
+	outLog := readFileString(t, logPathForRoot(root))
+	errLog := readFileString(t, errPathForRoot(root))
+
+	if !strings.Contains(outLog, engineStdioStdoutMarker) {
+		t.Errorf("engine child stdout did not reach daemon.log; daemon.log=%q", outLog)
+	}
+	if !strings.Contains(errLog, engineStdioStderrMarker) {
+		t.Errorf("engine child stderr did not reach daemon.err; daemon.err=%q", errLog)
+	}
+	if strings.Contains(outLog, engineStdioStderrMarker) {
+		t.Errorf("engine child stderr was folded into daemon.log, losing the daemon.err split; daemon.log=%q", outLog)
+	}
+	if strings.Contains(errLog, engineStdioStdoutMarker) {
+		t.Errorf("engine child stdout was folded into daemon.err; daemon.err=%q", errLog)
+	}
+}
+
+// seedLogs writes a sentinel into daemon.log and daemon.err, standing in for
+// what the daemon's own logger (and its service definition's redirects) have
+// already written there before the first engine spawn. Returns the sentinels.
+func seedLogs(t *testing.T, root string) (outSentinel, errSentinel string) {
+	t.Helper()
+	outSentinel = "sentinel-already-in-daemon-log\n"
+	errSentinel = "sentinel-already-in-daemon-err\n"
+	if err := os.WriteFile(logPathForRoot(root), []byte(outSentinel), 0o600); err != nil {
+		t.Fatalf("seed daemon.log: %v", err)
+	}
+	if err := os.WriteFile(errPathForRoot(root), []byte(errSentinel), 0o600); err != nil {
+		t.Fatalf("seed daemon.err: %v", err)
+	}
+	return outSentinel, errSentinel
+}
+
+// assertSentinelsSurvived is the O_APPEND grading. The engine child's sinks
+// must APPEND: daemon.log's byte offsets are a documented contract (#2300, the
+// bench harness reads by offset) and daemon.err is the only trace of prior
+// incidents that `grafel status` and `grafel doctor` point users at. Opening
+// either with O_TRUNC silently wipes what the daemon already logged.
+func assertSentinelsSurvived(t *testing.T, root, outSentinel, errSentinel string) {
+	t.Helper()
+	if got := readFileString(t, logPathForRoot(root)); !strings.HasPrefix(got, outSentinel) {
+		t.Errorf("spawning the engine child truncated daemon.log; want it to still start with %q, got %q", outSentinel, got)
+	}
+	if got := readFileString(t, errPathForRoot(root)); !strings.HasPrefix(got, errSentinel) {
+		t.Errorf("spawning the engine child truncated daemon.err; want it to still start with %q, got %q", errSentinel, got)
+	}
+}
+
+// TestEngineChildStdio_HealthyParentKeepsTheLaunchdSplit is the no-regression
+// direction, in the shape the installed service actually uses: launchd's plist
+// (internal/daemon/service/launchd_darwin.go) points the daemon's stdout at
+// daemon.log and its stderr at daemon.err. The engine child's output must
+// still reach the SAME two files, still split, and must not truncate either.
+func TestEngineChildStdio_HealthyParentKeepsTheLaunchdSplit(t *testing.T) {
 	exe := testBinary(t)
 	root := daemonRootWithLogDir(t)
-	logPath := filepath.Join(root, "logs", "daemon.log")
+	outSentinel, errSentinel := seedLogs(t, root)
 
-	// Exactly what defaultManualForkStart does for the daemon process itself.
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	// Exactly what launchd hands the daemon: two separate append handles.
+	parentOut, err := os.OpenFile(logPathForRoot(root), os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		t.Fatalf("open daemon.log: %v", err)
 	}
-	defer logFile.Close()
+	defer parentOut.Close()
+	parentErr, err := os.OpenFile(errPathForRoot(root), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open daemon.err: %v", err)
+	}
+	defer parentErr.Close()
 
 	var cmd *exec.Cmd
-	withStdHandles(t, logFile, logFile, func() {
+	withStdHandles(t, parentOut, parentErr, func() {
 		cmd = defaultEngineChildCommand(exe, root)
 	})
 	if err := runEngineChildHelper(t, asEngineStdioHelper(cmd)); err != nil {
 		t.Fatalf("spawn with a healthy parent failed: %v", err)
 	}
 
-	got := readDaemonLog(t, root)
-	if !strings.Contains(got, engineStdioStdoutMarker) {
-		t.Errorf("engine child stdout did not reach daemon.log; log=%q", got)
-	}
-	if !strings.Contains(got, engineStdioStderrMarker) {
-		t.Errorf("engine child stderr did not reach daemon.log; log=%q", got)
-	}
+	assertChildStreamsLanded(t, root)
+	assertSentinelsSurvived(t, root, outSentinel, errSentinel)
 }
 
 // TestEngineChildStdio_InvalidParentHandlesStillSpawns is the ungraded
 // direction from #7083: the daemon was handed no usable standard handles (a
 // Windows scheduled task, a service wrapper, or `Start-Process -WindowStyle
 // Hidden` with no -Redirect* flag). The engine child must still START, and its
-// output must still reach the sink the daemon owns.
+// output must still reach the sinks the daemon owns — without truncating them.
 func TestEngineChildStdio_InvalidParentHandlesStillSpawns(t *testing.T) {
 	exe := testBinary(t)
 	root := daemonRootWithLogDir(t)
+	outSentinel, errSentinel := seedLogs(t, root)
 
 	dead := closedFile(t)
 	var cmd *exec.Cmd
@@ -197,24 +256,21 @@ func TestEngineChildStdio_InvalidParentHandlesStillSpawns(t *testing.T) {
 		t.Fatalf("engine child failed to spawn from a parent with closed standard handles: %v", err)
 	}
 
-	got := readDaemonLog(t, root)
-	if !strings.Contains(got, engineStdioStdoutMarker) {
-		t.Errorf("engine child stdout did not reach daemon.log; log=%q", got)
-	}
-	if !strings.Contains(got, engineStdioStderrMarker) {
-		t.Errorf("engine child stderr did not reach daemon.log; log=%q", got)
-	}
+	assertChildStreamsLanded(t, root)
+	assertSentinelsSurvived(t, root, outSentinel, errSentinel)
 }
 
-// TestEngineChildStdio_UnopenableLogFallsBackAwayFromInherited pins the
-// fallback: when the daemon's own log sink cannot be opened, the child still
-// starts AND its output does not go to the inherited handle. The parent here
-// holds a perfectly VALID handle (a file its launcher gave it) — falling back
-// to it would reintroduce #7083 on the launcher shape that has no valid one.
-func TestEngineChildStdio_UnopenableLogFallsBackAwayFromInherited(t *testing.T) {
+// TestEngineChildStdio_UnopenableSinksFallBackAwayFromInherited pins the
+// fallback: when the daemon's own sinks cannot be opened, the child still
+// starts, the cmd fields are LEFT NIL (os/exec's documented os.DevNull), and
+// nothing goes to the inherited handle. The parent here holds perfectly VALID
+// handles — falling back to them would reintroduce #7083 on the launcher shape
+// that has no valid ones. Leaving a nil *os.File in the field instead of nil
+// would be #7083's defect itself on Windows: os/exec takes its *os.File branch,
+// and a nil *os.File's Fd() is ^uintptr(0).
+func TestEngineChildStdio_UnopenableSinksFallBackAwayFromInherited(t *testing.T) {
 	exe := testBinary(t)
-	// A root whose logs/ directory does not exist, so opening
-	// <root>/logs/daemon.log fails.
+	// A root whose logs/ directory does not exist, so opening both sinks fails.
 	root := filepath.Join(t.TempDir(), "no-such-root")
 	t.Cleanup(closeEngineChildSinksForTest)
 
@@ -229,38 +285,85 @@ func TestEngineChildStdio_UnopenableLogFallsBackAwayFromInherited(t *testing.T) 
 	withStdHandles(t, inherited, inherited, func() {
 		cmd = defaultEngineChildCommand(exe, root)
 	})
+	// Positive control AND the nil-*os.File guard: os/exec only connects the
+	// child to os.DevNull for a field that is nil interface-wide.
+	if cmd.Stdout != nil {
+		t.Errorf("Stdout = %#v, want an untouched nil field so os/exec uses os.DevNull", cmd.Stdout)
+	}
+	if cmd.Stderr != nil {
+		t.Errorf("Stderr = %#v, want an untouched nil field so os/exec uses os.DevNull", cmd.Stderr)
+	}
 	if err := runEngineChildHelper(t, asEngineStdioHelper(cmd)); err != nil {
-		t.Fatalf("engine child failed to spawn without a usable log sink: %v", err)
+		t.Fatalf("engine child failed to spawn without usable sinks: %v", err)
 	}
 
-	b, err := os.ReadFile(inheritedPath)
-	if err != nil {
-		t.Fatalf("read inherited sink: %v", err)
-	}
-	if got := string(b); strings.Contains(got, engineStdioStdoutMarker) || strings.Contains(got, engineStdioStderrMarker) {
+	if got := readFileString(t, inheritedPath); strings.Contains(got, engineStdioStdoutMarker) || strings.Contains(got, engineStdioStderrMarker) {
 		t.Errorf("engine child wrote to the INHERITED handle; sink=%q", got)
 	}
 }
 
-// TestEngineChildStdio_SinkIsSharedAcrossSpawns pins the resource claim in
-// engineChildLogSink's doc: the daemon opens ONE sink per root and reuses it.
-// The constructor has no completion hook (the seam returns only an *exec.Cmd),
-// so a fresh open per spawn would be a descriptor the parent never closes —
-// one leaked per relaunch, and a crash loop relaunches without bound.
-func TestEngineChildStdio_SinkIsSharedAcrossSpawns(t *testing.T) {
+// TestEngineChildStdio_NonAbsoluteRootYieldsNoSink pins the guard on a root
+// that is empty or relative: the derived path would then be relative to the
+// daemon's CWD, so a stray logs/ directory there would receive — and the
+// process would then cache — the engine child's output.
+func TestEngineChildStdio_NonAbsoluteRootYieldsNoSink(t *testing.T) {
+	exe := testBinary(t)
+	cwd := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cwd, "logs"), 0o700); err != nil {
+		t.Fatalf("create cwd logs dir: %v", err)
+	}
+	t.Chdir(cwd)
+	t.Cleanup(closeEngineChildSinksForTest)
+
+	for _, root := range []string{"", "." + string(os.PathSeparator), "relative-root"} {
+		t.Run("root="+root, func(t *testing.T) {
+			cmd := defaultEngineChildCommand(exe, root)
+			if cmd.Stdout != nil || cmd.Stderr != nil {
+				t.Errorf("root %q produced sinks (Stdout=%#v Stderr=%#v); a relative root resolves against the daemon's cwd",
+					root, cmd.Stdout, cmd.Stderr)
+			}
+		})
+	}
+
+	if _, err := os.Stat(filepath.Join(cwd, "logs", "daemon.log")); err == nil {
+		t.Error("a relative root created logs/daemon.log in the daemon's cwd")
+	}
+}
+
+// TestEngineChildStdio_SinksAreSharedAcrossSpawns pins the resource claim in
+// engineChildSink's doc: the daemon opens ONE sink per file and reuses it. The
+// constructor has no completion hook (the seam returns only an *exec.Cmd), so a
+// fresh open per spawn would be a descriptor the parent never closes — one
+// leaked per relaunch, and a crash loop relaunches without bound.
+func TestEngineChildStdio_SinksAreSharedAcrossSpawns(t *testing.T) {
 	exe := testBinary(t)
 	root := daemonRootWithLogDir(t)
 
-	first, ok := defaultEngineChildCommand(exe, root).Stdout.(*os.File)
+	first := defaultEngineChildCommand(exe, root)
+	second := defaultEngineChildCommand(exe, root)
+
+	firstOut, ok := first.Stdout.(*os.File)
 	if !ok {
-		t.Fatalf("engine child stdout is not an *os.File: %T", defaultEngineChildCommand(exe, root).Stdout)
+		t.Fatalf("engine child stdout is not an *os.File: %T", first.Stdout)
 	}
-	second, ok := defaultEngineChildCommand(exe, root).Stdout.(*os.File)
+	secondOut, ok := second.Stdout.(*os.File)
 	if !ok {
-		t.Fatal("engine child stdout is not an *os.File on the second spawn")
+		t.Fatalf("engine child stdout is not an *os.File on the second spawn: %T", second.Stdout)
 	}
-	if first != second {
-		t.Errorf("each spawn opened its own sink (fds %d and %d): the parent never closes them, so a crash loop leaks one per relaunch",
-			first.Fd(), second.Fd())
+	firstErr, ok := first.Stderr.(*os.File)
+	if !ok {
+		t.Fatalf("engine child stderr is not an *os.File: %T", first.Stderr)
+	}
+	secondErr, ok := second.Stderr.(*os.File)
+	if !ok {
+		t.Fatalf("engine child stderr is not an *os.File on the second spawn: %T", second.Stderr)
+	}
+
+	if firstOut != secondOut || firstErr != secondErr {
+		t.Errorf("each spawn opened its own sinks (stdout fds %d/%d, stderr fds %d/%d): the parent never closes them, so a crash loop leaks one per relaunch",
+			firstOut.Fd(), secondOut.Fd(), firstErr.Fd(), secondErr.Fd())
+	}
+	if firstOut == firstErr {
+		t.Error("stdout and stderr share one sink: the daemon.log/daemon.err split is gone")
 	}
 }

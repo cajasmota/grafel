@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,73 +100,86 @@ func engineChildCommand(selfExe, root string) *exec.Cmd {
 //     and inherited verbatim → both resolve <tmp>/state.
 //
 // root is retained in the signature (it is Layout.Root, threaded from the
-// supervisor). It is used to locate the daemon's own log sink for the child's
-// standard handles (see engineChildLogSink, #7083), but is still deliberately
+// supervisor). It is used to locate the daemon's own log sinks for the child's
+// standard handles (see engineChildSink, #7083), but is still deliberately
 // NOT written into the child env.
 func defaultEngineChildCommand(selfExe, root string) *exec.Cmd {
 	cmd := exec.Command(selfExe, "engine", "--foreground")
 	cmd.Env = os.Environ()
-	// Standard handles: the daemon's OWN log sink, never the inherited one
-	// (#7083). See engineChildLogSink. A nil Stdout/Stderr is os/exec's
-	// documented "connect the child to os.DevNull" — the deliberate fallback
-	// when the sink cannot be opened.
-	sink := engineChildLogSink(root)
-	if sink != nil {
-		cmd.Stdout = sink
-		cmd.Stderr = sink
+	// Standard handles: the daemon's OWN sinks, never the inherited ones
+	// (#7083), and stdout/stderr stay SPLIT the way the platform's own service
+	// definition splits them. See engineChildSink. A nil Stdout/Stderr is
+	// os/exec's documented "connect the child to os.DevNull" — the deliberate
+	// fallback when a sink cannot be opened. Leaving the field nil (rather
+	// than storing a nil *os.File) matters: os/exec takes its *os.File branch
+	// on a typed nil, whose Fd() is ^uintptr(0), which is #7083's own defect.
+	if out := engineChildSink(logPathForRoot(root)); out != nil {
+		cmd.Stdout = out
+	}
+	if errSink := engineChildSink(errPathForRoot(root)); errSink != nil {
+		cmd.Stderr = errSink
 	}
 	cmd.SysProcAttr = engineChildSysProcAttr()
 	executil.NoWindow(cmd)
 	return cmd
 }
 
-// engineChildSinkCache caches the engine child's log sink per daemon root.
+// engineChildSinkCache caches the engine child's log sinks per path.
 //
-// The file has to outlive defaultEngineChildCommand (os/exec duplicates the
+// A sink has to outlive defaultEngineChildCommand (os/exec duplicates the
 // descriptor/handle into the child at Start, but the *os.File stays the
 // PARENT's to close) and the constructor has no completion hook — the seam
 // returns only an *exec.Cmd. Opening one per spawn would therefore leak a
-// descriptor per relaunch in a crash loop. One sink per root, opened lazily
+// descriptor per relaunch in a crash loop. One sink per path, opened lazily
 // and held for the life of the process, is what the daemon actually wants
-// anyway: it is the same append-only daemon.log its own logger writes, under
-// the no-rotation contract (#2300, see layoutFromRoot).
+// anyway: these are the same append-only files its own logger and its service
+// definition write, under the no-rotation contract (#2300, see layoutFromRoot).
 var engineChildSinkCache = struct {
 	mu     sync.Mutex
 	byPath map[string]*os.File
 }{}
 
-// engineChildLogSink returns the file the engine child's stdout and stderr are
-// wired to: the daemon's OWN log (<root>/logs/daemon.log). It returns nil when
-// there is no usable owned sink, which makes the child's streams os.DevNull.
+// engineChildSink returns the file the engine child's stdout (or stderr) is
+// wired to, opened for APPEND so it never truncates what the daemon's own
+// logger has already written there — the byte-offset contract in #2300. It
+// returns nil when there is no usable owned sink, which leaves the
+// corresponding cmd field nil, i.e. os.DevNull.
 //
 // #7083: the child used to inherit os.Stdout/os.Stderr, so whether the daemon
 // could run its own engine depended on a property of whatever launched it —
 // one it does not control and never checks. os/exec passes those *os.Files to
 // StartProcess, which DUPLICATES the underlying descriptor/handle into the
-// child; on Windows duplicating an invalid handle fails and the spawn fails
+// child; on Windows duplicating an unusable handle fails and the spawn fails
 // with it. A process started by `Start-Process -WindowStyle Hidden` with no
-// -Redirect* flag runs under UseShellExecute=true and has no valid standard
-// handles at all, so every spawn fails deterministically — and run() treats a
-// failed spawn as a crash, so it backs off, retries, and gives up.
+// -Redirect* flag runs under UseShellExecute=true and has no standard handles
+// at all — and run() treats a failed spawn as a crash, so it backs off,
+// retries, and gives up.
 //
 // The daemon therefore OWNS the handles it hands down, unconditionally. It
 // does not probe the inherited ones: there is no portable way to ask whether a
 // handle the parent was given is usable (the reliable test is to use it, which
 // is the failure being avoided), and a probe would leave a second, untested
-// code path for exactly the launcher shape we cannot reproduce in CI. The
-// destination is unchanged for the supported launcher — `grafel start` already
-// points the daemon's own stdout/stderr at this very file (defaultManualForkStart
-// in internal/cli/watcher_ctl.go), so the child's output lands where it always
-// did.
+// code path for exactly the launcher shape we cannot reproduce in CI.
 //
-// The sink is never CREATED out of thin air: <root>/logs must already exist
-// (EnsureLayout makes it before serve starts). An empty root, a missing log
-// directory, or an unopenable log yields nil rather than an inherited handle.
-func engineChildLogSink(root string) *os.File {
-	if root == "" {
+// The destinations are the daemon's own two log files, which keeps the split
+// the platform service definitions already make: launchd's plist sends the
+// daemon's stdout to daemon.log and its stderr to daemon.err
+// (internal/daemon/service/launchd_darwin.go), and daemon.err is the file
+// `grafel status` and `grafel doctor` tell users to read after a failure. An
+// engine-child panic therefore lands where the product says it will, on every
+// launcher — including `grafel start` and systemd, which previously sent it to
+// daemon.log and to the journal respectively.
+//
+// The log DIRECTORY is never created here: <root>/logs must already exist
+// (EnsureLayout makes it before serve starts). The log FILE is created if
+// absent, as O_CREATE implies. An empty root, a missing log directory, or an
+// unopenable path yields nil rather than an inherited handle.
+func engineChildSink(path string) *os.File {
+	// An empty root would make path relative ("logs/daemon.log"), so a stray
+	// logs/ directory in the daemon's cwd would receive and cache engine output.
+	if path == "" || !filepath.IsAbs(path) {
 		return nil
 	}
-	path := logPathForRoot(root)
 
 	engineChildSinkCache.mu.Lock()
 	defer engineChildSinkCache.mu.Unlock()
