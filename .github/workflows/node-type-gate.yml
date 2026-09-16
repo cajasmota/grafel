@@ -1,0 +1,77 @@
+name: node-type gate
+
+# Closes #7065 — the always-on check that a tree-sitter matcher names a node
+# type the grammar actually has.
+#
+# THE GAP THIS FILLS
+# Every tree-sitter predicate in this repo is a string literal compared against
+# a grammar node kind, and a literal naming a node the grammar does not have is
+# a SILENT NO-OP. The guard stops guarding, the pass still runs, and every
+# recall-shaped instrument we own reports success because something was
+# produced. #7064 shipped `case "variant_type_parameter", "type_parameter":`
+# against tree-sitter-scala — neither node exists — and the resulting wrong edge
+# BOUND, with "26/26 bound" reported green. A reviewer dumping the CST found it;
+# no test could have. The #7065 audit then found 42 more dead literals, one of
+# them behaviour-visible (#7068).
+#
+# WHY A JOB AND NOT A TEST LEG
+# The gate loads 793 packages with full type information. Measured at ~13 s
+# warm, which is cheap for a job and much too slow to sit inside `go test ./...`
+# on three platforms. The job is the whole-tree run; the package's own tests are
+# the four positive controls, and they are small enough to live in the suite.
+#
+# SCOPE: node-type literal resolution only. Red here means exactly one of three
+# facts about this tree:
+#   1. a string literal in a node-type position names no node in ANY grammar its
+#      package can receive, and no baseline row covers it;
+#   2. a baseline row matches nothing any more — the literal was fixed or moved,
+#      so the row must be deleted; or
+#   3. the scan read fewer sites than its floor, i.e. the gate is not looking at
+#      the tree and its verdict means nothing.
+# All three are facts, not flakes. Do not add a step here that can fail for any
+# other reason.
+#
+# IF THIS GOES RED on a literal you believe is fine: it is not "fine" unless a
+# grammar the package receives really has that node. Check with a CST dump. The
+# baseline is for literals somebody has decided not to fix yet, each with a
+# written justification — not for silencing a new one.
+
+on:
+  # ALWAYS ON. A path filter would be wrong twice over: a grammar bump changes
+  # go.mod and renames nodes in files this repo never touches, and the sink
+  # fixpoint means a change to one helper can make literals elsewhere reachable.
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-type-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-type-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # The controls run FIRST and are not optional. A green gate whose controls
+      # are broken is worth nothing: the failure mode of a scan-and-assert-
+      # absence tool is to find nothing for the wrong reason. These four assert
+      # that the scala defect of #7064 is detected, that #7068's
+      # for_each_statement is detected, that a NEW dead literal is not
+      # suppressed by the baseline, and that a literal valid in one of a
+      # multi-grammar package's grammars does not fire.
+      - name: Positive controls
+        run: go test -count=1 -v ./tools/node-type-gate/
+
+      - name: node-type gate (whole tree)
+        run: go run ./tools/node-type-gate -report
