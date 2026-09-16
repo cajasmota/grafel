@@ -37,6 +37,34 @@
       "source_file": "Services/UserService.cs",
       "must_exist": true,
       "note": "IUserService implementation."
+    },
+    {
+      "name": "AuditEntry",
+      "kind": "SCOPE.Component",
+      "source_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068. The foreach element type, declared in the same file as its loop so the CALLS row below can bind without cross-file resolution."
+    },
+    {
+      "name": "AuditEntry.Touch",
+      "kind": "SCOPE.Operation",
+      "source_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068. The method called on the foreach loop variable."
+    },
+    {
+      "name": "AuditNote.Touch",
+      "kind": "SCOPE.Operation",
+      "source_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068. The COMPETITOR. A second same-named method in the same file, which is what makes this fixture capable of failing: with one Touch() the resolver's same-file leaf-name tier rewrote a bare Touch to AuditEntry.Touch and the gate could not tell a typed receiver from an untyped one (#7071). Measured, not assumed."
+    },
+    {
+      "name": "AuditLog.Replay",
+      "kind": "SCOPE.Operation",
+      "source_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068. Holds the only foreach in the entire golden corpus."
     }
   ],
   "expected_relationships": [
@@ -94,7 +122,11 @@
     { "from_name": "UsersController.GetById", "from_kind": "SCOPE.Operation", "from_file": "Controllers/UsersController.cs",
       "kind": "CALLS", "to_name": "UserService.GetByIdAsync", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
       "must_exist": false, "nice_to_have": true,
-      "note": "#6490 arm B FINDING: `await _userService.GetByIdAsync(id)` resolves only to the dangling bare name `IUserService.GetByIdAsync`. The constructor-injected field is not bound to the interface's single in-repo implementation, so the controller→service call is invisible. Java does resolve the equivalent (java-spring-mini's UserController.listUsers → UserService.listAll)." }
+      "note": "#6490 arm B FINDING: `await _userService.GetByIdAsync(id)` resolves only to the dangling bare name `IUserService.GetByIdAsync`. The constructor-injected field is not bound to the interface's single in-repo implementation, so the controller→service call is invisible. Java does resolve the equivalent (java-spring-mini's UserController.listUsers → UserService.listAll)." },
+    { "from_name": "AuditLog.Replay", "from_kind": "SCOPE.Operation", "from_file": "Services/UserService.cs",
+      "kind": "CALLS", "to_name": "AuditEntry.Touch", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "#7068 POSITIVE HALF. `foreach (AuditEntry entry in entries) { entry.Touch(); }` must type the loop variable, emit the dotted target and bind it to the same-file operation. The extractor matched `for_each_statement`, a node type tree-sitter-c-sharp does not have (it is `foreach_statement`), so the literal was UNPAIRED, the arm had never executed, no foreach loop variable was ever typed, and this edge came out as the bare leaf `Touch`. This is the only foreach in the golden corpus, so before this row nothing in CI graded the arm at all." }
   ],
   "forbidden_relationships": [
     { "from_name": "UsersController", "from_kind": "Controller", "from_file": "Controllers/UsersController.cs",
@@ -108,6 +140,14 @@
     { "from_name": "UserService", "from_kind": "SCOPE.Component", "from_file": "Services/UserService.cs",
       "kind": "IMPLEMENTS", "to_bare_name": "Task",
       "must_exist": false,
-      "note": "#6742: `public async Task<User> GetByIdAsync(int id)` — a return type, not a base list. A supertype harvested from anywhere but the declaration's base_list node lands here." }
+      "note": "#6742: `public async Task<User> GetByIdAsync(int id)` — a return type, not a base list. A supertype harvested from anywhere but the declaration's base_list node lands here." },
+    { "from_name": "AuditLog.Replay", "from_kind": "SCOPE.Operation", "from_file": "Services/UserService.cs",
+      "kind": "CALLS", "to_bare_name": "Touch",
+      "must_exist": false,
+      "note": "#7068 NEGATIVE HALF, paired with the CALLS row above. The bare-leaf residue of the dead node-type literal. Recall alone cannot grade this arm: a bare `Touch` is a well-formed edge that every instrument counts as produced, and it carries no receiver type for the resolver to disambiguate with, so whatever it binds to is scored as a confident success (#7071). The pairing is what makes each row mean something — the forbidden row alone would also pass if the fixture stopped extracting entirely, and the must_exist row alone would pass if BOTH targets were emitted." },
+    { "from_name": "AuditLog.Replay", "from_kind": "SCOPE.Operation", "from_file": "Services/UserService.cs",
+      "kind": "CALLS", "to_name": "AuditNote.Touch", "to_kind": "SCOPE.Operation", "to_file": "Services/UserService.cs",
+      "must_exist": false,
+      "note": "#7068 DISCRIMINATION. The loop variable is an AuditEntry, so the call must reach AuditEntry.Touch and never the competitor. Without this row a receiver-typing rule that picked any same-named method would score 14/14 on recall; with it, the two CALLS rows together pin WHICH of the two identically-named operations the type selects." }
   ]
 }

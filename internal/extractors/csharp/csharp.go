@@ -968,56 +968,130 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// #7068: this loop used to match `for_each_statement`, a node type
 	// tree-sitter-c-sharp does not have (the grammar spells it
 	// `foreach_statement`), and the literal was UNPAIRED — no arm anywhere
-	// matched the real name — so the whole loop had NEVER EXECUTED. Its body
-	// was therefore not known to be correct either, and an audit against real
-	// CST dumps found two things wrong with it beyond the label:
+	// matched the real name — so the whole loop had NEVER EXECUTED. Code that
+	// has never run is not known to be correct, and an audit of the body
+	// against real CST dumps found three separate defects beyond the label.
 	//
-	//   1. `implicit_type` ("var") reaches leafTypeName's last-resort branch,
-	//      which returns the raw text "var" because it IS a well-formed C#
-	//      identifier. Correcting the label alone would have bound the loop
-	//      variable to a pseudo-type and emitted `var.Process` — a FABRICATED
-	//      receiver type, the emit-wrong direction. isImplicitVarType now
-	//      refuses it, matching the local_declaration_statement path above
-	//      (#4685). A `foreach`'s `right` field is the COLLECTION, not the
-	//      element, so RHS inference of the kind inferImplicitLocalType does
-	//      for locals cannot be reused here: it would need the collection's
-	//      generic argument. `foreach (var o in …)` therefore stays untyped
-	//      and its calls keep their bare leaf — a known limit, not a bug.
+	//   1. FABRICATED PSEUDO-TYPES. `implicit_type` reaches leafTypeName's
+	//      last-resort branch, which returns the raw text "var" because `var`
+	//      IS a well-formed C# identifier. Correcting the label alone would
+	//      have emitted `var.Process` — a fabricated DOTTED receiver, which is
+	//      worse than the honest bare name it replaces because a dotted target
+	//      escapes the resolver's bare-name class entirely (#7056).
+	//      `dynamic` is the same category wearing a different node: it is a
+	//      contextual keyword meaning "no static type", but the grammar spells
+	//      it `identifier`, so leafTypeName returns "dynamic" and the arm would
+	//      emit `dynamic.Process`. csNonBindableTypeKeyword refuses BOTH.
 	//
-	//   2. The deleted "first identifier child" name fallback was reachable —
-	//      and wrong. The only form that reaches it is a deconstructing
-	//      `foreach (var (a, b) in pairs)`, whose `type` field is present
-	//      (implicit_type) while `left` is a tuple_pattern. On that input the
-	//      fallback scanned the statement's direct children and found `pairs`
-	//      — the COLLECTION — binding it to "var". The implicit guard above
-	//      now refuses that input before the name is looked at, and for every
-	//      form with a real `type` field the CST gives `left` as an identifier
-	//      (see foreach_localvar_7068_test.go for the enumerated dump), so the
-	//      fallback is both unreachable and known-wrong. It is gone.
+	//      A `foreach`'s `right` field is the COLLECTION, not the element, so
+	//      inferImplicitLocalType's RHS trick cannot be reused here — it would
+	//      need the collection's generic argument. `foreach (var o in …)`
+	//      therefore stays untyped and its calls keep their bare leaf. That is
+	//      a known limit, not a bug, and it is where the recall actually is:
+	//      96.6% of the `foreach` statements in the measured corpus are `var`.
 	//
-	// Forms that DO bind, confirmed by CST dump: identifier (`Order o`),
-	// predefined_type (`string s`), generic_name (`List<Order> g`), array_type
-	// (`Order[] a`), nullable_type (`Order? o`) and qualified_name
-	// (`Ns.Order o`) — plus `await foreach`, which is the same node.
-	// findAllNodes is a full descendant walk, so nested loops bind too.
+	//      STILL FABRICATED, pinned as known-wrong rather than fixed: an open
+	//      GENERIC TYPE PARAMETER. `foreach (T o in xs)` inside `class C<T>`
+	//      parses as `identifier` and emits `T.Process`. Refusing it needs
+	//      type-parameter SCOPE, which this extractor does not have anywhere —
+	//      classCtx carries only `fields`, and the neighbouring #6912 field-type
+	//      pass records the identical hole as its own known limitation with its
+	//      own pinned over-fire tests (field_type_refs.go, "an open type
+	//      parameter `T` is dropped only because nothing in the file happens to
+	//      be named `T`"). Building that scope is a separate arm; a name
+	//      blocklist guessing at `T`/`TKey` would be worse than the honest gap.
+	//      TestCSharp_Foreach7068_TypeParameterIsFabricated_KnownWrong pins it,
+	//      and a fix is EXPECTED to break that test.
 	//
-	// Forms that deliberately bind NOTHING, each pinned by a test: an
-	// explicitly typed deconstruction `foreach ((Order a, Order b) in xs)`
-	// (no `type` field at all), `foreach (var o in xs)` and
-	// `foreach (var (a, b) in xs)` (implicit guard above), and
-	// `foreach (ref Order o in span)` — ref_type has no leafTypeName case, so
-	// its raw text "ref Order" fails the identifier allow-list and yields "".
-	// The ref form is an unfixed gap, not a decision; it is out of scope here.
+	//   2. A WRONG NAME FALLBACK. The arm fell back to "first identifier child"
+	//      when the `left` field was not an identifier. The only form that
+	//      reaches it is `foreach (var (a, b) in pairs)` — `type` is present
+	//      (`implicit_type`, so the empty-type guard does not fire) and `left`
+	//      is a `tuple_pattern`. The fallback then scanned direct children and
+	//      found `pairs`, the COLLECTION, binding it to "var" so a later
+	//      `pairs.Clear()` emitted `var.Clear`. There are 7 such statements in
+	//      the measured corpus. It is deleted: the keyword guard above now
+	//      refuses that input before a name is looked at, and no OTHER form is
+	//      known that reaches the fallback. Note the precise claim — it is NOT
+	//      "every form with a `type` field has an identifier `left`", which the
+	//      `var (a, b)` case above disproves; it is that every form REACHING
+	//      this point does, over the enumerated space in
+	//      foreach_localvar_7068_test.go. That space is not proven exhaustive.
+	//
+	//   3. A LAST-WRITER-WINS OVERWRITE. This pass runs AFTER the
+	//      local_declaration_statement pass over the same `out` map, so a plain
+	//      `out[name] = typ` let a `foreach` binding CLOBBER a local's —
+	//      regardless of source order, because the two passes are separate
+	//      walks. A `foreach` variable's scope is its own statement, so a
+	//      sibling block may legally reuse the name, and clobbering turned a
+	//      previously-CORRECT `Order.Ship` into `Line.Ship`. That would have
+	//      been a regression minted by this change, not a pre-existing one.
+	//
+	//      Hence the two-stage shape below. Its INVARIANT: a name already bound
+	//      by the locals pass is never touched, and two `foreach` loops binding
+	//      one name to DIFFERENT types refuse each other. So `out` after this
+	//      pass is a strict SUPERSET of what it held before, agreeing on every
+	//      shared key — no receiver that resolved correctly without this arm
+	//      can change. "0 changed-target rows" is therefore structural, not
+	//      merely a corpus observation. The flat map still cannot model block
+	//      scope, so a same-name/different-type collision degrades to a bare
+	//      leaf rather than to a wrong dotted target.
+	//
+	// Forms that DO bind — the enumerated space, NOT proven exhaustive:
+	// identifier (`Order o`), predefined_type (`string s`), generic_name
+	// (`List<Order> g`), array_type (`Order[] a`), nullable_type (`Order? o`),
+	// qualified_name (`Ns.Order o`) and alias_qualified_name — the last only in
+	// its SINGLE-segment form (`global::Order o`), since `global::A.B.Foo`
+	// parses as a qualified_name whose qualifier merely contains the alias.
+	// Plus `await foreach`, which is the same node. findAllNodes is a full
+	// descendant walk, so nested loops bind.
+	//
+	// pointer_type (`Node* p`) is a deliberate half-entry. It shares
+	// leafTypeName's `array_type, pointer_type` case and DOES enter the map, but
+	// no compilable C# turns that into a dotted CALLS target: a pointer has no
+	// members, so `p.Touch()` does not compile, and the `p->Touch()` that does
+	// is not a `member_access_expression` and never reaches receiver typing.
+	// Listing it as a binding form would assert something no valid program can
+	// observe; the observed bare result is pinned instead.
+	//
+	// Forms that bind NOTHING, each pinned by a test: an explicitly typed
+	// deconstruction `foreach ((Order a, Order b) in xs)` (no `type` field at
+	// all), `foreach (var o in xs)`, `foreach (dynamic d in xs)` and
+	// `foreach (var (a, b) in xs)` (keyword guard), and `foreach (ref Order o in
+	// span)` / `ref readonly` — `ref_type` has no leafTypeName case, so its raw
+	// text "ref Order" fails the identifier allow-list and yields "". The ref
+	// form is an unfixed gap, not a decision; it is out of scope here.
+	feTypes := map[string]string{}
+	feAmbiguous := map[string]bool{}
 	for _, fr := range findAllNodes(body, "foreach_statement") {
 		typ := leafTypeName(fr.ChildByFieldName("type"), src)
-		if typ == "" || isImplicitVarType(typ) {
+		// An empty `typ` means "we could not determine a type". Such a
+		// statement must not reach the ledger below at all: writing "" would
+		// both poison the ambiguity check against a later real binding of the
+		// same name and, before the two-stage rewrite, have overwritten a
+		// correct local binding with a value receiverTypeName reads as absent.
+		if typ == "" || csNonBindableTypeKeyword(typ) {
 			continue
 		}
 		l := fr.ChildByFieldName("left")
 		if l == nil || l.Type() != "identifier" {
 			continue
 		}
-		out[string(src[l.StartByte():l.EndByte()])] = typ
+		name := string(src[l.StartByte():l.EndByte()])
+		if prev, seen := feTypes[name]; seen && prev != typ {
+			feAmbiguous[name] = true
+			continue
+		}
+		feTypes[name] = typ
+	}
+	for name, typ := range feTypes {
+		if feAmbiguous[name] {
+			continue
+		}
+		if _, taken := out[name]; taken {
+			continue
+		}
+		out[name] = typ
 	}
 	return out
 }
@@ -1029,6 +1103,34 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 // type" and fall back to RHS inference (#4685).
 func isImplicitVarType(declType string) bool {
 	return declType == "var"
+}
+
+// csNonBindableTypeKeyword reports whether a declared-type leaf is a C# keyword
+// that occupies a type position without NAMING a type, so binding a receiver to
+// it would fabricate a dotted target (#7068).
+//
+// Two tokens qualify, and they reach here through DIFFERENT node types, which
+// is why one string check covers both and neither is redundant:
+//
+//	var      → implicit_type, whose raw text leafTypeName returns verbatim
+//	dynamic  → identifier, which leafTypeName returns by its first case
+//
+// Both mean "no static type is known here". Emitting `var.Process` or
+// `dynamic.Process` is strictly worse than the bare `Process` that not binding
+// produces, because a dotted target leaves the resolver's bare-name class and
+// is scored as a confident bind (#7071).
+//
+// This is deliberately an exact-token list, not a heuristic. It does NOT catch
+// an open generic type parameter (`foreach (T o in xs)`) — see the type
+// parameter note in collectLocalVarTypes; that needs scope, not a word list.
+//
+// SCOPE: this predicate is used by the `foreach` arm ONLY. The
+// local_declaration_statement path above keeps isImplicitVarType, so
+// `dynamic d = x; d.P();` still fabricates `dynamic.P` exactly as it does on
+// main. Widening the locals path is a behaviour change to code that has always
+// run and belongs to its own graded change, not to this node-type fix.
+func csNonBindableTypeKeyword(declType string) bool {
+	return declType == "var" || declType == "dynamic"
 }
 
 // inferImplicitLocalType returns the leaf class name a `var` local is bound to
