@@ -10,8 +10,8 @@ import (
 
 // THE REPORTING PATH IS GRADED HERE, AS A SURFACE.
 //
-// Six review rounds of this PR produced six findings, and every one of them was
-// the same finding: some part of the reporting path was ungraded.
+// Every review round of this PR has produced the same finding: some part of the
+// reporting path was ungraded.
 //
 //	round 2  deleting printVerdict's whole skip block left the suite green
 //	round 3  the per-row "[baselined]" tag was pinned; the COUNTER that sums
@@ -24,15 +24,26 @@ import (
 //	         mirrored, surviving the test built for it — and five more
 //	         printer mutants (delete the headline, swap resolved/distinct,
 //	         delete two whole sections, swap distinct/files) were all alive
+//	round 5  printReport's two section guards relaxed to `>= 0`, and its
+//	         whitelist loop's no-grammar guard deleted, were all three alive
+//	         — the goldens below could not see any of them, because all three
+//	         are ABSENT-direction mutants (see the limit stated next)
 //
-// The pattern behind all six is that the printers were treated as a list of
-// lines to patch one at a time. They are not; they are a SURFACE, and a surface
-// is covered by asserting its whole emitted shape. So each printer has one
-// golden test below that compares its complete output, byte for byte, against a
-// literal written out in full. A deleted line, a deleted section, a swapped
-// argument and a reworded label all red it, whether or not anyone thought of
-// that mutant in advance — which is the only property that would have caught
-// all six rounds.
+// The pattern is that the printers were treated as a list of lines to patch one
+// at a time. They are not; they are a SURFACE, and a surface is covered by
+// asserting its whole emitted shape. So each printer has one golden test below
+// that compares its complete output, byte for byte, against a literal written
+// out in full. A deleted line, a swapped argument and a reworded label all red
+// it whether or not anyone thought of that mutant in advance, and so does a
+// deleted section — which is what rounds 2 through 4 needed.
+//
+// THE LIMIT OF A GOLDEN, which round 5 charged for. A golden is ONE fixture, so
+// it can only ever show a conditional block in its PRESENT direction. It cannot
+// see a guard loosened to fire when it should not: the section appears, empty,
+// and the golden fixture — in which that section appears anyway — is unchanged.
+// Every conditional in either printer therefore needs a SECOND test, on a
+// fixture where the block must not appear. Those tests are the last group in
+// this file, and the enumeration above them says which guard each one scores.
 //
 // TWO RULES FOR EVERYTHING IN THIS FILE.
 //
@@ -48,9 +59,14 @@ import (
 //
 //  2. NO "COVERS X" CLAIM WITHOUT DELETING X FIRST. A comment added in round 3
 //     said one test "covers the rest of printReport's output" while two whole
-//     sections of it were deletable with the suite green. That was the fourth
-//     consecutive round with a false comment in this file, all of them
-//     permissive. Delete the thing, watch something red, then write the claim.
+//     sections of it were deletable with the suite green. Round 5 found the
+//     next one: a header claiming "the remaining tests pin the printer's
+//     CONDITIONAL behaviour" sat above tests that reached printVerdict's
+//     conditionals only, while all three of printReport's were ungraded. That
+//     is FIVE consecutive rounds with a false comment in this file, all of them
+//     permissive, which makes it a habit and not five accidents. Delete the
+//     thing, watch something red, then write the claim — and write the claim
+//     no wider than the thing you actually deleted.
 //
 // The golden tests are deliberately brittle: any intentional change to the
 // output must be reflected here, and that edit is the moment to ask whether the
@@ -149,14 +165,15 @@ func miss(dir, file string, line int, lit, form string, grammars []string, alias
 //	miss line   10 misses = 5 baselined + 3 deferred + 2 new
 //
 // The two skipped dirs differ in exemption state, the four alias misses differ
-// in baselined state, and the misses cover all three dispositions, so every
-// conditional block in the printer contributes bytes to the golden. Note the
-// limit of that, because it is exactly the kind of claim this file has got
-// wrong four rounds running: one fixture can only exercise each branch in its
-// PRESENT direction. "The skip block is absent on a clean run", "the alias
-// block is absent", "OK rather than FAIL", and the count-floor path emit
-// nothing here and are covered by the conditional tests at the bottom of this
-// file, not by the golden.
+// in baselined state, and the misses cover all three dispositions, so the skip
+// block, the alias block, the miss line and the FAIL verdict all contribute
+// bytes to the golden. The count floor does NOT: this fixture is well above it,
+// so printVerdict's floor branch emits nothing here. That is the general limit,
+// and it is exactly the kind of claim this file has got wrong five rounds
+// running: one fixture can only exercise each branch in its PRESENT direction.
+// "The skip block is absent on a clean run", "the alias block is absent", "OK
+// rather than FAIL", and the count-floor error are covered by the conditional
+// tests at the bottom of this file, not by the golden.
 func verdictFixture() Result {
 	const js = "internal/extractors/javascript"
 	al := func(lit string, baselined bool) Miss {
@@ -505,13 +522,44 @@ func TestPrintReport_NamesBothFixpointSurfaces(t *testing.T) {
 	}
 }
 
-// The remaining tests pin the printer's CONDITIONAL behaviour, which a golden
-// built from one fixture cannot reach: a golden shows what is printed when a
-// section applies, never that it is absent when it does not.
+// ---------------------------------------------------------------------------
+// CONDITIONAL BEHAVIOUR: every guarded block in BOTH printers, in its ABSENT
+// direction — the direction no golden can reach.
+//
+// An earlier version of this header said "the remaining tests pin the printer's
+// CONDITIONAL behaviour". That was round 5's false comment. Singular "the
+// printer" was printVerdict: the tests under it reached printVerdict's guards
+// and none of printReport's, and all three of printReport's were alive.
+//
+// So the claim is now an enumeration rather than an adjective. report.go has
+// six guarded blocks whose absent direction is a separate claim; each line
+// names the guard, its site, and the test that scores it. Each was scored by
+// applying the mutant and watching that test red.
+//
+//	report.go:31   res.FloorBreached()         printVerdict floor error
+//	                 -> the golden (the fixture is above the floor, so an
+//	                    always-firing guard adds a line the golden rejects)
+//	report.go:37   len(res.Skipped) > 0        printVerdict skip block
+//	                 -> TestPrintVerdict_NoSkippedSurfaceSaysNothing
+//	report.go:60   len(res.AliasMisses) > 0    printVerdict alias block
+//	                 -> TestPrintVerdict_NoSkippedSurfaceSaysNothing
+//	report.go:133  no-grammar guard            printReport whitelist loop
+//	                 -> TestPrintReport_WhitelistCountExcludesPackagesWithNoGrammar
+//	report.go:160  len(res.Skipped) > 0        printReport skip section
+//	                 -> TestPrintReport_SkippedSectionIsAbsentWhenNothingWasSkipped
+//	report.go:173  len(dynamicRegs) > 0        printReport registration section
+//	                 -> TestPrintReport_DynamicRegistrationSectionIsAbsentWhenEveryKeyIsConstant
+//
+// Note that report.go:37 and report.go:160 are the SAME EXPRESSION at two
+// sites. Round 4 scored :37, got DEAD, and reported that the absent direction
+// was graded; :160 was alive. A verdict at one occurrence says nothing about
+// its twin, so both are listed and both were scored.
 
-// TestPrintVerdict_NoSkippedSurfaceSaysNothing: the skip block must be
-// conditional, so a clean tree does not print a "0 sites in 0 packages" line
-// that trains readers to skip it.
+// TestPrintVerdict_NoSkippedSurfaceSaysNothing scores TWO of printVerdict's
+// guards at once — the skip block (report.go:37) and the alias block
+// (report.go:60) — plus the OK arm of the final verdict switch. A clean tree
+// must not print a "0 sites in 0 packages" line, or an empty alias block:
+// headers that carry no information train readers to skip them.
 func TestPrintVerdict_NoSkippedSurfaceSaysNothing(t *testing.T) {
 	got := verdictFor(Result{Resolved: 3000, Distinct: 900})
 	if strings.Contains(got, "were NOT checked") {
@@ -570,4 +618,179 @@ func TestPrintVerdict_FloorBreachSaysTheVerdictIsMeaningless(t *testing.T) {
 		"the verdict below means nothing",
 		"node-type-gate: FAIL (count floor)",
 	)
+}
+
+// ---------------------------------------------------------------------------
+// printReport's three guards, in their ABSENT direction — the round 5 group.
+//
+// All three came back ALIVE at a83dd07b3: the two section guards relaxed to
+// `>= 0`, and the whitelist loop's no-grammar guard deleted. They survived for
+// one reason. Every assertion on this printer either compared a single
+// fixture's full output, or re-derived a COUNTER the code keeps about itself.
+// The first cannot show a section ABSENT; the second is not an observation of
+// the emitted artefact at all. An empty section under a header — exactly what a
+// `>= 0` mutant emits — is invisible to both. Assert the artefact.
+
+// conditionalSectionsFixture drives the absent-direction tests. Both of
+// printReport's conditional sections apply in it, so each test below can
+// switch off exactly ONE of them and assert two things at once: the section it
+// switched off is gone, and the section it left alone is still there. That
+// second half is what stops the test passing because the printer went silent
+// for some unrelated reason.
+//
+// The accounting reconciles as built: 2 resolved + 1 in a package with no
+// grammar + 0 whitelisted = 3 sites.
+func conditionalSectionsFixture() (Result, map[string]*Grammar) {
+	const (
+		js     = "internal/extractors/javascript"
+		engine = "internal/engine"
+		jsFile = js + "/extractor.go"
+		enFile = engine + "/dispatch.go"
+	)
+	site := func(dir, file, lit string) Site {
+		return Site{Pkg: dir, Dir: dir, File: file, Line: 1, Lit: lit, Form: FormCmp, Const: true}
+	}
+	return Result{
+			Sites: []Site{
+				site(js, jsFile, "identifier"),
+				site(js, jsFile, "object"),
+				site(engine, enFile, "arrow_function"),
+			},
+			Resolved:        2,
+			Distinct:        2,
+			DirsWithGrammar: []string{js},
+			GrammarsForDir:  map[string][]string{js: {"javascript"}},
+			Registrations: []Registration{
+				{Dir: js, Key: "javascript", File: jsFile, Line: 8},
+				{Dir: engine, Key: "", File: enFile, Line: 61},
+			},
+			Skipped:      []SkippedDir{{Dir: engine, Sites: 1, Reason: "runtime language"}},
+			SkippedSites: 1,
+		}, map[string]*Grammar{
+			"javascript": {Key: "javascript", Kinds: map[string]bool{"identifier": true, "object": true}},
+		}
+}
+
+const (
+	skippedSectionHeader = "== packages with sites but no derivable grammar =="
+	dynamicSectionHeader = "== registrations with a non-constant language key (mapping not derivable) =="
+)
+
+// TestPrintReport_SkippedSectionIsAbsentWhenNothingWasSkipped grades
+// report.go:160 — the SECOND of the two `len(res.Skipped) > 0` occurrences.
+// The first (printVerdict, report.go:37) is graded by
+// TestPrintVerdict_NoSkippedSurfaceSaysNothing; the two are scored separately
+// on purpose, because round 4 assumed one covered the other and it did not.
+//
+// The present direction of this same guard is covered by
+// TestPrintReport_FullEmittedShape, whose fixture has a skipped package.
+//
+// VARIED: whether anything was skipped — the ONLY axis. The registration
+// section is held present so a mutant that suppressed all sections is still
+// caught here.
+// HELD CONSTANT: every other field of the Result, and the grammar map.
+func TestPrintReport_SkippedSectionIsAbsentWhenNothingWasSkipped(t *testing.T) {
+	res, grammars := conditionalSectionsFixture()
+	// Drop the unmapped package entirely: no skipped dirs, no sites in one.
+	// The accounting still reconciles — 2 resolved + 0 + 0 = 2 sites.
+	res.Sites = res.Sites[:2]
+	res.Skipped = nil
+	res.SkippedSites = 0
+
+	out := reportFor(res, grammars)
+	if strings.Contains(out, skippedSectionHeader) {
+		t.Errorf("nothing was skipped, yet printReport emitted the skipped-packages header.\n"+
+			"An empty section under a header is worse than no section: readers learn the header\n"+
+			"carries no information and stop reading it.\n--- emitted ---\n%s", out)
+	}
+	if !strings.Contains(out, dynamicSectionHeader) {
+		t.Errorf("the non-constant-registration section vanished too — this test would pass on a\n"+
+			"printer that emitted nothing at all, so it must fail here instead.\n--- emitted ---\n%s", out)
+	}
+}
+
+// TestPrintReport_DynamicRegistrationSectionIsAbsentWhenEveryKeyIsConstant
+// grades report.go:173. `len(dynamicRegs) > 0` occurs ONCE in report.go.
+//
+// The present direction is covered by TestPrintReport_FullEmittedShape, whose
+// fixture carries one non-constant registration.
+//
+// VARIED: whether any registration has a non-constant key — the ONLY axis. The
+// skipped-packages section is held present as the same liveness check.
+// HELD CONSTANT: every other field of the Result, and the grammar map.
+func TestPrintReport_DynamicRegistrationSectionIsAbsentWhenEveryKeyIsConstant(t *testing.T) {
+	res, grammars := conditionalSectionsFixture()
+	// Give the one non-constant registration a constant key. The registration
+	// stays — only its derivability changes.
+	for i := range res.Registrations {
+		if res.Registrations[i].Key == "" {
+			res.Registrations[i].Key = "javascript"
+		}
+	}
+
+	out := reportFor(res, grammars)
+	if strings.Contains(out, dynamicSectionHeader) {
+		t.Errorf("every registration key is constant, yet printReport emitted the\n"+
+			"non-constant-registration header. This section names the registrations whose\n"+
+			"mapping could NOT be derived; printing it empty says the opposite of nothing.\n"+
+			"--- emitted ---\n%s", out)
+	}
+	if !strings.Contains(out, skippedSectionHeader) {
+		t.Errorf("the skipped-packages section vanished too — this test would pass on a printer\n"+
+			"that emitted nothing at all, so it must fail here instead.\n--- emitted ---\n%s", out)
+	}
+}
+
+// TestPrintReport_WhitelistCountExcludesPackagesWithNoGrammar grades
+// report.go:133, the `len(res.GrammarsForDir[s.Dir]) == 0 { continue }` guard
+// in the whitelist loop.
+//
+// That guard is not cosmetic: it is what makes the accounting line reconcile.
+// gate.go:182 skips an unmapped package's sites BEFORE the whitelist check at
+// gate.go:190, so such a site is counted once, in SkippedSites. printReport's
+// loop has to skip in the same order. Without the guard an ERROR literal in an
+// unmapped package is counted BOTH as skipped and as whitelisted, and the
+// accounting sum overshoots the site total it claims to reconcile with — which
+// is precisely the failure mode "an accounting line that does not reconcile is
+// read as a confirmation" was written about.
+//
+// The fixture is not manufactured to reach a dead line. Unmapped packages
+// already reach report.go:133 on every run (TestPrintReport_FullEmittedShape's
+// engine sites do); this one differs only in that its literal is a runtime kind,
+// which is the single condition under which the guard changes an outcome.
+//
+// VARIED: the literal in the unmapped package — a runtime kind (ERROR) rather
+// than an ordinary node name. That is the only axis on which the guard has an
+// effect.
+// HELD CONSTANT: the mapped package and its two resolved sites, so the
+// whitelist count cannot be moved from the mapped side.
+func TestPrintReport_WhitelistCountExcludesPackagesWithNoGrammar(t *testing.T) {
+	res, grammars := conditionalSectionsFixture()
+	// The unmapped package's one site is a runtime kind. It is already counted
+	// in SkippedSites; it must NOT also be counted as whitelisted.
+	res.Sites[2].Lit = "ERROR"
+
+	out := reportFor(res, grammars)
+	acct := numsIn(t, out, "  accounting ")
+	if len(acct) != 4 {
+		t.Fatalf("accounting line has %d numbers, want 4 (resolved, skipped, whitelisted, sum): %v\n%s", len(acct), acct, out)
+	}
+	resolved, skipped, whitelisted, sum := acct[0], acct[1], acct[2], acct[3]
+
+	if whitelisted != 0 {
+		t.Errorf("accounting reports %d whitelisted, want 0. The only runtime-kind literal in this\n"+
+			"fixture sits in a package with NO grammar, so it is already accounted for as skipped;\n"+
+			"counting it again here double-counts it.\n--- emitted ---\n%s", whitelisted, out)
+	}
+	if resolved != res.Resolved {
+		t.Errorf("accounting reports %d resolved, want %d", resolved, res.Resolved)
+	}
+	if skipped != res.SkippedSites {
+		t.Errorf("accounting reports %d skipped, want %d", skipped, res.SkippedSites)
+	}
+	if sum != len(res.Sites) {
+		t.Errorf("accounting sums to %d but the fixture has %d derived sites. Every site is\n"+
+			"resolved, skipped for want of a grammar, or whitelisted — exactly one of the three.\n"+
+			"--- emitted ---\n%s", sum, len(res.Sites), out)
+	}
 }
