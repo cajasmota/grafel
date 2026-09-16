@@ -62,12 +62,19 @@ func touchRow(typed bool) ExpectedRelationship {
 //
 // VARIED across the four sub-cases: whether the edge was guessed, and
 // whether the row demands a typed bind.
-// HELD CONSTANT: the entities, the edge's endpoints and kind, and the row's
-// from/to/kind/file axes — so the ONLY thing that can move the verdict is
-// the pair (marker present, field set). Three of the four cells are green;
-// the one red cell is the behaviour that did not exist before, and its
-// three green neighbours are what stop the field from being a blanket
-// tightening.
+// HELD CONSTANT: the entities, the edge's endpoints and kind, and every one
+// of the row's matching axes — from_name, from_kind, from_file, kind,
+// to_name, to_kind, to_file, and `to_bare_name`, which is EMPTY on every
+// row here. So the ONLY thing that can move the verdict is the pair (marker
+// present, field set). Three of the four cells are green; the one red cell
+// is the behaviour that did not exist before, and its three green
+// neighbours are what stop the field from being a blanket tightening.
+//
+// `to_bare_name` is named explicitly because leaving it out of this list is
+// what let a mutant survive: `typedEnough` guards three match sites and
+// this table reaches only the first. The other two are graded by
+// TestToMustBeTypedOnBareNamePaths_7071 below. An axis a block does not
+// name is an axis nobody audits.
 func TestToMustBeTypedRejectsAGuessedEdge_7071(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -128,6 +135,119 @@ func TestToMustBeTypedFallsThroughToAnEvidenceBoundEdge_7071(t *testing.T) {
 	}
 	if got := rep.RelResults[0].MatchedRelID; got != "rel-typed" {
 		t.Fatalf("matched %q, want rel-typed — the guessed edge must be skipped, not returned", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FINDING C — the `to_bare_name` match paths.
+//
+// resolveExpectedEdge has THREE match sites, and `typedEnough` guards all
+// three: the resolved-candidate triple lookup, the literal
+// `relByTriple[{fid, to_bare_name, kind}]` lookup, and the whitespace- and
+// case-insensitive `EqualFold` scan over `relByKindFrom`. The 4-cell table
+// above exercises only the first. A mutant that drops the guard from the
+// other two compiles and passes it — proved ALIVE in review, with a
+// distinguishing input constructed and run.
+//
+// The population is real: the golden set carries 47 bare-name rows.
+//
+// The two bare paths are reached by DIFFERENT shapes, which is why both are
+// here rather than one standing in for the other:
+//   - the literal path needs the edge's ToID to equal the row's
+//     to_bare_name EXACTLY;
+//   - the EqualFold path is what catches a stub the indexer mangled in case
+//     or whitespace, and is the ONLY route for such a row.
+//
+// VARIED across the four sub-cases: which bare path matches (exact vs
+// case-mangled) × whether the edge was guessed.
+// HELD CONSTANT: the entities, the edge kind, the row's from/kind axes, the
+// row's `to_bare_name` VALUE, and `to_must_be_typed: true` on every row —
+// so the only thing that can move the verdict is the marker.
+//
+// `to_bare_name` is the axis this block names out loud, because §7's
+// original block named from/to/kind/file and never named it, and an axis a
+// block does not name is an axis nobody audits.
+// ---------------------------------------------------------------------------
+
+// bareDoc builds a doc whose single CALLS edge has an UNRESOLVED string
+// ToID — the bare-name shape — optionally carrying the guess marker.
+// toID is the literal string on the edge, so a caller can make it differ
+// from the row's to_bare_name in case alone.
+func bareDoc(toID string, guessed bool) *graph.Document {
+	rel := graph.Relationship{ID: "rel-bare", FromID: "sha-replay", ToID: toID, Kind: "CALLS"}
+	if guessed {
+		rel.PropSet(types.PropBindTier, "import-wildcard")
+	}
+	return &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "sha-replay", Name: "AuditLog.Replay", Kind: "SCOPE.Operation", SourceFile: "Services/UserService.cs"},
+		},
+		Relationships: []graph.Relationship{rel},
+	}
+}
+
+func bareRow() ExpectedRelationship {
+	return ExpectedRelationship{
+		FromName: "AuditLog.Replay", FromKind: "SCOPE.Operation", FromFile: "Services/UserService.cs",
+		Kind:          "CALLS",
+		ToBareName:    "Touch",
+		ToMustBeTyped: true,
+		MustExist:     true,
+	}
+}
+
+func TestToMustBeTypedOnBareNamePaths_7071(t *testing.T) {
+	cases := []struct {
+		name      string
+		edgeToID  string
+		guessed   bool
+		wantFound bool
+	}{
+		{
+			// Literal relByTriple path, evidence-bound: still matches.
+			name: "exact bare name, evidence-bound", edgeToID: "Touch", guessed: false, wantFound: true,
+		},
+		{
+			// Literal relByTriple path, guess-bound: the new red.
+			name: "exact bare name, guessed", edgeToID: "Touch", guessed: true, wantFound: false,
+		},
+		{
+			// EqualFold scan — the row's to_bare_name is "Touch", the edge
+			// says "  touch ". Only the second bare path can match this, so
+			// this pair grades that path and nothing else.
+			name: "case- and space-mangled bare name, evidence-bound", edgeToID: "  touch ", guessed: false, wantFound: true,
+		},
+		{
+			name: "case- and space-mangled bare name, guessed", edgeToID: "  touch ", guessed: true, wantFound: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rep := Evaluate(oneRow(bareRow()), bareDoc(c.edgeToID, c.guessed))
+			if rep.RelExpected != 1 {
+				t.Fatalf("row not scored as must_exist: expected=%d", rep.RelExpected)
+			}
+			if got := rep.RelFound == 1; got != c.wantFound {
+				t.Fatalf("found=%v, want %v (edge ToID=%q guessed=%v)",
+					got, c.wantFound, c.edgeToID, c.guessed)
+			}
+		})
+	}
+}
+
+// TestToMustBeTypedAbsentOnBareNamePathsIsUnchanged_7071 is the
+// compatibility control for the bare paths, matching the one the resolved
+// path already has. All 47 pre-#7071 bare-name rows omit the field and must
+// keep matching a guessed edge.
+func TestToMustBeTypedAbsentOnBareNamePathsIsUnchanged_7071(t *testing.T) {
+	for _, toID := range []string{"Touch", "  touch "} {
+		row := bareRow()
+		row.ToMustBeTyped = false
+		rep := Evaluate(oneRow(row), bareDoc(toID, true))
+		if rep.RelFound != 1 {
+			t.Fatalf("a bare-name row without to_must_be_typed must still match a guessed "+
+				"edge (ToID=%q): found=%d", toID, rep.RelFound)
+		}
 	}
 }
 

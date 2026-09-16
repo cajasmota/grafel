@@ -654,6 +654,179 @@ func TestFormatBindTiers_7071(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// FINDING B — the REPORT PIPELINE.
+//
+// Three times in this change the same defect appeared, and every one was on
+// the reporting path rather than the marking path: the `References` funnel
+// graded while its embedded twin was not, `FormatBindTiers` dropping the
+// total with no test on the only line a corpus run prints, and the merge
+// step below with no test at all. A marker whose output silently vanishes
+// is a marker nobody grades on.
+//
+// The failure mode is specifically silent: FormatBindTiers returns "" for an
+// empty tally and cmd/grafel's `if line != ""` guard then prints NOTHING.
+// There is no zero row to notice.
+// ---------------------------------------------------------------------------
+
+// TestMergeBindTiers_7071 grades the Stats→Stats assembly.
+//
+// VARIED: nil dst, nil src, empty src, a dst that already holds counts for
+// the same tier and for a different one.
+// HELD CONSTANT: the tier values used, so every row is comparable, and the
+// assertion is always on dst's resulting map.
+func TestMergeBindTiers_7071(t *testing.T) {
+	t.Run("accumulates across passes rather than overwriting", func(t *testing.T) {
+		dst := &Stats{BindTierCounts: map[BindTier]int{
+			BindTierGlobalName:   2,
+			BindTierFileLeafName: 1,
+		}}
+		src := &Stats{BindTierCounts: map[BindTier]int{
+			BindTierGlobalName:      5,
+			BindTierPackageLeafName: 3,
+		}}
+		MergeBindTiers(dst, src)
+		want := map[BindTier]int{
+			BindTierGlobalName:      7,
+			BindTierFileLeafName:    1,
+			BindTierPackageLeafName: 3,
+		}
+		for tier, n := range want {
+			if dst.BindTierCounts[tier] != n {
+				t.Fatalf("after merge, [%s] = %d, want %d (%v)",
+					tier, dst.BindTierCounts[tier], n, dst.BindTierCounts)
+			}
+		}
+		if len(dst.BindTierCounts) != len(want) {
+			t.Fatalf("merge invented or dropped tiers: %v", dst.BindTierCounts)
+		}
+	})
+
+	t.Run("allocates dst's map when it has none", func(t *testing.T) {
+		// cmd/grafel's totalStats is a bare struct literal, so this is the
+		// PRODUCTION shape, not a corner case.
+		dst := &Stats{}
+		MergeBindTiers(dst, &Stats{BindTierCounts: map[BindTier]int{BindTierImportWildcard: 4}})
+		if dst.BindTierCounts[BindTierImportWildcard] != 4 {
+			t.Fatalf("merge into a zero-value Stats lost the counts: %v", dst.BindTierCounts)
+		}
+	})
+
+	t.Run("nil src and empty src are no-ops, not panics", func(t *testing.T) {
+		dst := &Stats{BindTierCounts: map[BindTier]int{BindTierGlobalName: 1}}
+		MergeBindTiers(dst, nil)
+		MergeBindTiers(dst, &Stats{})
+		MergeBindTiers(nil, &Stats{BindTierCounts: map[BindTier]int{BindTierGlobalName: 9}})
+		if dst.BindTierCounts[BindTierGlobalName] != 1 {
+			t.Fatalf("a no-op merge changed dst: %v", dst.BindTierCounts)
+		}
+	})
+}
+
+// TestMergeBindTierMap_7071 grades the map→Stats assembly, which is the
+// SOLE route by which the two import-pass tiers reach the report —
+// ResolveImports is not a Reference pass and returns an ImportResolveStats.
+// A pass whose counts have exactly one route to the report is a pass whose
+// counts disappear the moment that route breaks.
+func TestMergeBindTierMap_7071(t *testing.T) {
+	dst := &Stats{}
+	MergeBindTierMap(dst, map[BindTier]int{
+		BindTierImportPlainModuleAttr: 6,
+		BindTierImportWildcard:        2,
+	})
+	MergeBindTierMap(dst, map[BindTier]int{BindTierImportWildcard: 1})
+	MergeBindTierMap(dst, nil)
+	MergeBindTierMap(nil, map[BindTier]int{BindTierGlobalName: 1})
+	if dst.BindTierCounts[BindTierImportPlainModuleAttr] != 6 ||
+		dst.BindTierCounts[BindTierImportWildcard] != 3 {
+		t.Fatalf("map merge did not accumulate: %v", dst.BindTierCounts)
+	}
+}
+
+// TestBindTierReportPipeline_EndToEnd_7071 is the one that would have caught
+// MR10 without anybody thinking to mutate the merge.
+//
+// It walks the whole reporting path a corpus run walks — per-pass Stats →
+// merge → FormatBindTiers → the string cmd/grafel prints — and asserts the
+// FINAL STRING. Grading the renderer alone (TestFormatBindTiers_7071) and
+// the merge alone (above) still leaves the composition ungraded; this row
+// is the composition.
+//
+// VARIED: nothing. It is a single end-to-end trace, deliberately, because
+// what it grades is that the stages are WIRED, not how any stage behaves.
+// HELD CONSTANT: everything; the value is the exact expected output.
+func TestBindTierReportPipeline_EndToEnd_7071(t *testing.T) {
+	// Three producers, exactly as cmd/grafel has them: two Reference
+	// passes, the Rust pass, and the import pass's bare map.
+	emb := Stats{BindTierCounts: map[BindTier]int{BindTierGlobalName: 10, BindTierFileLeafName: 2}}
+	stand := Stats{BindTierCounts: map[BindTier]int{BindTierGlobalName: 1}}
+	rust := Stats{BindTierCounts: map[BindTier]int{BindTierRustCrateUniqueMember: 4}}
+	imports := map[BindTier]int{BindTierImportWildcard: 3}
+
+	var total Stats
+	MergeBindTiers(&total, &emb)
+	MergeBindTiers(&total, &stand)
+	MergeBindTiers(&total, &rust)
+	MergeBindTierMap(&total, imports)
+
+	got := FormatBindTiers(total.BindTierCounts)
+	want := "global-name=11 file-leaf-name=2 import-wildcard=3 rust-crate-unique-member=4 total=20"
+	if got != want {
+		t.Fatalf("report line = %q, want %q.\n"+
+			"An empty or short line here means a producer's counts never reach the report, and "+
+			"because cmd/grafel guards the print on a non-empty string, that failure is SILENT "+
+			"on a real corpus run.", got, want)
+	}
+}
+
+// TestBindTier_PlatformVariantCloneInheritsTheMarker_7071 — FINDING D.
+//
+// The #1818 fan-out clones an already-resolved CALLS edge once per platform
+// variant. Its source comment claims the clone inherits the marker "by
+// construction" and is deliberately neither re-stamped nor re-counted. That
+// was prose no test observed, and the parity gates structurally cannot see
+// it: they compare full vs incremental, and a defect present on both sides
+// produces no divergence.
+//
+// Both halves of the claim are asserted here, because they are separable —
+// a clone could carry the marker and still be double-counted.
+func TestBindTier_PlatformVariantCloneInheritsTheMarker_7071(t *testing.T) {
+	recs := []types.EntityRecord{
+		op("ssssssssssssss01", "Target", "pkg/a/target.go"),
+		op("ssssssssssssss02", "TargetVariant", "pkg/a/target_windows.go"),
+		callerRec("ssssssssssssss03", "Caller", "pkg/z/caller.go", "CALLS", "Target", nil),
+	}
+	idx := BuildIndex(recs)
+	// The fan-out is driven by this map alone; it is populated by the
+	// build-tag variant pass in production.
+	idx.PlatformVariants = map[string][]string{"ssssssssssssss01": {"ssssssssssssss02"}}
+
+	stats := ReferencesEmbeddedWithAllowlist(recs, idx, nil)
+
+	rels := recs[2].Relationships
+	if len(rels) != 2 {
+		t.Fatalf("expected the original edge plus one platform-variant clone, got %d", len(rels))
+	}
+	parent, clone := rels[0], rels[1]
+	if parent.ToID != "ssssssssssssss01" || clone.ToID != "ssssssssssssss02" {
+		t.Fatalf("fan-out did not produce (parent=%q, clone=%q) as expected", parent.ToID, clone.ToID)
+	}
+	if got := parent.Properties.Get(types.PropBindTier); got != string(BindTierGlobalName) {
+		t.Fatalf("parent %s = %q, want %q", types.PropBindTier, got, BindTierGlobalName)
+	}
+	if got := clone.Properties.Get(types.PropBindTier); got != string(BindTierGlobalName) {
+		t.Fatalf("clone %s = %q, want %q — a clone that drops the marker ships a guess "+
+			"wearing 'not a guess', and no parity gate can see it because the defect would be "+
+			"present on both sides of the comparison", types.PropBindTier, got, BindTierGlobalName)
+	}
+	// The second half of the claim, separably. One decision, one count.
+	if n := stats.BindTierCounts[BindTierGlobalName]; n != 1 {
+		t.Fatalf("BindTierCounts[%s] = %d, want 1 — the clone is the SAME bind reaching a "+
+			"second platform variant, so counting it again inflates the per-tier incidence "+
+			"this change exists to measure", BindTierGlobalName, n)
+	}
+}
+
 // TestBindTier_AllTiersEnumerated_7071 pins the enumeration itself. A tier
 // constant that exists but is missing from AllBindTiers is invisible to
 // every report built over it, which is the unmeasured state this change
@@ -669,9 +842,16 @@ func TestBindTier_AllTiersEnumerated_7071(t *testing.T) {
 		}
 		seen[tr] = true
 	}
-	if len(AllBindTiers) != 12 {
-		t.Fatalf("AllBindTiers has %d members, want 12 — #7071 enumerated twelve deciding sites; "+
-			"adding or removing one is a scope change that must be argued, not a silent edit",
+	if len(AllBindTiers) != 14 {
+		t.Fatalf("AllBindTiers has %d members, want 14 — adding or removing one is a scope "+
+			"change that must be argued, not a silent edit.\n"+
+			"The enumeration is of GUESS TIERS ACROSS THE WHOLE RESOLVER, not of one file: "+
+			"twelve in internal/resolve/refs.go plus the Rust crate-wide rung, and two more in "+
+			"the import pass (ResolveBareCallTarget / ResolveCrossFileReferenceTarget rungs 2 "+
+			"and 3), which review found after #7071's grounding had classified their sibling "+
+			"rungs but not them. If you are adding a fifteenth because you found another "+
+			"unclassified site, that is the right reason; say where it is and why it is a "+
+			"guess rather than evidence.",
 			len(AllBindTiers))
 	}
 }

@@ -6162,11 +6162,16 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	resolve.MergeBindTiers(&totalStats, &embStats)
 	resolve.MergeBindTiers(&totalStats, &standStats)
 	resolve.MergeBindTiers(&totalStats, &rustStats)
+	// #7071 finding A — ResolveImports runs BEFORE every resolver above
+	// (see the call near the top of this function), so the edges it binds
+	// arrive at them already hex and short-circuit. Its two guess tiers
+	// therefore have exactly one route to this report, and this is it.
+	resolve.MergeBindTierMap(&totalStats, importStats.BindTierCounts)
 	// #7071 — the number this change exists to produce: how many shipped
 	// edges were bound by a lexical guess, split by which guess. Printed
 	// unconditionally when non-empty, because a measurement behind a flag is
 	// a measurement nobody takes. An all-zero map prints nothing rather than
-	// twelve zeros.
+	// fourteen zeros.
 	if line := resolve.FormatBindTiers(totalStats.BindTierCounts); line != "" {
 		fmt.Fprintf(os.Stderr, "resolver: guess-tier binds %s\n", line)
 	}

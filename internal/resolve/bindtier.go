@@ -57,6 +57,12 @@ const (
 	// `global-name` mark as "bound on a name alone", which is true, and NOT
 	// as "bound with no type information", which is true only of its bare-leaf
 	// half.
+	//
+	// The same sentence is incomplete in the other direction too: a bare name
+	// the import pass binds first (BindTierImportPlainModuleAttr /
+	// BindTierImportWildcard) never reaches this tier at all, because
+	// ResolveImports runs ahead of the reference resolver. So `global-name`
+	// is neither all of the bare-name binds nor only the bare-name binds.
 	BindTierGlobalName BindTier = "global-name"
 
 	// BindTierGlobalKindFamily — refs.go LookupStatusHint → lookupByKindHint
@@ -127,6 +133,45 @@ const (
 	// parent's package directory.
 	BindTierGoPackageComponent BindTier = "go-package-component"
 
+	// BindTierImportPlainModuleAttr — imports.go, rung 2 of BOTH
+	// ResolveBareCallTarget and ResolveCrossFileReferenceTarget. The
+	// extractor emitted `x.foo()` as the bare leaf `foo`, having STRIPPED
+	// the receiver; this rung scans every plain `import x[.y]` in the
+	// caller's file and binds iff EXACTLY ONE of them yields a hit.
+	//
+	// That is the same uniqueness inference as G2 ("unique within the
+	// family"), E1 ("exactly one implementer"), E3 ("unique in the package
+	// dir") and E4 ("unique across the crate"): a name plus a locality —
+	// here the file's import list — with no type evidence, because the type
+	// was thrown away at extraction. It refuses on disagreement, which makes
+	// it no worse than those four, and no better either.
+	//
+	// Found by review, NOT by the grounding, which classified this file's
+	// sibling sites (imports.go's dotted-import, go_call_pkg_dir,
+	// C#-namespace and Kotlin-package rungs) as evidence and its crate-wide
+	// rung as a guess, but never classified this one at all. It matters in
+	// the blocking direction: ResolveImports runs BEFORE every marked
+	// resolver (cmd/grafel/index.go), so an edge it binds arrives already
+	// hex and short-circuits, and the ABSENCE of a marker on it asserted
+	// "not a guess", which was false.
+	BindTierImportPlainModuleAttr BindTier = "import-plain-module-attr"
+
+	// BindTierImportWildcard — imports.go, rung 3 of the same two
+	// functions: `from x import *` makes every entity in x callable by bare
+	// name, and this rung returns the FIRST module that answers.
+	//
+	// Strictly weaker than every other tier in this list, and the only one
+	// with NO ambiguity sentinel of any kind. Two wildcard modules that both
+	// define `handler` do not make this rung refuse; the first one wins, and
+	// which is first is whatever order wildcardModules happens to hold. Its
+	// own doc comment has always said "best-effort".
+	//
+	// Kept as a SEPARATE tier from BindTierImportPlainModuleAttr rather than
+	// folded in with it, because the two differ in the one property that
+	// matters to a consumer: rung 2 refuses when candidates disagree and
+	// rung 3 cannot. A single value would hide that behind an average.
+	BindTierImportWildcard BindTier = "import-wildcard"
+
 	// BindTierRustCrateUniqueMember — imports.go
 	// ResolveRustCrossModuleCalls' crate-wide fallback (lookupUniqueMember).
 	// Reached only AFTER every candidate directory the import resolver
@@ -157,6 +202,8 @@ var AllBindTiers = []BindTier{
 	BindTierGoInterfaceDispatch,
 	BindTierGoAmbiguousReceiverLeaf,
 	BindTierGoPackageComponent,
+	BindTierImportPlainModuleAttr,
+	BindTierImportWildcard,
 	BindTierRustCrateUniqueMember,
 }
 
@@ -224,14 +271,48 @@ func FormatBindTiers(counts map[BindTier]int) string {
 
 // MergeBindTiers folds src's per-tier counters into dst. Mirrors
 // MergeDispositions, which the same callers use for the disposition maps.
+//
+// This function and MergeBindTierMap are the ASSEMBLY step for the only
+// number this change exists to produce, and an assembly step whose output
+// silently vanishes is worse than no output at all: FormatBindTiers returns
+// "" for an empty tally and cmd/grafel prints nothing rather than zeros. So
+// they are graded directly, not only through the renderer — see
+// TestMergeBindTiers_7071 and TestMergeBindTierMap_7071.
 func MergeBindTiers(dst, src *Stats) {
-	if dst == nil || src == nil || len(src.BindTierCounts) == 0 {
+	if src == nil {
+		return
+	}
+	MergeBindTierMap(dst, src.BindTierCounts)
+}
+
+// MergeBindTierMap folds a bare per-tier tally into dst. It exists because
+// not every producer of guess-tier counts is a Stats: ResolveImports returns
+// an ImportResolveStats and is the SOLE path by which the two import-pass
+// tiers reach the report, exactly as ResolveRustCrossModuleCalls is the sole
+// path for the Rust tier. A pass whose counts have only one route to the
+// report is a pass whose counts disappear the moment that route breaks.
+func MergeBindTierMap(dst *Stats, counts map[BindTier]int) {
+	if dst == nil || len(counts) == 0 {
 		return
 	}
 	if dst.BindTierCounts == nil {
 		dst.BindTierCounts = make(map[BindTier]int, len(AllBindTiers))
 	}
-	for t, n := range src.BindTierCounts {
+	for t, n := range counts {
 		dst.BindTierCounts[t] += n
 	}
+}
+
+// recordBindTierIn tallies one edge bound by tier t into a bare map,
+// allocating it if needed and returning it. The map-returning shape is what
+// lets a non-Stats producer (ImportResolveStats) use the same accounting.
+func recordBindTierIn(counts map[BindTier]int, t BindTier) map[BindTier]int {
+	if t == "" {
+		return counts
+	}
+	if counts == nil {
+		counts = make(map[BindTier]int, len(AllBindTiers))
+	}
+	counts[t]++
+	return counts
 }

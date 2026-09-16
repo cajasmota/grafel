@@ -1064,16 +1064,26 @@ var sourceRootPrefixes = []string{"src.", "lib.", "app."}
 //     and emitted ToID="foo".
 //  3. Wildcard imports — `from x import *` makes every entity in x
 //     callable as a bare name; best-effort.
-func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, bool) {
+//
+// #7071 — the second return names the GUESS TIER that chose the id, blank
+// when the id came from rung 1. Rungs 2 and 3 are lexical guesses by this
+// repo's own taxonomy (see BindTierImportPlainModuleAttr /
+// BindTierImportWildcard) and were previously unmarked AND unclassified,
+// which mattered because ResolveImports runs ahead of every marked resolver
+// and its output short-circuits them.
+func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, BindTier, bool) {
 	if name == "" {
-		return "", false
+		return "", "", false
 	}
 	callerFile = normalizePath(callerFile)
 	bucket := t.byFile[callerFile]
 	if bucket != nil {
 		if b, ok := bucket[name]; ok {
 			if id, ok := t.lookupModuleEntity(b.SourceModule, b.ImportedName); ok {
-				return id, true
+				// EVIDENCE (#7071) — an explicit `from x import y` in this
+				// file named both the module and the symbol. Nothing was
+				// inferred from the bare name.
+				return id, "", true
 			}
 			// Issue #778 — Java canonical tie-break for bare CALLS that
 			// map to an ambiguous (module, name) tuple. When the generic
@@ -1086,8 +1096,20 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 			// lookupModuleEntityJavaCanonical itself checks for the
 			// ambiguous flag and the canonical-suffix match — if neither
 			// condition holds it returns (false) immediately.
+			// EVIDENCE (#7071), and this one is the judgement call in the
+			// pair — recorded rather than left silent. It is reached only
+			// when the explicit binding above found an AMBIGUOUS (module,
+			// name) tuple, and it picks by a filename/class-name
+			// convention. What keeps it out of the guess column is WHICH
+			// question the convention answers: the candidate set was
+			// selected by an import statement that named this exact symbol,
+			// and the tie-break is deduplicating two records of the same
+			// class (a canonical declaration and a hierarchy-inference
+			// entity), not choosing a target from a bare name. Contrast
+			// rung 2 below, where the name alone selects the candidates.
+			// If a reviewer disagrees this is a 15th tier, not a rewrite.
 			if id, ok := t.lookupModuleEntityJavaCanonical(b.SourceModule, b.ImportedName); ok {
-				return id, true
+				return id, "", true
 			}
 		}
 	}
@@ -1120,17 +1142,22 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 		}
 	}
 	if plainHits == 1 {
-		return plainCandidate, true
+		// GUESS TIER (#7071) — the receiver was STRIPPED by the extractor
+		// and the winner is whichever plain import uniquely answers. Same
+		// species as G2/E1/E3/E4.
+		return plainCandidate, BindTierImportPlainModuleAttr, true
 	}
 	if plainHits > 1 {
-		return "", false
+		return "", "", false
 	}
 	for _, mod := range t.wildcardModules[callerFile] {
 		if id, ok := t.lookupModuleEntity(mod, name); ok {
-			return id, true
+			// GUESS TIER (#7071) — first module that answers, no ambiguity
+			// sentinel. Weaker than every other tier in AllBindTiers.
+			return id, BindTierImportWildcard, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // splitFormatAStructuralRef parses a Format A structural-ref stub
@@ -1190,9 +1217,14 @@ func splitFormatAStructuralRef(stub string) (filePath, name string, ok bool) {
 // table; imported names landed in that table as same-file structural
 // refs because the extractor doesn't know the imported entity's
 // declaring file. This resolver bridges that gap.
-func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (string, bool) {
+// #7071 — the second return names the guess tier, exactly as in
+// ResolveBareCallTarget. The two functions carry the SAME rungs 2 and 3 and
+// share their tier values, because it is the same decision; the edge Kind
+// (CALLS vs REFERENCES) is what tells the two call sites apart, and both are
+// graded separately.
+func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (string, BindTier, bool) {
 	if name == "" {
-		return "", false
+		return "", "", false
 	}
 	callerFile = normalizePath(callerFile)
 	bucket := t.byFile[callerFile]
@@ -1201,11 +1233,15 @@ func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (s
 			// `ext:` shapes are stamped on the IMPORTS edge by the
 			// Python extractor for known-external roots and are the
 			// authoritative external target for this binding.
+			// EVIDENCE (#7071) — an `ext:` target the Python extractor
+			// stamped on the IMPORTS edge itself.
 			if strings.HasPrefix(b.ResolvedToID, "ext:") {
-				return b.ResolvedToID, true
+				return b.ResolvedToID, "", true
 			}
+			// EVIDENCE (#7071) — explicit binding, module and symbol both
+			// named by an import statement.
 			if id, ok := t.lookupModuleEntity(b.SourceModule, b.ImportedName); ok {
-				return id, true
+				return id, "", true
 			}
 		}
 	}
@@ -1231,17 +1267,19 @@ func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (s
 		}
 	}
 	if plainHits == 1 {
-		return plainCandidate, true
+		// GUESS TIER (#7071) — see ResolveBareCallTarget's rung 2.
+		return plainCandidate, BindTierImportPlainModuleAttr, true
 	}
 	if plainHits > 1 {
-		return "", false
+		return "", "", false
 	}
 	for _, mod := range t.wildcardModules[callerFile] {
 		if id, ok := t.lookupModuleEntity(mod, name); ok {
-			return id, true
+			// GUESS TIER (#7071) — see ResolveBareCallTarget's rung 3.
+			return id, BindTierImportWildcard, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // ResolveCrossModuleCallTarget resolves a Python attribute-call site of the
@@ -1477,6 +1515,12 @@ type ImportResolveStats struct {
 	// an `ext:` ResolvedToID from the Python extractor's
 	// resolveImportToIDs pass).
 	ReferencesRewritten int
+	// BindTierCounts (#7071) tallies the guess-tier binds this pass made,
+	// by tier. It is the SOLE route by which the two import-pass tiers
+	// reach cmd/grafel's per-tier report, because ResolveImports is not a
+	// Reference pass and its stats are not a resolve.Stats. Merged via
+	// MergeBindTierMap.
+	BindTierCounts map[BindTier]int
 }
 
 // ResolveDottedImportTarget looks up a project-internal IMPORTS ToID of
@@ -2044,11 +2088,19 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						}
 					}
 				}
-				id, ok := tbl.ResolveBareCallTarget(callerFile, to)
+				id, tier, ok := tbl.ResolveBareCallTarget(callerFile, to)
 				if !ok {
 					continue
 				}
 				rel.ToID = id
+				// #7071 — this line is a FUNNEL for three rungs, one of
+				// which is evidence. The tier value carries the deciding
+				// rung's own verdict and is blank for rung 1, so stamping
+				// here marks only what a guess produced.
+				if tier != "" {
+					rel.Properties.Set(types.PropBindTier, string(tier))
+					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, tier)
+				}
 				stats.CallsRewritten++
 			case "REFERENCES":
 				// Chain-fix: python-references-cross-file. The Python
@@ -2090,11 +2142,19 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				stats.ReferencesConsidered++
-				id, ok := tbl.ResolveCrossFileReferenceTarget(stubFile, stubName)
+				id, tier, ok := tbl.ResolveCrossFileReferenceTarget(stubFile, stubName)
 				if !ok {
 					continue
 				}
 				rel.ToID = id
+				// #7071 — same funnel shape as the CALLS site above, and a
+				// SEPARATE line in a separate branch. Grading one would say
+				// nothing about the other (the M3/M3b lesson), so both have
+				// their own fixtures.
+				if tier != "" {
+					rel.Properties.Set(types.PropBindTier, string(tier))
+					stats.BindTierCounts = recordBindTierIn(stats.BindTierCounts, tier)
+				}
 				stats.ReferencesRewritten++
 			case importRelKind:
 				// Markdown cross-file file-path shape (issue #44 follow-up):

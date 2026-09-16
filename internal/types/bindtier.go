@@ -37,6 +37,15 @@ package types
 // it was never bound at all. Consumers that care about the difference must
 // also look at whether ToID is an entity ID.
 //
+// That sentence is only true because EVERY pass that can bind a name
+// lexically stamps this key, including the ones that run BEFORE the
+// reference resolver and whose output reaches it already resolved. Review
+// of #7078 found two such rungs in ResolveImports that were neither marked
+// nor classified, and the consequence was precisely that this sentence was
+// false for their edges. If a new binding pass is added ahead of the
+// resolver, it belongs in internal/resolve.AllBindTiers or this sentence
+// quietly stops holding again.
+//
 // SCOPE: the key describes the TO endpoint only, which is why it is named
 // to_*. The same tiers can fire on a FROM endpoint rewrite
 // (internal/resolve/refs.go's rewriteOneWithCaller is called for FromID
