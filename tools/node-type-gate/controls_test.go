@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -139,8 +140,21 @@ func diagLines(res Result) string {
 	for _, s := range res.Sites {
 		byForm[s.Form]++
 	}
-	fmt.Fprintf(&b, "  derived: %d sites (%v), %d resolved, %d sinks, grammars %v\n",
-		len(res.Sites), byForm, res.Resolved, len(res.Sinks), res.GrammarsForDir)
+	files := map[string]bool{}
+	for _, s := range res.Sites {
+		files[s.File] = true
+	}
+	var fs []string
+	for f := range files {
+		fs = append(fs, f)
+	}
+	sort.Strings(fs)
+	fmt.Fprintf(&b, "  derived: %d sites (%v), %d dynamic, %d resolved, %d sinks, grammars %v\n",
+		len(res.Sites), byForm, len(res.Dynamic), res.Resolved, len(res.Sinks), res.GrammarsForDir)
+	fmt.Fprintf(&b, "  files: %v\n", fs)
+	for _, s := range res.Dynamic {
+		fmt.Fprintf(&b, "  dynamic: %s:%d form=%s\n", s.File, s.Line, s.Form)
+	}
 	return b.String()
 }
 
