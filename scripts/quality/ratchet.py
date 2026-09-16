@@ -188,6 +188,17 @@ def declared_known_bad(golden_dir, name):
     file it can touch, and removing a known_bad row is a fixture edit a
     reviewer sees.
 
+    WHAT THIS DOES NOT PROTECT AGAINST, stated because the asymmetry is easy to
+    misread. The declaration cannot be weakened by any MACHINE here — that is
+    the whole property above. It can be weakened by a HUMAN deleting the
+    known_bad row from expected.json, and the only thing standing in the way of
+    that is code review. This is deliberately NOT as strong as the recall
+    side, where internal/quality/baseline_test.go carries `mustAnnotate`, a
+    closed set in GO, precisely so an annotation and the thing it annotates
+    cannot be removed in one edit. It is exactly as strong as an ORDINARY
+    forbidden row, which anyone can also delete, and that is the bar being
+    matched: the channel makes a finding recordable, not undeletable.
+
     A parse failure returns 0 rather than raising. The fixture loader
     (internal/quality/expected.go) is the authority on a malformed
     expected.json and reports it far better than this reader could; guessing

@@ -206,11 +206,24 @@ func TestKnownBadJSONCarriesTheIssueAndNote_7056(t *testing.T) {
 	for _, row := range jr.KnownBad {
 		got[row.Label] = row
 	}
-	for _, want := range []string{"Vault --[CALLS]--> helper", "Ghost (SCOPE.Schema)"} {
+	// Class is asserted alongside the label, and the two expected values are
+	// DIFFERENT, so a report that stamped one class on both rows fails here.
+	// Class is the only thing separating the two kinds of finding once they
+	// share one array: the gate prints it ("known_bad entity Ghost ..."), and
+	// swapping the two literals was ALIVE until this assertion existed.
+	for want, wantClass := range map[string]string{
+		"Vault --[CALLS]--> helper": "relationship",
+		"Ghost (SCOPE.Schema)":      "entity",
+	} {
 		row, ok := got[want]
 		if !ok {
 			t.Fatalf("the JSON report names no known_bad row %q; it carries %v",
 				want, jr.KnownBad)
+		}
+		if row.Class != wantClass {
+			t.Fatalf("known_bad row %q is serialised with class %q, want %q — the "+
+				"gate prints this word, and the two classes go to different "+
+				"diagnoses", want, row.Class, wantClass)
 		}
 		if row.Issue != "#6425" || row.Note == "" {
 			t.Fatalf("known_bad row %q carries no issue/note (%+v) — the gate prints "+
@@ -273,16 +286,37 @@ func writeKnownBadFixture_7056(t *testing.T, body string) string {
 // TestKnownRegressionsAgreeWithRecordedFloor on the recall side: an untracked
 // known-bad is indistinguishable from an accepted one, and a known-bad with no
 // note keeps the delta and loses the mechanism.
+//
+// BOTH FORBIDDEN ARRAYS. The validator is called from four sites — two recall
+// arrays and two forbidden ones — and deleting the `forbidden_entities` call
+// site was ALIVE against a table that only ever built a forbidden_relationships
+// row. A known_bad ENTITY row with no issue and no note was therefore accepted
+// at load, which is the decorative-row state this whole validator exists to
+// reject.
 func TestLoadFixture_KnownBadDemandsAnIssueAndANote_7056(t *testing.T) {
-	const tmpl = `{
-	  "fixture_name": "t",
-	  "expected_entities": [],
-	  "expected_relationships": [],
-	  "asserts_no_relationships": true,
-	  "forbidden_relationships": [
-	    { "from_name": "Vault", "kind": "CALLS", "to_name": "helper", "known_bad": true%s }
-	  ]
-	}`
+	// One template per forbidden array. They are different KEYS carrying
+	// different row shapes, which is exactly why one cannot stand in for the
+	// other.
+	arrays := map[string]string{
+		"forbidden_relationships": `{
+		  "fixture_name": "t",
+		  "expected_entities": [],
+		  "expected_relationships": [],
+		  "asserts_no_relationships": true,
+		  "forbidden_relationships": [
+		    { "from_name": "Vault", "kind": "CALLS", "to_name": "helper", "known_bad": true%s }
+		  ]
+		}`,
+		"forbidden_entities": `{
+		  "fixture_name": "t",
+		  "expected_entities": [],
+		  "expected_relationships": [],
+		  "asserts_no_relationships": true,
+		  "forbidden_entities": [
+		    { "name": "Ghost", "kind": "SCOPE.Schema", "known_bad": true%s }
+		  ]
+		}`,
+	}
 	cases := []struct {
 		name, extra, want string
 	}{
@@ -290,25 +324,41 @@ func TestLoadFixture_KnownBadDemandsAnIssueAndANote_7056(t *testing.T) {
 		{"issue but no note", `, "issue": "#6425"`, "no note"},
 		{"note but no issue", `, "note": "why"`, "no issue"},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if _, err := LoadFixture(writeKnownBadFixture_7056(t, sprintf(tmpl, c.extra))); err == nil {
-				t.Fatalf("LoadFixture accepted a known_bad row with %s", c.name)
-			} else if !strings.Contains(err.Error(), c.want) {
-				t.Fatalf("error does not name the missing field (%q): %v", c.want, err)
+	for key, tmpl := range arrays {
+		for _, c := range cases {
+			t.Run(key+"/"+c.name, func(t *testing.T) {
+				_, err := LoadFixture(writeKnownBadFixture_7056(t, sprintf(tmpl, c.extra)))
+				if err == nil {
+					t.Fatalf("LoadFixture accepted a %s known_bad row with %s", key, c.name)
+				}
+				if !strings.Contains(err.Error(), c.want) {
+					t.Fatalf("error does not name the missing field (%q): %v", c.want, err)
+				}
+				if !strings.Contains(err.Error(), key) {
+					t.Fatalf("error does not name the array it came from (%q): %v", key, err)
+				}
+			})
+		}
+		// The control, per array: with BOTH present the same row loads.
+		// Without it, a validator that rejected every known_bad row would pass
+		// all three cases above.
+		t.Run(key+"/complete row loads", func(t *testing.T) {
+			ok := sprintf(tmpl, `, "issue": "#6425", "note": "why"`)
+			fix, err := LoadFixture(writeKnownBadFixture_7056(t, ok))
+			if err != nil {
+				t.Fatalf("LoadFixture rejected a complete %s known_bad row: %v", key, err)
+			}
+			var knownBad bool
+			var issue string
+			if key == "forbidden_relationships" {
+				knownBad, issue = fix.ForbiddenRelationships[0].KnownBad, fix.ForbiddenRelationships[0].Issue
+			} else {
+				knownBad, issue = fix.ForbiddenEntities[0].KnownBad, fix.ForbiddenEntities[0].Issue
+			}
+			if !knownBad || issue != "#6425" {
+				t.Fatalf("known_bad/issue were accepted but not read back on %s", key)
 			}
 		})
-	}
-	// The control: with BOTH present the same row loads. Without this, a
-	// validator that rejected every known_bad row would pass all three cases.
-	ok := sprintf(tmpl, `, "issue": "#6425", "note": "why"`)
-	fix, err := LoadFixture(writeKnownBadFixture_7056(t, ok))
-	if err != nil {
-		t.Fatalf("LoadFixture rejected a complete known_bad row: %v", err)
-	}
-	if !fix.ForbiddenRelationships[0].KnownBad || fix.ForbiddenRelationships[0].Issue != "#6425" {
-		t.Fatalf("known_bad/issue were accepted but not read back: %+v",
-			fix.ForbiddenRelationships[0])
 	}
 }
 
@@ -347,6 +397,19 @@ func TestLoadFixture_KnownBadIsRejectedOnARecallRow_7056(t *testing.T) {
 			if !strings.Contains(err.Error(), "known_bad") {
 				t.Fatalf("error does not name the offending key: %v", err)
 			}
+			// The advice must point at the RIGHT forbidden array. Swapping the
+			// two branches of forbiddenTwin was ALIVE: the diagnostic told an
+			// author to move an entity row to forbidden_relationships, which
+			// is the "points the reader at the wrong thing" defect #6476 spent
+			// its budget removing, in a message a confused author follows.
+			wantTwin := "forbidden_relationships"
+			if key == "expected_entities" {
+				wantTwin = "forbidden_entities"
+			}
+			if !strings.Contains(err.Error(), wantTwin) {
+				t.Fatalf("a %s row is told to move to the wrong array — the error "+
+					"does not mention %q: %v", key, wantTwin, err)
+			}
 		})
 	}
 }
@@ -356,17 +419,35 @@ func TestLoadFixture_KnownBadIsRejectedOnARecallRow_7056(t *testing.T) {
 // does not honour. Rejected rather than ignored, for the same reason
 // to_must_be_typed is rejected on a forbidden row.
 func TestLoadFixture_IssueWithoutKnownBadIsRejected_7056(t *testing.T) {
-	body := `{
-	  "fixture_name": "t",
-	  "expected_entities": [],
-	  "expected_relationships": [],
-	  "asserts_no_relationships": true,
-	  "forbidden_relationships": [
-	    { "from_name": "Vault", "kind": "CALLS", "to_name": "helper", "issue": "#6425" }
-	  ]
-	}`
-	if _, err := LoadFixture(writeKnownBadFixture_7056(t, body)); err == nil {
-		t.Fatal("LoadFixture accepted issue on a row that is not known_bad")
+	bodies := map[string]string{
+		"forbidden_relationships": `{
+		  "fixture_name": "t",
+		  "expected_entities": [],
+		  "expected_relationships": [],
+		  "asserts_no_relationships": true,
+		  "forbidden_relationships": [
+		    { "from_name": "Vault", "kind": "CALLS", "to_name": "helper", "issue": "#6425" }
+		  ]
+		}`,
+		// The twin. Both forbidden arrays reach the same validator through
+		// their own call site, and a call site that is not exercised is a
+		// call site that can be deleted.
+		"forbidden_entities": `{
+		  "fixture_name": "t",
+		  "expected_entities": [],
+		  "expected_relationships": [],
+		  "asserts_no_relationships": true,
+		  "forbidden_entities": [
+		    { "name": "Ghost", "kind": "SCOPE.Schema", "issue": "#6425" }
+		  ]
+		}`,
+	}
+	for key, body := range bodies {
+		t.Run(key, func(t *testing.T) {
+			if _, err := LoadFixture(writeKnownBadFixture_7056(t, body)); err == nil {
+				t.Fatalf("LoadFixture accepted issue on a %s row that is not known_bad", key)
+			}
+		})
 	}
 }
 
@@ -397,10 +478,19 @@ func TestNoGoldenFixtureDeclaresKnownBadYet_7056(t *testing.T) {
 				"same commit", p)
 		}
 	}
-	// A walk that read nothing reports clean. Floor it.
-	if scanned < 10 {
-		t.Fatalf("scanned only %d expected.json file(s) under %s — this scan is "+
-			"measuring nothing", scanned, goldenDir)
+	// A walk that read nothing reports clean, and a walk that read TEN of
+	// thirty-eight reports clean for the other twenty-eight. `!= 38` is the
+	// convention three sibling tests in this package already use over this same
+	// directory (TestEveryGoldenFixtureDeclaresExpectedRelationships_6490 among
+	// them), and its comment gives the reason: a coverage claim must be
+	// re-derived when the corpus changes rather than silently shrinking. A `<`
+	// floor cannot do that — it accepts every number above it, including the
+	// one a truncated walk produces.
+	if scanned != 38 {
+		t.Fatalf("scanned %d expected.json file(s) under %s, want 38 — either the "+
+			"corpus size changed (re-derive this claim) or the walk is truncated, "+
+			"in which case every unscanned fixture is ungraded by this test",
+			scanned, goldenDir)
 	}
 }
 

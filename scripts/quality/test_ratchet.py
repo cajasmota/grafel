@@ -2455,33 +2455,68 @@ class ShortCircuitCannotTruncateAForbiddenRow(unittest.TestCase):
 KB_ISSUE = "#6425"
 KB_NOTE = "yul operation minted from an assembly block label"
 KB_LABEL = "Vault --[CALLS]--> helper"
+KB_ENTITY_LABEL = "Ghost (SCOPE.Schema)"
+
+# A known_bad row comes in two classes, and EVERY consumer of the channel reads
+# both: declared_known_bad() walks a two-element tuple of fixture keys,
+# internal/quality/diff.go has one arm per class, report.go serialises them into
+# one array, and the run.sh short-circuit veto reads that array.
+#
+# Parameterising on this tuple rather than testing the edge class and trusting
+# the twin is deliberate. Dropping "forbidden_entities" from declared_known_bad
+# was ALIVE against a suite that exercised only relationship rows: `declared`
+# computed 0, the "nothing declared, nothing reported" short-circuit fired, and
+# a stale binary silently retired an entity-class finding — the exact failure
+# the cross-check exists to close. Scoping the run.sh veto to
+# class == "relationship" was ALIVE for the same reason.
+KB_CLASSES = ("relationship", "entity")
 
 
-def kb_row(label=KB_LABEL, cls="relationship", issue=KB_ISSUE, note=KB_NOTE):
+def kb_label(cls):
+    return KB_LABEL if cls == "relationship" else KB_ENTITY_LABEL
+
+
+def kb_row(label=None, cls="relationship", issue=KB_ISSUE, note=KB_NOTE):
     """One serialised known_bad row, as internal/quality/report.go writes it."""
+    if label is None:
+        label = kb_label(cls)
     return {"class": cls, "label": label, "issue": issue, "note": note}
 
 
-def declare_known_bad(golden, n=1, fixture="demo-mini"):
-    """Add `n` known_bad forbidden rows to a fixture's expected.json.
+def declare_known_bad(golden, n=1, fixture="demo-mini", cls="relationship"):
+    """Add `n` known_bad forbidden rows of class `cls` to a fixture's
+    expected.json.
 
     The DECLARATION is the floor this channel grades against — deliberately
     not a figure in baseline.json — so a test that wants a known-bad row has
     to write it here, in the hand-authored file, exactly as an author would.
+
+    The two classes land under DIFFERENT keys (forbidden_relationships vs
+    forbidden_entities), which is precisely why a helper that could only write
+    one of them left half of declared_known_bad() ungraded.
     """
     path = os.path.join(golden, fixture, "expected.json")
     with open(path) as fh:
         fix = json.load(fh)
-    fix["forbidden_relationships"] = [
-        {"from_name": "Vault", "kind": "CALLS", "to_name": f"helper{i}",
-         "known_bad": True, "issue": KB_ISSUE, "note": KB_NOTE}
-        for i in range(n)
-    ]
+    if cls == "relationship":
+        fix["forbidden_relationships"] = [
+            {"from_name": "Vault", "kind": "CALLS", "to_name": f"helper{i}",
+             "known_bad": True, "issue": KB_ISSUE, "note": KB_NOTE}
+            for i in range(n)
+        ]
+    elif cls == "entity":
+        fix["forbidden_entities"] = [
+            {"name": f"Ghost{i}", "kind": "SCOPE.Schema",
+             "known_bad": True, "issue": KB_ISSUE, "note": KB_NOTE}
+            for i in range(n)
+        ]
+    else:  # pragma: no cover - a typo in a subTest must not silently declare 0
+        raise AssertionError(f"unknown known_bad class {cls!r}")
     with open(path, "w") as fh:
         json.dump(fix, fh)
 
 
-def kb_report(**extra):
+def kb_report(cls="relationship", **extra):
     """A merged per-fixture report carrying the known-bad keys."""
     rep = {
         "fixture": "demo-mini", "run_stamp": STAMP,
@@ -2490,10 +2525,51 @@ def kb_report(**extra):
         "forbidden_hits": 0, "forbidden_entity_hits": 0,
         "entity_extracted_total": 12, "relationship_extracted_total": 7,
         "known_bad_declared": 1, "known_bad_hits": 1,
-        "known_bad": [kb_row()],
+        "known_bad": [kb_row(cls=cls)],
     }
     rep.update(extra)
     return rep
+
+
+class DeclaredKnownBadReadsBothClasses(unittest.TestCase):
+    """POSITIVE CONTROL for every parameterised case below.
+
+    All of them rest on one premise: that `declare_known_bad(cls=...)` really
+    produces a fixture whose declared count is 1 for BOTH classes. If the
+    entity branch wrote a key ratchet.py does not read, `declared` would be 0,
+    the short-circuit in known_bad_failures would fire, and every entity
+    subTest would pass against a fixture that cannot express the defect —
+    which is the shape that let the entity half stay ungraded in the first
+    place.
+    """
+
+    def test_each_class_declares_exactly_one_row(self):
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls), tempfile.TemporaryDirectory() as root:
+                golden, _reports, _baseline = make_fixture(root)
+                declare_known_bad(golden, 1, cls=cls)
+                self.assertEqual(
+                    ratchet.declared_known_bad(golden, "demo-mini"), 1,
+                    f"a {cls}-class known_bad row is not counted as declared; every "
+                    f"{cls} case below is graded by a fixture that declares nothing")
+
+    def test_the_two_classes_use_different_fixture_keys(self):
+        """The reason one helper cannot stand in for the other, asserted rather
+        than assumed."""
+        seen = {}
+        for cls in KB_CLASSES:
+            with tempfile.TemporaryDirectory() as root:
+                golden, _r, _b = make_fixture(root)
+                declare_known_bad(golden, 1, cls=cls)
+                with open(os.path.join(golden, "demo-mini", "expected.json")) as fh:
+                    fix = json.load(fh)
+                seen[cls] = sorted(
+                    k for k in ("forbidden_relationships", "forbidden_entities")
+                    if fix.get(k))
+        self.assertNotEqual(
+            seen["relationship"], seen["entity"],
+            "both classes wrote the same fixture key, so one of them is not the "
+            "class it claims to be and the pair is one test wearing two names")
 
 
 class KnownBadIsRecordedNotFatal(unittest.TestCase):
@@ -2512,13 +2588,13 @@ class KnownBadIsRecordedNotFatal(unittest.TestCase):
     by no instrument, which is where it started.
     """
 
-    def _check(self, rep, declared=1):
+    def _check(self, rep, declared=1, cls="relationship"):
         with tempfile.TemporaryDirectory() as root, chdir(root):
             os.environ["QUALITY_RUN_STAMP"] = STAMP
             self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
             golden, reports, baseline = make_fixture(root)
             if declared:
-                declare_known_bad(golden, declared)
+                declare_known_bad(golden, declared, cls=cls)
             with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
                 json.dump(rep, fh)
             out, err = io.StringIO(), io.StringIO()
@@ -2527,25 +2603,30 @@ class KnownBadIsRecordedNotFatal(unittest.TestCase):
             return rc, out.getvalue() + err.getvalue()
 
     def test_a_firing_known_bad_row_passes_the_gate(self):
-        rc, _text = self._check(kb_report())
-        self.assertEqual(
-            rc, 0,
-            "a known_bad row that fired failed the gate — the channel is still "
-            "the always-fatal one it exists to replace")
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                rc, text = self._check(kb_report(cls=cls), cls=cls)
+                self.assertEqual(
+                    rc, 0,
+                    f"a {cls}-class known_bad row that fired failed the gate — the "
+                    f"channel is still the always-fatal one it exists to replace:"
+                    f"\n{text}")
 
     def test_a_firing_known_bad_row_is_named_in_the_output(self):
         """The row AND its issue. A pass that prints a bare count sends the
         reader back to the graph to work out which finding is still open, and
         a pass that prints nothing at all is prose in a JSON file."""
-        _rc, text = self._check(kb_report())
-        self.assertIn(KB_LABEL, text,
-                      "the passing gate does not name the known-bad row")
-        self.assertIn(KB_ISSUE, text,
-                      "the passing gate does not name the issue that owns it — an "
-                      "untracked known-bad is indistinguishable from an accepted one")
-        self.assertIn(KB_NOTE, text,
-                      "the passing gate does not carry the note, so the mechanism "
-                      "is lost and only the delta survives")
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                _rc, text = self._check(kb_report(cls=cls), cls=cls)
+                self.assertIn(kb_label(cls), text,
+                              "the passing gate does not name the known-bad row")
+                self.assertIn(KB_ISSUE, text,
+                              "the passing gate does not name the issue that owns it — an "
+                              "untracked known-bad is indistinguishable from an accepted one")
+                self.assertIn(KB_NOTE, text,
+                              "the passing gate does not carry the note, so the mechanism "
+                              "is lost and only the delta survives")
 
     def test_positive_control_the_same_row_without_known_bad_is_fatal(self):
         """Without this, every case above would pass on a gate that had simply
@@ -2591,13 +2672,13 @@ class KnownBadIsNotAOneWayValve(unittest.TestCase):
     rather than quietly accepting it.
     """
 
-    def _check(self, rep, declared=1):
+    def _check(self, rep, declared=1, cls="relationship"):
         with tempfile.TemporaryDirectory() as root, chdir(root):
             os.environ["QUALITY_RUN_STAMP"] = STAMP
             self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
             golden, reports, baseline = make_fixture(root)
             if declared:
-                declare_known_bad(golden, declared)
+                declare_known_bad(golden, declared, cls=cls)
             with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
                 json.dump(rep, fh)
             out, err = io.StringIO(), io.StringIO()
@@ -2605,45 +2686,70 @@ class KnownBadIsNotAOneWayValve(unittest.TestCase):
                 rc = ratchet.check(golden, reports, baseline)
             return rc, out.getvalue() + err.getvalue()
 
-    SILENT = dict(known_bad_hits=0, known_bad=[], known_bad_silent=[kb_row()])
+    @staticmethod
+    def _silent(cls):
+        return dict(known_bad_hits=0, known_bad=[],
+                    known_bad_silent=[kb_row(cls=cls)])
 
     def test_a_row_that_stopped_firing_fails_the_gate(self):
-        rc, _text = self._check(kb_report(**self.SILENT))
-        self.assertEqual(
-            rc, 2,
-            "a known_bad row that stopped firing was accepted — the channel is a "
-            "one-way valve, and a dead producer now reads as a fix")
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                rc, _text = self._check(kb_report(cls=cls, **self._silent(cls)), cls=cls)
+                self.assertEqual(
+                    rc, 2,
+                    f"a {cls}-class known_bad row that stopped firing was accepted — "
+                    f"the channel is a one-way valve, and a dead producer now reads "
+                    f"as a fix")
 
     def test_it_names_the_row_the_issue_and_both_readings(self):
-        _rc, text = self._check(kb_report(**self.SILENT))
-        self.assertIn(KB_LABEL, text, "the failure does not name the row that went quiet")
-        self.assertIn(KB_ISSUE, text, "the failure does not name the issue that owns it")
-        self.assertIn("STOPPED FIRING", text)
-        self.assertIn(
-            "producer", text,
-            "the failure does not tell the reader that a dead producer and a fix "
-            "look identical here — without that, every occurrence is read as a fix")
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                _rc, text = self._check(kb_report(cls=cls, **self._silent(cls)), cls=cls)
+                self.assertIn(kb_label(cls), text,
+                              "the failure does not name the row that went quiet")
+                self.assertIn(KB_ISSUE, text,
+                              "the failure does not name the issue that owns it")
+                self.assertIn("STOPPED FIRING", text)
+                self.assertIn(
+                    "producer", text,
+                    "the failure does not tell the reader that a dead producer and a fix "
+                    "look identical here — without that, every occurrence is read as a fix")
 
     def test_a_stale_binary_cannot_erase_a_declared_row(self):
         """The report predates the channel, so nothing measured the rows. That
         is not the same fact as "the rows did not fire", and reading it as one
         would let an old binary retire the finding silently — the #6488 arm D
-        reasoning about an absent extracted total, on this key."""
-        rep = kb_report()
-        del rep["known_bad_declared"]
-        del rep["known_bad_hits"]
-        del rep["known_bad"]
-        rc, text = self._check(rep)
-        self.assertEqual(rc, 2, "a report with no known-bad keys graded a fixture "
-                                "that declares a known_bad row")
-        self.assertIn("predates", text)
+        reasoning about an absent extracted total, on this key.
+
+        BOTH CLASSES. This is the case that was one-sided: declared_known_bad()
+        walks a two-key tuple, and with only relationship rows in the suite,
+        dropping "forbidden_entities" from it was ALIVE — `declared` came back
+        0, the "nothing declared, nothing reported" short-circuit in
+        known_bad_failures fired, and an entity-class finding was retired in
+        silence by exactly the stale binary this check exists to catch.
+        """
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                rep = kb_report(cls=cls)
+                del rep["known_bad_declared"]
+                del rep["known_bad_hits"]
+                del rep["known_bad"]
+                rc, text = self._check(rep, cls=cls)
+                self.assertEqual(
+                    rc, 2,
+                    f"a report with no known-bad keys graded a fixture that declares "
+                    f"a {cls}-class known_bad row:\n{text}")
+                self.assertIn("predates", text)
 
     def test_a_fixture_edited_without_a_rerun_is_red(self):
         """Two declared, one graded. The second row was measured by nothing, so
-        it could not have been seen to go silent."""
-        rc, text = self._check(kb_report(), declared=2)
-        self.assertEqual(rc, 2)
-        self.assertIn("declares 2 known_bad row(s)", text)
+        it could not have been seen to go silent. Both classes, because the
+        count this compares against is the one the two-key tuple produces."""
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                rc, text = self._check(kb_report(cls=cls), declared=2, cls=cls)
+                self.assertEqual(rc, 2, text)
+                self.assertIn("declares 2 known_bad row(s)", text)
 
 
 class UpdateBaselineCannotLaunderAKnownBad(unittest.TestCase):
@@ -2657,14 +2763,14 @@ class UpdateBaselineCannotLaunderAKnownBad(unittest.TestCase):
     expected.json, which no mode of ratchet.py writes to.
     """
 
-    def _build(self, rep, declared=1):
+    def _build(self, rep, declared=1, cls="relationship"):
         with tempfile.TemporaryDirectory() as root, chdir(root):
             os.environ["QUALITY_RUN_STAMP"] = STAMP
             self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
             make_repo(root)
             golden, reports, baseline = make_fixture(root)
             if declared:
-                declare_known_bad(golden, declared)
+                declare_known_bad(golden, declared, cls=cls)
             with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
                 json.dump(rep, fh)
             return ratchet.build(golden, reports, baseline)
@@ -2690,18 +2796,23 @@ class UpdateBaselineCannotLaunderAKnownBad(unittest.TestCase):
         """A re-record taken while a declared row is quiet would leave the
         operator believing the tree is in a recordable state. Refuse, on the
         same terms build() already refuses a report with no extracted total."""
-        with self.assertRaises(SystemExit) as ctx:
-            self._build(kb_report(known_bad_hits=0, known_bad=[],
-                                  known_bad_silent=[kb_row()]))
-        self.assertIn("STOPPED FIRING", str(ctx.exception))
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls), self.assertRaises(SystemExit) as ctx:
+                self._build(kb_report(cls=cls, known_bad_hits=0, known_bad=[],
+                                      known_bad_silent=[kb_row(cls=cls)]), cls=cls)
+            self.assertIn("STOPPED FIRING", str(ctx.exception))
 
     def test_it_refuses_a_report_that_predates_the_channel(self):
-        rep = kb_report()
-        for k in ("known_bad_declared", "known_bad_hits", "known_bad"):
-            del rep[k]
-        with self.assertRaises(SystemExit) as ctx:
-            self._build(rep)
-        self.assertIn("predates", str(ctx.exception))
+        """Both classes: the writer reads the same two-key declaration the
+        checker does, so an entity-only fixture must refuse a stale report
+        exactly as an edge-only one does."""
+        for cls in KB_CLASSES:
+            rep = kb_report(cls=cls)
+            for k in ("known_bad_declared", "known_bad_hits", "known_bad"):
+                del rep[k]
+            with self.subTest(cls=cls), self.assertRaises(SystemExit) as ctx:
+                self._build(rep, cls=cls)
+            self.assertIn("predates", str(ctx.exception))
 
 
 class KnownBadSurvivesTheMerge(unittest.TestCase):
@@ -2718,15 +2829,15 @@ class KnownBadSurvivesTheMerge(unittest.TestCase):
     """
 
     @staticmethod
-    def _runs(fired):
+    def _runs(fired, cls="relationship"):
         """One report per bool in `fired`: True the row fired, False it did not."""
         out = []
         for hit in fired:
             rep = run_report(entity_found=10, entity_expected=10)
             rep["known_bad_declared"] = 1
             rep["known_bad_hits"] = 1 if hit else 0
-            rep["known_bad"] = [kb_row()] if hit else []
-            rep["known_bad_silent"] = [] if hit else [kb_row()]
+            rep["known_bad"] = [kb_row(cls=cls)] if hit else []
+            rep["known_bad_silent"] = [] if hit else [kb_row(cls=cls)]
             out.append(rep)
         return out
 
@@ -2755,20 +2866,24 @@ class KnownBadSurvivesTheMerge(unittest.TestCase):
 
     def test_the_merged_report_then_reds_the_ratchet(self):
         """End to end: the merge program and `check` agree. Two graders, and a
-        fix reaching only one of them leaves the other blind."""
-        with tempfile.TemporaryDirectory() as root, chdir(root):
-            os.environ["QUALITY_RUN_STAMP"] = STAMP
-            self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
-            golden, reports, baseline = make_fixture(root)
-            declare_known_bad(golden, 1)
-            _rc, merged = merge_runs(root, self._runs([False] * 5))
-            with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
-                json.dump(merged, fh)
-            err = io.StringIO()
-            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
-                rc = ratchet.check(golden, reports, baseline)
-        self.assertEqual(rc, 2)
-        self.assertIn("STOPPED FIRING", err.getvalue())
+        fix reaching only one of them leaves the other blind. Run for both
+        classes, because the declaration `check` compares the merged report
+        against is the two-key one."""
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls):
+                with tempfile.TemporaryDirectory() as root, chdir(root):
+                    os.environ["QUALITY_RUN_STAMP"] = STAMP
+                    self.addCleanup(os.environ.pop, "QUALITY_RUN_STAMP", None)
+                    golden, reports, baseline = make_fixture(root)
+                    declare_known_bad(golden, 1, cls=cls)
+                    _rc, merged = merge_runs(root, self._runs([False] * 5, cls=cls))
+                    with open(os.path.join(reports, "demo-mini.json"), "w") as fh:
+                        json.dump(merged, fh)
+                    err = io.StringIO()
+                    with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                        rc = ratchet.check(golden, reports, baseline)
+                self.assertEqual(rc, 2)
+                self.assertIn("STOPPED FIRING", err.getvalue())
 
     def test_a_run_that_predates_the_channel_drops_the_counters(self):
         """One old report among five is enough. Writing 0 instead would be a
@@ -2811,13 +2926,20 @@ class ShortCircuitCannotDeclareARowDead(unittest.TestCase):
         return runs
 
     def test_a_silent_known_bad_row_vetoes_the_short_circuit(self):
-        with tempfile.TemporaryDirectory() as root:
-            self.assertEqual(
-                run_stability(root, self._stable_runs(
-                    known_bad_silent=[kb_row()])), "no",
-                "the loop stopped at 3 runs with a known_bad row already observed "
-                "silent — the remaining runs are the only evidence that could "
-                "prove it still fires")
+        """BOTH CLASSES. The veto reads a serialised row, and a predicate
+        narrowed to `class == "relationship"` is ALIVE against an edge-only
+        suite. Its blast radius is a false RED rather than a false GREEN — an
+        intermittent ENTITY producer would get three samples instead of five
+        and could be declared dead — which is why it is graded here rather
+        than given a case of its own, but it is graded."""
+        for cls in KB_CLASSES:
+            with self.subTest(cls=cls), tempfile.TemporaryDirectory() as root:
+                self.assertEqual(
+                    run_stability(root, self._stable_runs(
+                        known_bad_silent=[kb_row(cls=cls)])), "no",
+                    f"the loop stopped at 3 runs with a {cls}-class known_bad row "
+                    f"already observed silent — the remaining runs are the only "
+                    f"evidence that could prove it still fires")
 
     def test_a_firing_known_bad_row_does_not_veto_it(self):
         """The negative control, and a real scope guard: known-bad rows are the
@@ -2826,7 +2948,7 @@ class ShortCircuitCannotDeclareARowDead(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             self.assertEqual(
                 run_stability(root, self._stable_runs(
-                    known_bad=[kb_row()], known_bad_hits=1)), "yes",
+                    known_bad=[kb_row(cls="entity")], known_bad_hits=1)), "yes",
                 "a known_bad row that is firing normally now vetoes the "
                 "short-circuit — every fixture using the channel runs 5 runs")
 
