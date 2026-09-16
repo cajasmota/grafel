@@ -561,6 +561,16 @@ func TestJavaAnnotationType_7073_ElementSignatureKeepsDefaultLiteral(t *testing.
 // Axis varied: the element's LINE EXTENT (single-line vs a declaration wrapped
 // across three lines). Held constant: the enclosing annotation, the file, the
 // declared type, the arity, and the absence of modifiers.
+//
+// The SIGNATURE is asserted here too, on the same rows, and that is the whole
+// reason the multi-line row exists twice over. Every OTHER signature this file
+// asserts is a single-line declaration, and buildAnnotationElementSignature's
+// whitespace collapse (`strings.Join(strings.Fields(raw), " ")`) is a NO-OP on a
+// single-line span — so deleting it left the entire package green (verified:
+// exit 0). The fixture varied the span axis while holding the signature axis
+// constant at single-line, which is the "pins one axis, leaves its neighbour
+// open" shape. Only a multi-line element, whose raw span carries embedded
+// newlines and indentation, can observe the collapse at all.
 func TestJavaAnnotationType_7073_ElementSpans(t *testing.T) {
 	recs := extractJava7073(t, "Spans.java", `public @interface Spans {
     String one();
@@ -573,12 +583,15 @@ func TestJavaAnnotationType_7073_ElementSpans(t *testing.T) {
 	for _, want := range []struct {
 		name       string
 		start, end int
+		sig        string
 	}{
-		{"Spans.one", 2, 2},
+		{"Spans.one", 2, 2, "String one()"},
 		// The multi-line row is what distinguishes a real span from
-		// StartLine==EndLine emitted for everything.
-		{"Spans.two", 3, 5},
-		{"Spans.three", 6, 6},
+		// StartLine==EndLine emitted for everything, AND it is the only row in
+		// this file whose signature can observe the whitespace collapse: the raw
+		// span is "String\n        two()\n        default \"x\"".
+		{"Spans.two", 3, 5, `String two() default "x"`},
+		{"Spans.three", 6, 6, "String three()"},
 	} {
 		got := findJava7073(recs, "SCOPE.Schema", want.name)
 		if len(got) != 1 {
@@ -589,6 +602,9 @@ func TestJavaAnnotationType_7073_ElementSpans(t *testing.T) {
 		if got[0].StartLine != want.start || got[0].EndLine != want.end {
 			t.Errorf("%s span = %d-%d, want %d-%d",
 				want.name, got[0].StartLine, got[0].EndLine, want.start, want.end)
+		}
+		if got[0].Signature != want.sig {
+			t.Errorf("%s.Signature = %q, want %q", want.name, got[0].Signature, want.sig)
 		}
 	}
 }
