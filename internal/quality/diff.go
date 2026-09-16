@@ -5,6 +5,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/extractors/cross/ormlink"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // isPlaceholderAnchor reports whether e is a stand-in that its own producer
@@ -674,22 +675,40 @@ func Evaluate(fix *Fixture, doc *graph.Document) *Report {
 			fromIDs = append(fromIDs, fromBare)
 		}
 
+		// #7071 — to_must_be_typed narrows the row to edges whose TO
+		// endpoint was bound on evidence. An edge carrying the guess marker
+		// is not a candidate for such a row, so the search CONTINUES past
+		// it rather than returning it: a row may legitimately be satisfied
+		// by a second, evidence-bound edge among the candidates, and
+		// stopping at the first guess would report "not found" for a graph
+		// that does contain what the row asks for.
+		//
+		// A row that does NOT set the field is unaffected — the predicate
+		// is true for every edge — which is what keeps this a per-row
+		// opt-in and not a silent tightening of 507 existing rows.
+		typedEnough := func(r *graph.Relationship) bool {
+			if !er.ToMustBeTyped {
+				return true
+			}
+			return r.PropGet(types.PropBindTier) == ""
+		}
+
 		// First pass: try the strict (from, to, kind) triple lookup over
 		// every candidate combination.
 		for _, fid := range fromIDs {
 			for _, tc := range toCands {
-				if r, ok := relByTriple[relKey{fid, tc.ID, er.Kind}]; ok {
+				if r, ok := relByTriple[relKey{fid, tc.ID, er.Kind}]; ok && typedEnough(r) {
 					return r, fromResolved, toResolved, false
 				}
 			}
 			if er.ToBareName != "" {
-				if r, ok := relByTriple[relKey{fid, er.ToBareName, er.Kind}]; ok {
+				if r, ok := relByTriple[relKey{fid, er.ToBareName, er.Kind}]; ok && typedEnough(r) {
 					return r, fromResolved, true, false
 				}
 				// Bare-name comparison is whitespace-insensitive; the
 				// indexer may emit a slightly mangled stub.
 				for _, r := range relByKindFrom[er.Kind+"\x00"+fid] {
-					if strings.EqualFold(strings.TrimSpace(r.ToID), strings.TrimSpace(er.ToBareName)) {
+					if strings.EqualFold(strings.TrimSpace(r.ToID), strings.TrimSpace(er.ToBareName)) && typedEnough(r) {
 						return r, fromResolved, true, false
 					}
 				}

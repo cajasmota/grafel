@@ -1032,6 +1032,48 @@ var cpKnownPathA = []cpKnown{
 	// weight fell to the full rebuild's 1 with no change to the aggregation code.
 	// Recorded because "extra DEPENDS_ON row" reads like a separate bug in the
 	// issue text and is not one.
+
+	// ── #7071: the guess-tier marker exposes a tier divergence the graphs
+	//    were already carrying, invisibly ──
+	//
+	// `to_bind_tier` (internal/types/bindtier.go) records WHICH resolver tier
+	// chose an edge's ToID, for the twelve tiers that choose it from a bare
+	// name plus a locality. The rows below are NOT a marker bug: both sides
+	// bind the SAME edge to the SAME target, and every count — edges,
+	// entities, unbound endpoints — is identical across the property diff.
+	// What differs is the ROUTE each path took to that target.
+	//
+	// The cause is pass ordering, not a second resolver. In a full rebuild
+	// the import-aware passes run with the whole corpus in hand and bind
+	// these targets before the generic resolver ever sees them (an
+	// already-hex ToID is not a guess and carries no marker). In the
+	// incremental run those passes have no candidates — the log line reads
+	// `import-aware rewrote=0/N … (no candidates resolved)` — so the same
+	// edge falls through to the global bare-name tier, which IS a guess and
+	// IS marked. The reverse happens on the other path.
+	//
+	// This is the marker doing its job on its first contact with the
+	// pipeline: two builds that every existing instrument scores as
+	// identical are reaching the same answers by different evidence. It
+	// deserves its own issue and does not have one yet; it is deliberately
+	// NOT fixed here, because equalising tier attribution across full and
+	// incremental means changing which pass binds what, which is a
+	// behavioural change to resolution and not to a marker.
+	//
+	// Keyed on the tier VALUE and the direction sign, so a different tier, or
+	// the same tier diverging the other way, is a NEW divergence and fails.
+	{
+		Issue:          "#7071",
+		Why:            "Full rebuild binds through the global bare-name guess tier where the incremental run's import-aware pass already bound the target. Same edge, same target, different route. Unfixed; needs its own issue.",
+		Bucket:         cpEdgeProps,
+		DetailContains: []string{`-to_bind_tier="global-name"`},
+	},
+	{
+		Issue:          "#7071",
+		Why:            "Same divergence on the same-file leaf-name tier. Listed separately from global-name so a tier changing identity is a new divergence, not an absorbed one.",
+		Bucket:         cpEdgeProps,
+		DetailContains: []string{`-to_bind_tier="file-leaf-name"`},
+	},
 }
 
 // TestContentParity_PathA_6129 runs the gate over Path A.
@@ -1185,6 +1227,42 @@ var cpKnownPathB = []cpKnown{
 		Bucket:         cpEntityFields,
 		Contains:       []string{"http_endpoint_definition|http:GET:/cpusers"},
 		DetailContains: []string{"response_keys_known"},
+	},
+
+	// ── #7071: the guess-tier marker exposes a tier divergence the graphs
+	//    were already carrying, invisibly ──
+	//
+	// `to_bind_tier` (internal/types/bindtier.go) records WHICH resolver tier
+	// chose an edge's ToID, for the twelve tiers that choose it from a bare
+	// name plus a locality. The rows below are NOT a marker bug: both sides
+	// bind the SAME edge to the SAME target, and every count — edges,
+	// entities, unbound endpoints — is identical across the property diff.
+	// What differs is the ROUTE each path took to that target.
+	//
+	// The cause is pass ordering, not a second resolver. In a full rebuild
+	// the import-aware passes run with the whole corpus in hand and bind
+	// these targets before the generic resolver ever sees them (an
+	// already-hex ToID is not a guess and carries no marker). In the
+	// incremental run those passes have no candidates — the log line reads
+	// `import-aware rewrote=0/N … (no candidates resolved)` — so the same
+	// edge falls through to the global bare-name tier, which IS a guess and
+	// IS marked. The reverse happens on the other path.
+	//
+	// This is the marker doing its job on its first contact with the
+	// pipeline: two builds that every existing instrument scores as
+	// identical are reaching the same answers by different evidence. It
+	// deserves its own issue and does not have one yet; it is deliberately
+	// NOT fixed here, because equalising tier attribution across full and
+	// incremental means changing which pass binds what, which is a
+	// behavioural change to resolution and not to a marker.
+	//
+	// Keyed on the tier VALUE and the direction sign, so a different tier, or
+	// the same tier diverging the other way, is a NEW divergence and fails.
+	{
+		Issue:          "#7071",
+		Why:            "The mirror of the Path-A entry, and the reason both are listed: here the INCREMENTAL run falls to the global bare-name guess tier because its import-aware pass found no candidates, while the full rebuild bound the same target earlier. Unfixed; needs its own issue.",
+		Bucket:         cpEdgeProps,
+		DetailContains: []string{`+to_bind_tier="global-name"`},
 	},
 }
 

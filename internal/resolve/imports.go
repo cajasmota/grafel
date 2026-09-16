@@ -2388,7 +2388,12 @@ func (idx Index) ResolveGoCrossPackageCalls(records []types.EntityRecord) int {
 // Must run AFTER BuildIndex (needs the package-scoped indexes) and BEFORE the
 // embedded-reference resolver so the rewritten hex ID is seen as resolved.
 // Returns the number of edges rewritten.
-func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
+// #7071 — stats may be nil. When supplied, the crate-wide fallback tier
+// below stamps types.PropBindTier on the edges it binds and tallies them in
+// stats.BindTierCounts. The candidate-directory binds in the loop above it
+// are NOT marked: those directories came from resolved `use` statements,
+// which is evidence the extractor produced, not a lexical guess.
+func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord, stats *Stats) int {
 	if len(idx.byPackageOperation) == 0 && len(idx.byPackageMember) == 0 {
 		return 0
 	}
@@ -2445,9 +2450,11 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
 			// Associated-call crate-wide fallback: an `OrderService::new()`
 			// whose type is unique in the crate but lives outside the offered
 			// candidate dirs. Bind through the unambiguous global member index.
+			crateWide := false
 			if resolved == "" && !conflict && scope != "" {
 				if id := idx.lookupUniqueMember(scope, leaf); id != "" {
 					resolved = id
+					crateWide = true
 				}
 			}
 
@@ -2455,6 +2462,17 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
 				continue
 			}
 			r.ToID = resolved
+			// GUESS TIER E4 (#7071) — crate-wide uniqueness, reached only
+			// after every candidate directory the import resolver offered
+			// has declined. `scope::leaf` matching something exactly once
+			// across the whole crate is the same species of guess as "the
+			// only same-named method in the caller's file". The tier is
+			// decided by which branch produced `resolved`, which is why the
+			// flag is set at that branch and not inferred here — this
+			// assignment is a funnel for both.
+			if crateWide {
+				stampBindTier(r, BindTierRustCrateUniqueMember, stats)
+			}
 			rewrites++
 		}
 	}
