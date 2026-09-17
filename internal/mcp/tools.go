@@ -1183,8 +1183,16 @@ func enumerateByKind(all []scored, repos []*LoadedRepo, kindFilter string, inclu
 
 // serializeHits is the structured (full=true) shape.
 //
-// Default (verbose=false): id, name, file, line, score, kind.
+// Default (verbose=false): id, name, file, line, score, kind, and subtype when
+// the entity has a non-empty one (#7090).
 // Verbose (verbose=true): also includes qualified_name, repo.
+//
+// #7090 — the `subtype` key is emitted here as well as in serializeEntity, and
+// the two are TWINS: serializeEntity feeds grafel_inspect only (its two callers
+// are both inside handleGetNode), so with the key on serializeEntity alone
+// grafel_find — the tool where "is this a class or an interface?" is actually
+// asked — still could not answer it. A fix on one of a twinned pair is half a
+// fix; any change to the shape here must be made in both.
 //
 // #6329 — a hit from machine-generated source additionally carries
 // "generated": true, and in verbose mode "generated_by" naming the rule that
@@ -1206,6 +1214,15 @@ func serializeHits(all []scored, verbose bool) []map[string]any {
 			"line":  sc.hit.Entity.StartLine,
 			"score": sc.hit.Score,
 			"kind":  stripScopePrefix(sc.hit.Entity.Kind),
+		}
+		// #7090: same shape as serializeEntity's — DEFAULT payload, emitted only
+		// when non-empty, so a subtype-less hit never acquires an empty-string
+		// key a consumer would have to special-case. `matches` is plain-JSON
+		// marshalled (jsonResult), not tabular-encoded, so a heterogeneous key
+		// set across rows costs nothing here — `generated` above is already
+		// conditional in exactly this way.
+		if st := sc.hit.Entity.Subtype; st != "" {
+			m["subtype"] = st
 		}
 		if sc.hit.Entity.PropGet(types.EntityGeneratedProperty) == "true" {
 			m["generated"] = true
@@ -2194,6 +2211,11 @@ func readSourceLines(path string) []string {
 //
 // Default (verbose=false): id, name, qualified_name, file, line, kind, and
 // subtype when the entity has a non-empty one (#7090).
+//
+// #7090 — this function feeds grafel_inspect ONLY (both callers are inside
+// handleGetNode); grafel_find's hit rows come from serializeHits. The `subtype`
+// key below is therefore a TWIN of the one there, and the two must keep the
+// same shape — default payload, emitted only when non-empty.
 // Verbose (verbose=true): also includes end_line, language, repo, pagerank,
 // community_id, properties.
 func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool, verbose ...bool) map[string]any {

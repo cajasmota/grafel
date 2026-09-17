@@ -287,7 +287,8 @@ byte budget (default 800 tokens ≈ 3,200 bytes).
       "file": "core/views/order.py",
       "line": 42,
       "score": 12.31,
-      "kind": "Component"
+      "kind": "Component",
+      "subtype": "class"
     }
   ]
 }
@@ -307,14 +308,20 @@ With `verbose=true`, each match also includes `qualified_name` and `repo`.
   ADR-0003 and [Entity Kinds](#entity-kinds).
 - Field elision (#1739): default shape drops `qualified_name` and `repo` (redundant
   in ranked context). Pass `verbose=true` to restore.
-- `subtype` (#7090): present on the DEFAULT shape whenever the entity has a
-  non-empty `Subtype` — the field extractors use to separate a class from an
-  interface / record / annotation / enum value. Omitted entirely (no empty-string
-  key) when the entity has none, so a consumer filtering on it never has to
-  special-case `""`. Emitted regardless of whether the producing extractor also
-  dual-stamps `Properties["subtype"]`: about half the graph carries a `Subtype`
-  with no such twin, and before #7090 those entities' subtype was invisible to
-  every MCP consumer.
+- `subtype` (#7090): present on the DEFAULT `matches` row (i.e. under
+  `full=true`, without `verbose=true`) whenever the entity has a non-empty
+  `Subtype` — the field extractors use to separate a class from an interface /
+  record / annotation / enum value. Omitted entirely (no empty-string key) when
+  the entity has none, so a consumer filtering on it never has to special-case
+  `""`. Emitted regardless of whether the producing extractor also dual-stamps
+  `Properties["subtype"]`: about half the graph carries a `Subtype` with no such
+  twin, and before #7090 those entities' subtype was invisible to every MCP
+  consumer. **Where it is NOT emitted**, stated because the omissions are as
+  load-bearing as the key: the compact text view and the per-repo summary encode
+  a FIXED TOON column schema (`id[,repo],name,kind,file,line,score`) which a
+  per-row optional column does not fit, so they still carry no subtype; and
+  `search=substring|name|literal` routes to a different handler with its own
+  record shape, which also does not (both are open questions, not decisions).
 
 ---
 
