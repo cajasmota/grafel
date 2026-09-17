@@ -449,3 +449,44 @@ type StaticOptionBuilder() =
 		}
 	}
 }
+
+// TestMemberModifiers_MandatorySeparator grades the PAIR of redundant guards
+// in the modifier group — the mandatory `\s+` separator and the `\b` — which
+// are individually ungraded because each masks the other.
+//
+// Measured, on this suite: removing `\b` alone is ALIVE (0 `--- FAIL`), and
+// relaxing `\s+` to `\s*` alone is ALIVE (0). Neither is load-bearing by
+// itself: with `\s+` intact, a glued `privateinternal` offers no whitespace
+// for the second repetition; with `\b` intact, it offers no word boundary.
+// Remove BOTH and the group walks straight through two glued modifier words
+// and names the member after its first PARAMETER instead.
+//
+// The fixture is a static member, deliberately: static members take no
+// self-identifier, so `static member <name> <param> = expr` is
+// space-applied and unqualified — the only shape in which the two guards can
+// diverge — and it is legal F# rather than merely grammar-admitted. The names
+// glue two modifier words, which is unusual but a perfectly legal identifier;
+// that is the shape the guards exist for.
+func TestMemberModifiers_MandatorySeparator(t *testing.T) {
+	src := `module M
+
+type Holder() =
+    static member privateinternal x = x
+    static member valinline y = y
+`
+	ents := runFSharp(t, src, "Separator.fs")
+	names := fsMemberNames(ents)
+	if len(names) != 2 {
+		t.Errorf("got %d member entities, want 2: %v", len(names), names)
+	}
+	for _, w := range []string{"privateinternal", "valinline"} {
+		if fsFindMember(ents, w) == nil {
+			t.Errorf("glued modifier-word name %q lost; member names = %v", w, names)
+		}
+	}
+	for _, bad := range []string{"x", "y"} {
+		if e := fsFindMember(ents, bad); e != nil {
+			t.Errorf("parameter %q captured as the member name (line %d)", bad, e.StartLine)
+		}
+	}
+}
