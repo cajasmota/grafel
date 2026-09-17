@@ -3,6 +3,7 @@ package fsharp_test
 import (
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -27,9 +28,26 @@ import (
 //     asserted here by ENTITY COUNT, which is the only direction that can see
 //     an absence.
 //
-// GRAMMAR. Settled from the F# Language Specification, § 8.13 "Members"
-// (https://fsharp.github.io/fslang-spec/type-definitions/), with `access`
-// from § 10.5 "Accessibility Annotations":
+// GRAMMAR, and WHICH SOURCES WERE UNIONED. The accepted modifier set is not
+// readable off one grammar production: § 8.13's `member-defn` genuinely omits
+// `inline`, and a first revision of this change derived from that production
+// alone and shipped an incomplete set, under which `member inline this.f`
+// still captured the name `inline`. Three sources are unioned here:
+//
+//  1. F# Language Specification § 8.13 "Members"
+//     (https://fsharp.github.io/fslang-spec/type-definitions/) for the
+//     productions and the ORDER, plus § 10.5 "Accessibility Annotations"
+//     for `access`;
+//  2. the official language reference — MS Learn "Inline Functions"
+//     (learn.microsoft.com/dotnet/fsharp/language-reference/functions/
+//     inline-functions): the `inline` modifier "can be applied to functions
+//     at the top level, at the module level, or at the method level in a
+//     class", with the example `member inline this.incrementByOne(x)` /
+//     `static member inline Increment(x)`;
+//  3. the sibling scanner in the same file — letRE (#7131) already
+//     allowlists `inline`.
+//
+// § 8.13 productions:
 //
 //	member-defn :=
 //	    attributes? static? member access? method-or-prop-defn
@@ -54,15 +72,17 @@ import (
 //
 //	access := public | private | internal          (§ 10.5)
 //
-// Three consequences the table below is built on:
+// Four consequences the table below is built on:
 //
 //  1. `static` is a PREFIX to the keyword, never a suffix — `member static` is
 //     not F#, so no row claims it.
-//  2. `val` is NOT a modifier: `member val` selects the auto-property
+//  2. `inline` is legal on a member per source (2) above even though the
+//     § 8.13 production omits it.
+//  3. `val` is NOT a modifier: `member val` selects the auto-property
 //     production, in which the NAME is the `ident` after `val` (and after an
 //     optional access modifier, since auto-prop-defn is `val access? ident`).
 //     `member val private Count = 0 with get, set` therefore names `Count`.
-//  3. The legal order after the keyword is access-then-name for
+//  4. The attested order after the keyword is access-then-name for
 //     method-or-prop-defn, and `val` then access then name for the
 //     auto-property. Any other order is scanner lenience only, and is labelled
 //     per row.
@@ -73,7 +93,8 @@ import (
 // no row claims an abstract signature is extracted.
 //
 // Axes VARIED: the keyword (`member`/`override`/`default`), presence of
-// `static`, access modifier identity (public/private/internal), the auto-
+// `static`, presence of `inline`, access modifier identity
+// (public/private/internal), the auto-
 // property `val` form with and without access and with and without
 // `with get, set`, presence of the instance qualifier (`this.`, `_.`, none),
 // presence of parameters, presence of a generic parameter list, and (outside
@@ -88,6 +109,16 @@ import (
 // `fsi`, `mono` are all absent; `javac` is the only compiler present), so
 // every classification below is read off the specification grammar and was
 // NOT executed against a compiler.
+
+// specGrammarAdmits is a THIRD grammar label, added because `specLegal` is
+// defined in let_modifiers_7131_test.go as "legal F#" — a claim about the
+// COMPILER — while some rows are only known to be admitted by the § 8.13
+// grammar. An instance member with no self-identifier (`member Target x = x`)
+// and an accessibility modifier on an `override`/`default` are both
+// grammar-admitted and plausibly compiler-rejected; no F# compiler exists in
+// this environment, so neither direction is executed. The rows are kept
+// because they pin the scanner against the shape, not against the language.
+const specGrammarAdmits fsGrammar = "grammar-admitted by § 8.13; compiler acceptance NOT verified"
 
 // fsFindMember returns the SCOPE.Operation named name with subtype "member".
 func fsFindMember(ents []types.EntityRecord, name string) *types.EntityRecord {
@@ -112,7 +143,7 @@ func fsMemberNames(ents []types.EntityRecord) []string {
 
 // fsMemberModifierWords are the words that must never become an entity name.
 var fsMemberModifierWords = []string{
-	"static", "val", "public", "private", "internal",
+	"static", "inline", "val", "public", "private", "internal",
 	"member", "override", "default", "abstract", "this", "self",
 }
 
@@ -129,13 +160,13 @@ func TestMemberModifiers_NameIsNeverTheModifier(t *testing.T) {
 		// method-or-prop-defn, no modifier — the pre-existing working shapes.
 		{"none, qualified", specLegal, `    member this.Target (a: int) = a`},
 		{"none, underscore qualifier", specLegal, `    member _.Target (a: int) = a`},
-		{"none, unqualified", specLegal, `    member Target (a: int) = a`},
+		{"none, unqualified", specGrammarAdmits, `    member Target (a: int) = a`},
 
 		// access modifier — mis-named `private`/`internal`/`public` before.
 		{"private, qualified", specLegal, `    member private this.Target (a: int) = a`},
 		{"internal, qualified", specLegal, `    member internal this.Target (a: int) = a`},
 		{"public, qualified", specLegal, `    member public this.Target (a: int) = a`},
-		{"private, unqualified", specLegal, `    member private Target (a: int) = a`},
+		{"private, unqualified", specGrammarAdmits, `    member private Target (a: int) = a`},
 
 		// static — missed ENTIRELY before.
 		{"static", specLegal, `    static member Target (a: int) = a`},
@@ -147,9 +178,18 @@ func TestMemberModifiers_NameIsNeverTheModifier(t *testing.T) {
 
 		// override / default.
 		{"override", specLegal, `    override this.Target (a: int) = a`},
-		{"override private", specLegal, `    override private this.Target (a: int) = a`},
+		{"override private", specGrammarAdmits, `    override private this.Target (a: int) = a`},
 		{"default", specLegal, `    default this.Target (a: int) = a`},
-		{"default internal", specLegal, `    default internal this.Target (a: int) = a`},
+		{"default internal", specGrammarAdmits, `    default internal this.Target (a: int) = a`},
+
+		// inline — admitted on members by the language reference (source 2
+		// in this file's header) though § 8.13 omits it. Without `inline` in
+		// the allowlist these rows capture the NAME `inline`, i.e. mode A
+		// survives the rest of the fix untouched.
+		{"inline, qualified", specLegal, `    member inline this.Target (x: int) = x + 1`},
+		{"inline, unqualified", specLegal, `    member inline Target (x: int) = x + 1`},
+		{"static inline", specLegal, `    static member inline Target (x: int) = x + 1`},
+		{"override inline", specGrammarAdmits, `    override inline this.Target (x: int) = x + 1`},
 
 		// auto-prop-defn: `val access? ident` — the name is the ident AFTER
 		// `val`, and after the access modifier when one is present.
@@ -167,6 +207,10 @@ func TestMemberModifiers_NameIsNeverTheModifier(t *testing.T) {
 		{"private val (reversed)", lenienceOnly, `    member private val Target = 0 with get, set`},
 		{"internal val (reversed)", lenienceOnly, `    member internal val Target = 0 with get, set`},
 		{"private public (repeated access)", lenienceOnly, `    member private public Target (a: int) = a`},
+		// `inline` relative to `access`: no source attests either order on a
+		// member (§ 8.13 omits `inline` entirely), so both are lenience only.
+		{"inline private (unattested order)", lenienceOnly, `    member inline private this.Target (x: int) = x + 1`},
+		{"private inline (unattested order)", lenienceOnly, `    member private inline this.Target (x: int) = x + 1`},
 	}
 
 	for _, tc := range cases {
@@ -271,12 +315,17 @@ type Holder() =
 	}
 }
 
-// TestMemberModifiers_ModifierPrefixedNames is the negative control against
-// the obvious over-widening: an allowlist matched without a word boundary
-// would eat the leading `val` of `Validate`, the `private` of `privateKey`,
-// and so on. Every name below is a legal F# member name that merely BEGINS
-// with a modifier word, so the source really contains the shape a
-// boundary-less mutant misreads.
+// TestMemberModifiers_ModifierPrefixedNames pins that a member name which
+// merely BEGINS with a modifier word survives intact, and that six such
+// members produce six entities rather than collapsing.
+//
+// What it does NOT control: it is not a control for the `\b` in the modifier
+// group. This test PASSES UNCHANGED with that `\b` removed — measured, not
+// assumed — because every repetition of the group is gated by a mandatory
+// `\s+` and `Validate` supplies no whitespace after a `val` prefix, so the
+// boundary never gets to matter. The guard that keeps these names is the
+// separator, not the boundary. An earlier revision of this comment claimed
+// the opposite and was false.
 func TestMemberModifiers_ModifierPrefixedNames(t *testing.T) {
 	src := `module M
 
@@ -319,5 +368,84 @@ module Inner =
 	}
 	if e.StartLine != 5 {
 		t.Errorf("start line = %d, want 5", e.StartLine)
+	}
+}
+
+// TestMemberModifiers_Inline is the language reference's own example
+// (MS Learn "Inline Functions", source 2 in this file's header) verbatim. It
+// is BOTH failure modes at once against a fix that omits `inline`: each
+// member is named `inline`, and because `memberSeen` is keyed
+// indent+":member:"+name the two then collapse to a single entity. The count
+// is what makes the collapse visible.
+func TestMemberModifiers_Inline(t *testing.T) {
+	src := `module M
+
+type WrapInt32() =
+    member inline this.incrementByOne(x) = x + 1
+    static member inline Increment(x) = x + 1
+`
+	ents := runFSharp(t, src, "Inline.fs")
+	names := fsMemberNames(ents)
+	if len(names) != 2 {
+		t.Errorf("two `member inline` declarations produced %d member entities, want 2: %v",
+			len(names), names)
+	}
+	for _, w := range []string{"incrementByOne", "Increment"} {
+		if fsFindMember(ents, w) == nil {
+			t.Errorf("missing member entity %q; member names = %v", w, names)
+		}
+	}
+	if e := fsFindMember(ents, "inline"); e != nil {
+		t.Errorf("modifier \"inline\" recorded as the entity name (line %d)", e.StartLine)
+	}
+}
+
+// TestMemberModifiers_StaticMemberGetsContainsEdge grades the FIRST of two
+// downstream consequences of this widening, which would otherwise be
+// unobserved. `memberRE` has three consumers: the member loop (extractor.go),
+// the type→member CONTAINS scan in the type loop, and `detectCEBuilder` in
+// compexpr_active_patterns.go. Recognising `static member` at all means the
+// type loop now emits a CONTAINS edge for it — directionally right, and
+// asserted here rather than assumed. (The second consequence, a
+// `static member Bind`/`Return` type now qualifying as a CE builder, is
+// graded by TestMemberModifiers_StaticCEBuilder below.)
+func TestMemberModifiers_StaticMemberGetsContainsEdge(t *testing.T) {
+	src := `module M
+
+type Money(amount: decimal) =
+    member this.Amount = amount
+    static member Zero = Money(0m)
+`
+	ents := runFSharp(t, src, "MoneyEdges.fs")
+	for _, name := range []string{"Amount", "Zero"} {
+		ref := extractor.BuildOperationStructuralRef("fsharp", "MoneyEdges.fs", name)
+		if !fsHasRel(ents, "Money", "SCOPE.Component", "CONTAINS", ref) {
+			t.Errorf("type Money has no CONTAINS edge to member %q (ref %q)", name, ref)
+		}
+	}
+}
+
+// TestMemberModifiers_StaticCEBuilder grades the second downstream
+// consequence: `detectCEBuilder` counts members through `memberRE`, so a
+// builder whose protocol members are STATIC is now recognised where before
+// the type looked memberless. Deliberate, and asserted rather than left as a
+// side effect.
+func TestMemberModifiers_StaticCEBuilder(t *testing.T) {
+	src := `module Builders
+
+type StaticOptionBuilder() =
+    static member Bind(m, f) = Option.bind f m
+    static member Return(x) = Some x
+`
+	ents := runFSharp(t, src, "staticbuilders.fs")
+	for _, name := range []string{"Bind", "Return"} {
+		op := fsFind(ents, name, "SCOPE.Operation")
+		if op == nil {
+			t.Fatalf("expected SCOPE.Operation %s", name)
+		}
+		if op.Subtype != "ce_member" {
+			t.Errorf("%s subtype=%q, want ce_member (static CE protocol members "+
+				"are now visible to detectCEBuilder)", name, op.Subtype)
+		}
 	}
 }

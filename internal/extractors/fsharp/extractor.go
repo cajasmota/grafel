@@ -96,7 +96,7 @@ var (
 	)
 
 	// member: "[static] member|override|abstract member|default
-	//          [access] [val] [this.]Name ... ="
+	//          [inline] [access] [val] [this.]Name ... ="
 	//
 	// #7135 — this pattern accommodated NO member modifier at all, and that
 	// produced two distinct failure modes:
@@ -120,9 +120,25 @@ var (
 	//     read as having none — an absence no bind-rate, orphan-rate or
 	//     dangle instrument can flag.
 	//
-	// The accepted set and its ORDER come from the F# Language Specification
-	// § 8.13 "Members" (https://fsharp.github.io/fslang-spec/type-definitions/),
-	// with `access` from § 10.5 "Accessibility Annotations":
+	// The accepted set is the UNION of three sources, because no one of them
+	// is exhaustive — the § 8.13 member-defn production below genuinely omits
+	// `inline`, so deriving from that grammar alone produced an incomplete
+	// set on the first pass:
+	//
+	//   1. F# Language Specification § 8.13 "Members"
+	//      (https://fsharp.github.io/fslang-spec/type-definitions/) for the
+	//      productions and the ORDER, and § 10.5 "Accessibility Annotations"
+	//      for `access`;
+	//   2. the official language reference, MS Learn "Inline Functions"
+	//      (learn.microsoft.com/dotnet/fsharp/language-reference/functions/
+	//      inline-functions), which states `inline` may be applied "at the
+	//      method level in a class" and shows `member inline this.f` and
+	//      `static member inline F` — a form § 8.13 does not mention;
+	//   3. the sibling scanner in this file: letRE (#7131) already allowlists
+	//      `inline`, and a modifier legal on a module-level `let` being legal
+	//      on a member is exactly the cross-check the grammar missed.
+	//
+	// § 8.13 productions:
 	//
 	//	member-defn := attributes? static? member access? method-or-prop-defn
 	//	             | attributes? abstract member? access? member-sig
@@ -137,16 +153,21 @@ var (
 	//	method-or-prop-defn := (ident '.')? ident pat1 … patn = expr | …
 	//	access := public | private | internal
 	//
-	// Three consequences shape the pattern:
+	// Four consequences shape the pattern:
 	//
 	//  1. `static` is a PREFIX to `member`, never a suffix, so it is spelled
 	//     as its own alternative rather than added to the modifier group.
-	//  2. `val` is NOT a modifier. `member val` selects the auto-property
+	//  2. `inline` is admitted on members by the language reference even
+	//     though the § 8.13 production omits it, so it is in the group.
+	//     Without it mode A survives this fix intact: `member inline
+	//     this.incrementByOne(x) = x + 1` captures the name `inline`, and two
+	//     such members collapse on the memberSeen key.
+	//  3. `val` is NOT a modifier. `member val` selects the auto-property
 	//     production, whose NAME is the ident after `val` — and after an
 	//     optional access modifier, because auto-prop-defn is
 	//     `val access? ident`. It belongs in the group precisely so the group
 	//     consumes it and the name capture lands on the property name.
-	//  3. `abstract`/`abstract member` introduce a member-sig with NO
+	//  4. `abstract`/`abstract member` introduce a member-sig with NO
 	//     `= expr`, so an abstract signature never reaches this pattern at
 	//     all; the keyword stays in the alternation for the concrete
 	//     `abstract member Foo() = …` shape only.
@@ -156,11 +177,21 @@ var (
 	// (and `val` then access then name); a reversed order is deliberate
 	// scanner lenience, not a claim about the language — this is a lenient
 	// scanner, not a compiler, and ranking the orders could only create a way
-	// to LOSE a real member. `\b` keeps a modifier a whole word so
-	// `member this.Validate` is not read as `member val` + `idate`.
+	// to LOSE a real member.
+	//
+	// `\b` states that a modifier is a whole word, but it is NOT load-bearing
+	// under this pattern and is not graded: every repetition of the group is
+	// gated by a mandatory `\s+`, and a modifier-prefixed name supplies no
+	// whitespace, so `member this.Validate` yields `Validate` with OR without
+	// the boundary. The two variants were compared over ~1.2M enumerated
+	// inputs with 0 distinguishing cases. The equivalence is MASKED BY THAT
+	// `\s+`, not structural: relax the separator to `\s*` and the pair
+	// diverges on ~114k inputs (`member privateinternal Target = 0` captures
+	// `privateinternal` with the boundary and `Target` without it). Kept as
+	// documentation of intent, in the same masking relation as letRE's.
 	memberRE = regexp.MustCompile(
 		`(?m)^([ \t]*)(?:static\s+member|member|override|abstract member|default)` +
-			`(?:\s+(?:val|public|private|internal)\b)*` +
+			`(?:\s+(?:inline|val|public|private|internal)\b)*` +
 			`\s+(?:[a-zA-Z_][a-zA-Z0-9_']*\.)?([a-zA-Z_][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:[^=\n]*)=`,
 	)
 
