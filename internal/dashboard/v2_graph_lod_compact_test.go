@@ -7,12 +7,21 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
-func TestBuildV2GraphWithNodeCapMatchesLegacyThinning(t *testing.T) {
+// TestCompactNodeThinningMatchesLegacyThinning pins that the compact
+// integer-adjacency LoD path (thin nodes first, then collect wire edges) agrees
+// node-for-node and edge-for-edge with the legacy "build everything, then thin"
+// path. It runs with BOTH caps finite, which is the only shape production ever
+// asks for: serveV2Graph and the stream handler both take their pair from
+// lodLimits, which never returns 0. The edge cap is taken from lodLimits rather
+// than hard-coded so it tracks the production constant; the fixture is far
+// below it, so this test grades node thinning, not edge capping (#7146).
+func TestCompactNodeThinningMatchesLegacyThinning(t *testing.T) {
 	grp := makeCompactLODFixture(120, 900)
 	server := &Server{}
 	repos := sortedRepos(grp)
 	full := server.buildV2Graph(repos, grp, "", false, false)
 	const cap = 30
+	_, edgeCap := lodLimits("normal")
 	wantNodes := thinByPagerankConnected(full.Nodes, full.Edges, cap)
 	kept := make(map[string]bool, len(wantNodes))
 	for _, node := range wantNodes {
@@ -26,7 +35,10 @@ func TestBuildV2GraphWithNodeCapMatchesLegacyThinning(t *testing.T) {
 	}
 	recomputeServedDegree(wantNodes, wantEdges)
 
-	got := server.buildV2GraphWithNodeCap(repos, grp, "", false, false, cap)
+	if len(wantEdges) >= edgeCap {
+		t.Fatalf("fixture has %d kept-kept edges, at or above the edge cap %d — this test would stop grading node thinning", len(wantEdges), edgeCap)
+	}
+	got := server.buildV2GraphWithLimits(repos, grp, "", false, false, cap, edgeCap)
 	if got.TotalNodeCount != full.TotalNodeCount || len(got.Nodes) != len(wantNodes) || len(got.Edges) != len(wantEdges) {
 		t.Fatalf("compact LoD counts = total:%d nodes:%d edges:%d, want %d/%d/%d",
 			got.TotalNodeCount, len(got.Nodes), len(got.Edges), full.TotalNodeCount, len(wantNodes), len(wantEdges))
@@ -52,7 +64,7 @@ func BenchmarkBuildV2GraphLOD20K300K(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchmarkV2Response = server.buildV2GraphWithNodeCap(repos, grp, "", false, false, 3_000)
+		benchmarkV2Response = server.buildV2GraphWithLimits(repos, grp, "", false, false, normalLodNodeCap, normalEdgeCap)
 	}
 }
 

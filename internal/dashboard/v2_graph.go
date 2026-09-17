@@ -226,14 +226,14 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 	return s.buildV2GraphWithLimits(repos, grp, filterKind, includeExternal, includeModules, nodeCap, edgeCap)
 }
 
-// buildV2GraphWithNodeCap applies LoD before allocating wire edges. For large
+// buildV2GraphWithLimits applies LoD before allocating wire edges. For large
 // groups this avoids materialising millions of v2GraphEdge values that would be
-// discarded immediately. A compact integer adjacency preserves the connected
+// discarded immediately: a compact integer adjacency preserves the connected
 // thinning contract at a fraction of the memory cost.
-func (s *Server) buildV2GraphWithNodeCap(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool, nodeCap int) v2GraphResponse {
-	return s.buildV2GraphWithLimits(repos, grp, filterKind, includeExternal, includeModules, nodeCap, 0)
-}
-
+//
+// Both production entry points (serveV2Graph and the stream handler) derive
+// nodeCap/edgeCap from lodLimits, which never returns 0 for either, so every
+// served graph is bounded on both axes.
 func (s *Server) buildV2GraphWithLimits(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool, nodeCap, edgeCap int) v2GraphResponse {
 	totalEntities, totalRels, totalCommunities := 0, 0, 0
 	for _, rp := range repos {
@@ -382,6 +382,12 @@ func (s *Server) buildV2GraphWithLimits(repos []*DashRepo, grp *DashGroup, filte
 		nodes, kept = thinByPagerankConnectedIndices(nodes, adjacency, nodeCap)
 		edges, edgeCapTruncated = collectCappedGraphEdges(nodes, edgeCap, func(yield func(v2GraphEdge)) {
 			visitEdges(func(from, to int, kind string) {
+				// This gate is an ALLOCATION guard, not a correctness one:
+				// collectCappedGraphEdges re-filters against its own `visible`
+				// map, so relaxing `&&` to `||` here leaves every served
+				// payload byte-identical (measured: 0 of 4,116 enumerated
+				// (layout x nodeCap x edgeCap) responses differed, #7146).
+				// It exists so dropped edges are never built or hashed.
 				if kept[from] && kept[to] {
 					yield(v2GraphEdge{Source: originalNodes[from].ID, Target: originalNodes[to].ID, Kind: kind})
 				}
@@ -405,8 +411,25 @@ func (s *Server) buildV2GraphWithLimits(repos []*DashRepo, grp *DashGroup, filte
 		TotalNodeCount: totalNodeCount,
 		TotalEdgeCount: totalEdgeCount,
 		NodeTruncated:  totalNodeCount > len(nodes),
-		EdgeTruncated:  edgeCapTruncated || totalEdgeCount > len(edges),
-		Limits:         v2GraphLimits{NodeCap: nodeCap, EdgeCap: edgeCap},
+		// The `edgeCapTruncated ||` arm is REDUNDANT here, and is kept only as
+		// a local statement of collectCappedGraphEdges' own verdict. Dropping
+		// it does not change the flag on any input, so no test kills a mutant
+		// that removes it — that mutant is recorded as ALIVE-and-equivalent on
+		// purpose, not as a coverage gap to fill with a fixture (#7146).
+		//
+		// Algebra: in every path edgeCapTruncated implies
+		// totalEdgeCount > len(edges). Non-thinned, totalEdgeCount is
+		// incremented once per yielded edge, so it equals the collector's
+		// inputCount and len(edges) == min(candidateCount, cap) <= inputCount.
+		// Thinned, totalEdgeCount counts the WHOLE graph while the collector
+		// only sees kept-kept edges, so totalEdgeCount >= inputCount. Either
+		// way a dropped edge shows up as a deficit.
+		// Enumeration: TestEdgeTruncatedEqualsServedEdgeDeficit walks 3,528
+		// reachable states (6 entity counts x 7 edge layouts x single/split
+		// repo x 7 nodeCaps x 6 edgeCaps) and finds zero where the two
+		// expressions disagree, with all four truncation buckets non-empty.
+		EdgeTruncated: edgeCapTruncated || totalEdgeCount > len(edges),
+		Limits:        v2GraphLimits{NodeCap: nodeCap, EdgeCap: edgeCap},
 	}
 }
 
