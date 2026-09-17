@@ -68,9 +68,17 @@
 //   - attribute present, on the type and on a type parameter (AttrGen, TPGen).
 //   - whether the constraint TYPE is alias-qualified, and whether the `::`
 //     carries surrounding whitespace (AliasCons, AliasTight, AliasBase).
-//   - a `where`-like token that is NOT a clause: inside a string literal
-//     (LitWhere, LitWhereColon), as the class NAME (`where`, `whereGen`), and as the
-//     suffix of an identifier (Nowhere).
+//   - type_parameter spelling: bare word, `@`-prefixed, digit-bearing, and the
+//     four §6.4.3 identifier_part_character classes an ASCII matcher omits
+//     (AtParam, DigitParam, and the separate Unicode test above).
+//   - a `where`-like token that is NOT a clause head: as the class NAME
+//     (`where`, `whereGen`) and as the suffix of an identifier (Nowhere).
+//     A string literal is on this axis in BOTH directions, which matters:
+//     a colon-free literal is not a clause head (LitWhere, LitWhereColon),
+//     but a literal that spells a whole clause IS matched (LitClause) — the
+//     matcher is not immune to that shape, only benign on it.
+//   - a comment inside the header, in the clause and before it
+//     (CommentInClause, HeaderComment) — both pre-existing remainders.
 //
 // HELD CONSTANT across the grid: the file, the namespace, the enclosing scope,
 // the accessibility modifier (`public` on every row), the body (`{ }` or a
@@ -149,6 +157,16 @@ namespace Api.Sig
 
     public class AliasBase<T> : global :: System.Object where T : class { }
 
+    public record LitClause(string S = "where T : class") : Object { }
+
+    public class AtParam<@T> where @T : class { }
+
+    public class DigitParam<T2> where T2 : class { }
+
+    public class CommentInClause<T> where /*c*/ T : class { }
+
+    public class HeaderComment<T> /* a : b */ where T : class { }
+
     public class Plain7139 { }
 }
 `
@@ -165,6 +183,55 @@ namespace Api.Sig
     public class whereGen<T> : Object { }
 }
 `
+
+// The four identifier_part_character classes of §6.4.3 that an ASCII-only
+// matcher silently omits. Written with \u escapes, and built by concatenation
+// rather than as a raw literal, so every byte of the fixture is visible to a
+// reviewer -- three of these characters are invisible or non-spacing on screen.
+//
+// Measured with the part class narrowed to `[\p{L}\p{N}_]*` (the variant this
+// PR was first opened with), all four are BYTE-IDENTICAL to the pre-fix code,
+// i.e. the defect is fully intact for them:
+//
+//	public class Combining<T\u0301> where T\u0301 : class -> "public class Combining<T\u0301> where T\u0301"
+//	public class Undertie<T\u203fU> where T\u203fU : class -> "public class Undertie<T\u203fU> where T\u203fU"
+//	public class McMark<T\u0903> where T\u0903 : class     -> "public class McMark<T\u0903> where T\u0903"
+//	public class CfFormat<T\u200cU> where T\u200cU : class -> "public class CfFormat<T\u200cU> where T\u200cU"
+//
+// These rows are why csIdentPart is §6.4.3's set and not a subset: a wider
+// class can only ever suppress a cut that should have fired (benign), while a
+// narrower one leaves a live instance of the reported truncation.
+func cs7139IdentSrc() string {
+	return "using System;\n\nnamespace Api.Sig\n{\n" +
+		// Mn, non-spacing combining acute.
+		"    public class Combining<T\u0301> where T\u0301 : class { }\n\n" +
+		// Pc, connecting undertie.
+		"    public class Undertie<T\u203fU> where T\u203fU : class { }\n\n" +
+		// Mc, spacing combining mark (Devanagari sign visarga).
+		"    public class McMark<T\u0903> where T\u0903 : class { }\n\n" +
+		// Cf, formatting character (zero-width non-joiner).
+		"    public class CfFormat<T\u200cU> where T\u200cU : class { }\n" +
+		"}\n"
+}
+
+func TestCSharp7139_IdentifierPartCharactersAreNotAnASCIISubset(t *testing.T) {
+	recs := csExtract(t, cs7139IdentSrc(), "Api/Sig/Ident.cs")
+	for _, want := range []struct{ name, sig string }{
+		{"Combining", "public class Combining<T\u0301> where T\u0301 : class"},
+		{"Undertie", "public class Undertie<T\u203fU> where T\u203fU : class"},
+		{"McMark", "public class McMark<T\u0903> where T\u0903 : class"},
+		{"CfFormat", "public class CfFormat<T\u200cU> where T\u200cU : class"},
+	} {
+		got := cs7133Components(recs, want.name)
+		if len(got) != 1 {
+			t.Errorf("want exactly 1 SCOPE.Component named %q, got %d", want.name, len(got))
+			continue
+		}
+		if got[0] != want.sig {
+			t.Errorf("%s.Signature = %q, want %q", want.name, got[0], want.sig)
+		}
+	}
+}
 
 func TestCSharp7139_GenericConstraintIsNotTheBaseListDelimiter(t *testing.T) {
 	recs := csExtract(t, cs7139Src, "Api/Sig/Constraints.cs")
@@ -255,6 +322,39 @@ func TestCSharp7139_GenericConstraintIsNotTheBaseListDelimiter(t *testing.T) {
 		// The alias qualifier in the BASE LIST instead: the base-list colon
 		// is still the first " :", so the cut still fires there.
 		{"AliasBase", "public class AliasBase<T>"},
+
+		// ---- the matcher is NOT immune to a `where`-like token inside a
+		// header string literal, and this row is the measurement that says
+		// so. The literal `"where T : class"` matches the clause shape, so
+		// the cut is suppressed and the REAL base list survives:
+		//
+		//	pre-fix:  `public record LitClause(string S = "where T`
+		//	post-fix: the row below -- base list NOT dropped
+		//
+		// It fails in the BENIGN direction (a base list left in, never a
+		// truncation), which is a weaker claim than immunity and exactly what
+		// the suppress-only shape buys. The trailing-colon requirement narrows
+		// this case (`"a where b"` above does NOT match); it does not remove
+		// it. Pinned like NoSpaceBase and LitColon so it reads as known.
+		{"LitClause", `public record LitClause(string S = "where T : class") : Object`},
+
+		// ---- type_parameter spellings other than a bare ASCII word.
+		// `@`-prefixed verbatim identifier (§6.4.3) -- the `@?` arm.
+		{"AtParam", "public class AtParam<@T> where @T : class"},
+		// A digit in the identifier tail -- the \p{N} arm. Both were green
+		// before this fix too (no " :" precedes their clause colon), so they
+		// are controls for the character class rather than defect rows.
+		{"DigitParam", "public class DigitParam<T2> where T2 : class"},
+
+		// ---- PRE-EXISTING REMAINDERS, byte-identical before and after this
+		// change, pinned and NOT fixed here. A comment is trivia and may sit
+		// anywhere whitespace may (§6.3.3), which defeats both cuts:
+		// a comment between `where` and the type parameter defeats the clause
+		// matcher, so the naive cut still fires...
+		{"CommentInClause", "public class CommentInClause<T> where /*c*/ T"},
+		// ...and a comment containing a " :" in the header is truncated
+		// inside, exactly like LitColon's string literal.
+		{"HeaderComment", "public class HeaderComment<T> /* a"},
 
 		// ---- neither. Control.
 		{"Plain7139", "public class Plain7139"},
