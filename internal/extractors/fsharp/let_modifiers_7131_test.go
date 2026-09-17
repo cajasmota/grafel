@@ -27,14 +27,29 @@ import (
 // TestLetModifiers_Indented; duplicate collapse is varied by
 // TestLetModifiers_SameModifierNoCollapse.
 //
-// F# legality note: no F# compiler is available in this environment
-// (`dotnet`, `fsc`, `fsharpc`, `mono` are all absent), so every claim about
-// what F# permits below is DERIVED from the language reference, not executed.
-// Each row is written as a binding that is legal under that reading —
-// `mutable` rows take no parameters, `rec` rows recurse. Modifier ORDER is
-// deliberately accepted in both directions: the extractor is a lenient
-// scanner, not a compiler, and ranking orders would only create a way to lose
-// a real binding.
+// GRAMMAR, and what the table does NOT claim. The modifier order is fixed by
+// the F# Language Specification, § 14.6 "Function and Value Definitions"
+// (grammar reproduced under `let-binding` / `function-defn` in § 6.6
+// "Definition Expressions"; access modifiers in § 10.5 "Accessibility
+// Annotations", corroborated by MS Learn "Access Control in F#",
+// https://learn.microsoft.com/dotnet/fsharp/language-reference/access-control):
+//
+//	function-defn := inline? access? ident-or-op typar-defns? argument-pats return-type? = expr
+//	value-defn    := mutable? access? pat …
+//	access        := public | private | internal
+//
+// — and `rec` sits OUTSIDE the definition (`let rec function-or-value-defns`).
+// So `public` on a `let` IS grammatical, and the legal order is
+// rec → inline/mutable → access → name. Rows that reverse it (`private
+// inline`, `inline rec`, …) are therefore NOT legal F#, and each one is
+// labelled `lenienceOnly` at the row level. Those rows pin the SCANNER's
+// deliberate tolerance of a reversed order — this is a lenient scanner, not a
+// compiler, and ranking orders could only create a way to LOSE a real binding.
+// They are not, and must not be read as, a claim about the language.
+//
+// No F# toolchain exists in this environment (`dotnet`, `fsc`, `fsharpc`,
+// `mono` are all absent), so the classification above is read off the
+// specification grammar and was not executed against a compiler.
 
 // fsFindLet returns the SCOPE.Operation named name with subtype "let".
 func fsFindLet(ents []types.EntityRecord, name string) *types.EntityRecord {
@@ -57,29 +72,48 @@ func fsLetNames(ents []types.EntityRecord) []string {
 	return out
 }
 
+// fsGrammar labels a table row against the specification grammar quoted in
+// this file's header. It exists so that reading ONE row in isolation cannot
+// mislead: a row is either grammatical F#, or it is a deliberate lenience
+// probe and says so on its own line.
+type fsGrammar string
+
+const (
+	// specLegal — grammatical F# under § 14.6 / § 10.5.
+	specLegal fsGrammar = "legal F#"
+	// lenienceOnly — NOT legal F#: the row reverses the spec's modifier
+	// order (access must FOLLOW inline/mutable, and `rec` precedes the
+	// definition). It pins the scanner's tolerance, not the language.
+	lenienceOnly fsGrammar = "NOT legal F# — pins scanner lenience to reversed modifier order"
+)
+
 func TestLetModifiers_NameIsNeverTheModifier(t *testing.T) {
 	cases := []struct {
-		name string // modifier phrase under test ("" = none)
-		decl string // the binding line, legal F# under the derived reading
+		name    string    // modifier phrase under test ("none" = no modifier)
+		grammar fsGrammar // legal F#, or a deliberate lenience probe
+		decl    string    // the binding line
 	}{
-		{"none", `let target (a: int) = a`},
-		{"rec", `let rec target (a: int) = if a > 0 then target (a - 1) else 0`},
-		{"mutable", `let mutable target = 0`},
-		{"inline", `let inline target (a: int) = a`},
-		{"private", `let private target (a: int) = a`},
-		{"internal", `let internal target (a: int) = a`},
-		{"public", `let public target (a: int) = a`},
-		{"private inline", `let private inline target (a: int) = a`},
-		{"inline private", `let inline private target (a: int) = a`},
-		{"internal inline", `let internal inline target (a: int) = a`},
-		{"rec inline", `let rec inline target (a: int) = if a > 0 then target (a - 1) else 0`},
-		{"inline rec", `let inline rec target (a: int) = if a > 0 then target (a - 1) else 0`},
-		{"private rec", `let private rec target (a: int) = if a > 0 then target (a - 1) else 0`},
-		{"rec private", `let rec private target (a: int) = if a > 0 then target (a - 1) else 0`},
-		{"private mutable", `let private mutable target = 0`},
-		{"mutable private", `let mutable private target = 0`},
-		{"inline generic params", `let inline target<'T> (a: 'T) = a`},
-		{"private inline generic params", `let private inline target<'T> (a: 'T) = a`},
+		{"none", specLegal, `let target (a: int) = a`},
+		{"rec", specLegal, `let rec target (a: int) = if a > 0 then target (a - 1) else 0`},
+		{"mutable", specLegal, `let mutable target = 0`},
+		{"inline", specLegal, `let inline target (a: int) = a`},
+		{"private", specLegal, `let private target (a: int) = a`},
+		{"internal", specLegal, `let internal target (a: int) = a`},
+		{"public", specLegal, `let public target (a: int) = a`},
+		{"inline private", specLegal, `let inline private target (a: int) = a`},
+		{"rec inline", specLegal, `let rec inline target (a: int) = if a > 0 then target (a - 1) else 0`},
+		{"rec private", specLegal, `let rec private target (a: int) = if a > 0 then target (a - 1) else 0`},
+		{"mutable private", specLegal, `let mutable private target = 0`},
+		{"inline generic params", specLegal, `let inline target<'T> (a: 'T) = a`},
+
+		// Reversed order: access before inline/mutable, or `rec` after a
+		// modifier. Ungrammatical F# — scanner-lenience probes only.
+		{"private inline", lenienceOnly, `let private inline target (a: int) = a`},
+		{"internal inline", lenienceOnly, `let internal inline target (a: int) = a`},
+		{"inline rec", lenienceOnly, `let inline rec target (a: int) = if a > 0 then target (a - 1) else 0`},
+		{"private rec", lenienceOnly, `let private rec target (a: int) = if a > 0 then target (a - 1) else 0`},
+		{"private mutable", lenienceOnly, `let private mutable target = 0`},
+		{"private inline generic params", lenienceOnly, `let private inline target<'T> (a: 'T) = a`},
 	}
 
 	for _, tc := range cases {
@@ -88,15 +122,15 @@ func TestLetModifiers_NameIsNeverTheModifier(t *testing.T) {
 			ents := runFSharp(t, src, "Mods.fs")
 
 			if e := fsFindLet(ents, "target"); e == nil {
-				t.Errorf("no `let` SCOPE.Operation named \"target\" for %q; let names = %v",
-					tc.decl, fsLetNames(ents))
+				t.Errorf("no `let` SCOPE.Operation named \"target\" for %q [%s]; let names = %v",
+					tc.decl, tc.grammar, fsLetNames(ents))
 			}
 			// The complementary direction: no entity may be named after a
 			// modifier. Recall alone cannot detect over-firing.
 			for _, bad := range []string{"rec", "mutable", "inline", "private", "internal", "public"} {
 				if e := fsFindLet(ents, bad); e != nil {
-					t.Errorf("modifier %q recorded as the entity name for %q (line %d)",
-						bad, tc.decl, e.StartLine)
+					t.Errorf("modifier %q recorded as the entity name for %q [%s] (line %d)",
+						bad, tc.decl, tc.grammar, e.StartLine)
 				}
 			}
 		})
