@@ -36,7 +36,29 @@ import (
 // so tests can run the whole spawn/crash/restart loop in milliseconds.
 const (
 	defaultEngineBackoffInitial = 500 * time.Millisecond
-	defaultEngineBackoffMax     = 30 * time.Second
+	// defaultEngineBackoffMax plays TWO roles, and one value has to serve both
+	// (#7126). It is the GIVE-UP THRESHOLD — a pending backoff at or above it
+	// counts as a ceiling hit in backoffAndMaybeGiveUp — and it is the CLAMP on
+	// each wait, in waitBackoff.
+	//
+	// clamp == threshold is the only value that serves both. A clamp ABOVE the
+	// threshold breaks the bound: the waits keep doubling past the very ceiling
+	// the verdict is counted at (30s counted, 32s and 64s slept). That is a
+	// bound violation, NOT an unbounded tail — maxCeilingHits still ends the
+	// loop, so dropping the clamp buys exactly maxCeilingHits-1 extra
+	// doublings: at the shipped tuning 0.5+1+2+4+8+16+30+30 = 91.5s becomes
+	// 0.5+1+2+4+8+16+32+64 = 127.5s, a bounded 1.39x (arithmetic over the
+	// constants in this block; the crash-path SHAPE is measured — same number
+	// of waits, same verdict). A clamp BELOW the threshold is the other
+	// failure: the backoff can never reach the threshold, so the CRASH verdict
+	// ("engine unkeepable") becomes unreachable — the construction-failure
+	// verdict is unaffected, since it is spawnFailures >= maxSpawnFailures and
+	// never consults backoffMax at all.
+	//
+	// Each role has its own pin: supervise_defaults_backoff_test.go grades the
+	// threshold (and this value), supervise_backoff_clamp_test.go grades the
+	// clamp's bound.
+	defaultEngineBackoffMax = 30 * time.Second
 	// defaultEngineHealthyUptime: a child that stays up at least this long is
 	// considered to have recovered, so the backoff + crash-loop counters reset.
 	defaultEngineHealthyUptime = 60 * time.Second
@@ -605,6 +627,28 @@ func (s *engineSupervisor) waitBackoff(ctx context.Context, backoff *time.Durati
 	case <-timer.C:
 	}
 
+	// Grow toward the ceiling, and HOLD there. This clamp is backoffMax's
+	// second role (#7126): every wait this function takes stays at or below
+	// the ceiling, including the waits taken AFTER the pending backoff has
+	// reached it — on the crash path, the waits between the first ceiling hit
+	// and the give-up verdict, which backoffAndMaybeGiveUp's own threshold
+	// pins never reach. Graded by supervise_backoff_clamp_test.go, which walks
+	// the CONSTRUCTION-FAILURE path (no ceiling hit occurs there — ceilingHits
+	// stays 0 and the verdict is the spawn budget's), because that path calls
+	// this shared function directly.
+	//
+	// The strictness here (`>`) differs from the threshold's (`>=`) three
+	// lines up in backoffAndMaybeGiveUp, DELIBERATELY and harmlessly: at the
+	// threshold it is behaviourally significant (it decides whether a backoff
+	// sitting exactly AT the ceiling counts as a ceiling hit, which feeds the
+	// give-up verdict), while HERE either comparison is correct, because the
+	// two forms differ only in the single state *backoff == s.backoffMax and
+	// the branch body is an idempotent assignment of that same value (no
+	// counter, no logging, no early return). Scored: `>` -> `>=` is ALIVE and
+	// EQUIVALENT, so it is left untested ON PURPOSE — a test pinning `>` here
+	// would be vacuous by construction, and "fixing" the inconsistency would
+	// change nothing. Do not touch the threshold's `>=` on the same reasoning:
+	// there it is not free.
 	*backoff *= 2
 	if *backoff > s.backoffMax {
 		*backoff = s.backoffMax
