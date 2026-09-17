@@ -1838,8 +1838,16 @@ func buildClassSignature(node ts.Node, src []byte) string {
 	// strings.Index. Cutting first truncated the declaration INSIDE the
 	// literal; stripCSharpAttributes then found no matching "]" for the
 	// unbalanced remainder and swallowed it to end-of-string, so the emitted
-	// signature was "" (#7133). The cut stays BEFORE the " :" cut, as it was,
-	// so the base-list cut still sees a body-stripped string.
+	// signature was "" (#7133).
+	//
+	// The ONLY ordering constraint here is strip-before-brace-cut. The brace
+	// cut and the " :" cut below are MUTUALLY ORDER-INDEPENDENT: both truncate
+	// to a PREFIX, so either order yields the prefix ending at the earlier of
+	// the two positions. Swapping them is an ALIVE mutant and deliberately has
+	// no test -- it is equivalent, not ungraded (enumerated over the alphabet
+	// "{", " :", ":", "}", "<", ">", space and a letter, all strings to
+	// length 5: 37449 inputs, 0 differing). They are written in this order
+	// because it is the order they were already in, not because it matters.
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]
 	}

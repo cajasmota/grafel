@@ -44,8 +44,14 @@
 //	  collapse-then-strip -> "public record PersonRec(string First, string Last)"
 //	  strip-then-collapse -> "public record PersonRec( string First, string Last)"
 //
-// The brace cut is kept BEFORE the " :" cut, exactly as today, so the
-// base-list cut still sees a body-stripped string.
+// That is the ONLY ordering constraint in the function. The brace cut and the
+// " :" base-list cut are MUTUALLY ORDER-INDEPENDENT -- both truncate to a
+// PREFIX, so either order yields the prefix ending at the earlier of the two
+// positions. Swapping THOSE two is an ALIVE mutant, and it is left untested on
+// purpose: it is equivalent, not ungraded, enumerated over the alphabet "{",
+// " :", ":", "}", "<", ">", space and a letter for all strings to length 5 --
+// 37449 inputs, 0 differing. A fixture asserting that order would grade
+// nothing.
 //
 // # Grading
 //
