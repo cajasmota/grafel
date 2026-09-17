@@ -35,13 +35,13 @@ func SortDocumentForEmission(doc *Document) {
 	}
 	// #7105 — derive Properties["subtype"] from the canonical Entity.Subtype
 	// before serialization. The derivation happens on the DOCUMENT, in place,
-	// and the producers run this normaliser before EITHER encoder
-	// (cmd/grafel/index.go:999, internal/extractors/incremental.go:1700), which
-	// is what makes graph.json and graph.fb agree about the field — graph.json
-	// is written by graph.WriteAtomic, which normalises nothing. See
-	// DeriveSubtypeProperties (subtype_property.go) for the measurements, the
-	// full mechanism, and why an empty Subtype must stay absent rather than
-	// become "".
+	// which is what lets graph.json agree with graph.fb: graph.json is written
+	// by graph.WriteAtomic, which normalises nothing, from the same doc pointer
+	// a normaliser has already mutated. Two redundant sites provide that and
+	// each masks the other (measured: removing either alone keeps the parity
+	// test green, removing both fails it) — see DeriveSubtypeProperties in
+	// subtype_property.go for the pair audit, the measurements, and why an
+	// empty Subtype must stay absent rather than become "".
 	//
 	// A disagreeing twin is preserved, never overwritten, and reported: 0/211
 	// on measured data, so this line is silent on every known input, and a

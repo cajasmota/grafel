@@ -12,13 +12,19 @@ import (
 // #7105 — graph.json and graph.fb must agree about Properties["subtype"].
 //
 // THIS IS THE ROW THAT MAKES THE DERIVATION'S OWN DOCSTRING TRUE BY TEST.
-// graph.json is written by graph.WriteAtomic, which normalises NOTHING: it
-// carries the derived key only because index.go:999 normalises the shared
-// `doc` in place before either encoder runs. Nothing else in the repo
-// exercises the JSON encoding for this field, so removing that call scores
-// ALIVE without this test — and the agreement between the two encodings is
-// exactly the reason fbwriter.buildEntity (the .fb-only leaf) was rejected as
-// the chokepoint.
+// graph.json is written by graph.WriteAtomic, which normalises NOTHING and
+// never goes near fbwriter; it carries the derived key only because some
+// normaliser has already mutated the SHARED doc pointer in place. Nothing else
+// in the repo exercises the JSON encoding of this field, and the agreement
+// between the two encodings is exactly the reason fbwriter.buildEntity (the
+// .fb-only leaf) was rejected as the chokepoint.
+//
+// The two normalisation sites are MUTUALLY MASKING, so do not read a green run
+// here as evidence that either one is load-bearing: deleting index.go:999
+// alone leaves this test green (mutant F), deleting both fbwriter calls alone
+// leaves it green (mutant G), and deleting both fails it (mutant H). It is the
+// compound that this test grades — which is precisely what nothing observed
+// before it existed.
 //
 // End-to-end through the real indexer over a real fixture, asserting on the
 // two emitted artefacts, with a non-vacuity floor so the walk cannot pass by

@@ -29,50 +29,59 @@ package graph
 // Those 796 rows are therefore invisible to the dashboard and to LLM-docgen
 // today. Deriving closes that gap at one point instead of at 24 producers.
 //
-// # Why here — and the mechanism, stated precisely
+// # Why here — and the mechanism, MEASURED rather than argued
 //
 // DeriveSubtypeProperties is called from SortDocumentForEmission, the repo's
 // existing pre-serialization normaliser: "the final, post-everything sort
 // applied immediately before the graph is serialized", idempotent by
 // construction so callers may run it more than once.
 //
-// THE GUARANTEE IS IN-PLACE NORMALISATION OF THE SHARED DOCUMENT BEFORE ANY
-// ENCODER RUNS — NOT a property of the writers. An earlier version of this
-// comment claimed "every graph written to disk goes through
-// fbwriter.WriteGraphGenReport, and both of its branches call it", which is
-// false for the second encoder and false in the one direction that matters:
+// The point of putting it on the DOCUMENT rather than in the FlatBuffers
+// entity leaf (fbwriter.buildEntity — which the repo documents as the sole
+// entity-serialization leaf and which is otherwise the stronger chokepoint) is
+// that buildEntity is .fb-only. graph.json, the optional `--export-json`
+// second encoding, is written by graph.WriteAtomic (graph.go), which
+// normalises NOTHING and never goes near fbwriter. Since the two files are
+// deliberately mtime-stamped as "two encodings of the SAME index pass"
+// (#1626), a .fb-only derivation would make them disagree about the very field
+// this issue is about.
 //
-//	graph.fb    fbwriter.WriteGraphGenReport → writeGraphGenFlat /
-//	            WriteGraphGenSegmented, both of which call
-//	            SortDocumentForEmission.
-//	graph.json  graph.WriteAtomic (graph.go), which normalises NOTHING.
+// TWO EARLIER VERSIONS OF THIS PARAGRAPH NAMED A MECHANISM THAT MEASUREMENT
+// THEN REFUTED, SO THIS ONE IS SCORED. The first said "every graph written to
+// disk goes through fbwriter.WriteGraphGenReport, and both of its branches
+// call it" — false, graph.json does not. The second said cmd/grafel/index.go
+// :999 and internal/extractors/incremental.go:1700 "ARE the guarantee" — also
+// false: deleting index.go:999 leaves the graph.json parity test GREEN
+// (mutant F, ALIVE).
 //
-// The two encodings agree because the producers normalise the shared `doc`
-// BEFORE either encoder is reached:
+// What is actually true is weaker and sufficient: SOME normaliser runs on the
+// SHARED doc pointer before graph.json's encoder does, and there are two
+// redundant, mutually-masking opportunities for it —
 //
-//	cmd/grafel/index.go:999             sortDocumentForEmission(doc), then the
-//	                                    .fb write (:1006) and the optional
-//	                                    graph.json write (:1094) from the SAME doc
-//	internal/extractors/incremental.go:1700  sortGraphDocumentForEmission(doc)
-//	                                    before the daemon's rewrite
+//	cmd/grafel/index.go:999   sortDocumentForEmission(doc), explicitly, before
+//	                          either encoder
+//	cmd/grafel/index.go:1006  the .fb write, whose writeGraphGenFlat /
+//	                          WriteGraphGenSegmented call
+//	                          SortDocumentForEmission(doc) on the SAME pointer
+//	                          as their first statement — so the shared document
+//	                          is normalised even when the marshal that follows
+//	                          fails, which matters because graph.json is still
+//	                          attempted after an .fb failure
 //
-// Those two call sites ARE the guarantee. index.go:999 is unconditional and
-// independent of whether the .fb write succeeded — graph.json is still
-// attempted after an .fb failure — so the normalised document is what both
-// encoders see either way. fbwriter's own SortDocumentForEmission calls are
-// belt-and-braces for callers that arrive un-normalised (and for Marshal /
-// WriteAtomic used directly by tests); they are not what makes graph.json
-// carry the key.
+// index.go:1094 then writes graph.json from that same, already-normalised doc.
+// Scored as a pair, because two guards that only fail together grade neither
+// on its own:
 //
-// That is also why the derivation mutates the DOCUMENT rather than the
-// FlatBuffers entity leaf (fbwriter.buildEntity), which the repo documents as
-// the sole entity-serialization leaf and which would otherwise be the stronger
-// chokepoint: it is .fb-only, so graph.json — deliberately mtime-matched to
-// graph.fb as "two encodings of the SAME index pass" (#1626) — would disagree
-// with the binary graph about the very field this issue is about. The
-// graph.json half of that agreement is graded end-to-end by
-// cmd/grafel/subtype_property_json_parity_7105_test.go, which removing
-// index.go:999 fails; without it the claim in this paragraph is unobserved.
+//	F  index.go:999 removed          ALIVE  (the .fb write's call covers it)
+//	G  both fbwriter calls removed   ALIVE  (index.go:999 covers it)
+//	H  both removed                  DEAD   (graph.json loses the key)
+//
+// So fbwriter's calls are NOT merely belt-and-braces for this property: they
+// are one of the two redundant guarantees, and either alone is enough.
+// cmd/grafel/subtype_property_json_parity_7105_test.go is what makes that
+// statement true-by-test rather than true-by-reading; without it the compound
+// H is ALIVE too and nothing in the repo observes the JSON encoding of this
+// field at all.
 //
 // # What it must NOT do
 //
