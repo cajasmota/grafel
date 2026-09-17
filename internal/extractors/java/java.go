@@ -2213,9 +2213,13 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 // the type site is graded by `spaced` (intra-line) and `wrapped` (newline), and
 // the dimensions site by `spacedDims`/`tabbedDims` (intra-line — JLS 10.2
 // permits whitespace BETWEEN the brackets, `int arr[   ];`) and `wrappedDims`
-// (a `[` and `]` split across lines). Whitespace between the brackets is the
-// only content the dimensions text can hold besides the brackets themselves,
-// since that node begins at `[`.
+// (a `[` and `]` split across lines). Whitespace is ONE KIND of content that
+// run can hold, and the node's start at `[` does not bound it to whitespace:
+// `int withComment[/* a comment */];` and a TYPE_USE annotation
+// `int withAnno @NN [];` are both javac-clean and both put non-whitespace into
+// the dimensions text. Neither is graded here, deliberately — the point of the
+// `spacedDims`/`tabbedDims` rows is the collapse axis, not an inventory of what
+// the node can contain.
 //
 // # The three guards below are DEFENSIVE and ungraded on purpose
 //
