@@ -1183,8 +1183,16 @@ func enumerateByKind(all []scored, repos []*LoadedRepo, kindFilter string, inclu
 
 // serializeHits is the structured (full=true) shape.
 //
-// Default (verbose=false): id, name, file, line, score, kind.
+// Default (verbose=false): id, name, file, line, score, kind, and subtype when
+// the entity has a non-empty one (#7090).
 // Verbose (verbose=true): also includes qualified_name, repo.
+//
+// #7090 — the `subtype` key is emitted here as well as in serializeEntity, and
+// the two are TWINS: serializeEntity feeds grafel_inspect only (its two callers
+// are both inside handleGetNode), so with the key on serializeEntity alone
+// grafel_find — the tool where "is this a class or an interface?" is actually
+// asked — still could not answer it. A fix on one of a twinned pair is half a
+// fix; any change to the shape here must be made in both.
 //
 // #6329 — a hit from machine-generated source additionally carries
 // "generated": true, and in verbose mode "generated_by" naming the rule that
@@ -1206,6 +1214,15 @@ func serializeHits(all []scored, verbose bool) []map[string]any {
 			"line":  sc.hit.Entity.StartLine,
 			"score": sc.hit.Score,
 			"kind":  stripScopePrefix(sc.hit.Entity.Kind),
+		}
+		// #7090: same shape as serializeEntity's — DEFAULT payload, emitted only
+		// when non-empty, so a subtype-less hit never acquires an empty-string
+		// key a consumer would have to special-case. `matches` is plain-JSON
+		// marshalled (jsonResult), not tabular-encoded, so a heterogeneous key
+		// set across rows costs nothing here — `generated` above is already
+		// conditional in exactly this way.
+		if st := sc.hit.Entity.Subtype; st != "" {
+			m["subtype"] = st
 		}
 		if sc.hit.Entity.PropGet(types.EntityGeneratedProperty) == "true" {
 			m["generated"] = true
@@ -2192,7 +2209,13 @@ func readSourceLines(path string) []string {
 // serializeEntity renders an entity as a map. When scopeIsOne, IDs are local;
 // otherwise they're prefixed with <repo>::.
 //
-// Default (verbose=false): id, name, qualified_name, file, line, kind.
+// Default (verbose=false): id, name, qualified_name, file, line, kind, and
+// subtype when the entity has a non-empty one (#7090).
+//
+// #7090 — this function feeds grafel_inspect ONLY (both callers are inside
+// handleGetNode); grafel_find's hit rows come from serializeHits. The `subtype`
+// key below is therefore a TWIN of the one there, and the two must keep the
+// same shape — default payload, emitted only when non-empty.
 // Verbose (verbose=true): also includes end_line, language, repo, pagerank,
 // community_id, properties.
 func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool, verbose ...bool) map[string]any {
@@ -2208,6 +2231,27 @@ func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool, verbose ...b
 		"kind":           stripScopePrefix(e.Kind),
 		"file":           e.SourceFile,
 		"line":           e.StartLine,
+	}
+	// #7090: Subtype is the field extractors use to separate a class from an
+	// interface / record / annotation / enum_value, it is hashed into the graph
+	// digest, and engine passes key on it — yet no MCP payload ever emitted it,
+	// so what a consumer could see about an entity's subtype depended on whether
+	// its extractor happened to ALSO dual-stamp Properties["subtype"] (and on
+	// the caller asking for verbose, since `properties` is verbose-only).
+	//
+	// Emitted on the DEFAULT payload, not under verbose: find/list traffic is
+	// where the distinction is asked for, and a verbose-only key would leave it
+	// unanswerable exactly where it is needed.
+	//
+	// Emitted only when NON-EMPTY, measured rather than assumed (14 golden
+	// fixtures, 846 entities): 663 carry a subtype (78%) and 430 of those (51%
+	// of all entities) have NO Properties["subtype"] twin, so for half the graph
+	// this key is the only route. The 183 with no subtype pay nothing and — the
+	// direction that matters for consumers filtering on it — never acquire an
+	// empty-string subtype they would have to special-case. Cost where present:
+	// +11.7% on the six-key default row.
+	if e.Subtype != "" {
+		out["subtype"] = e.Subtype
 	}
 	if wantVerbose {
 		out["end_line"] = e.EndLine
