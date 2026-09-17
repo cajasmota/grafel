@@ -95,9 +95,73 @@ var (
 			`\s+([a-zA-Z_][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:[^=\n]*)=`,
 	)
 
-	// member: "member [this.]Name" or "member _.Name" or "override this.Name"
+	// member: "[static] member|override|abstract member|default
+	//          [access] [val] [this.]Name ... ="
+	//
+	// #7135 — this pattern accommodated NO member modifier at all, and that
+	// produced two distinct failure modes:
+	//
+	//   - MIS-NAME. The optional instance-qualifier group needs a trailing
+	//     `.`; `private ` has none, so the qualifier matched empty and the
+	//     NAME capture took `private` — `member private this.Go = ...` was
+	//     indexed as an operation called `private`, and `member val Go = 1` as
+	//     `val`. The qualifier group is NOT the bug: it handled
+	//     `this.`/`self.`/`_.` correctly before this change and still does.
+	//     The single cause is the absent modifier group, which left the name
+	//     capture as the first thing after the keyword. As with #7131 that
+	//     also COLLAPSED entities, since memberSeen is keyed
+	//     indent+":member:"+name: two same-indent `member private` siblings
+	//     both keyed on "private" and the second was dropped.
+	//
+	//   - SILENT TOTAL MISS. `static` precedes the keyword the pattern
+	//     anchored on, so `static member …` was not extracted at all. That is
+	//     the worse mode: `static member` is how F# expresses factory and
+	//     operator members, so a type could lose its whole public surface and
+	//     read as having none — an absence no bind-rate, orphan-rate or
+	//     dangle instrument can flag.
+	//
+	// The accepted set and its ORDER come from the F# Language Specification
+	// § 8.13 "Members" (https://fsharp.github.io/fslang-spec/type-definitions/),
+	// with `access` from § 10.5 "Accessibility Annotations":
+	//
+	//	member-defn := attributes? static? member access? method-or-prop-defn
+	//	             | attributes? abstract member? access? member-sig
+	//	             | attributes? override access? method-or-prop-defn
+	//	             | attributes? default access? method-or-prop-defn
+	//	             | attributes? static? member auto-prop-defn
+	//	             | attributes? override auto-prop-defn
+	//	             | attributes? default auto-prop-defn
+	//	             | attributes? static? val mutable? access? ident ':' type
+	//	             | additional-constr-defn
+	//	auto-prop-defn := val access? ident ':' type? = expr (with get/set…)
+	//	method-or-prop-defn := (ident '.')? ident pat1 … patn = expr | …
+	//	access := public | private | internal
+	//
+	// Three consequences shape the pattern:
+	//
+	//  1. `static` is a PREFIX to `member`, never a suffix, so it is spelled
+	//     as its own alternative rather than added to the modifier group.
+	//  2. `val` is NOT a modifier. `member val` selects the auto-property
+	//     production, whose NAME is the ident after `val` — and after an
+	//     optional access modifier, because auto-prop-defn is
+	//     `val access? ident`. It belongs in the group precisely so the group
+	//     consumes it and the name capture lands on the property name.
+	//  3. `abstract`/`abstract member` introduce a member-sig with NO
+	//     `= expr`, so an abstract signature never reaches this pattern at
+	//     all; the keyword stays in the alternation for the concrete
+	//     `abstract member Foo() = …` shape only.
+	//
+	// Like letRE the group is a REPEATED ALLOWLIST, so order is accepted in
+	// any direction after the keyword. The spec order is access-then-name
+	// (and `val` then access then name); a reversed order is deliberate
+	// scanner lenience, not a claim about the language — this is a lenient
+	// scanner, not a compiler, and ranking the orders could only create a way
+	// to LOSE a real member. `\b` keeps a modifier a whole word so
+	// `member this.Validate` is not read as `member val` + `idate`.
 	memberRE = regexp.MustCompile(
-		`(?m)^([ \t]*)(?:member|override|abstract member|default)\s+(?:[a-zA-Z_][a-zA-Z0-9_']*\.)?([a-zA-Z_][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:[^=\n]*)=`,
+		`(?m)^([ \t]*)(?:static\s+member|member|override|abstract member|default)` +
+			`(?:\s+(?:val|public|private|internal)\b)*` +
+			`\s+(?:[a-zA-Z_][a-zA-Z0-9_']*\.)?([a-zA-Z_][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:[^=\n]*)=`,
 	)
 
 	// type declaration: "type Foo =" or "type Foo<'T> ="
