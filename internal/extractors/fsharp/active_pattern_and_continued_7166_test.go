@@ -124,6 +124,23 @@ func TestActivePatternAndContinued_BothPatternsExtracted(t *testing.T) {
 			"name the head keyword the declaration actually carries",
 			ap.Signature, "and (|Positive|Negative|)")
 	}
+	// BOTH values of the now two-valued Signature, in the same fixture. Only
+	// the `and` side was asserted in the first round of this PR, and
+	// `head := "and"` unconditionally was then ALIVE at 0 `--- FAIL` while
+	// mis-signing every `let`-headed pattern in the package — a DEAD verdict
+	// on one twin says nothing about the other.
+	opener := fsFind(ents, "(|Even|Odd|)", "SCOPE.Pattern")
+	if opener == nil {
+		t.Fatalf("no SCOPE.Pattern for the opening `let rec` declaration; census=%v", fsAPNames(ents))
+	}
+	if opener.Signature != "let (|Even|Odd|)" {
+		t.Errorf("`let rec`-headed pattern Signature=%q, want %q — the keyword is read off the "+
+			"matched text, so a branch that always reports one keyword mis-signs the other",
+			opener.Signature, "let (|Even|Odd|)")
+	}
+	if opener.StartLine != 3 {
+		t.Errorf("opening `let rec` pattern StartLine=%d, want 3", opener.StartLine)
+	}
 	// The #7163 direction, re-asserted here: recovering the entity must not
 	// re-open the phantom the sibling scanner was taught to decline.
 	fsPhantomAssertNoPhantom(t, ents, "and (|Positive|Negative|) y =", specLegal)
@@ -317,6 +334,13 @@ func TestActivePatternAndContinued_ScrubResidualParityWithLet(t *testing.T) {
 				return fsFind(runFSharp(t, src, "patterns.fs"), "(|Ghost|Ghoul|)", "SCOPE.Pattern") != nil
 			}
 			gotLet, gotAnd := mint("let"), mint("and")
+			// The pair is currently true/true (both keywords mint inside a
+			// scrubbed context, #7152). Logged because this row passes equally
+			// on false/false: if a future #7152 fix silences both, the row goes
+			// vacuous rather than red, and this line is what makes that
+			// transition visible to whoever reads the next run.
+			t.Logf("scrub-residual pair inside a %s: let mints=%v, and mints=%v "+
+				"(pinned as PARITY, not as correct; #7152 open)", ctx.label, gotLet, gotAnd)
 			if gotLet != gotAnd {
 				t.Errorf("inside a %s, a line-start `let (|Ghost|Ghoul|)` mints=%v but an "+
 					"`and (|Ghost|Ghoul|)` mints=%v. The two head keywords share one anchor and "+

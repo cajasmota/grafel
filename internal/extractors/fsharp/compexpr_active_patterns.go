@@ -40,13 +40,25 @@ import (
 
 // fsLetModifiers is the repeated modifier group shared by every `let`-headed
 // declaration scanner. It is a CONSTANT and not a third copy of the allowlist
-// on purpose: activePatternRE now embeds it TWICE (once per head keyword,
-// #7166), and TestActivePatternREModifierParityWithLetRE compares
-// activePatternRE's compiled text against letRE's, so the two occurrences must
-// be the same bytes as letRE's by construction rather than by review. letRE
-// itself (extractor.go) still spells the group inline; that is what the parity
-// test compares against, and substituting the constant there would make the
-// comparison compare a constant with itself.
+// on purpose: activePatternRE embeds it TWICE (once per head keyword, #7166),
+// and TestActivePatternREModifierParityWithLetRE compares letRE's group
+// against EVERY occurrence in activePatternRE's compiled text, with a count
+// guard of 2.
+//
+// The constant is convenience, NOT the guarantee — and that distinction was
+// measured, not assumed. An earlier round of #7166 claimed the two
+// occurrences were the same bytes "by construction rather than by review";
+// that is a statement about today's source, and nothing stopped a reviewer's
+// edit from inlining a WIDER group on one branch. Adding `sealed` to the
+// `and` branch alone was ALIVE at 0 `--- FAIL` (`go vet` 0) while the
+// identical widening on the `let` branch was DEAD, because the parity test
+// then extracted only the first occurrence. The guarantee is the
+// all-occurrences comparison plus its count guard; the constant merely makes
+// the intended edit a one-line one.
+//
+// letRE itself (extractor.go) still spells the group inline; that is what the
+// parity test compares against, and substituting the constant there would
+// make the comparison compare a constant with itself.
 const fsLetModifiers = `(?:\s+(?:rec|mutable|inline|private|internal|public)\b)*`
 
 var (
