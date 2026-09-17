@@ -71,37 +71,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { GraphPayload } from "@/data/types";
 import GraphScreen from "@/routes/graph";
 
-/** What the mocked hooks hand the route. Set by renderGraphRoute. */
-const injected = {
-  streamPhase: "done" as "done" | "error",
-  streamPayload: undefined as GraphPayload | undefined,
-  fallbackPayload: undefined as GraphPayload | undefined,
-};
-
-vi.mock("@/hooks/use-graph-stream", () => ({
-  useGraphStream: () => ({
-    state: {
-      payload: injected.streamPayload,
-      hasMeta: true,
-      totalNodes: injected.streamPayload?.totalNodeCount ?? 0,
-    },
-    phase: injected.streamPhase,
-    loadedNodes: injected.streamPayload?.nodes.length ?? 0,
-    totalNodes: injected.streamPayload?.totalNodeCount ?? 0,
-    error: null,
-    errorDetail: null,
-  }),
-}));
-
-vi.mock("@/hooks/use-graph", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/hooks/use-graph")>()),
-  useGraph: () => ({
-    data: injected.fallbackPayload,
-    isLoading: false,
-    isError: false,
-  }),
-}));
-
 function graphPayload(overrides: Partial<GraphPayload> = {}): GraphPayload {
   return {
     nodes: [],
@@ -115,6 +84,59 @@ function graphPayload(overrides: Partial<GraphPayload> = {}): GraphPayload {
     ...overrides,
   };
 }
+
+/**
+ * What the mocked hooks hand the route. Set by renderGraphRoute.
+ *
+ * `streamPayload` is non-optional because the REAL `useGraphStream` declares
+ * `state.payload: GraphPayload` — the stream always holds a payload object,
+ * empty until the first chunk. The `satisfies StreamHook` below is what forced
+ * that correction, which is the point of typing the mock.
+ */
+const injected = {
+  streamPhase: "done" as "done" | "error",
+  streamPayload: graphPayload(),
+  fallbackPayload: undefined as GraphPayload | undefined,
+};
+
+/**
+ * The stream mock is typed against the REAL hook signature, so a future change
+ * to its return shape fails `tsc --noEmit` here instead of letting the mock
+ * drift silently away from production.
+ *
+ * `useGraph` gets a cast, NOT a `satisfies`: it returns a react-query
+ * `UseQueryResult` with ~20 fields, and the route reads exactly three
+ * (`data`, `isLoading`, `isError`). Constructing a whole UseQueryResult to
+ * satisfy the compiler would add no grading power, so that one mock is
+ * deliberately unpinned against shape drift.
+ */
+type StreamHook = typeof import("@/hooks/use-graph-stream")["useGraphStream"];
+type GraphHook = typeof import("@/hooks/use-graph")["useGraph"];
+
+vi.mock("@/hooks/use-graph-stream", () => ({
+  useGraphStream: ((() => ({
+    state: {
+      payload: injected.streamPayload,
+      hasMeta: true,
+      totalNodes: injected.streamPayload.totalNodeCount,
+      totalEdges: injected.streamPayload.totalEdgeCount ?? 0,
+      done: injected.streamPhase === "done",
+    },
+    phase: injected.streamPhase,
+    loadedNodes: injected.streamPayload.nodes.length,
+    totalNodes: injected.streamPayload.totalNodeCount,
+    errorMessage: null,
+  })) satisfies StreamHook),
+}));
+
+vi.mock("@/hooks/use-graph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/use-graph")>()),
+  useGraph: ((() => ({
+    data: injected.fallbackPayload,
+    isLoading: false,
+    isError: false,
+  })) as unknown as GraphHook),
+}));
 
 /**
  * The slot the route renders the banner INTO. Present whenever the route's
@@ -157,7 +179,7 @@ function expectRouteRendered(html: string): void {
 describe("routes/graph.tsx → GraphTruncationBanner wiring", () => {
   beforeEach(() => {
     injected.streamPhase = "done";
-    injected.streamPayload = undefined;
+    injected.streamPayload = graphPayload();
     injected.fallbackPayload = undefined;
   });
 
