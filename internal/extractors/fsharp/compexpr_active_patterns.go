@@ -41,12 +41,140 @@ import (
 var (
 	// activePatternRE matches an active-pattern let binding. The banana clip
 	// `(|A|B|)` (total) or `(|A|_|)` (partial) heads the binding. Captures the
-	// indentation (1) and the raw clip body (2) between the outer `(|` `|)`.
+	// indentation (1), the raw clip body (2) between the outer `(|` `|)`, and
+	// the parameter tokens (3) between `|)` and `=`.
 	//   let (|Even|Odd|) n = ...
 	//   let (|Positive|_|) n = ...
 	//   let rec (|Foo|) x = ...
+	//   let private (|Even|Odd|) n = ...
+	//
+	// #7135 (third and last arm) — this pattern accommodated a FIXED sequence
+	// of exactly two optional modifiers in exactly one order
+	// (`(?:\s+rec)?(?:\s+inline)?`), so ANY access modifier made the whole
+	// declaration vanish: `let private (|Even|Odd|)` produced no
+	// active-pattern entity, no case sub-entity, no CONTAINS edge, no
+	// match-site USES edge and no diagnostic. Stated precisely, because the
+	// shorter "no entity, no edge, no diagnostic" is measurably FALSE here:
+	// the line still minted letRE's phantom `SCOPE.Operation` named
+	// `private` (#7163). The active-pattern census was 0; the LINE was
+	// mis-attributed, not silent.
+	//
+	// There is nothing in THIS pattern a modifier could be mis-captured INTO
+	// — the literal `\(\|` has to match and `private ` does not begin a
+	// banana clip — so this scanner's own failure mode is the total miss, and
+	// it is strictly worse here than at the
+	// `module`/`type` sites: the definition is the sole producer of the case
+	// sub-entities, so a missed one silently takes its whole case set with
+	// it and every match arm `| Even ->` in the file then resolves to
+	// nothing (collectActivePatternCases returns an empty map).
+	//
+	// The accepted set is letRE's, byte for byte and on purpose: an active
+	// pattern IS a `let` binding (MS Learn "Active Patterns" gives the syntax
+	// as `let (|identifier|_|) [ arguments ] = expression`, an ordinary `let`
+	// head with no modifier vocabulary of its own), so a divergent allowlist
+	// would be a twinned surface that drifts — the exact failure this
+	// three-arm issue is about. Sources UNIONED rather than taken from one
+	// grammar production, because the sibling arms proved no single
+	// production is exhaustive (§ 8.13 omits `inline`; § 10's module-defn
+	// omits `rec`, so deriving from it alone would have been a REGRESSION):
+	//
+	//  1. F# Language Specification § 10.5 "Accessibility Annotations"
+	//     (https://fsharp.github.io/fslang-spec/namespaces-and-modules/):
+	//     `access := public | private | internal`.
+	//  2. MS Learn "Access Control" (learn.microsoft.com/dotnet/fsharp/
+	//     language-reference/access-control): the specifiers apply to "value
+	//     definitions, functions" among others and go "in front of the name
+	//     of the entity". The same page states `protected` "is not used in
+	//     F#", so it is deliberately NOT allowlisted, repo-wide.
+	//  3. MS Learn "Active Patterns" — the `let` head above.
+	//  4. The sibling scanner letRE in extractor.go:
+	//     `rec|mutable|inline|private|internal|public`. That parity is not
+	//     prose: TestActivePatternREModifierParityWithLetRE asserts the two
+	//     modifier prefixes are byte-identical, which is what closes the
+	//     UNBOUNDED widening direction — the forbidden rows grade six
+	//     hand-picked words, and a seventh (`sealed`) was ALIVE at 0
+	//     `--- FAIL` until that assertion existed.
+	//
+	// `mutable` is carried for source-4 parity and is LENIENCE, not a
+	// legality claim. It is illegal on this sub-form on three independent
+	// grounds: the spec grammar admits `mutable` only in
+	// `value-defn := mutable? access? pat`, while a parameterised
+	// active-pattern head is a `function-defn := inline? access? ident-or-op`
+	// with no `mutable` slot at all; `FSComp.txt` 874 ("Only record fields
+	// and simple, non-recursive 'let' bindings may be marked mutable"); and
+	// `FSComp.txt` 831 ("Mutable function values should be written
+	// 'let mutable f = (fun args ...)'"). No compiling source produces the
+	// form, so excluding the word removes no real-world case and admitting it
+	// mis-extracts none.
+	//
+	// THE REPEATED GROUP IS RECALL FIRST. `function-defn := inline? access?
+	// ident-or-op …`, with `rec` supplied by the `let rec` group ahead of it,
+	// makes `inline private` and `rec private` the SPEC-LEGAL order — and
+	// both match this pattern while matching neither slot order of the old
+	// two-slot form. So `)*` recovers legal two-modifier F# that was missed
+	// outright; it is not merely tolerance. (The first draft of this comment
+	// and its test file had that backwards, inheriting arm 2's helper, which
+	// labels both orders of an extra+access pair as reversed.)
+	//
+	// What IS lenience: the group also accepts an arbitrary multiset in any
+	// order (`let private public (|A|B|)`, `let private rec (|A|B|)`,
+	// `let rec rec (|A|B|)`), which the grammar does not. Same deliberate
+	// call as the `module`/`type` arm, unreachable from compiling source, and
+	// labelled per row in active_pattern_modifiers_7135_test.go — where 16
+	// subtests depend on it — rather than left silent.
+	//
+	// THIS WIDENING ENLARGES #7152's SURFACE. extractActivePatterns is called
+	// with the RAW `src` (extractor.go:522), not the comment/string-scrubbed
+	// copy the edge scanners use, so a commented-out
+	// `let private (|A|B|)` inside a `(* … *)` block or a triple-quoted
+	// literal now mints a phantom where the two-slot form skipped it. The
+	// growth is exactly the declarations this arm newly recognises. #7152 is
+	// one shared call-site convention across all four F# declaration scanners
+	// and is not fixed here, but this arm is one of its causes — Refs #7152.
+	//
+	// `\b` after each modifier word is NOT load-bearing, and here — unlike at
+	// the two sibling patterns — it is UNCONDITIONALLY so, not merely
+	// conditional on the mandatory `\s+`. Removing it is an equivalent
+	// mutant (ALIVE at 0 `--- FAIL`), and the mechanism is that `\b` can only
+	// bite when an allowlist word is followed by a WORD character, whereas
+	// the next obligatory token after the modifier group is the literal `(`
+	// of the banana clip, which no word character can be. That is a real
+	// difference from `moduleRE`/`typeRE`, where the next token is an
+	// IDENTIFIER and the equivalence therefore collapses under a `\s*`
+	// separator (93,100 measured divergences there).
+	//
+	// Measured, not argued: 11,924,640 enumerated declaration lines under
+	// EACH separator — `\s+` and the #7158 `\s*` relaxation — over an
+	// alphabet of the six allowlist words plus near-misses and
+	// modifier-prefixed identifiers (`recFoo`, `privateThing`,
+	// `internalState`, `recrec`, `publicly`, `Rec`, `PRIVATE`, `qqzz`),
+	// thirteen glue strings, four clip shapes, five argument forms, four
+	// indentations, and both the spaced and unspaced pre-clip variants: 0
+	// divergences in all four cells. Plus the direct mechanism check — every
+	// one of the 128 single bytes after each of the six words — 0
+	// divergences. So the `\b` is kept for parity with letRE and is left
+	// untested ON PURPOSE; it is not a coverage gap to fill.
+	//
+	// The SEPARATOR itself is still ungraded here (`\s+` -> `\s*` is ALIVE at
+	// 0 `--- FAIL`), as it is at both sibling sites; that is #7158, and this
+	// arm does not re-litigate it. Note the consequence differs by site: at
+	// `moduleRE`/`typeRE` a relaxed separator MIS-NAMES (`moduleLoader` mints
+	// a module `Loader`), whereas here it can only ADMIT `let(|Even|Odd|)`
+	// with no space, whose F# legality this environment cannot settle — so no
+	// row pins it rather than pinning a guess.
+	//
+	// Not fixed here, and adjacent: letRE ALSO matches a modifier-carrying
+	// active-pattern head and mis-names it (`let rec (|Even|Odd|) n =`
+	// additionally mints a phantom SCOPE.Operation called `rec`, because its
+	// optional modifier group backtracks to zero repetitions when the name
+	// capture faces `(`). That reproduces before this change on a
+	// declaration this scanner already extracted, so it is a different
+	// scanner's arm — filed as #7163, with the partial-backtrack detail
+	// (`let inline private (|A|B|)` mints `private`, not `inline`); see also
+	// the note in the test file.
 	activePatternRE = regexp.MustCompile(
-		`(?m)^([ \t]*)let(?:\s+rec)?(?:\s+inline)?\s+\(\|([A-Za-z0-9_'|]+(?:\|_)?)\|\)\s*([^=\n]*)=`,
+		`(?m)^([ \t]*)let(?:\s+(?:rec|mutable|inline|private|internal|public)\b)*` +
+			`\s+\(\|([A-Za-z0-9_'|]+(?:\|_)?)\|\)\s*([^=\n]*)=`,
 	)
 
 	// ceInvokeRE matches a computation-expression invocation `builder {` — a
