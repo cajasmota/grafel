@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -231,15 +232,36 @@ func TestEngineSupervisor_GracefulDrainReapsChild(t *testing.T) {
 	}
 }
 
+// unkeepableFatalBudget is how long TestEngineSupervisor_UnkeepableEngineIsFatal
+// waits for the crash-loop fatal. It bounds the TEST's patience, not any
+// production default: on success the select below returns the instant the fatal
+// fires, so this costs wall clock only when the behaviour is already broken
+// (#7062 — the budget that is cheap to be generous with is the one nothing waits
+// out).
+//
+// It was 15s, and 15s was not generous: the verdict needs maxCeilingHits+1
+// crash cycles, and every cycle re-execs THIS test binary as the child. Under
+// `-race` that binary is ~126MB, each spawn costs ~1.6s on an idle
+// Apple-Silicon machine, and the whole test measures 6.5s — a 2.3x margin,
+// which a shared 4-core CI runner running other packages alongside consumes
+// without difficulty. It did, on #7123: 15.08s, against a test that takes 0.52s
+// without `-race`. 90s is ~14x the idle `-race` cost.
+const unkeepableFatalBudget = 90 * time.Second
+
 // TestEngineSupervisor_UnkeepableEngineIsFatal asserts the one path where serve
 // gives up: a child that cannot start at all (bad command) crash-loops at the
 // backoff ceiling until the supervisor records + signals a fatal, which is what
 // makes RunServe exit non-zero so the OS unit recycles it.
 func TestEngineSupervisor_UnkeepableEngineIsFatal(t *testing.T) {
 	root := isolateSupervisorEnv(t)
+	// Spawn attempts are counted from OUTSIDE the supervisor, in the injected
+	// command factory, so the failure message below can report progress that
+	// the supervisor is not itself asked to vouch for.
+	var spawns atomic.Int64
 	// Command that exits immediately (nonexistent subcommand → helper env unset
 	// → returns instantly), forcing a relentless crash loop.
 	defer SetEngineChildCommandForTest(func(selfExe, root string) *exec.Cmd {
+		spawns.Add(1)
 		cmd := exec.Command(selfExe, "-test.run=TestEngineChildHelper")
 		// NOTE: GRAFEL_ENGINE_CHILD_HELPER intentionally NOT set, so the helper
 		// returns immediately → the child exits ~instantly every time.
@@ -254,7 +276,16 @@ func TestEngineSupervisor_UnkeepableEngineIsFatal(t *testing.T) {
 	// Tiny backoff + low ceiling so the fatal lands fast.
 	sup.backoffInitial = 20 * time.Millisecond
 	sup.backoffMax = 40 * time.Millisecond
-	sup.healthyUptime = 10 * time.Second // never "recovers"
+	// "Never recovers" has to be UNREACHABLE, not merely large. run() resets
+	// both `backoff` and `ceilingHits` the moment a child's lifetime reaches
+	// healthyUptime, and each child here is a re-exec of this test binary —
+	// ~1.6s under `-race` idle and unbounded on a loaded runner. At the 10s this
+	// test used to inject, one slow child silently rewinds the crash accounting
+	// and the fatal can never arrive at all: the give-up verdict is reachable
+	// only while EVERY child dies inside the window, which is a property of the
+	// machine, not of the supervisor. An hour is unreachable by construction —
+	// the same value, for the same reason, that tuneForSpawnFailTest injects.
+	sup.healthyUptime = time.Hour
 	sup.maxCeilingHits = 3
 	sup.drainTimeout = time.Second
 	if err := sup.start(ctx); err != nil {
@@ -262,15 +293,34 @@ func TestEngineSupervisor_UnkeepableEngineIsFatal(t *testing.T) {
 	}
 	t.Cleanup(sup.stop)
 
+	startedAt := time.Now()
 	select {
 	case err := <-sup.fatal():
 		if err == nil {
 			t.Fatal("fatal channel fired with nil error")
 		}
-	case <-time.After(15 * time.Second):
-		t.Fatal("supervisor never surfaced a fatal for an unkeepable engine")
+	case <-time.After(unkeepableFatalBudget):
+		// Say which of the two things happened. The old wording — "supervisor
+		// never surfaced a fatal" — blamed the supervisor for what was in fact
+		// this test running out of patience, and cost a full CI round to
+		// diagnose (#7123). Elapsed plus the externally counted spawn attempts
+		// separate them: attempts short of the verdict's requirement means the
+		// spawns are merely slow on this machine, whereas attempts already past
+		// it means the supervisor really is refusing to give up.
+		t.Fatalf("no crash-loop fatal arrived within the TEST's OWN %s budget — this is the test having stopped waiting, not proof the supervisor refused to give up: %d child spawn attempt(s) in %s, and the verdict needs %d cycles (maxCeilingHits=%d at a %s ceiling), each of which re-execs this test binary",
+			unkeepableFatalBudget, spawns.Load(), time.Since(startedAt).Truncate(time.Millisecond),
+			sup.maxCeilingHits+1, sup.maxCeilingHits, sup.backoffMax)
 	}
 	if sup.fatalError() == nil {
 		t.Error("fatalError() nil after fatal fired")
+	}
+	// Positive control, observed from outside: the fatal came from a crash
+	// LOOP. One crash cannot reach the verdict — it takes maxCeilingHits
+	// relaunches AT the ceiling plus the first spawn — so a fatal raised on
+	// fewer spawns would be some other give-up wearing this one's name (the
+	// unspawnable verdict, #7087, is the near neighbour).
+	if got, want := spawns.Load(), int64(sup.maxCeilingHits+1); got < want {
+		t.Errorf("the fatal fired after only %d spawn attempt(s), want at least %d: a crash-loop verdict needs %d relaunches at the %s ceiling on top of the first spawn, so this verdict did not come from a crash loop; fatal: %v",
+			got, want, sup.maxCeilingHits, sup.backoffMax, sup.fatalError())
 	}
 }
