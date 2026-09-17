@@ -51,11 +51,18 @@ var (
 	// #7135 (third and last arm) — this pattern accommodated a FIXED sequence
 	// of exactly two optional modifiers in exactly one order
 	// (`(?:\s+rec)?(?:\s+inline)?`), so ANY access modifier made the whole
-	// declaration vanish: `let private (|Even|Odd|)` produced no entity, no
-	// edge and no diagnostic. There is nothing here a modifier could be
-	// mis-captured INTO — the literal `\(\|` has to match and `private ` does
-	// not begin a banana clip — so this site's only failure mode is the
-	// SILENT TOTAL MISS, and it is strictly worse here than at the
+	// declaration vanish: `let private (|Even|Odd|)` produced no
+	// active-pattern entity, no case sub-entity, no CONTAINS edge, no
+	// match-site USES edge and no diagnostic. Stated precisely, because the
+	// shorter "no entity, no edge, no diagnostic" is measurably FALSE here:
+	// the line still minted letRE's phantom `SCOPE.Operation` named
+	// `private` (#7163). The active-pattern census was 0; the LINE was
+	// mis-attributed, not silent.
+	//
+	// There is nothing in THIS pattern a modifier could be mis-captured INTO
+	// — the literal `\(\|` has to match and `private ` does not begin a
+	// banana clip — so this scanner's own failure mode is the total miss, and
+	// it is strictly worse here than at the
 	// `module`/`type` sites: the definition is the sole producer of the case
 	// sub-entities, so a missed one silently takes its whole case set with
 	// it and every match arm `| Even ->` in the file then resolves to
@@ -81,17 +88,49 @@ var (
 	//     F#", so it is deliberately NOT allowlisted, repo-wide.
 	//  3. MS Learn "Active Patterns" — the `let` head above.
 	//  4. The sibling scanner letRE in extractor.go:
-	//     `rec|mutable|inline|private|internal|public`.
+	//     `rec|mutable|inline|private|internal|public`. That parity is not
+	//     prose: TestActivePatternREModifierParityWithLetRE asserts the two
+	//     modifier prefixes are byte-identical, which is what closes the
+	//     UNBOUNDED widening direction — the forbidden rows grade six
+	//     hand-picked words, and a seventh (`sealed`) was ALIVE at 0
+	//     `--- FAIL` until that assertion existed.
 	//
 	// `mutable` is carried for source-4 parity and is LENIENCE, not a
-	// legality claim: `let mutable (|Even|Odd|)` binds a pattern rather than
-	// a storage location, so no compiling source produces it — excluding it
-	// removes no real-world case and including it admits none. Likewise the
-	// repeated group accepts an arbitrary multiset in any order
-	// (`let private public (|A|B|)`, `let rec rec (|A|B|)`), which the
-	// grammar does not; that is the same deliberate call the `module`/`type`
-	// arm made, unreachable from compiling source, and labelled per row in
-	// active_pattern_modifiers_7135_test.go rather than left silent.
+	// legality claim. It is illegal on this sub-form on three independent
+	// grounds: the spec grammar admits `mutable` only in
+	// `value-defn := mutable? access? pat`, while a parameterised
+	// active-pattern head is a `function-defn := inline? access? ident-or-op`
+	// with no `mutable` slot at all; `FSComp.txt` 874 ("Only record fields
+	// and simple, non-recursive 'let' bindings may be marked mutable"); and
+	// `FSComp.txt` 831 ("Mutable function values should be written
+	// 'let mutable f = (fun args ...)'"). No compiling source produces the
+	// form, so excluding the word removes no real-world case and admitting it
+	// mis-extracts none.
+	//
+	// THE REPEATED GROUP IS RECALL FIRST. `function-defn := inline? access?
+	// ident-or-op …`, with `rec` supplied by the `let rec` group ahead of it,
+	// makes `inline private` and `rec private` the SPEC-LEGAL order — and
+	// both match this pattern while matching neither slot order of the old
+	// two-slot form. So `)*` recovers legal two-modifier F# that was missed
+	// outright; it is not merely tolerance. (The first draft of this comment
+	// and its test file had that backwards, inheriting arm 2's helper, which
+	// labels both orders of an extra+access pair as reversed.)
+	//
+	// What IS lenience: the group also accepts an arbitrary multiset in any
+	// order (`let private public (|A|B|)`, `let private rec (|A|B|)`,
+	// `let rec rec (|A|B|)`), which the grammar does not. Same deliberate
+	// call as the `module`/`type` arm, unreachable from compiling source, and
+	// labelled per row in active_pattern_modifiers_7135_test.go — where 16
+	// subtests depend on it — rather than left silent.
+	//
+	// THIS WIDENING ENLARGES #7152's SURFACE. extractActivePatterns is called
+	// with the RAW `src` (extractor.go:522), not the comment/string-scrubbed
+	// copy the edge scanners use, so a commented-out
+	// `let private (|A|B|)` inside a `(* … *)` block or a triple-quoted
+	// literal now mints a phantom where the two-slot form skipped it. The
+	// growth is exactly the declarations this arm newly recognises. #7152 is
+	// one shared call-site convention across all four F# declaration scanners
+	// and is not fixed here, but this arm is one of its causes — Refs #7152.
 	//
 	// `\b` after each modifier word is NOT load-bearing, and here — unlike at
 	// the two sibling patterns — it is UNCONDITIONALLY so, not merely
