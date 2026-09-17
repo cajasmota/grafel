@@ -57,10 +57,27 @@ var (
 		`(?m)^([ \t]*)namespace\s+([\w.]+)\s*$`,
 	)
 
-	// let binding: "let [rec] [mutable] name [<params>] =" or "let name ="
+	// let binding: "let <modifiers> name [<params>] =" or "let name ="
 	// Captures indentation and name. Handles generic type params like <'T>.
+	//
+	// #7131 — the modifier group is a REPEATED ALLOWLIST, not a fixed
+	// sequence. It used to read `(?:\s+rec)?(?:\s+mutable)?`, two optional
+	// literals in a fixed order, which could not absorb a third token in any
+	// position: every other modifier landed in the NAME capture, so
+	// `let inline distance p q = ...` was indexed as an operation called
+	// `inline`. That also collapsed entities, because letSeen is keyed
+	// indent+":let:"+name — two same-indent `let inline` bindings both keyed
+	// on "inline" and the second was dropped.
+	//
+	// The modifier set is closed and short, so an allowlist is preferable to
+	// "any word that is not the last one": the latter would name the curried
+	// binding `let add x y = x + y` after its final parameter. `\b` keeps the
+	// allowlist from eating the prefix of a legitimate name (`recompute`,
+	// `inlineCache`). Order is accepted in any direction — this is a lenient
+	// scanner, not a compiler, and ranking orders could only lose a binding.
 	letRE = regexp.MustCompile(
-		`(?m)^([ \t]*)let(?:\s+rec)?(?:\s+mutable)?\s+([a-zA-Z_][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:[^=\n]*)=`,
+		`(?m)^([ \t]*)let(?:\s+(?:rec|mutable|inline|private|internal|public)\b)*` +
+			`\s+([a-zA-Z_][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:[^=\n]*)=`,
 	)
 
 	// member: "member [this.]Name" or "member _.Name" or "override this.Name"
