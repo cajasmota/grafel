@@ -2112,35 +2112,169 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 	return strings.TrimSpace(raw)
 }
 
-// buildFieldSignature produces "Type name" for a Java field, stripping visibility.
+// buildFieldSignature renders a Java field as "<Type> <name>" — e.g.
+// `Map<String,String> CACHE`, `int arr[]`.
+//
+// # Read the parse tree, do not cut up the raw span
+//
+// Both parts are taken from `field_declaration`'s own children. That is a
+// deliberate replacement for the previous implementation, which sliced the
+// declaration's RAW SOURCE TEXT and produced three separate filed defects from
+// that one decision:
+//
+//   - #7114 — no whitespace collapse, so a wrapped declaration carried
+//     newlines and source indentation into the persisted signature, AND the
+//     modifier strip below it silently stopped firing (its patterns each need
+//     a trailing SPACE, so "public " never matches "public\n").
+//   - #7117 — the initializer was cut at `strings.Index(raw, "=")`, i.e. the
+//     FIRST `=` anywhere in the span. An annotation element assignment
+//     precedes the type, so `@Deprecated(since = "1.0") private String key =
+//     "v";` emitted `"@Deprecated(since"` — TYPE AND NAME BOTH LOST. Same for
+//     `@Column(name = "x")`, `@JsonProperty(value = …)`,
+//     `@RequestParam(required = false)`: ordinary in JPA/Spring/Jackson code.
+//     An `=` inside an annotation's STRING literal did it too
+//     (`@Query("a = b")` → `"@Query(\"a"`).
+//   - #7116 — the modifier strip was an UNANCHORED strings.ReplaceAll, so
+//     `@SuppressWarnings("public static thing") private String key;` emitted
+//     `"@SuppressWarnings(\"thing\") String key"` — two words eaten out of a
+//     string literal, yielding text that appears in no source file and that a
+//     reader cannot recognise as mangled.
+//
+// Making the `=` search or the strip smarter would reproduce the pattern that
+// produced all three. Reading the tree removes the class outright: the only
+// nodes read are `type` and `declarator`, so no `=`, no modifier keyword and
+// no annotation text — wherever it sits, whatever it contains — can reach the
+// output at all.
+//
+// # Grammar, derived from a real parse tree (executed, not assumed)
+//
+//	field_declaration
+//	  modifiers            <- child BY TYPE. NOT a named field:
+//	                          ChildByFieldName("modifiers") returns nil here.
+//	                          Holds the annotations AND the bare
+//	                          visibility/`static`/`final`/… keyword tokens.
+//	                          Never read by this function.
+//	  type                 <- named field: the declared type node
+//	  declarator           <- named field: the FIRST variable_declarator;
+//	                          `int a = 1, b = 2;` has several as children
+//	  variable_declarator
+//	    name / value / dimensions   <- named fields; `dimensions` is the
+//	                                   C-style `int arr[];` suffix
+//
+// # Annotations are DROPPED, and that is a deliberate break from the siblings
+//
+// Today they survive: `@SuppressWarnings("thing") String key`. They no longer
+// will. buildClassSignature and buildMethodSignature DO keep `@Foo` (with the
+// arguments stripped), so this differs from them on purpose, for a reason that
+// applies to fields and to no other kind:
+//
+// A FIELD's Signature is the only one any consumer parses POSITIONALLY.
+// docgen's typeHintFromSignature (internal/docgen/llm_bundle.go) is gated on
+// `Kind == "SCOPE.Schema" && Subtype == "field"`, and its Java/C# arm takes
+// `strings.Fields(sig)[0]` as the declared type. A leading `@Column` makes that
+// hint the ANNOTATION rather than the type, on every annotated field — which in
+// a JPA entity is most of them. Class and method signatures are never fed to
+// it, so keeping annotations there costs nothing.
+//
+// What this costs, stated precisely rather than as "nothing is lost". The
+// annotations any consumer actually acts on do not come from the signature and
+// are untouched: javaFieldHasInjectAnnotation walks the `modifiers` child and
+// turns @Inject/@Autowired into REFERENCES edges; field_validations.go walks
+// the same child and stamps Bean Validation annotations into
+// Properties["validations"]; nosql_model.go recognises
+// @Id/@Indexed/@Field/@Column, but only on a Mongo/Cassandra document class.
+// Everything else — `@Deprecated`, a JPA `@Column` on an entity that is NOT a
+// NoSQL document, any third-party marker — used to appear in the signature and
+// is now recorded NOWHERE on the entity. That is a real, if narrow, loss and
+// not "nothing".
+//
+// It is narrow because of the #7117 defect itself: an annotation carrying an
+// ELEMENT (`@Size(max = 120)`, `@Column(name = "x")`) already destroyed the
+// signature from its first `=` onward, so it never reached a reader intact.
+// Only a MARKER annotation — no argument list at all, or arguments containing
+// no `=` (`@SuppressWarnings("thing")`) — survived pre-fix, so markers are the
+// only thing that regresses. If one ever needs to be on the entity, `modifiers`
+// is where to read it: a positionally-parsed signature is the wrong carrier for
+// it either way.
+//
+// Note this also widens the modifier strip: previously exactly five keywords
+// were removed ("public ", "private ", "protected ", "static ", "final "), so
+// `transient`, `volatile` and friends survived into the signature. Not reading
+// `modifiers` at all removes every modifier, which is what
+// "stripping visibility" always meant.
+//
+// Whitespace is collapsed per part with strings.Fields, so a wrapped type
+// (#7114) and an intra-line whitespace RUN inside one (#7118 —
+// `Map<String,   String>`) both normalise to single spaces. Both call sites of
+// collapseJavaSpaces are graded separately: the type site by `spaced` (#7118)
+// and the dimensions site by `wrappedDims`, a `[` and `]` split across lines,
+// which is the only way the dimensions text can hold whitespace at all since
+// that node begins at `[`.
+//
+// # The three guards below are DEFENSIVE and ungraded on purpose
+//
+// `type != nil`, `txt != ""` and `decl != ""` are each EQUIVALENT UNDER THE
+// CURRENT SUITE: widening any of them to `true` changes no signature and
+// produces 0 `--- FAIL` lines in this package. They are recorded here rather
+// than left looking ungraded, because they are unreachable, not untested:
+//
+//   - `type` is a mandatory named field of field_declaration, so it is never
+//     nil on a node that reaches this function;
+//   - a non-nil node spans at least one byte, so `txt` is empty only when
+//     `type` is nil, i.e. only via the arm above;
+//   - `decl` is `name + dimensions` and `name` is the entity name buildField
+//     already established, so it is never empty.
+//
+// Demonstrated rather than asserted: the malformed spellings that could
+// produce those shapes (`private int ;`, `private ;`, `private x;`, `int;`)
+// parse to ERROR nodes and yield ZERO SCOPE.Schema records — buildField never
+// runs on them — so no input reachable here can distinguish the guarded form
+// from the widened one. Do not "grade" them with a hand-built parse tree; the
+// honest record is that they cost nothing and can never fire.
 func buildFieldSignature(node ts.Node, src []byte, name string) string {
-	raw := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
-	// Collapse interior whitespace, matching the four other signature builders
-	// in this file (issue #7091). It must PRECEDE THE MODIFIER STRIP at the
-	// bottom (issue #7114), which matches "public ", "static ", "final " —
-	// patterns that each require a TRAILING SPACE — so on a declaration whose
-	// modifiers wrap onto their own lines, "public " does not match "public\n"
-	// and the modifier survives into the persisted signature. Only that
-	// ordering constraint is graded: collapsing is a no-op for the '='
-	// truncation and the ';' trim (joining fields with a single space neither
-	// adds nor removes an '=' or a ';', so strings.Index finds the same '=' and
-	// the token prefix before it is unchanged), and a mutant that moves the
-	// collapse down to immediately above the strip is an EQUIVALENT — 0 FAIL in
-	// the package and byte-identical signatures on 9 probe fields. It sits
-	// first here because that is the ordering the four sibling sites have.
-	raw = strings.Join(strings.Fields(raw), " ")
-	// Remove everything after '=' (initializer).
-	if idx := strings.Index(raw, "="); idx >= 0 {
-		raw = strings.TrimSpace(raw[:idx])
+	var parts []string
+	if t := node.ChildByFieldName("type"); t != nil {
+		if txt := collapseJavaSpaces(nodeText(t, src)); txt != "" {
+			parts = append(parts, txt)
+		}
 	}
-	// Remove trailing ';'.
-	raw = strings.TrimSuffix(raw, ";")
-	raw = strings.TrimSpace(raw)
-	// Strip visibility modifiers.
-	for _, mod := range []string{"public ", "private ", "protected ", "static ", "final "} {
-		raw = strings.ReplaceAll(raw, mod, "")
+	if decl := name + javaDeclaratorDimensions(node, src); decl != "" {
+		parts = append(parts, decl)
 	}
-	return strings.TrimSpace(raw)
+	return strings.Join(parts, " ")
+}
+
+// javaDeclaratorDimensions returns the C-style array suffix JLS 10.2 permits
+// after the variable name (`private int arr[];` → "[]"), or "" when there is
+// none. It is a `dimensions` child of the variable_declarator, NOT part of the
+// `type` node, so reading type+name alone would silently drop it.
+//
+// The `declarator` field is read rather than the declarator whose `name`
+// matches: `int a = 1, b = 2;` does have several variable_declarator children,
+// but buildField takes its entity Name from the FIRST one it walks to, which is
+// exactly the node `declarator` names (verified on that declaration: the
+// `declarator` field is `a = 1`). Matching by name instead would select the
+// same node on every input reachable here, so it would be an unreachable guard
+// rather than a stricter one.
+//
+// The `decl == nil` early return is a fourth EQUIVALENT UNDER THE CURRENT
+// SUITE: deleting it changes no signature and produces 0 `--- FAIL` lines
+// (`declarator` is a mandatory named field, and the malformed declarations that
+// lack one yield no SCOPE.Schema record at all — see buildFieldSignature). It
+// is kept because childFieldText would panic on a nil node, so the guard is the
+// difference between "impossible" and "impossible AND survivable".
+func javaDeclaratorDimensions(node ts.Node, src []byte) string {
+	decl := node.ChildByFieldName("declarator")
+	if decl == nil {
+		return ""
+	}
+	return collapseJavaSpaces(childFieldText(decl, "dimensions", src))
+}
+
+// collapseJavaSpaces normalises every whitespace run — newlines included — to a
+// single space and trims the ends.
+func collapseJavaSpaces(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // nodeText returns the source text covered by node.
