@@ -97,10 +97,13 @@
 // absence of modifiers other than the declaration keyword, the empty or
 // one-member body, and the top-level enclosing scope.
 //
-// Rows that were ALREADY GREEN on 99bb52790 (Plain, PlainItems, Bare,
-// TypeParamNoAnn, Table, Ann, ctrlFun, bareFun, exprBody, Holder.member) are
+// Rows that were ALREADY GREEN on 99bb52790 (class: Plain, PlainItems, Bare,
+// TypeParamNoAnn, Table, Ann — 6 of 23; fun: ctrlFun, bareFun, exprBody,
+// exprAnn, Holder.member, paramAnno, paramAnnoCtl — 7 of 11) are
 // non-regression controls: they must not redden when the order is swapped
-// back.
+// back. All 10 remainder rows are green in both orders by construction.
+// Measured against the pre-change file: 17 of 23 class rows and 4 of 11 fun
+// rows redden, which is what makes them grade the ORDER.
 //
 // # Fixtures were NOT compiled
 //
@@ -295,6 +298,10 @@ fun exprBody(a: Int): Int = a
 
 @Ann("{x}") fun exprAnn(a: Int): Int = a
 
+fun paramAnno(@Ann("{x}") a: Int): Int = a
+
+fun paramAnnoCtl(@Ann("x") a: Int): Int = a
+
 class Holder {
     @Ann("{x}") fun member(b: String): String { return b }
 
@@ -335,6 +342,21 @@ func TestKotlin7133_FunSignatureStripsAnnotationsBeforeBodyCuts(t *testing.T) {
 		// so the " {" cut does not match it, and the annotation carries no
 		// " =" either. A control, not a defect row.
 		{"exprAnn", "fun exprAnn(a: Int): Int"},
+		// PARAMETER annotation carrying a brace. Green before AND after —
+		// buildFunSignature strips only the prefix before "fun ", so a
+		// parameter annotation is KEPT BY DESIGN, and the only thing that
+		// stops its brace truncating the signature is that the body cut
+		// looks for " {" (space-brace) rather than "{". That guard was
+		// itself ungraded: relaxing the cut to "{" was ALIVE with 0
+		// "--- FAIL" before this row existed, and it is distinguishable —
+		//   shipped -> "fun paramAnno(@Ann(\"{x}\") a: Int): Int"
+		//   mutant  -> "fun paramAnno(@Ann(\""
+		// Found by the independent reviewer on this PR. Pre-existing guard,
+		// untouched by the reorder; this is cover, not a behaviour change.
+		{"paramAnno", "fun paramAnno(@Ann(\"{x}\") a: Int): Int"},
+		// Its control — same shape minus the two brace characters, so the
+		// row above cannot be green for a reason unrelated to the brace.
+		{"paramAnnoCtl", "fun paramAnnoCtl(@Ann(\"x\") a: Int): Int"},
 		// Member function, annotation with an unspaced brace: green before
 		// (neither " {" nor " =" appears inside @Ann("{x}")).
 		{"Holder.member", "fun member(b: String): String"},
@@ -370,16 +392,29 @@ func TestKotlin7133_FunSignatureStripsAnnotationsBeforeBodyCuts(t *testing.T) {
 //     inside the span, because the annotation is, so `{` in such a comment
 //     does reach the cut. That is a kotlin-specific difference from the other
 //     two arms.
-//  3. A use-site-targeted annotation (`@get:Ann(...)`, `@field:`, `@param:`).
+//  3. A use-site-targeted annotation (`@get:`, `@field:`, `@param:`).
 //     stripKotlinAnnotations skips '@' then [A-Za-z0-9_] and then expects
 //     '(' — a ':' ends the identifier scan and the helper falls through, so
 //     the target prefix is consumed but the rest of the annotation is
 //     emitted verbatim. A separate defect in the helper, not in the order.
+//     Pinned on a CONSTRUCTOR VALUE PARAMETER, which is where kotlinlang.org
+//     ("Annotations" → "Annotation use-site targets") puts its own example:
+//     `class Example(@field:Ann val foo, @get:Ann val bar, @param:Ann val
+//     quux)`. An earlier revision of this file pinned it on `@get:Ann(...)
+//     class UseSite` instead, which is NOT legal Kotlin — `get:` targets a
+//     property's getter and a class declaration has none — and an all-DEAD
+//     mutant score cannot detect a fabricated shape. Caught in review.
 //  4. The " =" cut in buildFunSignature firing on a DEFAULT PARAMETER VALUE.
 //     Also annotation-independent and also unaffected by the order.
+//  5. The " {" cut in buildFunSignature firing inside a PARAMETER annotation
+//     when the brace happens to follow a space (`@Ann("a {b}")`). Parameter
+//     annotations are kept by design, so their content reaches the cut; only
+//     the space in " {" keeps the common unspaced shape out of it. See
+//     paramAnno in the fun test above for the graded half of this.
 func TestKotlin7133_DisclosedRemainders(t *testing.T) {
 	const src = `package demo.sig
 
+@Target(AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.PROPERTY_GETTER)
 annotation class Ann(val v: String = "")
 
 class DefStr(val s: String = "{x}")
@@ -397,9 +432,13 @@ class KDocOnly
 // line { comment
 class LineOnly
 
-@get:Ann("{w}") class UseSite
+class CtorGet(@get:Ann("{w}") val a: Int)
+
+class CtorGetCtl(@get:Ann("w") val a: Int)
 
 fun defaultArg(a: Int = 3): Int { return a }
+
+fun paramSpaceBrace(@Ann("a {b}") a: Int): Int = a
 `
 	recs := extractKotlinRecords(t, src, "demo/sig/Remainders.kt")
 	for _, want := range []struct{ kind, name, sig string }{
@@ -415,10 +454,19 @@ fun defaultArg(a: Int = 3): Int { return a }
 		// these two rows are the demonstration.
 		{"SCOPE.Component", "KDocOnly", "class KDocOnly"},
 		{"SCOPE.Component", "LineOnly", "class LineOnly"},
-		// (3) use-site target: the helper does not recognise "@get:".
-		{"SCOPE.Component", "UseSite", ":Ann(\""},
+		// (3) use-site target on a constructor val parameter: the helper
+		// does not recognise "@get:", so the target prefix is eaten and the
+		// annotation body is emitted verbatim — and the brace inside it then
+		// truncates at the cut.
+		{"SCOPE.Component", "CtorGet", "class CtorGet(:Ann(\""},
+		// Its control: the same use-site target with NO brace, which shows
+		// the helper defect on its own, without the truncation on top.
+		{"SCOPE.Component", "CtorGetCtl", "class CtorGetCtl(:Ann(\"w\") val a: Int)"},
 		// (4) the " =" cut on a default parameter value.
 		{"SCOPE.Operation", "defaultArg", "fun defaultArg(a: Int"},
+		// (5) the " {" cut inside a PARAMETER annotation, where the brace
+		// follows a space.
+		{"SCOPE.Operation", "paramSpaceBrace", "fun paramSpaceBrace(@Ann(\"a"},
 	} {
 		got := kt7133Sigs(recs, want.kind, want.name)
 		if len(got) != 1 {
