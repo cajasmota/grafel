@@ -47,9 +47,90 @@ func (e *Extractor) Language() string { return "fsharp" }
 
 // Regex patterns for F# syntax.
 var (
-	// module declaration: "module Foo" or "module Foo.Bar" or "module rec Foo"
+	// module declaration: "module [rec] [access] Foo" or "module Foo.Bar"
+	//
+	// #7135 — the modifier group is a REPEATED ALLOWLIST, not a fixed
+	// sequence. It used to read `(?:\s+rec)?`, one optional literal, and this
+	// pattern anchors the END of the line (`\s*$`) — so an access modifier
+	// did not mis-name the module, it made the declaration VANISH:
+	// `module private Foo` left ` Foo` behind after `[\w.]+` had taken
+	// `private`, the anchor failed, and the match was abandoned. Nothing was
+	// extracted at all.
+	//
+	// That is the SILENT-MISS mode, which is harder to notice than a
+	// mis-name: a mis-named entity at least appears in a listing looking odd,
+	// while a missed one leaves no trace and reads as "this file has no
+	// modules" — an answer no bind-rate, orphan-rate or dangle instrument can
+	// flag. The tests therefore assert entity COUNT, not just presence.
+	//
+	// The accepted set is the UNION of four sources, because no single one is
+	// exhaustive — which is the lesson the memberRE arm of this issue paid
+	// for, where § 8.13's `member-defn` production genuinely omits `inline`:
+	//
+	//  1. F# Language Specification § 10 "Namespaces and Modules"
+	//     (https://fsharp.github.io/fslang-spec/namespaces-and-modules/):
+	//
+	//	module-defn  := attributes? module access? ident = module-defn-body
+	//	module-abbrev := module ident = long-ident
+	//	access       := private | internal | public      (§ 10.5)
+	//
+	//  2. § 10.5 "Accessibility Annotations" for `access`.
+	//  3. MS Learn "Modules" (learn.microsoft.com/dotnet/fsharp/
+	//     language-reference/modules), whose syntax block is
+	//     `module [accessibility-modifier] [qualified-namespace.]module-name`
+	//     and which states "The accessibility-modifier can be one of the
+	//     following: public, private, internal". The SAME page documents
+	//     `module rec` under "Recursive modules" — and the § 10 production
+	//     above carries no `rec` at all. So deriving the set from that one
+	//     production would have DROPPED a form this pattern already handled,
+	//     i.e. caused a regression: a second independent instance of "one
+	//     grammar production is not an exhaustive modifier set".
+	//  4. The sibling scanner in this file: letRE (#7131) allowlists
+	//     `rec|mutable|inline|private|internal|public`. `mutable`/`inline`
+	//     qualify a VALUE, not a module, so only `rec` + `access` carry over.
+	//
+	// `protected` is deliberately absent: MS Learn "Access Control" states it
+	// "is not used in F#". A fabricated modifier is a widening with no
+	// real-world case, and an all-DEAD mutant score cannot detect one.
+	//
+	// Order is accepted in any direction, as in letRE and memberRE — this is
+	// a lenient scanner, not a compiler, and ranking the orders could only
+	// create a way to LOSE a real module. No source attests `rec` together
+	// with an access modifier in EITHER order, so those rows are labelled
+	// lenience-only in the tests rather than claimed as legal F#.
+	//
+	// `\b` states that a modifier is a whole word. It is NOT load-bearing
+	// here: every repetition of the group is gated by a mandatory `\s+`, and
+	// a modifier-prefixed name supplies no whitespace, so `module recompute`
+	// yields `recompute` with OR without the boundary (the `rec` alternative
+	// dies for want of the separator and the engine backtracks to zero
+	// repetitions). The two variants were brute-forced against each other
+	// over 1,124,864 enumerated declaration lines (indent x three modifier/
+	// name tokens from a 13-word alphabet incl. modifier-prefixed names and
+	// dotted long-idents x four separators incl. the empty one x eight
+	// tails): 0 distinguishing captures. The equivalence is MASKED BY THAT
+	// `\s+`, not structural — relax the separator to `\s*` and the same
+	// enumeration diverges on 27,648 inputs (`module recrecrec` captures
+	// `recrecrec` with the boundary and `rec` without it). Kept as
+	// documentation of intent, in the same masking relation as letRE's and
+	// memberRE's.
+	//
+	// THE DISPOSITION IS CONDITIONAL ON THAT MANDATORY `\s+`, AND NOTHING
+	// GRADES THE SEPARATOR: relaxing it to `\s*` diverges on 93,100 inputs of
+	// an independent reviewer's enumeration, so an edit that relaxes it turns
+	// both `\b` mutants live while the suite stays green through both
+	// changes. The separator's own hole is pre-existing and filed as #7158
+	// (`\s+` -> `\s*` here is ALIVE at 0 `--- FAIL`: `moduleLoader` would
+	// mint a module named `Loader`). Re-read this equivalence before touching
+	// the separator.
+	//
+	// NOT fixed here, and measured rather than assumed: the LOCAL module form
+	// `module Foo =` never matches this pattern, because of the `\s*$` anchor
+	// and with or without a modifier. That is a distinct defect from the
+	// fixed-modifier-sequence one; the tests pin the RELATION (a modifier
+	// makes no difference to that form) instead of asserting the gap.
 	moduleRE = regexp.MustCompile(
-		`(?m)^([ \t]*)module(?:\s+rec)?\s+([\w.]+)\s*$`,
+		`(?m)^([ \t]*)module(?:\s+(?:rec|public|private|internal)\b)*\s+([\w.]+)\s*$`,
 	)
 
 	// namespace declaration: "namespace Foo" or "namespace Foo.Bar"
@@ -195,13 +276,78 @@ var (
 			`\s+(?:[a-zA-Z_][a-zA-Z0-9_']*\.)?([a-zA-Z_][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:[^=\n]*)=`,
 	)
 
-	// type declaration: "type Foo =" or "type Foo<'T> ="
+	// type declaration: "type [access] Foo =" or "type Foo<'T> ="
 	// Matches record, DU, class, interface, struct, alias, exception types.
+	//
+	// #7135 — same defect as moduleRE above, in its other spelling. The
+	// pattern accommodated NO modifier, and the name capture requires
+	// `[A-Z]`, so a lower-case access modifier left nothing for it to take:
+	// `type private Foo = { A: int }` did not match AT ALL and produced no
+	// entity — a silent total miss, not a mis-name. It cost more than one
+	// node: an unseen type has no subtype classification, no type→member
+	// CONTAINS edges, no DU-case/record-field sub-entities, no hierarchy
+	// edges, and never enters collectRecordTypeNames, so a nested-record
+	// VALIDATES edge to it could not resolve either.
+	//
+	// The accepted set is `access` and NOTHING else, unioned from four
+	// sources (one production is not enough — see moduleRE above):
+	//
+	//  1. F# Language Specification § 8 "Type Definitions"
+	//     (https://fsharp.github.io/fslang-spec/type-definitions/):
+	//
+	//	type-name := attributes? access? ident typar-defns?
+	//
+	//     and every type-defn variant (abbrev / record / union / anon /
+	//     class / struct / interface / enum / delegate / type-extension) is
+	//     built on `type-name`, so the modifier slot is shared by all of
+	//     them — which is why the tests cross the modifier space with the
+	//     body shapes. No production admits any keyword other than `access`
+	//     between `type` and the ident.
+	//  2. § 10.5 "Accessibility Annotations": `access := public | private |
+	//     internal`.
+	//  3. MS Learn "Access Control" (learn.microsoft.com/dotnet/fsharp/
+	//     language-reference/access-control): the specifiers "can be applied
+	//     to modules, types, methods, value definitions, functions,
+	//     properties, and explicit fields", "The access specifier is put in
+	//     front of the name of the entity", with the worked examples
+	//     `type private MyPrivateType()` and `type internal MyInternalType()`.
+	//     The same page states `protected` "is not used in F#", so it is
+	//     deliberately NOT allowlisted.
+	//  4. The sibling scanners in this file — memberRE (this issue's first
+	//     arm) and letRE — whose access sets are the same three words.
+	//
+	// There is no `type rec`: F# expresses recursive types with
+	// `type A = ... and B = ...`, so `rec` belongs to moduleRE's set and not
+	// to this one. (The `and` continuation form is a separate gap in this
+	// scanner and is not this change.)
+	//
+	// `\b` is not load-bearing here either, and is DOUBLY masked: by the
+	// mandatory `\s+` before the name, and by the name's `[A-Z]` requirement,
+	// which no lower-case allowlist word can satisfy. Brute-forced over
+	// 512,000 enumerated declaration lines: 0 distinguishing captures. Again
+	// masked rather than structural — under a `\s*` separator the same
+	// enumeration diverges on 22,128 inputs (`type privateprivatePrivate =`
+	// matches nothing with the boundary and captures `Private` without it).
+	// As with moduleRE, the disposition is CONDITIONAL on the mandatory `\s+`
+	// and nothing grades that separator — see the note there, the
+	// 93,100-divergence measurement under `\s*`, and #7158, under which
+	// `\s+` -> `\s*` here is ALIVE at 0 `--- FAIL` (`typeState() =` would
+	// mint a type named `State`).
 	typeRE = regexp.MustCompile(
-		`(?m)^([ \t]*)type\s+([A-Z][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=`,
+		`(?m)^([ \t]*)type(?:\s+(?:public|private|internal)\b)*` +
+			`\s+([A-Z][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=`,
 	)
 
-	// type kind after "=" — helps classify subtype
+	// type kind after "=" — helps classify subtype.
+	//
+	// #7135: this is typeRE's TWIN and it was NOT widened with it, because it
+	// is UNREFERENCED — no call site exists anywhere under internal/ or cmd/,
+	// and subtype classification runs through classifyTypeSubtype on the
+	// matched declaration text instead. Widening it would be an unobservable
+	// edit that no test could grade. Recorded here so the divergence is
+	// deliberate and visible: anything that wires this up must carry the
+	// `(?:\s+(?:public|private|internal)\b)*` group over from typeRE, or it
+	// will reintroduce the silent miss for `type private Foo = {`.
 	typeKindRE = regexp.MustCompile(
 		`(?m)^([ \t]*)type\s+[A-Z][a-zA-Z0-9_']*\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=\s*(\{|interface|class|\|)`,
 	)
