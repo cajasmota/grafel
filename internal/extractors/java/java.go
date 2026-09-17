@@ -2321,6 +2321,15 @@ func buildMethodSignature(node ts.Node, src []byte) string {
 // Strips visibility modifiers and annotation arguments to match Python convention.
 func buildClassSignature(node ts.Node, src []byte, name string) string {
 	raw := string(src[node.StartByte():node.EndByte()])
+	// Strip annotation arguments FIRST, for the reason buildMethodSignature
+	// already documents: a brace inside an annotation argument string
+	// (`@Table(name = "{weird}")`) is indistinguishable from the body brace to
+	// strings.Index, so cutting first truncated the declaration INSIDE the
+	// literal and the emitted signature lost `class Foo` entirely (#7124).
+	// stripAnnotationArgs balances PARENTHESES, so it is unaffected by braces
+	// at any nesting depth inside the arguments.
+	raw = stripAnnotationArgs(raw)
+	// Trim at opening brace (body start).
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]
 	}
@@ -2330,8 +2339,6 @@ func buildClassSignature(node ts.Node, src []byte, name string) string {
 	for _, mod := range []string{"public ", "private ", "protected ", "static "} {
 		raw = strings.ReplaceAll(raw, mod, "")
 	}
-	// Strip annotation arguments: @Foo("bar") -> @Foo
-	raw = stripAnnotationArgs(raw)
 	return strings.TrimSpace(raw)
 }
 
