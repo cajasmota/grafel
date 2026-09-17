@@ -22,9 +22,13 @@
 //	    private String email;
 //	}
 //
-// These annotations are already preserved in the field signature (buildField
-// keeps the raw declaration), but they were NOT routed into the unified
-// `validations` property that drives the chips. This pass reuses the same
+// The `validations` property is now these annotations' ONLY carrier on the
+// entity. It used to be said that they were "already preserved in the field
+// signature" too; that stopped being true with #7117/#7116, which rebuilt
+// buildFieldSignature as a structural read emitting just "<Type> <name>". It
+// was never reliable anyway — an annotation carrying an element, which is most
+// of the ones listed below (`@Size(max = 120)`), was truncated to `@Size(max`
+// by the #7117 defect. This pass is what makes them survive. This pass reuses the same
 // tree-sitter `modifiers` → annotation children that javaFieldHasInjectAnnotation
 // already walks, classifies each recognised Bean Validation annotation, and
 // stamps the terse chip list.

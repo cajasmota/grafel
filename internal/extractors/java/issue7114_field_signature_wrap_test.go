@@ -40,6 +40,26 @@
 //
 // The fixture below was compiled before being asserted on: javac 25.0.3,
 // written out as com/example/wrap/FieldWrap.java, zero errors.
+//
+// # UPDATE (#7117/#7116): the ORDER this file pinned no longer has a subject
+//
+// buildFieldSignature no longer manipulates the raw span at all — it reads
+// `field_declaration`'s `type` and `variable_declarator` children and skips the
+// `modifiers` child except for the annotations inside it. There is therefore no
+// modifier strip left, and consequence (2) below can no longer be reached by
+// getting an ORDER wrong: modifiers are never in scope to survive.
+//
+// Both tests are KEPT anyway, unchanged, because their ASSERTIONS are still
+// exactly true and still load-bearing however the signature is computed:
+// a wrapped type must not carry newlines or source indentation (still graded
+// by the `index` row, which dies if the type node's text is emitted raw), and
+// wrapped modifiers must not appear in the signature (still graded by the
+// `CACHE` row, which dies if the modifiers child is emitted). What is gone is
+// only the ORDER mutant's meaning: moving a collapse below a strip is no
+// longer an expressible mutation here. The signatures this file expects are
+// byte-identical before and after the structural rewrite — none of these four
+// fields carries an annotation, which is the one part of the rendering that
+// changed (see issue7117_7116_field_signature_structural_test.go).
 
 package java_test
 
