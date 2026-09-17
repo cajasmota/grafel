@@ -1086,6 +1086,20 @@ func firstChildOfType(node ts.Node, src []byte, nodeType string) string {
 // Python convention: "fun name(@ParamAnnotation param: Type): ReturnType".
 func buildFunSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
+	// Collapse newlines into spaces FIRST -- see buildClassSignature for why
+	// the collapse must precede the strip rather than follow it.
+	raw = strings.Join(strings.Fields(raw), " ")
+	// Strip only top-level annotations (before "fun" keyword), BEFORE the
+	// body-brace and expression-body searches. An annotation argument list
+	// contains both delimiters -- @Table(name = "{x}") carries a " =" and can
+	// carry a " {" -- so with the cuts first the signature was truncated
+	// inside the annotation (#7133). Keep parameter annotations intact.
+	if funIdx := strings.Index(raw, "fun "); funIdx >= 0 {
+		prefix := raw[:funIdx]
+		suffix := raw[funIdx:]
+		prefix = stripKotlinAnnotations(prefix)
+		raw = strings.TrimSpace(prefix + suffix)
+	}
 	// Strip body block
 	if idx := strings.Index(raw, " {"); idx >= 0 {
 		raw = raw[:idx]
@@ -1094,16 +1108,6 @@ func buildFunSignature(node ts.Node, src []byte) string {
 	if eqIdx := strings.Index(raw, " ="); eqIdx >= 0 {
 		raw = raw[:eqIdx]
 	}
-	// Collapse newlines into spaces.
-	raw = strings.Join(strings.Fields(raw), " ")
-	// Strip only top-level annotations (before "fun" keyword).
-	// Keep parameter annotations intact.
-	if funIdx := strings.Index(raw, "fun "); funIdx >= 0 {
-		prefix := raw[:funIdx]
-		suffix := raw[funIdx:]
-		prefix = stripKotlinAnnotations(prefix)
-		raw = strings.TrimSpace(prefix + suffix)
-	}
 	return strings.TrimSpace(raw)
 }
 
@@ -1111,13 +1115,22 @@ func buildFunSignature(node ts.Node, src []byte) string {
 // Strips annotations to match Python convention: "class Foo" or "data class Foo(...)".
 func buildClassSignature(node ts.Node, src []byte, name string) string {
 	raw := string(src[node.StartByte():node.EndByte()])
+	// Collapse to single line FIRST: stripKotlinAnnotations skips the run of
+	// plain SPACES after an annotation's ")" and cannot skip a newline, so
+	// stripping before the collapse leaves an interior space the collapse can
+	// no longer remove (`class P(@Ann("x")\n val a: Int)` -> `class P( val a: Int)`).
+	raw = strings.Join(strings.Fields(raw), " ")
+	// Strip annotations BEFORE the body-brace search: a "{" inside an
+	// annotation argument string -- @Table(name = "{weird}") -- is
+	// indistinguishable from the body brace to strings.Index, and cutting
+	// there lands inside the literal, leaving an unbalanced "(" that
+	// stripKotlinAnnotations then swallows to end-of-string. The emitted
+	// signature was EMPTY (#7133).
+	raw = stripKotlinAnnotations(raw)
+	// Strip body block.
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]
 	}
-	// Collapse to single line.
-	raw = strings.Join(strings.Fields(raw), " ")
-	// Strip annotations.
-	raw = stripKotlinAnnotations(raw)
 	return strings.TrimSpace(raw)
 }
 
