@@ -24,28 +24,64 @@ import (
 // regresses.
 // ---------------------------------------------------------------------------
 
-// muProbeTimeout is how long the detector below waits for a FOREIGN goroutine
-// to take w.mu while a backend call is in flight. It is not a tuning knob for
-// flakiness: it separates two states that differ in kind, not in degree.
+// muProbeTimeout is how long the detector below waits for ONE attempt by a
+// foreign goroutine to take w.mu while a backend call is in flight;
+// muProbeAttempts is how many such attempts must ALL time out before the test
+// reports a defect.
+//
+// The two states being separated differ in KIND, not in degree:
 //
 //   - Caller does NOT hold w.mu. Every other w.mu holder in this package is
-//     transient — the loop goroutine takes it once per event (watcher.go), and
-//     the reconcile sweep takes it around map reads and around each scanDir
-//     (reconcile.go), all of them bounded map/stat work over the 4-directory
-//     fixture tree. Go's sync.Mutex enters starvation mode after 1ms of waiting
-//     and hands ownership over FIFO, so the probe cannot be starved by a stream
-//     of transient acquisitions either. It acquires in well under a millisecond.
+//     transient, and more strongly than merely "brief": all 10 w.mu sections in
+//     reconcile.go (scanDir 5, nextReconcileBatch 1, repairDir 4) are pure map
+//     work — os.ReadDir is outside the lock in scanDir, and repairDir captures
+//     add := w.fsAdd under the lock and calls it outside. loop's own direct acquisition (watcher.go:1484) is a
+//     startup-only capture before its for loop, so the only acquisition loop can
+//     make inside this window is handleEvent → chargeEventOpen, which needs an
+//     fs event this test does not generate.
 //
-//   - Caller DOES hold w.mu (the #6309 defect). The backend seam is called from
-//     inside the critical section and blocks until the seam returns, so the
-//     caller provably cannot release the mutex until this probe gives up. The
-//     wait is unbounded, not slow — the probe is observing exactly the deadlock
-//     #6309 is about.
+//   - Caller DOES hold w.mu (the #6309 defect). The seam is called from inside
+//     the critical section and blocks until the seam returns, so the caller
+//     provably cannot release the mutex until the probe gives up — across ANY
+//     number of attempts. The wait is unbounded, not slow. That is also why
+//     retrying is free here: it cannot weaken the true-defect case at all, it
+//     only lowers the false-positive rate.
 //
-// So any value large enough to clear the transient case separates them. Two
-// seconds is ~3 orders of magnitude of headroom over the transient holders,
-// including under -race.
-const muProbeTimeout = 2 * time.Second
+// What governs the tail is NOT mutex hold time. Under load the sweep rate
+// collapsed (5,175/s to 1.25/s) as the observed wait grew, so the probe is
+// losing the CPU, not the mutex: this is SCHEDULER STARVATION of the probe
+// goroutine, about which sync.Mutex's starvation-mode FIFO handoff says
+// nothing. Measured on this host only (Apple Silicon, macOS), with two
+// goroutines driving reconcileOnce at ~280x production cadence plus N busy
+// spinners — max wait for one foreign blocking Lock:
+//
+//	idle          20.7M probes    12.1 ms
+//	12 spinners    5.3M probes     113 ms
+//	48 spinners    1.9M probes     243 ms
+//	96 spinners     981k probes     432 ms
+//	-race, 48        34k probes     737 ms
+//	-race, 96        32k probes   1.617 s  <- only 1.24x under a single 2s deadline
+//
+// So one 2s deadline is not the enormous margin it looks like: under -race plus
+// heavy CPU oversubscription the tail comes within 1.24x of it. The three
+// attempts are what buy the margin back. Two things also work in this test's
+// favour: it draws ONE sample per run rather than 10^6, and this package's
+// automatic CI legs run WITHOUT -race (only a tag, a manual dispatch or the
+// ci:full label add it), where the same load peaked at 432 ms.
+//
+// Linux and Windows are UNMEASURED; no headroom figure is claimed for them.
+//
+// WHICH DIRECTION IS DANGEROUS, for whoever edits these next: only DECREASING
+// them can break the detector. A larger timeout, or more attempts, makes a
+// regression slower to report but never invisible — the seam sits inside the
+// critical section, so the timeout is the only path by which detection can
+// fire at all. A smaller one spends exactly the starvation margin measured
+// above, and that is what a future "let us reduce the flakiness here" edit
+// will reach for.
+const (
+	muProbeTimeout  = 2 * time.Second
+	muProbeAttempts = 3
+)
 
 // foreignGoroutineCanTakeMu reports whether a goroutine OTHER than the caller
 // can acquire w.mu within muProbeTimeout.
@@ -61,18 +97,23 @@ const muProbeTimeout = 2 * time.Second
 // leaked: RemoveRepo releases the mutex when its critical section ends, the
 // goroutine then acquires, unlocks and returns.
 func foreignGoroutineCanTakeMu(w *Watcher) bool {
-	got := make(chan struct{})
-	go func() {
-		w.mu.Lock()
-		w.mu.Unlock() //nolint:staticcheck // the acquisition is the observation
-		close(got)
-	}()
-	select {
-	case <-got:
-		return true
-	case <-time.After(muProbeTimeout):
-		return false
+	for range muProbeAttempts {
+		got := make(chan struct{})
+		go func() {
+			w.mu.Lock()
+			w.mu.Unlock() //nolint:staticcheck // the acquisition is the observation
+			close(got)
+		}()
+		select {
+		case <-got:
+			return true
+		case <-time.After(muProbeTimeout):
+			// Retry. Free in the true-defect case — the caller cannot release
+			// across the retries either — so this costs only wall time on a
+			// genuine regression and buys margin against a starved probe.
+		}
 	}
+	return false
 }
 
 // lockAssertingBackend replaces the Add/Remove seams with stand-ins that fail
@@ -102,11 +143,18 @@ func lockAssertingBackend(t *testing.T, w *Watcher) *[]string {
 			mu.Lock()
 			reported = true
 			mu.Unlock()
-			t.Errorf("%s(%s) was called while holding w.mu — no other goroutine could "+
-				"acquire w.mu in %v while this backend call was in flight, and the call "+
-				"cannot return until this seam does. On Windows the backend cannot "+
-				"complete this call until the loop goroutine drains, and the loop cannot "+
-				"drain until it gets this mutex", what, name, muProbeTimeout)
+			t.Errorf("%s(%s): no other goroutine could acquire w.mu in %d attempts of "+
+				"%v while this backend call was in flight. The expected reading is that "+
+				"the caller holds w.mu across the backend call — the #6309 regression: on "+
+				"Windows the backend cannot complete this call until the loop goroutine "+
+				"drains, and the loop cannot drain until it gets this mutex. The one "+
+				"alternative reading is a probe goroutine starved of CPU for %v total "+
+				"without the lock ever being held by the caller; that was measured at a "+
+				"1.6s tail only under -race plus heavy oversubscription, so if this test "+
+				"is the sole failure on an otherwise green, heavily loaded -race run, "+
+				"rule that out before reading it as a production defect",
+				what, name, muProbeAttempts, muProbeTimeout,
+				time.Duration(muProbeAttempts)*muProbeTimeout)
 		}
 		mu.Lock()
 		seen = append(seen, name)
@@ -168,8 +216,9 @@ func TestMuProbeDistinguishesAForeignHoldFromACallerHeldLock(t *testing.T) {
 		go func() {
 			w.mu.Lock()
 			close(held)
-			// Comfortably longer than any real holder, and still ~13x under
-			// muProbeTimeout, so this pins tolerance rather than the boundary.
+			// Longer than any real holder measured here (12.1 ms idle, 432 ms
+			// under a 96-spinner non-race load), and still well under one
+			// muProbeTimeout — so this pins tolerance, not the boundary.
 			time.Sleep(150 * time.Millisecond)
 			w.mu.Unlock()
 			close(done)
@@ -185,7 +234,7 @@ func TestMuProbeDistinguishesAForeignHoldFromACallerHeldLock(t *testing.T) {
 		if !got {
 			t.Errorf("the probe reported the caller as the holder while only a FOREIGN "+
 				"goroutine held w.mu — that is the #7145 false positive, back again "+
-				"(muProbeTimeout=%v)", muProbeTimeout)
+				"(muProbeAttempts=%d x muProbeTimeout=%v)", muProbeAttempts, muProbeTimeout)
 		}
 	})
 
