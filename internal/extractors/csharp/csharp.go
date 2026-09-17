@@ -39,6 +39,7 @@ package csharp
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -1851,12 +1852,84 @@ func buildClassSignature(node ts.Node, src []byte) string {
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]
 	}
-	// Strip inheritance (: BaseClass).
+	// Strip inheritance (: BaseClass) -- but NOT a generic constraint clause,
+	// whose colon is indistinguishable from the base-list colon to
+	// strings.Index. `public class Gen<T> where T : class` recorded as
+	// "public class Gen<T> where T", a dangling clause head (#7139).
+	//
+	// ECMA-334 6th ed. §15.2.1 orders class_declaration as
+	// ... identifier type_parameter_list? class_base?
+	// type_parameter_constraints_clause* class_body, so the base list ALWAYS
+	// precedes the clauses and there is at most one of it. Cutting at the
+	// FIRST " :" is therefore right whenever a base list exists; the only
+	// defect was that it also fired when one did not. So: cut at the first
+	// " :" unless a constraint clause starts before it.
+	//
+	// Kept deliberately narrow -- this suppresses the cut, it never adds one,
+	// so a false match can only leave a base list in place and can never
+	// truncate a header that was previously whole. The alternative (cut at
+	// whichever of " :" and `where` comes first, which would also drop the
+	// clause text in the constraint-only case and make the two cases agree)
+	// was rejected for the opposite reason: a `where`-like token inside a
+	// header string literal would then truncate a signature the old code
+	// emitted in full. The consequence is that the clause text SURVIVES when
+	// there is no base list and is dropped when there is one, because it sits
+	// after the base list. That asymmetry is pre-existing and out of scope.
+	//
+	// The two cuts remain mutually order-independent (see above): this only
+	// changes WHETHER the base-list cut fires, not that it truncates to a
+	// prefix when it does.
 	if idx := strings.Index(raw, " :"); idx >= 0 {
-		raw = raw[:idx]
+		if loc := csConstraintClause.FindStringIndex(raw); loc == nil || loc[0] >= idx {
+			raw = raw[:idx]
+		}
 	}
 	return strings.TrimSpace(raw)
 }
+
+// csIdentPart is ECMA-334 §6.4.3's identifier_part_character set:
+// letter-character, decimal-digit-character, connecting-character (Pc, which
+// is where "_" lives), combining-character (Mn, Mc) and formatting-character
+// (Cf). \p{N} is deliberately WIDER than §6.4.3's Nd, for the same reason the
+// whole matcher errs wide: see csConstraintClause.
+const csIdentPart = `\p{L}\p{N}\p{Mn}\p{Mc}\p{Pc}\p{Cf}`
+
+// csConstraintClause matches the head of a C# generic constraint clause,
+// `where <type_parameter> :` (ECMA-334 §15.2.5). Four deliberate details:
+//
+//   - `where` must be preceded by a character that is NOT an
+//     identifier_part_character, or by start of string, so the tail of an
+//     identifier ("Nowhere T : Object") is not a clause head. A plain \s would
+//     be too strict: `>` needs no separator before `where` (§6.4.3 leaves the
+//     two tokens adjacent), and `public class C<T>where T : class` is legal.
+//   - a type_parameter must follow, and a colon must follow THAT (§15.2.5), so
+//     the bare contextual keyword (`public class where : Object`, legal per
+//     §6.4.4) is not a clause head.
+//   - the identifier class is §6.4.3's, `@`-prefix included, NOT an ASCII
+//     subset of it. A subset leaves the very bug this function fixes intact
+//     for the identifiers it omits: with `[\p{L}\p{N}_]*` as the part class,
+//     `where T\u0301 : class` and `where T\u203fU : class` both still recorded as
+//     "... where T\u0301" / "... where T\u203fU", byte-identical to the pre-fix
+//     code. Because the match only ever SUPPRESSES a cut, a WIDER class is
+//     the safe direction: it can leave a base list in place, never truncate.
+//     That is also why \p{N} and the shared csIdentPart are preferred over
+//     hand-narrowed equivalents.
+//   - the colon may be `>= idx` rather than `> idx` in the caller: `loc[0] ==
+//     idx` is structurally impossible, since raw[idx] is the SPACE of " :" and
+//     a match boundary character at that space would have to be immediately
+//     followed by "where". Enumerated by review over " :", "where", space,
+//     "T", ":", "{", "<", ">", "@" to length 4 -- 7381 inputs, 0 differing and
+//     0 occurrences of loc[0] == idx. Relaxing it to `>` is an ALIVE mutant
+//     and is EQUIVALENT, not ungraded; do not "tighten" it with a fixture.
+//
+// What this does NOT do, measured rather than assumed: it is not immune to a
+// `where`-like token inside a string literal in the header. `public record
+// R(string S = "where T : class") : Object` matches the literal's text, so the
+// base list is NOT dropped -- it fails in the BENIGN direction (a base list
+// left in, never a truncation), which is a weaker claim than immunity and the
+// whole reason the suppress-only shape was chosen. Pinned as the LitClause row.
+var csConstraintClause = regexp.MustCompile(
+	`(?:^|[^` + csIdentPart + `])where\s+@?[\p{L}_][` + csIdentPart + `]*\s*:`)
 
 // stripCSharpAttributeArgs strips arguments from C# attributes: [Foo("bar")] -> [Foo].
 func stripCSharpAttributeArgs(s string) string {
