@@ -65,8 +65,25 @@ import (
 // the clamp engages, b IS the ceiling and the ratio is 1:1 to 2:1 by design,
 // not by the factor. The tuning below is chosen so no doubling ever lands
 // EXACTLY on the ceiling (1ms against 25ms — deliberately not a power-of-two
-// ratio), so every pre-clamp step is visible to the guard rather than being
-// skipped as an ambiguous equal-to-ceiling step.
+// ratio), which MAXIMISES the number of graded pairs. That choice is a nicety,
+// NOT a soundness requirement, and the review measured which: at a 16ms
+// ceiling a step lands exactly on it, and because the guard tests
+// `cur >= factorProbeMax` that pair is SKIPPED, never misfired — the test
+// still passes, on 3 graded pairs instead of 4. Over-skipping is what the
+// vacuity floor catches: 8ms passes at exactly the floor (2 pairs) and 4ms
+// fails loudly on it (1 pair). So the ratio matters only for how much this
+// file grades, never for whether it grades correctly.
+//
+// WHAT THIS FILE CANNOT SEE, stated rather than left implied: it observes the
+// ANNOUNCED wait, not the slept one. A defect that announced X and then slept
+// 4X (`time.NewTimer(wait)` -> `wait * 4`) would pass here. That is inherent
+// to the bound-not-duration design and is the right trade — a wall-clock
+// assertion in this package would be scheduling luck under `-race`, not
+// evidence — and the SHRINK direction of that seam is covered elsewhere, by
+// #7123's `clock.gap(2)`, which measures a really-slept interval. The
+// ENLARGE direction of it is derived-not-executed: the review skipped scoring
+// it on machine budget, because a 4x real sleep confounds this package's 60s
+// and 90s legs.
 //
 // WHY THIS FILE IS BLIND TO ROLES 1 AND 2, ON PURPOSE. Deleting the clamp
 // yields 1, 2, 4, 8, 16, 32, 64: the pairs the guard still checks
@@ -77,12 +94,27 @@ import (
 // sibling pin is re-tuned or re-keyed here.
 //
 // AXES. VARIED: the growth factor (scored at 1, 3 and 4 as well as 2 — both
-// directions, with ENLARGEMENT the direction nothing previously saw), and the
-// number of consecutive pre-clamp steps available to measure (four, versus the
-// single step #7123's floor looks at). HELD CONSTANT: the failure mode (a
+// directions, with SMALL ENLARGEMENT the direction nothing previously saw),
+// and the number of consecutive pre-clamp steps available to measure (four,
+// versus the single step #7123's floor looks at). HELD CONSTANT: the failure
+// mode (a
 // construction failure that fails identically every time, so no child process
 // ever exists and nothing depends on child scheduling), the injected
 // initial:ceiling ratio, and the spawn budget.
+//
+// SMALL is the load-bearing word there, and the unqualified version of the
+// claim was measurably FALSE. "Enlargement is the direction nothing previously
+// saw" was asserted in #7162's dispatch and never measured; the review of this
+// PR measured it. `*backoff *= 100` yields 2 `--- FAIL`, one of them the
+// PRE-EXISTING TestEngineSupervisor_DefaultBackoffCeilingLeavesRoomToGrow,
+// whose 30s outer bound blows out because the second real wait becomes the
+// production ceiling ("only 2 spawn attempt(s) observed"). So a LARGE
+// enlargement was always visible — imprecisely, as a timeout rather than as a
+// statement about the factor. What was invisible is a SMALL enlargement: a
+// factor big enough to change the shape of the retry curve but small enough
+// that every wait stays inside the sibling pins' outer bounds. That is
+// precisely `*= 3` and `*= 4`, which is what the rows below target, and it is
+// the realistic-regression window a bound-based arm cannot reach.
 //
 // MEASURED (full ./internal/daemon/, -count=1, go vet exit 0 on every row).
 // Baseline and the unmutated tree with this file: 0 `--- FAIL`. Positive
@@ -93,9 +125,15 @@ import (
 //	*= 3 -> 1 `--- FAIL`, this test only, sequence [1ms 3ms 9ms 25ms 25ms 25ms 25ms]
 //	*= 4 -> 1 `--- FAIL`, this test only, sequence [1ms 4ms 16ms 25ms 25ms 25ms 25ms]
 //	*= 1 -> 6 `--- FAIL`, this test among them, sequence [1ms 1ms 1ms 1ms 1ms 1ms 1ms]
+//	*= 100 -> 2 `--- FAIL`, this test (via the FLOOR) plus the pre-existing
+//	         ...DefaultBackoffCeilingLeavesRoomToGrow, sequence [1ms 25ms x6]
+//	         (re-derived in review, not by the rows above)
 //
 // Every one of those kills came from the RATIO assertion; the vacuity floor
-// never fired in any row. `*= 1` is a COARSE mutant — it removes growth
+// never fired in any row scored here. The one row in which the FLOOR is the
+// killer is `*= 100` above (sequence [1ms 25ms 25ms 25ms 25ms 25ms 25ms], so
+// zero pairs survive the guard) — recorded because it is positive proof the
+// floor is live rather than decorative. `*= 1` is a COARSE mutant — it removes growth
 // altogether, so five pre-existing tests also fail on it. The enlargement rows
 // (`*= 3`, `*= 4`) are the ones that isolate this role: nothing else in the
 // package reacts to them at all. Under `-race` this test passes in 0.13s with
@@ -119,7 +157,11 @@ const (
 	// from 1ms (1, 2, 4, 8, 16) never lands exactly on 25ms, so every step
 	// before the clamp engages produces a wait strictly BELOW the ceiling and
 	// is therefore measured, rather than being skipped as an
-	// indistinguishable at-the-ceiling step.
+	// indistinguishable at-the-ceiling step. That MAXIMISES the graded pairs
+	// (four); it is not required for soundness — a step landing exactly on the
+	// ceiling is skipped, not misfired, and the vacuity floor below catches
+	// over-skipping. Measured on retuned ceilings: 16ms passes on 3 pairs,
+	// 8ms passes on 2, 4ms fails on the floor with 1.
 	factorProbeInitial = 1 * time.Millisecond
 	factorProbeMax     = 25 * time.Millisecond
 	// factorProbeSpawnBudget is widened well past the 3 waits production
