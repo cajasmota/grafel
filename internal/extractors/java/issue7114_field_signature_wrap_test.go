@@ -31,9 +31,12 @@
 // in this file but whose parsed field span is single-line — this defect in
 // disguise — cannot masquerade as a multi-line case.
 //
-// Axis varied: the declaration's LINE EXTENT (wrapped vs single-line). Held
-// constant: the file, the package, the construct kind (field), the enclosing
-// class, and — within each test — the modifier set.
+// Axis varied: the declaration's LINE EXTENT (wrapped vs single-line). In the
+// modifier test the modifier SET also varies (CACHE is `public static final`,
+// LIMIT is `private static final`) — the strip removes all of those patterns, so
+// the emitted signature does not depend on which of them is present. Held
+// constant: the file, the package, the construct kind (field), and the
+// enclosing class.
 //
 // The fixture below was compiled before being asserted on: javac 25.0.3,
 // written out as com/example/wrap/FieldWrap.java, zero errors.
@@ -47,7 +50,9 @@ import "testing"
 //	index  wraps its declared TYPE onto a second line (consequence 1)
 //	count  is the single-line control for index
 //	CACHE  wraps its MODIFIERS onto separate lines (consequence 2)
-//	LIMIT  is the single-line control for CACHE, same modifier set
+//	LIMIT  is the single-line control for CACHE (`private static final`, i.e.
+//	       a DIFFERENT set from CACHE's `public static final`; every one of
+//	       those patterns is stripped, so the expected signature is unaffected)
 const java7114FieldSrc = `package com.example.wrap;
 
 import java.util.Map;
