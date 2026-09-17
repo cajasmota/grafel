@@ -138,8 +138,9 @@ func TestActivePatternREModifierParityWithLetRE(t *testing.T) {
 	if len(aps) != 2 {
 		t.Fatalf("activePatternRE yielded %d modifier groups %q, want exactly 2 — one per "+
 			"head keyword (`let` and `and`, #7166), both from the fsLetModifiers constant. "+
-			"A branch that lost its group accepts no modifier at all; a third branch needs "+
-			"its own row here.", len(aps), aps)
+			"A branch that lost its group accepts no modifier at all. A third head keyword is "+
+			"NOT caught here — fsLetModifierGroupRE never extracts it; see the comment above.",
+			len(aps), aps)
 	}
 
 	// EVERY occurrence is compared, not the first. The first is always the
