@@ -343,6 +343,18 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	return out, nil
 }
 
+// letSeenKey builds the composite key under which a `let` binding is recorded
+// in letSeen. It exists so that the two sites which must agree on that key —
+// the let-binding scanner that WRITES it, and the member loop that READS it to
+// skip a member already emitted as a `let` — cannot drift. #7136: they were two
+// independent `":let:"` literals, and a one-sided change to either left the
+// package green at 0 `--- FAIL` while silently emitting the same binding twice.
+// The indent is part of the key on purpose: two same-named bindings at
+// different nesting levels are different operations.
+func letSeenKey(indent, name string) string {
+	return indent + ":let:" + name
+}
+
 func extractFSharp(src, filePath string) []types.EntityRecord {
 	var entities []types.EntityRecord
 
@@ -438,7 +450,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		}
 		indent := src[m[2]:m[3]]
 		name := src[m[4]:m[5]]
-		key := indent + ":let:" + name
+		key := letSeenKey(indent, name)
 		if letSeen[key] {
 			continue
 		}
@@ -483,7 +495,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		indent := src[m[2]:m[3]]
 		name := src[m[4]:m[5]]
 		// Skip if same name already from let bindings (avoid double-counting)
-		if letSeen[indent+":let:"+name] {
+		if letSeen[letSeenKey(indent, name)] {
 			continue
 		}
 		key := indent + ":member:" + name
