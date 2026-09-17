@@ -73,7 +73,10 @@ import (
 // 30s deadline whose message ("the supervisor stopped re-attempting")
 // misdiagnoses a supervisor that is in fact sleeping at the ceiling. Inverting
 // the comparison fails both files. The growth FACTOR on the same two lines
-// (`*backoff *= 2`) is a third ungraded role, filed separately.
+// (`*backoff *= 2`) is a third, independent role; it was ungraded when this
+// file landed and is now graded by supervise_backoff_factor_test.go (#7162).
+// The two pins are measurably disjoint: deleting the clamp fails only this
+// file, and changing the factor to 3 or to 4 fails only that one.
 //
 // AXES. VARIED: the number of consecutive waits taken (the spawn budget is
 // widened so the walk continues past the point the pending backoff reaches the
