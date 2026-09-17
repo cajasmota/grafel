@@ -1,6 +1,9 @@
 package resolve
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"strings"
 	"testing"
@@ -134,17 +137,75 @@ func TestEveryGuessTierConstantIsUsed_7071(t *testing.T) {
 
 	// Production source only. bindtier.go holds the declarations and
 	// AllBindTiers, so a mention there is not a use.
-	src := readResolveSource(t, "refs.go") + readResolveSource(t, "imports.go")
+	//
+	// #7082: this used to be strings.Contains over the raw file text, which a
+	// MENTION satisfies — and seven of the nineteen tiers name their own
+	// identifier in a "// See BindTierX" comment on the line above the stamp,
+	// so deleting the stamp left the check green for those seven. That is
+	// vacuous in exactly the case the check exists for: a tier with no
+	// behavioural rows is overwhelmingly likely to be a newly added one with
+	// an explanatory comment beside it. The scan is now structural — an
+	// identifier in an expression position in the parsed AST — so a comment,
+	// a commented-out stamp, and a string literal all fail to satisfy it.
+	used := identsUsedInResolveSource(t, "refs.go", "imports.go")
 
 	for _, tier := range AllBindTiers {
 		ident, ok := byValue[tier]
 		if !ok {
 			t.Fatalf("AllBindTiers holds %q, which this test has no identifier for", tier)
 		}
-		if !strings.Contains(src, ident) {
+		if !used[ident] {
 			t.Errorf("tier %q (%s) is never stamped from refs.go or imports.go — it is in "+
 				"the enumeration, so every report and every reader treats it as live, but "+
-				"nothing can produce it", tier, ident)
+				"nothing can produce it.\n"+
+				"A mention in a comment or a string literal does NOT count (#7082): the scan "+
+				"walks the parsed AST and only counts the identifier in a real expression "+
+				"position. If the tier is produced indirectly — bound to another constant or "+
+				"stamped from a third file — this scan cannot see it, and the indirection "+
+				"needs to be named here.", tier, ident)
 		}
 	}
+}
+
+// identsUsedInResolveSource parses the named production files of this package
+// and returns the set of identifier names appearing in the AST.
+//
+// Comments are not AST nodes and string-literal contents are *ast.BasicLit,
+// not *ast.Ident, so neither can put a name in this set — which is the whole
+// point (#7082). The files are read through readResolveSource so the
+// was-it-actually-opened and plausible-size proofs still apply before the
+// parse; a file that does not parse is a hard failure, never a silent empty
+// set, because an empty set would make every caller's assertion vacuous in
+// the permissive direction.
+//
+// Known limit, stated rather than papered over: this sees only what is
+// written literally in these files. A tier reached indirectly (assigned to
+// another constant, or stamped from a file not listed) is invisible to it,
+// exactly as it was to the strings.Contains form this replaced.
+func identsUsedInResolveSource(t *testing.T, names ...string) map[string]bool {
+	t.Helper()
+	if len(names) == 0 {
+		t.Fatal("identsUsedInResolveSource called with no files — the scan would be vacuous")
+	}
+	used := map[string]bool{}
+	for _, name := range names {
+		src := readResolveSource(t, name)
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, name, src, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		before := len(used)
+		ast.Inspect(file, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok {
+				used[id.Name] = true
+			}
+			return true
+		})
+		if len(used) == before {
+			t.Fatalf("%s contributed no new identifiers to the scan — the walk found nothing, "+
+				"so any assertion over this set would pass vacuously", name)
+		}
+	}
+	return used
 }
