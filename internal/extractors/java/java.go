@@ -1648,6 +1648,10 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// grammar's `_unannotated_type` supertype — which is what makes "the
 	// identifier child" an unambiguous reading of the binder in both
 	// patternBinderName callers.
+	// The `var` spelling is not merely asserted: it is the one that decides
+	// which child patternBinderName returns, so it is GRADED by
+	// TestJava7100_RecordPatternVarComponentCollisionRefuses — were `var` an
+	// `identifier`, the binder would go unpoisoned and the sibling would win.
 	for _, ie := range findAllNodes(body, "instanceof_expression") {
 		record(childFieldText(ie, "name", src), "")
 	}
@@ -1678,6 +1682,23 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	//	type_parameter            binds a type name, not a variable.
 	//	local class / interface / enum / record DECLARATION names — likewise
 	//	                          type names.
+	//	enum_constant             the one entry in this list that binds a VALUE
+	//	                          name rather than a type name, so it is named
+	//	                          explicitly rather than left out of a list that
+	//	                          claims to be complete. A local `enum E {
+	//	                          Customer }` inside a method body declares
+	//	                          constants, and inside that enum's OWN body a
+	//	                          constant is reachable bare — so `Customer.b()`
+	//	                          there could take a sibling local's type. It
+	//	                          needs no arm because it is a strict sub-case of
+	//	                          the anonymous/local-class-member gap below: the
+	//	                          only place the name is bare-reachable is inside
+	//	                          a different CLASS scope, which is exactly the
+	//	                          boundary that gap is about. From this method's
+	//	                          own scope the constant must be qualified
+	//	                          (`E.Customer`), and a qualified receiver never
+	//	                          reaches this ledger under the bare name.
+	//	                          UNGRADED, with that gap.
 	//
 	// ONE GENUINE GAP REMAINS, measured not assumed, and left out because it
 	// is a different mechanism rather than a different spelling: members of an
@@ -1713,7 +1734,8 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 // an `_unannotated_type` (type_identifier, scoped_type_identifier, generic_type,
 // array_type, or a primitive), and `identifier` is not a member of that
 // supertype. `var` in a record pattern arrives as `type_identifier "var"`, so it
-// does not shift which child is the binder.
+// does not shift which child is the binder — OBSERVED by
+// TestJava7100_RecordPatternVarComponentCollisionRefuses, not asserted.
 func patternBinderName(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""

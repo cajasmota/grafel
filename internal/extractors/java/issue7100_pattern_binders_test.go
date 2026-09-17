@@ -46,7 +46,9 @@
 //     identifier may (JLS §3.8), so the key is unreachable by construction. The
 //     two arms of that over-firing direction that CAN collide with a real name —
 //     the `left` subject and the `right` tested type — are separate mutants, and
-//     both are DEAD.
+//     both are DEAD. (In ROUND 1 this sentence claimed both DEAD while `right`
+//     was in fact ALIVE against a vacuous control; see the round-2 note below.
+//     It is true as of round 2, and only because the control was fixed.)
 //   - `spread-records-declarator-text-not-name`: reading the
 //     variable_declarator's TEXT instead of its `name` field is equivalent for a
 //     spread parameter, because the two cannot differ — varargs admits no
@@ -68,11 +70,28 @@
 // rewritten — a typed local as the subject, unqualified types in the patterns —
 // and every mutant was RE-SCORED from scratch, not carried.
 //
-// Every Java snippet in this file was COMPILED with javac 25 (33 of 33, zero
-// errors), including the two shapes a reader is likeliest to doubt: a local
-// legally obscuring a class name in an expression context while the pattern's
-// type position still resolves to the type, and `o.toString()` on a varargs
-// parameter, which is an ARRAY.
+// ROUND 2 FOUND THAT FIX HALF-APPLIED, WHICH IS WHY THE PARAGRAPH ABOVE IS KEPT
+// RATHER THAN TIDIED. Round 1 rewrote the two RECORD-pattern type-name controls
+// to unqualified types and left the instanceof and switch ones written
+// `com.x.Customer`, so two always-fires mutants — instanceof also recording
+// `right`, and `type_pattern` recording every named child — were still ALIVE,
+// and the PR body asserted a kill for one of them. A kill claimed but not made
+// is worse than an unscored mutant: it stops the next reader looking. Both
+// controls now write the type BARE, both mutants are DEAD, and the whole set was
+// re-scored from scratch a second time. A third vacuous control was found by
+// auditing the rest of the file for the same shape rather than waiting to be
+// told: TestJava7100_InstanceofWithoutBinderStillBinds named `right` and the
+// whole-node text in its comment while holding no local either could collide
+// with. It now holds one. THE AUDIT'S RULE, since three rounds have now hit it:
+// a control is vacuous unless the fixture contains a LOCAL whose bare name is
+// exactly the text the mutant would record.
+//
+// Every Java snippet in this file was COMPILED with javac 25 (34 of 34, zero
+// errors, re-run on the round-2 tree), including the three shapes a reader is
+// likeliest to doubt: a local legally obscuring a class name in an expression
+// context while the pattern's type position still resolves to the type;
+// `o.toString()` on a varargs parameter, which is an ARRAY; and a `var`
+// record-pattern component.
 //
 // THE TRAP #7099 HIT AND THIS FILE AVOIDS: its first always-fires mutants came
 // back ALIVE because the negative controls called the OUTER receiver outside
@@ -137,21 +156,35 @@ class Svc {
 
 // ALWAYS-FIRES CONTROL 1 — a plain `instanceof` with NO pattern variable binds
 // nothing. The grammar makes `name` OPTIONAL on instanceof_expression, so an
-// arm that read the node's text, or its `right` type, instead of the `name`
-// field would poison `o` here and lose the local's own type. The outer receiver
-// is called INSIDE the if-body, so an over-broad walk cannot miss it.
+// arm that read the node's `right` type instead of the `name` field poisons
+// `Customer` — which is a typed LOCAL here — and loses its type. The outer
+// receivers are called INSIDE the if-body, so an over-broad walk cannot miss
+// them.
+//
+// ROUND-2 AUDIT FIXED THIS FIXTURE TOO. As shipped in round 1 the only local
+// was `Order o`, and the comment claimed an arm reading "the node's text, or
+// its `right` type" would poison it. Neither can: the whole text is
+// `x instanceof Customer` (spaces, so unreachable by a bare-name lookup) and
+// `right` is `Customer`, not `o`. The control therefore graded NOTHING while
+// its label read as tested — the same defect as the two qualified type-name
+// controls. A second local deliberately named after the tested type makes the
+// `right` arm reachable in the NO-BINDER shape specifically, which is the axis
+// control 4 below does not vary. Compiles with javac 25 (a variable obscures a
+// type name in an expression context; `instanceof`'s right operand is a
+// type-only context).
 func TestJava7100_InstanceofWithoutBinderStillBinds(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
-class Order { void a() {} }
+class Order { void a() {} void c() {} }
 class Customer {}
 class Svc {
   void run(Object x) {
     Order o = new Order();
-    if (x instanceof Customer) { o.a(); }
+    Order Customer = new Order();
+    if (x instanceof Customer) { o.a(); Customer.c(); }
   }
 }
 `)
-	j7094MustCall(t, rels, "Order.a")
+	j7094MustCall(t, rels, "Order.a", "Order.c")
 }
 
 // ALWAYS-FIRES CONTROL 2 — a pattern variable with a DIFFERENT name must not
@@ -202,6 +235,14 @@ class Svc {
 // resolves to the type (JLS §6.4.2 / §6.5.6) — VERIFIED by compiling this shape
 // with javac 25, not asserted. Same shape as the record-pattern type-name
 // control below, scored separately per construct.
+//
+// THE TYPE IS WRITTEN UNQUALIFIED AND THAT IS THE WHOLE CONTROL. Round 2 of
+// this file's scoring found this fixture written `y instanceof com.x.Customer
+// q`: the recorded text of a `right` holding a scoped_type_identifier is the
+// QUALIFIED string `com.x.Customer`, which can never collide with a local
+// called `Customer`, so the mutant this control exists to kill came back ALIVE
+// while the control passed on both sides. The bare `Customer` is what makes the
+// collision possible. Do not qualify it.
 func TestJava7100_InstanceofTypeNameIsNotABinder(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
 class Order { void a() {} }
@@ -209,7 +250,7 @@ class Customer { void b() {} }
 class Svc {
   void run(Object y) {
     Order Customer = new Order();
-    if (y instanceof com.x.Customer q) { Customer.a(); q.b(); }
+    if (y instanceof Customer q) { Customer.a(); q.b(); }
   }
 }
 `)
@@ -343,6 +384,11 @@ class Svc {
 // holds the declared type and the binder as two sibling children; only the
 // `identifier` one is the binder. An arm that recorded BOTH would poison a
 // local sharing the type's name.
+//
+// UNQUALIFIED ON PURPOSE, same round-2 finding as the instanceof control above:
+// written `case com.x.Customer q` the type child is a scoped_type_identifier
+// whose text never collides with a local `Customer`, so the record-ALL-named-
+// children mutant was ALIVE against a passing control. Compiles with javac 25.
 func TestJava7100_SwitchPatternTypeNameIsNotABinder(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
 class Order { void a() {} }
@@ -350,7 +396,7 @@ class Customer { void b() {} }
 class Svc {
   void run(Object y) {
     Order Customer = new Order();
-    switch (y) { case com.x.Customer q -> { Customer.a(); q.b(); } default -> {} }
+    switch (y) { case Customer q -> { Customer.a(); q.b(); } default -> {} }
   }
 }
 `)
@@ -445,6 +491,33 @@ class Svc {
   void run(Object x) {
     { Order o = new Order(); o.a(); }
     if (x instanceof Pair(Point(Customer o, Order q), Order r)) { o.b(); }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b", "Order.a")
+	j7094MustCall(t, rels, "a", "b")
+}
+
+// COLLIDING, `var` COMPONENT. `Pair(var o, …)` is the one component spelling
+// with no other coverage in this file, and it is the spelling that decides
+// whether patternBinderName's "first `identifier` child" reading is correct:
+// collectLocalVarTypes' comment claims `var` arrives as `type_identifier "var"`
+// and so "does not shift which child is the binder". That is a universal claim
+// about the grammar, and this fixture is what OBSERVES it — were `var` an
+// `identifier` child instead, patternBinderName would return "var", the binder
+// `o` would never be poisoned, and `o.b()` would come out `Order.b` on the
+// sibling's type. VARIED: the component's type spelling (`var` vs an explicit
+// type_identifier). HELD CONSTANT: the carrier, the arity, the sibling, the
+// receiver. Compiles with javac 25.
+func TestJava7100_RecordPatternVarComponentCollisionRefuses(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Customer { void b() {} }
+record Pair(Customer c, Order d) {}
+class Svc {
+  void run(Object x) {
+    { Order o = new Order(); o.a(); }
+    if (x instanceof Pair(var o, Order q)) { o.b(); q.a(); }
   }
 }
 `)
