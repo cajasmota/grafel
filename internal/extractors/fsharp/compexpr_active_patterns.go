@@ -38,6 +38,17 @@ import (
 	"github.com/cajasmota/grafel/internal/types"
 )
 
+// fsLetModifiers is the repeated modifier group shared by every `let`-headed
+// declaration scanner. It is a CONSTANT and not a third copy of the allowlist
+// on purpose: activePatternRE now embeds it TWICE (once per head keyword,
+// #7166), and TestActivePatternREModifierParityWithLetRE compares
+// activePatternRE's compiled text against letRE's, so the two occurrences must
+// be the same bytes as letRE's by construction rather than by review. letRE
+// itself (extractor.go) still spells the group inline; that is what the parity
+// test compares against, and substituting the constant there would make the
+// comparison compare a constant with itself.
+const fsLetModifiers = `(?:\s+(?:rec|mutable|inline|private|internal|public)\b)*`
+
 var (
 	// activePatternRE matches an active-pattern let binding. The banana clip
 	// `(|A|B|)` (total) or `(|A|_|)` (partial) heads the binding. Captures the
@@ -172,8 +183,46 @@ var (
 	// scanner's arm — filed as #7163, with the partial-backtrack detail
 	// (`let inline private (|A|B|)` mints `private`, not `inline`); see also
 	// the note in the test file.
+	//
+	// #7166 ARM 1 — THE SECOND HEAD KEYWORD. F# continues a recursive
+	// binding group with `and`, not with a second `let`, so
+	// `let rec (|Even|Odd|) x = … / and (|Positive|Negative|) y = …`
+	// produced ONE pattern and not two: the continuation's definition, its
+	// whole case set, and every match-site USES edge those cases resolve
+	// were all absent. Sources (derived, NOT executed — no F# toolchain
+	// here): the spec's recursive `let rec function-defn (and
+	// function-defn)*` group, MS Learn "Functions" → Recursive Functions
+	// for the `let rec … and …` form, and MS Learn "Active Patterns" for
+	// the fact that an active-pattern definition IS such a `function-defn`.
+	//
+	// The alternation repeats fsLetModifiers per branch rather than
+	// factoring it out front (`(?:let|and)` + one group) because
+	// TestActivePatternREModifierParityWithLetRE locates the shared prefix
+	// by the literal text `let(?:\s+(?:…)\b)*` in the COMPILED pattern;
+	// `(?:let|and)(?:\s+…` would separate `let` from the group, the
+	// extraction would return "" and the parity assertion would go vacuous —
+	// the exact failure its own vacuity guard exists to prevent. Both
+	// occurrences come from one constant, so there is still exactly one
+	// place to edit.
+	//
+	// This is a WIDENING, and the only thing bounding it is the `^([ \t]*)`
+	// anchor: `and` must be the first non-whitespace token of its line, so
+	// `andThen`, `band`, a mid-line `and`, a `// and (|…|)` comment and an
+	// `"and (|…|)"` string literal all still mint nothing (forbidden rows in
+	// active_pattern_and_continued_7166_test.go). What it DOES extend is
+	// #7152: this scanner reads the RAW `src`, so a line-start `and (|A|B|)`
+	// inside a `(* … *)` block or a triple-quoted literal now mints exactly
+	// as the `let` form already did on main (measured, both keywords). That
+	// is the `and` MIRROR of an open defect, not a new class, and it is
+	// pinned as a let/and PARITY row rather than pinned as correct —
+	// Refs #7152.
+	//
+	// NOT FIXED: #7166 arm 2, the same-line `[<Attr>] let (|A|B|)` form.
+	// That needs `^[ \t]*` itself loosened to tolerate preceding
+	// non-whitespace tokens, which enlarges the raw-src surface above in a
+	// way a second keyword at the same anchor does not.
 	activePatternRE = regexp.MustCompile(
-		`(?m)^([ \t]*)let(?:\s+(?:rec|mutable|inline|private|internal|public)\b)*` +
+		`(?m)^([ \t]*)(?:let` + fsLetModifiers + `|and` + fsLetModifiers + `)` +
 			`\s+\(\|([A-Za-z0-9_'|]+(?:\|_)?)\|\)\s*([^=\n]*)=`,
 	)
 
@@ -267,11 +316,19 @@ var ceBuilderMembers = map[string]bool{
 // already owns both, so a widening of the modifier allowlist or of the clip
 // syntax propagates to the guard for free.
 //
-// Both patterns anchor on `(?m)^([ \t]*)let`, so a match of either begins at
-// the START OF THE LINE and the offsets are directly comparable. That
-// agreement is what the guard rests on, and it is graded: if the offsets
-// diverged the guard would never fire and every forbidden row in
-// active_pattern_let_phantom_7163_test.go would fail.
+// Both patterns anchor on `(?m)^([ \t]*)` followed by a head keyword, so a
+// match of either begins at the START OF THE LINE and the offsets are
+// directly comparable. That agreement is what the guard rests on, and it is
+// graded: if the offsets diverged the guard would never fire and every
+// forbidden row in active_pattern_let_phantom_7163_test.go would fail.
+//
+// Since #7166 this scanner accepts a SECOND head keyword (`and`) that letRE
+// does not, so the claimed set is a strict SUPERSET of the offsets letRE can
+// produce. That direction is harmless by construction: an offset letRE never
+// reaches cannot cause it to decline a match it would otherwise have made.
+// The guard therefore still declines exactly the `let`-headed offsets it did
+// before, which is what TestActivePatternLetPhantom_AndContinuedMintsNoPhantom
+// re-measures on an `and` head.
 //
 // RESIDUAL, measured rather than reasoned. Any head that letRE matches but
 // activePatternRE does not keeps its phantom, because nothing claims its
@@ -299,8 +356,10 @@ var ceBuilderMembers = map[string]bool{
 // NOT a residual, and previously mis-stated here: the `and`-continued form
 // (#7166) mints NO phantom, before or after this guard —
 // `and private (|On|Off|) y = …` leaves a census of `sentinelValue` alone,
-// because `and` is not a `let` head and letRE never reaches it. #7166 is a
-// MISSING entity, not a surviving phantom.
+// because `and` is not a `let` head and letRE never reaches it. #7166 arm 1
+// was a MISSING entity, not a surviving phantom, and it is now FIXED above by
+// admitting `and` as a head keyword — which changes what this scanner
+// EXTRACTS and leaves the phantom census exactly where it was.
 func activePatternLetOffsets(src string) map[int]bool {
 	claimed := make(map[int]bool)
 	for _, m := range activePatternRE.FindAllStringIndex(src, -1) {
@@ -327,6 +386,14 @@ func extractActivePatterns(src, filePath string, imports []string) []types.Entit
 		seen[name] = true
 
 		startLine := strings.Count(src[:m[0]], "\n") + 1
+		// The head keyword the declaration actually carries: `let` opens a
+		// binding group, `and` continues one (#7166). Read back off the
+		// matched text rather than captured, so the capture indices below
+		// (and every caller of activePatternRE) are unchanged.
+		head := "let"
+		if strings.HasPrefix(strings.TrimLeft(src[m[0]:m[1]], " \t"), "and") {
+			head = "and"
+		}
 		// Split case names; a trailing `_` marks a PARTIAL active pattern.
 		rawCases := strings.Split(clip, "|")
 		partial := false
@@ -391,7 +458,7 @@ func extractActivePatterns(src, filePath string, imports []string) []types.Entit
 			Language:      "fsharp",
 			StartLine:     startLine,
 			EndLine:       startLine,
-			Signature:     "let " + name,
+			Signature:     head + " " + name,
 			Properties:    props,
 			Relationships: rels,
 		})
