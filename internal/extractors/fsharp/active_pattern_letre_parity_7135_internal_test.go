@@ -113,7 +113,28 @@ func TestActivePatternREModifierParityWithLetRE(t *testing.T) {
 	// COUNT GUARD. activePatternRE spells the group once per head keyword
 	// (`let` and `and`, #7166). Pinning the COUNT is what catches a branch
 	// whose group was DELETED or factored away, which an all-occurrences
-	// equality check alone would pass vacuously.
+	// equality check alone would pass vacuously. That direction is measured,
+	// not assumed: respelling the `and` branch's group as `(?:[\s]+…)` is
+	// BEHAVIOURALLY IDENTICAL (`[\s]` is `\s`), so no behavioural row moves,
+	// yet fsLetModifierGroupRE no longer sees that occurrence and this guard
+	// alone fails — the byte comparison below passes in that run, so the
+	// count guard is not riding on it.
+	//
+	// WHAT IT DOES **NOT** COVER, and the answer is the opposite of what the
+	// first draft of this comment claimed. A THIRD head keyword does not need
+	// a row here, and adding one costs nothing — but neither does this guard
+	// grade it. fsLetModifierGroupRE is itself keyed on `(?:let|and)`, so a
+	// `|use` branch is never EXTRACTED at all and the count simply stays 2.
+	// Measured: `|use` with the shared constant, and `|use` with a group
+	// widened by `sealed`, are BOTH ALIVE at zero failing tests with
+	// `go vet` 0. So a third keyword's modifier group would be UNGRADED —
+	// the same literal-keying hole this test just closed one level down, now
+	// in the extractor's own hand-picked keyword list. Not a regression (the
+	// `let`-only era had it too) and it takes a review-visible source edit to
+	// reach, so it is FILED SEPARATELY rather than fixed here. The cheapest
+	// close, if it is ever wanted, is keyword-agnostic:
+	// `strings.Count(activePatternRE.String(), fsLetModifiers) == 2`, which
+	// counts the CONSTANT and so cannot be evaded by adding a keyword.
 	if len(aps) != 2 {
 		t.Fatalf("activePatternRE yielded %d modifier groups %q, want exactly 2 — one per "+
 			"head keyword (`let` and `and`, #7166), both from the fsLetModifiers constant. "+
