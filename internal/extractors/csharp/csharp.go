@@ -1824,12 +1824,25 @@ func buildMethodSignature(src []byte, node ts.Node) string {
 // Strips attributes and inheritance to match Python convention: "public class Name".
 func buildClassSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
-	if idx := strings.Index(raw, "{"); idx >= 0 {
-		raw = raw[:idx]
-	}
+	// Collapse newlines + whitespace into single spaces FIRST, so
+	// stripCSharpAttributes keeps receiving the single-line, single-spaced
+	// input class it has always been handed -- including when the attribute
+	// itself spans a line break (#7133).
 	raw = strings.Join(strings.Fields(raw), " ")
 	// Strip attributes entirely (Python doesn't include them for C# classes).
 	raw = stripCSharpAttributes(raw)
+	// Trim at body start -- AFTER the attribute strip, for the reason
+	// buildMethodSignature above already documents: a brace inside an
+	// attribute argument string ([Route("api/{version}/items")], the canonical
+	// ASP.NET route template) is indistinguishable from the body brace to
+	// strings.Index. Cutting first truncated the declaration INSIDE the
+	// literal; stripCSharpAttributes then found no matching "]" for the
+	// unbalanced remainder and swallowed it to end-of-string, so the emitted
+	// signature was "" (#7133). The cut stays BEFORE the " :" cut, as it was,
+	// so the base-list cut still sees a body-stripped string.
+	if idx := strings.Index(raw, "{"); idx >= 0 {
+		raw = raw[:idx]
+	}
 	// Strip inheritance (: BaseClass).
 	if idx := strings.Index(raw, " :"); idx >= 0 {
 		raw = raw[:idx]
