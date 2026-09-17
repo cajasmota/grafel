@@ -2206,10 +2206,16 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 // Whitespace is collapsed per part with strings.Fields, so a wrapped type
 // (#7114) and an intra-line whitespace RUN inside one (#7118 —
 // `Map<String,   String>`) both normalise to single spaces. Both call sites of
-// collapseJavaSpaces are graded separately: the type site by `spaced` (#7118)
-// and the dimensions site by `wrappedDims`, a `[` and `]` split across lines,
-// which is the only way the dimensions text can hold whitespace at all since
-// that node begins at `[`.
+// collapseJavaSpaces are graded separately, and separately per AXIS, because a
+// verdict on one does not carry to the other: guarding the HELPER on containing
+// a newline was killed only by `spaced`, while guarding the DIMENSIONS CALL
+// alone was ALIVE with 0 `--- FAIL` lines until #7118 added `spacedDims`. So
+// the type site is graded by `spaced` (intra-line) and `wrapped` (newline), and
+// the dimensions site by `spacedDims`/`tabbedDims` (intra-line — JLS 10.2
+// permits whitespace BETWEEN the brackets, `int arr[   ];`) and `wrappedDims`
+// (a `[` and `]` split across lines). Whitespace between the brackets is the
+// only content the dimensions text can hold besides the brackets themselves,
+// since that node begins at `[`.
 //
 // # The three guards below are DEFENSIVE and ungraded on purpose
 //
