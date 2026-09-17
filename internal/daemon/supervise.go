@@ -57,7 +57,9 @@ const (
 	//
 	// Each role has its own pin: supervise_defaults_backoff_test.go grades the
 	// threshold (and this value), supervise_backoff_clamp_test.go grades the
-	// clamp's bound.
+	// clamp's bound. The GROWTH FACTOR that climbs toward this ceiling is a
+	// third, independent role on the same two lines, graded by
+	// supervise_backoff_factor_test.go (#7162).
 	defaultEngineBackoffMax = 30 * time.Second
 	// defaultEngineHealthyUptime: a child that stays up at least this long is
 	// considered to have recovered, so the backoff + crash-loop counters reset.
@@ -649,6 +651,16 @@ func (s *engineSupervisor) waitBackoff(ctx context.Context, backoff *time.Durati
 	// would be vacuous by construction, and "fixing" the inconsistency would
 	// change nothing. Do not touch the threshold's `>=` on the same reasoning:
 	// there it is not free.
+	// The FACTOR is a THIRD role on these two lines, independent of the clamp
+	// above and of the give-up threshold: it sets the SHAPE of the retry curve
+	// — how many short relaunch attempts happen before the cadence reaches the
+	// ceiling. `*= 3` left the whole package green (#7162), because the
+	// nearest pin asserted a FLOOR on one wait ("growth happened") rather than
+	// the RATIO between two ("growth is by two"). Graded by
+	// supervise_backoff_factor_test.go, which asserts each announced wait the
+	// clamp did not cap is exactly twice its predecessor. An enlarged factor
+	// is a tuning regression, not a bound or correctness one: the clamp still
+	// caps each wait and maxCeilingHits still ends the loop.
 	*backoff *= 2
 	if *backoff > s.backoffMax {
 		*backoff = s.backoffMax
