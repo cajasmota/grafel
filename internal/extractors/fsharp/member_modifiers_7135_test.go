@@ -490,3 +490,51 @@ type Holder() =
 		}
 	}
 }
+
+// TestMemberModifiers_OnlyRealDeclarations is the table's missing DIRECTION:
+// forbidden rows. Every one of the 33 rows above is a well-formed
+// declaration, so between them they grade RECALL only — and recall cannot
+// detect over-firing. The guard that grades the other direction here is the
+// line anchor `^` in `memberRE`, which nothing else observes: drop the `^`
+// while keeping the indent capture group and the suite stays fully GREEN,
+// yet the scanner then mints a member entity from a line comment, from a doc
+// comment, and from inside a STRING LITERAL — three phantom operations, each
+// of which would be a call target and a CONTAINS child.
+//
+// (`memberRE` runs over raw source; comments and string literals are not
+// stripped for it, so the anchor plus the indent capture is the ONLY thing
+// standing between those three shapes and an entity.)
+//
+// The COUNT is the assertion that matters: three over-fires are an
+// over-production, and a per-name absence check would still pass if the
+// scanner minted a fourth entity under some name the test never names — the
+// same reason mode B needed a count rather than a presence check.
+// `Good` is the positive control, so a fixture that extracts nothing at all
+// cannot pass this vacuously.
+func TestMemberModifiers_OnlyRealDeclarations(t *testing.T) {
+	src := `module M
+
+type Real() =
+    member this.Good x = x
+    // member this.InLineComment y = y
+    /// member this.InDocComment z = z
+
+let s = "member this.InString w = w"
+`
+	ents := runFSharp(t, src, "Forbidden.fs")
+	names := fsMemberNames(ents)
+	if len(names) != 1 {
+		t.Errorf("got %d member entities, want exactly 1 (only `Good` is a real "+
+			"declaration; a line comment, a doc comment and a string literal are "+
+			"not): %v", len(names), names)
+	}
+	if fsFindMember(ents, "Good") == nil {
+		t.Errorf("positive control missing: no member entity \"Good\"; member names = %v", names)
+	}
+	for _, phantom := range []string{"InLineComment", "InDocComment", "InString"} {
+		if e := fsFindMember(ents, phantom); e != nil {
+			t.Errorf("phantom member %q extracted from a comment or string literal (line %d)",
+				phantom, e.StartLine)
+		}
+	}
+}
