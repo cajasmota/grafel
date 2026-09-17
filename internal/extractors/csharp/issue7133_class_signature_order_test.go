@@ -26,20 +26,35 @@
 // rather than the strip moved first. Moving the strip to the front would also
 // move it before `strings.Join(strings.Fields(raw), " ")`, handing
 // stripCSharpAttributes raw multi-line source with original indentation — an
-// input class it has never received. Measured, that input class turns out to
-// be harmless: stripCSharpAttributes balances BRACKETS and only ever tests a
-// byte against "[", "]" or " ", so a newline inside an attribute is invisible
-// to it (mutant d below, collapse moved after the strip, is ALIVE and is
-// recorded as equivalent, not as dead). collapse-first is kept anyway because
-// it is the smaller behavioural change and it holds both helpers on their
-// existing input class. The brace cut is kept BEFORE the " :" cut, exactly as
-// today, so the base-list cut still sees a body-stripped string.
+// input class it has never received.
+//
+// collapse-first is chosen because it is CORRECT, not because the two
+// orderings are indistinguishable. They are not. stripCSharpAttributes skips
+// the run of plain SPACES following the closing "]"; when what follows "]" is
+// a NEWLINE instead, that skip does not fire, and stripping before the
+// collapse therefore leaves an interior space the collapse can no longer
+// remove. Two ordinary-C# shapes show it, and both are pinned below
+// (TPAttrNewline, PersonRec):
+//
+//	public class TPAttrNewline<[Route("{v}")]\n        T>
+//	  collapse-then-strip -> "public class TPAttrNewline<T>"     (correct)
+//	  strip-then-collapse -> "public class TPAttrNewline< T>"    (mutant d)
+//
+//	public record PersonRec([property: JsonPropertyName("first_{n}ame")]\n        string First, string Last)
+//	  collapse-then-strip -> "public record PersonRec(string First, string Last)"
+//	  strip-then-collapse -> "public record PersonRec( string First, string Last)"
+//
+// The brace cut is kept BEFORE the " :" cut, exactly as today, so the
+// base-list cut still sees a body-stripped string.
 //
 // # Grading
 //
 // Axis VARIED: whether the attribute argument's string literal contains '{'.
-// ItemsController/PlainController and BraceItems/PlainItems are pairs that
-// differ ONLY in the two brace characters.
+// ItemsController/PlainController and BraceItems/PlainItems are pairs whose
+// only DELIBERATE difference is the two brace characters in the route
+// template. Their type names differ too, necessarily — two types cannot share
+// a name in one file — and that difference is inert here: Plain (no attribute
+// at all) shows a distinct name emits a correct signature on its own.
 // Held CONSTANT across each pair: the file, the namespace, the attribute type,
 // the attribute's argument shape, the modifiers, the declaration keyword, the
 // type name length-independent identity, the body, and the enclosing scope.
@@ -73,6 +88,14 @@
 //     specification, "Record declarations").
 //   - a comment is trivia and may sit between an attribute and the
 //     declaration keyword (ECMA-334 §6.3.3).
+//   - `[property: ...]` on a record positional parameter is grammatical:
+//     `attribute_section ::= "[" attribute_target_specifier? attribute_list
+//     "]"`, and `property` is an attribute target (ECMA-334 §22.3,
+//     "Attribute specification"). The C# 9 records specification names this
+//     target explicitly for positional parameters — it is the conventional
+//     placement for System.Text.Json attributes on a record.
+//   - a line break may appear anywhere whitespace may (ECMA-334 §6.3.1), so
+//     an attribute section may be followed by a newline rather than a space.
 //
 // Everything asserted here is the extractor's own observed output, not a
 // compiler's — the expectations are transcriptions of a measured run.
@@ -134,6 +157,12 @@ namespace Api.Sig
 
     public class TypeParamAttr<[Route("{v}")] T> { }
 
+    public class TPAttrNewline<[Route("{v}")]
+        T> { }
+
+    public record PersonRec([property: Route("first_{n}ame")]
+        string First, string Last) { }
+
     [Route("api/{v}/outer")]
     public class Outer
     {
@@ -168,15 +197,11 @@ func TestCSharp7133_ClassSignatureStripsAttributesBeforeBraceCut(t *testing.T) {
 		// cut. "" before.
 		{"Based", "public class Based"},
 		// The attribute spans a line break — the input class #7133 asked
-		// about. "" before. This row does NOT grade collapse-before-strip:
-		// moving the collapse after the strip is ALIVE (mutant d), because
-		// stripCSharpAttributes' alphabet is only "[", "]" and " " — it
-		// balances BRACKETS, so a newline inside an attribute is already
-		// invisible to it, and the one whitespace-sensitive step it has
-		// (skipping spaces after "]") is undone by the collapse either way.
-		// The two orderings are therefore equivalent for this function's
-		// output, on any input. collapse-first is kept because it holds both
-		// helpers on the input class they have always received.
+		// about. "" before. Note this row does NOT by itself grade
+		// collapse-before-strip: the line break here falls INSIDE the
+		// attribute's parentheses, and the text after "]" is what the
+		// orderings disagree about. TPAttrNewline and PersonRec below are the
+		// rows that grade it.
 		{"MultiLine", "public class MultiLine"},
 		// Two attribute lists, brace in the second. "" before.
 		{"Stacked", "public class Stacked"},
@@ -184,6 +209,21 @@ func TestCSharp7133_ClassSignatureStripsAttributesBeforeBraceCut(t *testing.T) {
 		// was truncated rather than emptied before ("public class TypeParamAttr<"),
 		// because the brace cut landed after the "<".
 		{"TypeParamAttr", "public class TypeParamAttr<T>"},
+		// The same shape with a NEWLINE after the attribute's "]" instead of
+		// a space. This is the row that grades the ORDERING CHOICE: under
+		// mutant d (collapse moved after the strip) stripCSharpAttributes'
+		// trailing-SPACE skip does not fire on a newline, and the signature
+		// comes out "public class TPAttrNewline< T>". Before the fix this row
+		// was "public class TPAttrNewline<" — truncated at the brace inside
+		// the route template, like TypeParamAttr above, not emptied.
+		{"TPAttrNewline", "public class TPAttrNewline<T>"},
+		// The second ordering counter-example, on a shape that needs no
+		// generics: an attribute with an explicit `property:` target on a
+		// record positional parameter, written on its own line — the way
+		// System.Text.Json attributes are conventionally placed. Under mutant
+		// d this emits "public record PersonRec( string First, string Last)".
+		// Before the fix this row was "public record PersonRec(".
+		{"PersonRec", "public record PersonRec(string First, string Last)"},
 		// Attribute position: on a nested type. Both the outer and the inner
 		// declaration emitted "" before — the outer because its node span
 		// contains the inner attribute too.
