@@ -16,6 +16,7 @@ package dashboard
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -84,8 +85,16 @@ func TestV2GraphCompleteGraphReportsNoEdgeTruncation(t *testing.T) {
 // `edgeCapTruncated ||` arm (#7146): if any reachable state made
 // edgeCapTruncated true while TotalEdgeCount == len(Edges), that state would
 // fail here and the arm would be load-bearing. The test also refuses to pass
-// vacuously: it requires the enumeration to have actually produced all four
-// truncation buckets (neither / edge-cap only / node-thinning only / both).
+// vacuously: it requires the enumeration to have actually produced all five
+// truncation buckets (edgeless / neither / edge-cap only / node-thinning only /
+// both), and requires those five to SUM to the case count, so a reader doing
+// the arithmetic is not left with an unexplained remainder.
+//
+// What this test does NOT grade, said plainly so it is not read into the case
+// count: the invariant compares two quantities both derived from the same
+// served payload, so it is cap-VALUE-agnostic by construction and survives any
+// mutant that only changes a cap's magnitude. Cap values are graded by
+// TestBuildV2GraphMetadataReportsEdgeCapWithoutNodeThinning and the LoD tests.
 func TestEdgeTruncatedEqualsServedEdgeDeficit(t *testing.T) {
 	entityCounts := []int{1, 2, 3, 4, 6, 9}
 	nodeCaps := []int{0, 1, 2, 3, 5, 9, 1000}
@@ -94,7 +103,12 @@ func TestEdgeTruncatedEqualsServedEdgeDeficit(t *testing.T) {
 	splits := []bool{false, true}
 
 	cases := 0
-	var buckets struct{ none, capOnly, thinOnly, both int }
+	// The buckets PARTITION the space: every case lands in exactly one, and
+	// the totals are asserted to sum to `cases` below. `edgeless` is the
+	// TotalEdgeCount == 0 states — the invariant is asserted there too (and a
+	// stuck-true flag dies there first), they simply cannot be "not truncated
+	// but had edges", so they need their own arm rather than falling through.
+	var buckets struct{ edgeless, none, capOnly, thinOnly, both int }
 	sawEdges := false
 	for _, entityCount := range entityCounts {
 		for _, layout := range layouts {
@@ -114,6 +128,8 @@ func TestEdgeTruncatedEqualsServedEdgeDeficit(t *testing.T) {
 							sawEdges = true
 						}
 						switch {
+						case got.TotalEdgeCount == 0:
+							buckets.edgeless++
 						case !got.EdgeTruncated && got.TotalEdgeCount > 0:
 							buckets.none++
 						case got.EdgeTruncated && got.NodeTruncated && edgeCap > 0 && len(got.Edges) == edgeCap:
@@ -132,12 +148,16 @@ func TestEdgeTruncatedEqualsServedEdgeDeficit(t *testing.T) {
 	if !sawEdges {
 		t.Fatalf("enumeration produced no edges at all in %d cases", cases)
 	}
-	if buckets.none == 0 || buckets.capOnly == 0 || buckets.thinOnly == 0 || buckets.both == 0 {
-		t.Fatalf("enumeration is vacuous: %d cases, buckets none=%d cap-only=%d thin-only=%d both=%d — every bucket must be non-empty",
-			cases, buckets.none, buckets.capOnly, buckets.thinOnly, buckets.both)
+	if buckets.none == 0 || buckets.capOnly == 0 || buckets.thinOnly == 0 || buckets.both == 0 || buckets.edgeless == 0 {
+		t.Fatalf("enumeration is vacuous: %d cases, buckets edgeless=%d none=%d cap-only=%d thin-only=%d both=%d — every bucket must be non-empty",
+			cases, buckets.edgeless, buckets.none, buckets.capOnly, buckets.thinOnly, buckets.both)
 	}
-	t.Logf("%d cases, buckets none=%d cap-only=%d thin-only=%d both=%d, zero differing",
-		cases, buckets.none, buckets.capOnly, buckets.thinOnly, buckets.both)
+	if sum := buckets.edgeless + buckets.none + buckets.capOnly + buckets.thinOnly + buckets.both; sum != cases {
+		t.Fatalf("buckets do not partition the space: %d classified vs %d cases", sum, cases)
+	}
+	t.Logf("%d cases, buckets edgeless=%d none=%d cap-only=%d thin-only=%d both=%d (sum=%d), zero differing",
+		cases, buckets.edgeless, buckets.none, buckets.capOnly, buckets.thinOnly, buckets.both,
+		buckets.edgeless+buckets.none+buckets.capOnly+buckets.thinOnly+buckets.both)
 }
 
 type truncationEdgeLayout struct {
@@ -252,4 +272,49 @@ func makeTruncationEnumerationGroup(entityCount int, layout truncationEdgeLayout
 		}}
 	}
 	return &DashGroup{Name: "trunc-enum", Repos: repos, Links: links}
+}
+
+// TestCollectCappedGraphEdgesDropsInvisibleEndpoints grades collectCappedGraphEdges'
+// `visible` re-filter at the function's own contract, in BOTH branches.
+//
+// It exists because deleting that re-filter entirely (both the two early
+// returns in the cap <= 0 branch and the !sourceOK || !targetOK guard in the
+// capped branch) used to leave the whole ./internal/dashboard/ suite green
+// (#7146). The filter and the `kept[from] && kept[to]` gate in
+// buildV2GraphWithLimits were MUTUALLY MASKING: each only ever fired where the
+// other had already made the difference invisible, so neither was graded.
+// TestCollectCappedGraphEdgesMatchesDeterministicOrdering looks like it covers
+// this, but every edge it yields has both endpoints in `nodes`, so it never
+// feeds the filter anything to drop — and the production caller never does
+// either (measured: the `inputCount != candidateCount` disjunct fires 0 of
+// 3,528 enumerated states). The contract therefore has to be pinned here,
+// directly, or nowhere.
+func TestCollectCappedGraphEdgesDropsInvisibleEndpoints(t *testing.T) {
+	nodes := []v2GraphNode{{ID: "a", PageRank: 0.9}, {ID: "b", PageRank: 0.8}}
+	// One fully-visible edge, then one with an invisible TARGET, one with an
+	// invisible SOURCE, and one with neither endpoint visible — so both halves
+	// of the guard are exercised, not just whichever is checked first.
+	input := []v2GraphEdge{
+		{Source: "a", Target: "b", Kind: "CALLS"},
+		{Source: "a", Target: "ghost", Kind: "CALLS"},
+		{Source: "ghost", Target: "b", Kind: "CALLS"},
+		{Source: "ghost", Target: "ghost2", Kind: "CALLS"},
+	}
+	want := []v2GraphEdge{{Source: "a", Target: "b", Kind: "CALLS"}}
+
+	for _, cap := range []int{0, -1, 1, 10} {
+		got, truncated := collectCappedGraphEdges(nodes, cap, func(yield func(v2GraphEdge)) {
+			for _, edge := range input {
+				yield(edge)
+			}
+		})
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("cap=%d: edges = %#v, want only the a->b edge — the three edges with an invisible endpoint must be dropped", cap, got)
+		}
+		// Dropping an input edge IS truncation, in every branch: 4 edges went
+		// in and 1 came out.
+		if !truncated {
+			t.Errorf("cap=%d: truncated = false after dropping 3 of 4 input edges", cap)
+		}
+	}
 }

@@ -382,12 +382,35 @@ func (s *Server) buildV2GraphWithLimits(repos []*DashRepo, grp *DashGroup, filte
 		nodes, kept = thinByPagerankConnectedIndices(nodes, adjacency, nodeCap)
 		edges, edgeCapTruncated = collectCappedGraphEdges(nodes, edgeCap, func(yield func(v2GraphEdge)) {
 			visitEdges(func(from, to int, kind string) {
-				// This gate is an ALLOCATION guard, not a correctness one:
-				// collectCappedGraphEdges re-filters against its own `visible`
-				// map, so relaxing `&&` to `||` here leaves every served
-				// payload byte-identical (measured: 0 of 4,116 enumerated
-				// (layout x nodeCap x edgeCap) responses differed, #7146).
-				// It exists so dropped edges are never built or hashed.
+				// This gate is UNGRADED: relaxing `&&` to `||` leaves the
+				// whole ./internal/dashboard/ suite green. Its disposition is
+				// ALIVE + MASKED, which is weaker than equivalent and is
+				// recorded as such on purpose (#7146) — the served payload
+				// survives the relaxation in TWO steps, not one, and only the
+				// first step is this gate's own doing:
+				//
+				//  1. The edge LIST is genuinely unchanged, because
+				//     collectCappedGraphEdges re-filters against its own
+				//     `visible` map. Measured over the 3,528 states of
+				//     TestEdgeTruncatedEqualsServedEdgeDeficit: the collector's
+				//     `candidateCount > len(result)` disjunct fires in 578
+				//     states both with and without the relaxation.
+				//  2. The FLAG is not unchanged. The relaxation makes the
+				//     collector's other disjunct, `inputCount != candidateCount`
+				//     — which fires 0 times at HEAD, i.e. it is unreachable
+				//     from this caller — fire 912 times, flipping
+				//     edgeCapTruncated false->true in 786 of the 3,528 states.
+				//     Those flips are invisible only because the
+				//     `totalEdgeCount > len(edges)` arm of EdgeTruncated below
+				//     is already true in every one of them, and masks them.
+				//
+				// So this gate earns its place as an ALLOCATION guard — dropped
+				// edges are never built or hashed — and NOT as the thing that
+				// makes the payload correct. The correctness it appears to
+				// provide belongs to the collector's re-filter, which
+				// TestCollectCappedGraphEdgesDropsInvisibleEndpoints grades
+				// directly at that function's own contract. Do not read the two
+				// notes in this function as each other's justification.
 				if kept[from] && kept[to] {
 					yield(v2GraphEdge{Source: originalNodes[from].ID, Target: originalNodes[to].ID, Kind: kind})
 				}
@@ -424,10 +447,27 @@ func (s *Server) buildV2GraphWithLimits(repos []*DashRepo, grp *DashGroup, filte
 		// Thinned, totalEdgeCount counts the WHOLE graph while the collector
 		// only sees kept-kept edges, so totalEdgeCount >= inputCount. Either
 		// way a dropped edge shows up as a deficit.
+		//
 		// Enumeration: TestEdgeTruncatedEqualsServedEdgeDeficit walks 3,528
 		// reachable states (6 entity counts x 7 edge layouts x single/split
 		// repo x 7 nodeCaps x 6 edgeCaps) and finds zero where the two
-		// expressions disagree, with all four truncation buckets non-empty.
+		// expressions disagree. Of those states, edgeCapTruncated is true in
+		// 578 — all 578 via its `candidateCount > len(result)` disjunct; its
+		// other disjunct, `inputCount != candidateCount`, fires 0 of 3,528
+		// times and is unreachable from this caller, because visitEdges has
+		// already dropped any edge with an invisible endpoint. So the arm is
+		// reached often enough for the equivalence to be non-vacuous, and only
+		// ever for the one reason.
+		//
+		// Two things that enumeration does NOT establish, stated so they are
+		// not read into it: the invariant compares two quantities both derived
+		// from the same served payload, so it is cap-VALUE-agnostic by
+		// construction and survives any mutant that changes a cap's magnitude
+		// (those are graded by TestBuildV2GraphMetadataReportsEdgeCapWithoutNodeThinning
+		// and the LoD tests, not here); and its four reported buckets
+		// partition only the 2,352 edge-bearing cases, the remaining 1,176
+		// being the TotalEdgeCount == 0 states, where the invariant is still
+		// asserted and still holds.
 		EdgeTruncated: edgeCapTruncated || totalEdgeCount > len(edges),
 		Limits:        v2GraphLimits{NodeCap: nodeCap, EdgeCap: edgeCap},
 	}
