@@ -589,9 +589,20 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	}
 
 	// 2. let bindings (functions) → SCOPE.Operation
+	//
+	// #7163: a `let` head already CLAIMED by the active-pattern scanner is
+	// skipped. letRE matches a modifier-carrying active-pattern head and
+	// mis-names it after the last modifier in the phrase — see
+	// activePatternLetOffsets for the backtracking mechanism and for why the
+	// rejection is derived from the sibling scanner's offsets rather than
+	// re-stating its modifier allowlist here.
+	apClaimed := activePatternLetOffsets(src)
 	letSeen := make(map[string]bool)
 	for _, m := range letRE.FindAllStringSubmatchIndex(src, -1) {
 		if len(m) < 6 {
+			continue
+		}
+		if apClaimed[m[0]] {
 			continue
 		}
 		indent := src[m[2]:m[3]]

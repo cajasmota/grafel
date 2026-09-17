@@ -239,6 +239,76 @@ var ceBuilderMembers = map[string]bool{
 // and returns the SCOPE.Pattern entities (plus their case sub-entities). Each
 // active pattern is a first-class entity; its case names are sub-entities so a
 // match site `| Even ->` can resolve to a known case.
+// activePatternLetOffsets returns the set of source offsets at which
+// activePatternRE matched a `let` head — i.e. the declarations this scanner
+// has CLAIMED. The plain let-scanner in extractor.go consults it and declines
+// a match that starts at a claimed offset.
+//
+// #7163 — that guard exists because `letRE` ALSO matches a modifier-carrying
+// active-pattern head, and MIS-NAMES it. Its modifier group is repeated and
+// therefore optional: on `let rec (|Even|Odd|) x = 1` the engine takes ` rec`,
+// finds the mandatory `\s+` plus the name class `[a-zA-Z_]…` facing `(`, and
+// GIVES BACK the last repetition — so `\s+` takes the space after `let` and
+// the NAME capture takes `rec`, with `(|Even|Odd|) x ` swallowed by the
+// trailing `[^=\n]*`. The captured name is always the LAST modifier in the
+// phrase, because only the last repetition is given back:
+// `let inline private (|Foo|_|) y = 2` keeps the ` inline` repetition and
+// mints `private`. With no modifier there is nothing to give back, so letRE
+// correctly declines and no phantom appears.
+//
+// WHY AN OFFSET SET AND NOT A NAME BLOCKLIST. The alternative is to reject a
+// letRE match whose captured name is one of the six modifier words and whose
+// remainder opens a banana clip. That works, but it duplicates letRE's
+// allowlist into a third place: the two patterns' allowlists are already
+// pinned byte-for-byte equal by TestActivePatternREModifierParityWithLetRE
+// (#7164) precisely because a one-sided edit to either is invisible, and a
+// third copy would need a third parity check. It also embeds the clip syntax
+// a second time. The offset set derives the rejection from the scanner that
+// already owns both, so a widening of the modifier allowlist or of the clip
+// syntax propagates to the guard for free.
+//
+// Both patterns anchor on `(?m)^([ \t]*)let`, so a match of either begins at
+// the START OF THE LINE and the offsets are directly comparable. That
+// agreement is what the guard rests on, and it is graded: if the offsets
+// diverged the guard would never fire and every forbidden row in
+// active_pattern_let_phantom_7163_test.go would fail.
+//
+// RESIDUAL, measured rather than reasoned. Any head that letRE matches but
+// activePatternRE does not keeps its phantom, because nothing claims its
+// offset. 24 (phrase, head) pairs survive, over 4 modifier phrases × 10
+// heads, in two families — each verified byte-identical before and after this
+// guard, so they are pre-existing and neither caused nor cured here:
+//
+//   - WHITESPACE-BEARING BANANA CLIPS — `(| Even | Odd |)`, `(|Even|Odd| )`,
+//     `( |Even|Odd|)`. activePatternRE's clip class `[A-Za-z0-9_'|]+`
+//     excludes whitespace, so it declines and letRE's phantom stands:
+//     `let rec (| Even | Odd |) x = 1` gives a `let` census of
+//     `rec,sentinelValue` and NO SCOPE.Pattern at all — both halves wrong on
+//     one input. These are #7163's OWN class, so the guard is incomplete for
+//     the defect it fixes, not merely adjacent to it. (Whitespace tolerance
+//     appears to have been intended: `strings.TrimSpace(c)` below is
+//     unreachable under that clip class. Whether such a clip is legal F# is
+//     NOT settled here — no toolchain.)
+//
+//   - NON-CLIP PARENTHESISED / PATTERN HEADS — `let private (x, y) = …`,
+//     `let private (+.) a b = …`, `let private { Foo = f } = r`,
+//     `let private [a; b] = xs`, `let private (Some v) = o`. These are not
+//     active patterns at all, so no offset is ever claimed; they are outside
+//     approach (b)'s reach by construction and need the other fix shape.
+//
+// NOT a residual, and previously mis-stated here: the `and`-continued form
+// (#7166) mints NO phantom, before or after this guard —
+// `and private (|On|Off|) y = …` leaves a census of `sentinelValue` alone,
+// because `and` is not a `let` head and letRE never reaches it. #7166 is a
+// MISSING entity, not a surviving phantom.
+func activePatternLetOffsets(src string) map[int]bool {
+	claimed := make(map[int]bool)
+	for _, m := range activePatternRE.FindAllStringIndex(src, -1) {
+		claimed[m[0]] = true
+	}
+	return claimed
+}
+
 func extractActivePatterns(src, filePath string, imports []string) []types.EntityRecord {
 	var out []types.EntityRecord
 	seen := make(map[string]bool)
