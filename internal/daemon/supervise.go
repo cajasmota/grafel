@@ -22,7 +22,11 @@ import (
 // engine-global liveness statusfile, relaunches it on crash with exponential
 // backoff, gracefully drains it on serve shutdown (SIGTERM → bounded wait →
 // SIGKILL, reaped — no orphan), and only gives up (surfacing a fatal so the OS
-// unit recycles serve) when the child crash-loops at the backoff ceiling.
+// unit recycles serve) when the child crash-loops at the backoff ceiling, or
+// when the child cannot be SPAWNED at all — a construction failure (cmd.Start
+// erroring, no process ever created) is classified, logged and budgeted
+// separately from a crash, because the crash budget's recovery rule is
+// unreachable for it (#7087).
 //
 // serve NEVER exits merely because the engine is degraded or dead: it keeps
 // answering reads from the last-good graph.fb. The engine is a restartable
@@ -39,6 +43,25 @@ const (
 	// defaultEngineMaxCeilingHits: how many consecutive relaunches AT the
 	// backoff ceiling are tolerated before serve declares the engine unkeepable.
 	defaultEngineMaxCeilingHits = 3
+	// defaultEngineMaxSpawnFailures: how many CONSECUTIVE construction failures
+	// (cmd.Start returning an error — no child process ever existed) are
+	// tolerated before serve declares the engine UNSPAWNABLE (#7087).
+	//
+	// This is deliberately a SEPARATE, much smaller budget than the crash-loop
+	// one above, because the crash budget's recovery rule is structurally
+	// unreachable for a construction failure: backoff/ceilingHits reset only
+	// once a child has stayed up past healthyUptime, which requires a child to
+	// have existed. A deterministic Start error (bad exe path, missing binary,
+	// unusable inherited handle — see #7083) therefore walks the ENTIRE crash
+	// budget (~91s at production tuning) re-attempting something that fails
+	// identically every time, and dies with a message blaming a crash loop
+	// that never happened.
+	//
+	// It is not ZERO because some construction failures ARE transient (EAGAIN
+	// under fork pressure, a briefly-locked binary mid-upgrade): the counter
+	// resets on every successful Start, so a hiccup followed by a good spawn
+	// costs nothing.
+	defaultEngineMaxSpawnFailures = 3
 	// defaultEngineDrainTimeout bounds the graceful SIGTERM→exit wait before the
 	// supervisor escalates to SIGKILL during drain.
 	defaultEngineDrainTimeout = 5 * time.Second
@@ -245,7 +268,10 @@ type engineSupervisor struct {
 	backoffMax     time.Duration
 	healthyUptime  time.Duration
 	maxCeilingHits int
-	drainTimeout   time.Duration
+	// maxSpawnFailures bounds CONSECUTIVE construction failures (cmd.Start
+	// errors) on their own budget, separate from the crash-loop one (#7087).
+	maxSpawnFailures int
+	drainTimeout     time.Duration
 
 	mu       sync.Mutex
 	childPID int
@@ -263,13 +289,14 @@ func newEngineSupervisor(layout Layout, logger *slog.Logger) *engineSupervisor {
 		logger = buildSlogLogger(os.Stderr)
 	}
 	return &engineSupervisor{
-		layout:         layout,
-		logger:         logger,
-		backoffInitial: defaultEngineBackoffInitial,
-		backoffMax:     defaultEngineBackoffMax,
-		healthyUptime:  defaultEngineHealthyUptime,
-		maxCeilingHits: defaultEngineMaxCeilingHits,
-		drainTimeout:   defaultEngineDrainTimeout,
+		layout:           layout,
+		logger:           logger,
+		backoffInitial:   defaultEngineBackoffInitial,
+		backoffMax:       defaultEngineBackoffMax,
+		healthyUptime:    defaultEngineHealthyUptime,
+		maxCeilingHits:   defaultEngineMaxCeilingHits,
+		maxSpawnFailures: defaultEngineMaxSpawnFailures,
+		drainTimeout:     defaultEngineDrainTimeout,
 	}
 }
 
@@ -452,6 +479,10 @@ func (s *engineSupervisor) run(ctx context.Context) {
 
 	backoff := s.backoffInitial
 	ceilingHits := 0
+	// spawnFailures counts CONSECUTIVE construction failures (cmd.Start
+	// errors). It is reset by a SUCCESSFUL Start — the only reset a
+	// construction failure can actually reach (#7087).
+	spawnFailures := 0
 
 	for {
 		// Bail before spawning if we've been asked to stop.
@@ -466,13 +497,30 @@ func (s *engineSupervisor) run(ctx context.Context) {
 		cmd := engineChildCommand(s.selfExe, s.layout.Root)
 		startedAt := time.Now()
 		if err := cmd.Start(); err != nil {
-			s.logger.Error("engine supervisor: spawn failed", "err", err)
-			// Treat a failed spawn like a crash: back off and retry.
-			if s.backoffAndMaybeGiveUp(ctx, &backoff, &ceilingHits) {
+			// A construction failure is NOT a crash: no child process ever
+			// existed, so the crash budget's recovery rule (a child that
+			// stayed up past healthyUptime) is unreachable here and the whole
+			// budget would be spent re-attempting something that usually fails
+			// identically every time (#7087). Distinct verb, distinct counter,
+			// distinct (much smaller) budget.
+			spawnFailures++
+			s.logger.Error("engine supervisor: engine child spawn failed — no child process was created",
+				"err", err, "consecutive_spawn_failures", spawnFailures, "max_spawn_failures", s.maxSpawnFailures)
+			if spawnFailures >= s.maxSpawnFailures {
+				s.giveUp("engine supervisor: giving up — engine child unspawnable",
+					fmt.Errorf("engine child unspawnable: %d consecutive spawn failures, no child process was ever created: %w",
+						spawnFailures, err))
+				return
+			}
+			if s.waitBackoff(ctx, &backoff) {
 				return
 			}
 			continue
 		}
+		// A child exists: whatever blocked construction has cleared, so the
+		// construction budget starts over. This is the reset the crash budget
+		// could never give this path.
+		spawnFailures = 0
 		pid := cmd.Process.Pid
 		s.setChildPID(pid)
 		s.logger.Info("engine supervisor: engine child started", "pid", pid, "exe", s.selfExe)
@@ -514,20 +562,37 @@ func (s *engineSupervisor) backoffAndMaybeGiveUp(ctx context.Context, backoff *t
 	if *backoff >= s.backoffMax {
 		*ceilingHits++
 		if *ceilingHits >= s.maxCeilingHits {
-			err := fmt.Errorf("engine child crash-looping: %d consecutive relaunches at the %s backoff ceiling",
-				*ceilingHits, s.backoffMax)
-			s.logger.Error("engine supervisor: giving up — engine unkeepable", "err", err)
-			s.mu.Lock()
-			s.fatalErr = err
-			s.mu.Unlock()
-			select {
-			case s.fatalCh <- err:
-			default:
-			}
+			s.giveUp("engine supervisor: giving up — engine unkeepable",
+				fmt.Errorf("engine child crash-looping: %d consecutive relaunches at the %s backoff ceiling",
+					*ceilingHits, s.backoffMax))
 			return true
 		}
 	}
+	return s.waitBackoff(ctx, backoff)
+}
 
+// giveUp records + signals the fatal that makes RunServe exit non-zero so the
+// OS unit recycles it, logging msg. The error text is the artefact a user (and
+// a test) reads to tell the two unkeepable verdicts apart: a crash loop (a
+// child ran and died repeatedly) versus an unspawnable engine (no child was
+// ever created).
+func (s *engineSupervisor) giveUp(msg string, err error) {
+	s.logger.Error(msg, "err", err)
+	s.mu.Lock()
+	s.fatalErr = err
+	s.mu.Unlock()
+	select {
+	case s.fatalCh <- err:
+	default:
+	}
+}
+
+// waitBackoff sleeps for the current backoff (waking early on stop/ctx-cancel)
+// and grows it toward the ceiling. It returns true when the run loop should
+// exit because shutdown was requested during the wait. Shared by the crash
+// path and the construction-failure path; the give-up accounting is NOT shared
+// (see backoffAndMaybeGiveUp and the spawn-failure branch in run).
+func (s *engineSupervisor) waitBackoff(ctx context.Context, backoff *time.Duration) (done bool) {
 	wait := *backoff
 	s.logger.Info("engine supervisor: relaunching engine after backoff", "backoff", wait)
 	timer := time.NewTimer(wait)
