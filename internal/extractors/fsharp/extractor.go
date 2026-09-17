@@ -71,9 +71,18 @@ var (
 	//
 	// The modifier set is closed and short, so an allowlist is preferable to
 	// "any word that is not the last one": the latter would name the curried
-	// binding `let add x y = x + y` after its final parameter. `\b` keeps the
-	// allowlist from eating the prefix of a legitimate name (`recompute`,
-	// `inlineCache`). Order is accepted in any direction — this is a lenient
+	// binding `let add x y = x + y` after its final parameter.
+	//
+	// `\b` states the intent that a modifier is a whole word, but it is NOT
+	// independently graded and removing it changes no observable behaviour
+	// (mutant scored ALIVE under #7131's suite). The accounting is written
+	// here rather than implied: consuming `rec` out of `recompute` leaves
+	// `ompute` with no preceding `\s+`, so that alternative dies and the
+	// engine takes the zero-modifier one — every modifier-prefixed name
+	// resolves identically with and without the boundary. It is kept as
+	// documentation of intent, not as a load-bearing guard.
+	//
+	// Order is accepted in any direction — this is a lenient
 	// scanner, not a compiler, and ranking orders could only lose a binding.
 	letRE = regexp.MustCompile(
 		`(?m)^([ \t]*)let(?:\s+(?:rec|mutable|inline|private|internal|public)\b)*` +
