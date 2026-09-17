@@ -29,6 +29,10 @@
 //	TestJava7117_Annotated*Wrapped*  composes #7117 with #7114: two annotations,
 //	                one of them with an element assignment, on a declaration
 //	                that also wraps and also has an initializer.
+//	TestJava7117_CStyle*  grades the `dimensions` read three ways — `[]` after
+//	                the name, `[]` inside the type, and no `[]` at all — plus a
+//	                declarator whose brackets wrap, which is the only grader of
+//	                collapseJavaSpaces at the dimensions call site.
 //
 // Every assertion is the EXACT emitted Signature, never "contains no '='" —
 // the pre-fix output "@Deprecated(since" contains no '=' either.
@@ -48,8 +52,12 @@
 //
 // Axes varied here: presence of an annotation, whether the annotation carries
 // an element ASSIGNMENT, whether the `=` sits inside a STRING literal, the
-// number of annotation elements, presence of an initializer, and the
-// declaration's whitespace shape (newlines vs intra-line runs vs neither).
+// number of annotation elements, presence of an initializer, the declaration's
+// whitespace shape (newlines vs intra-line runs vs neither), and — for an
+// array — WHICH NODE carries the `[]`: the type (`String[] names`), the
+// declarator (`int arr[]`), both (neither field claims it twice), or neither
+// (`CACHE`), with `wrappedDims` additionally putting whitespace INSIDE the
+// declarator's brackets.
 // Held constant: the file, the package, the construct kind (field), the
 // enclosing class.
 //
@@ -63,9 +71,13 @@
 // expects a signature with no `@` in it at all. The reason is recorded on
 // buildFieldSignature: a field's Signature is the only one a consumer parses
 // POSITIONALLY (docgen's typeHintFromSignature, gated on SCOPE.Schema/field,
-// takes Fields(sig)[0] as the declared type), and field annotations already
-// reach the graph structurally via REFERENCES edges and
-// Properties["validations"].
+// takes Fields(sig)[0] as the declared type). The annotations a consumer acts
+// on are unaffected — @Inject/@Autowired become REFERENCES edges, Bean
+// Validation lands in Properties["validations"] — but this is NOT "nothing is
+// lost": a MARKER annotation with no consumer (`@Deprecated`, a JPA `@Column`
+// outside a NoSQL document, a third-party marker) used to appear in the
+// signature and is now on the entity nowhere. See buildFieldSignature for why
+// that is narrow: anything with an element was already truncated at its `=`.
 //
 // This also means #7116's defect is no longer merely fixed but UNREACHABLE:
 // no annotation text is read, so no text inside one can be mangled. Its test
@@ -114,6 +126,11 @@ public class FieldSig {
     private Map<String,   String>   spaced   =   Map.of();
 
     private int arr[];
+
+    private String[] names;
+
+    private int wrappedDims[
+            ];
 
     @interface Query { String value(); }
 
@@ -204,18 +221,47 @@ func TestJava7118_IntraLineWhitespaceRunsAreCollapsed(t *testing.T) {
 // TestJava7117_CStyleArrayDimensionsSurvive — the C-style array suffix
 // (JLS 10.2, `int arr[]`) is a `dimensions` child of the variable_declarator,
 // not part of the `type` node, so reading type+name alone silently drops it —
-// a regression the raw-span implementation could not have had. `names` is the
-// control in the other spelling (`String[] names`, where `[]` IS in the type
-// node), so a fix that hard-codes "[]" onto every array field dies on it.
+// a regression the raw-span implementation could not have had.
+//
+// `names` is the control in the OTHER spelling: `String[] names` parses as an
+// `array_type` type node whose own text already carries the `[]`, and whose
+// declarator has NO `dimensions` child (dumped: nil). It is what grades the
+// dimensions read as a READ rather than as a guess — without it, appending
+// "[]" whenever the type text ends in "[]" emits `String[] names[]` and
+// nothing in the package notices (scored: 0 `--- FAIL` before this row, 1
+// after). `CACHE` is the third leg, a non-array field: it is what the blunt
+// always-append-"[]" mutant dies on.
 func TestJava7117_CStyleArrayDimensionsSurvive(t *testing.T) {
 	recs := extractJava7073(t, "com/example/sig/FieldSig.java", java7117FieldSigSrc)
 	for _, want := range []struct{ name, sig string }{
+		// `[]` after the NAME: a `dimensions` child of the declarator.
 		{"FieldSig.arr", "int arr[]"},
+		// `[]` inside the TYPE, declarator dimensions nil — must not be
+		// doubled.
+		{"FieldSig.names", "String[] names"},
+		// Not an array at all: nothing may be appended.
 		{"FieldSig.CACHE", "Map<String,String> CACHE"},
 	} {
 		if got := java7117Sig(t, recs, want.name).Signature; got != want.sig {
 			t.Errorf("%s.Signature = %q, want %q", want.name, got, want.sig)
 		}
+	}
+	// `wrappedDims` puts a NEWLINE inside the brackets — legal Java (JLS 10.2
+	// places no whitespace restriction between `[` and `]`), and the only way
+	// the dimensions text can contain whitespace at all, since the node starts
+	// at `[`. It is what grades collapseJavaSpaces AT THE DIMENSIONS SITE,
+	// which is a second, separate call from the one on the type: without the
+	// collapse this emits "int wrappedDims[\n            ]" — a newline and
+	// source indentation in a persisted signature, exactly #7114's defect at
+	// the one place #7114's own fixture cannot reach. The span assertion is
+	// what stops it degrading into a single-line case.
+	dims := java7117Sig(t, recs, "FieldSig.wrappedDims")
+	if dims.StartLine != 32 || dims.EndLine != 33 {
+		t.Errorf("FieldSig.wrappedDims span = %d-%d, want 32-33 (a single-line span here "+
+			"would leave the dimensions collapse ungraded)", dims.StartLine, dims.EndLine)
+	}
+	if want := "int wrappedDims[ ]"; dims.Signature != want {
+		t.Errorf("FieldSig.wrappedDims.Signature = %q, want %q", dims.Signature, want)
 	}
 }
 

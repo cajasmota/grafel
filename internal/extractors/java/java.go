@@ -2176,14 +2176,26 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 // a JPA entity is most of them. Class and method signatures are never fed to
 // it, so keeping annotations there costs nothing.
 //
-// Field annotations are not lost by this: they already reach the graph
-// STRUCTURALLY, from the same `modifiers` child, rather than as signature
-// prose — javaFieldHasInjectAnnotation turns @Inject/@Autowired into
-// REFERENCES edges, and field_validations.go stamps Bean Validation
-// annotations into Properties["validations"]. The signature was never their
-// carrier of record, and it was a poor one anyway: any annotation with an
-// element (`@Size(max = 120)`) was already being truncated to `@Size(max` by
-// the #7117 defect.
+// What this costs, stated precisely rather than as "nothing is lost". The
+// annotations any consumer actually acts on do not come from the signature and
+// are untouched: javaFieldHasInjectAnnotation walks the `modifiers` child and
+// turns @Inject/@Autowired into REFERENCES edges; field_validations.go walks
+// the same child and stamps Bean Validation annotations into
+// Properties["validations"]; nosql_model.go recognises
+// @Id/@Indexed/@Field/@Column, but only on a Mongo/Cassandra document class.
+// Everything else — `@Deprecated`, a JPA `@Column` on an entity that is NOT a
+// NoSQL document, any third-party marker — used to appear in the signature and
+// is now recorded NOWHERE on the entity. That is a real, if narrow, loss and
+// not "nothing".
+//
+// It is narrow because of the #7117 defect itself: an annotation carrying an
+// ELEMENT (`@Size(max = 120)`, `@Column(name = "x")`) already destroyed the
+// signature from its first `=` onward, so it never reached a reader intact.
+// Only a MARKER annotation — no argument list at all, or arguments containing
+// no `=` (`@SuppressWarnings("thing")`) — survived pre-fix, so markers are the
+// only thing that regresses. If one ever needs to be on the entity, `modifiers`
+// is where to read it: a positionally-parsed signature is the wrong carrier for
+// it either way.
 //
 // Note this also widens the modifier strip: previously exactly five keywords
 // were removed ("public ", "private ", "protected ", "static ", "final "), so
@@ -2193,7 +2205,32 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 //
 // Whitespace is collapsed per part with strings.Fields, so a wrapped type
 // (#7114) and an intra-line whitespace RUN inside one (#7118 —
-// `Map<String,   String>`) both normalise to single spaces.
+// `Map<String,   String>`) both normalise to single spaces. Both call sites of
+// collapseJavaSpaces are graded separately: the type site by `spaced` (#7118)
+// and the dimensions site by `wrappedDims`, a `[` and `]` split across lines,
+// which is the only way the dimensions text can hold whitespace at all since
+// that node begins at `[`.
+//
+// # The three guards below are DEFENSIVE and ungraded on purpose
+//
+// `type != nil`, `txt != ""` and `decl != ""` are each EQUIVALENT UNDER THE
+// CURRENT SUITE: widening any of them to `true` changes no signature and
+// produces 0 `--- FAIL` lines in this package. They are recorded here rather
+// than left looking ungraded, because they are unreachable, not untested:
+//
+//   - `type` is a mandatory named field of field_declaration, so it is never
+//     nil on a node that reaches this function;
+//   - a non-nil node spans at least one byte, so `txt` is empty only when
+//     `type` is nil, i.e. only via the arm above;
+//   - `decl` is `name + dimensions` and `name` is the entity name buildField
+//     already established, so it is never empty.
+//
+// Demonstrated rather than asserted: the malformed spellings that could
+// produce those shapes (`private int ;`, `private ;`, `private x;`, `int;`)
+// parse to ERROR nodes and yield ZERO SCOPE.Schema records — buildField never
+// runs on them — so no input reachable here can distinguish the guarded form
+// from the widened one. Do not "grade" them with a hand-built parse tree; the
+// honest record is that they cost nothing and can never fire.
 func buildFieldSignature(node ts.Node, src []byte, name string) string {
 	var parts []string
 	if t := node.ChildByFieldName("type"); t != nil {
@@ -2219,6 +2256,13 @@ func buildFieldSignature(node ts.Node, src []byte, name string) string {
 // `declarator` field is `a = 1`). Matching by name instead would select the
 // same node on every input reachable here, so it would be an unreachable guard
 // rather than a stricter one.
+//
+// The `decl == nil` early return is a fourth EQUIVALENT UNDER THE CURRENT
+// SUITE: deleting it changes no signature and produces 0 `--- FAIL` lines
+// (`declarator` is a mandatory named field, and the malformed declarations that
+// lack one yield no SCOPE.Schema record at all — see buildFieldSignature). It
+// is kept because childFieldText would panic on a nil node, so the guard is the
+// difference between "impossible" and "impossible AND survivable".
 func javaDeclaratorDimensions(node ts.Node, src []byte) string {
 	decl := node.ChildByFieldName("declarator")
 	if decl == nil {

@@ -28,10 +28,10 @@
 // buildFieldSignature as a structural read emitting just "<Type> <name>". It
 // was never reliable anyway — an annotation carrying an element, which is most
 // of the ones listed below (`@Size(max = 120)`), was truncated to `@Size(max`
-// by the #7117 defect. This pass is what makes them survive. This pass reuses the same
-// tree-sitter `modifiers` → annotation children that javaFieldHasInjectAnnotation
-// already walks, classifies each recognised Bean Validation annotation, and
-// stamps the terse chip list.
+// by the #7117 defect. This pass is what makes them survive: it reuses the
+// same tree-sitter `modifiers` → annotation children that
+// javaFieldHasInjectAnnotation already walks, classifies each recognised Bean
+// Validation annotation, and stamps the terse chip list.
 //
 // Covered Bean Validation annotations (javax.* and jakarta.*):
 //
