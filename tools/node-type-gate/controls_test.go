@@ -333,9 +333,18 @@ func TestControl_StaleBaselineRowFailsTheGate(t *testing.T) {
 	if len(res.StaleBaseline) != 1 || res.StaleBaseline[0].Lit != "grafel_ghost_row_7065" {
 		t.Fatalf("a baseline row matching nothing was not reported stale: %v", res.StaleBaseline)
 	}
-	if !res.Failed() {
-		t.Error("a stale row must fail the gate; that is the mechanism that makes the baseline shrink")
-	}
+	// There is deliberately NO res.Failed() assertion here (#7086). This run
+	// drives csharp against a baseline holding only the ghost row, so every
+	// literal the real baseline tolerates is un-baselined and Failures is
+	// non-empty too: Failed() is already true for a reason that has nothing to
+	// do with the stale row, and the assertion stayed green under a mutant that
+	// deleted the StaleBaseline arm outright. A whole-output check that survives
+	// deleting what it claims to check reads as a second, independent
+	// confirmation while contributing nothing. The observation that carries this
+	// control is res.StaleBaseline above — that is what kills the mutant — and
+	// the arm's contribution to the emitted verdict is graded, arm by arm and
+	// with the other two nil, by
+	// TestPrintVerdict_EachFailedArmAloneFlipsTheVerdictLine.
 
 	// The REMEDIATION TEXT is part of the behaviour, not decoration. A rename
 	// produces both error kinds at once — the #7076 review measured 13
@@ -347,6 +356,9 @@ func TestControl_StaleBaselineRowFailsTheGate(t *testing.T) {
 	printVerdict(&out, res)
 	text := out.String()
 	for _, want := range []string{
+		// The ghost literal itself: this ties the emitted diagnostic to THIS
+		// row rather than to "a stale row was reported somewhere".
+		`"grafel_ghost_row_7065"`,
 		"RENAMED",
 		"rewrite this row's dir/path",
 		"-update does NOT rewrite paths",

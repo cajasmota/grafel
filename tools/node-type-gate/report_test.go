@@ -574,8 +574,16 @@ func TestPrintReport_NamesBothFixpointSurfaces(t *testing.T) {
 //	report.go:106  res.Failed()  (gate.go:242)          THREE arms: Failures,
 //	               StaleBaseline, UnreviewedSkips. verdictFixture has all
 //	               three non-empty at once, so the emitted verdict line alone
-//	               would grade none of them — each is isolated by a fixture
-//	               elsewhere in the package, and all three are DEAD.
+//	               graded none of them (#7086): each arm was killed only by a
+//	               different, deliberately isolated fixture elsewhere in the
+//	               package — TestEvaluate_ResolveRules and TestExitCode/a new
+//	               dead literal (Failures), TestExitCode/a stale baseline row
+//	               (StaleBaseline), TestEvaluate_SkippedPackagesMustBeNamed
+//	               (UnreviewedSkips) — none of which renders the line.
+//	                 -> TestPrintVerdict_EachFailedArmAloneFlipsTheVerdictLine
+//	                    has one row per arm with the other two nil, plus a
+//	                    no-arm negative row, so each arm is now observable
+//	                    THROUGH the line that renders it.
 //	report.go:261  stringVal's tv.Value == nil arm      EQUIVALENT, not
 //	               graded: its only caller, constStringOf (main.go:401),
 //	               returns early on a nil Value, so the arm is unreachable in
@@ -583,6 +591,95 @@ func TestPrintReport_NamesBothFixpointSurfaces(t *testing.T) {
 //	               it would mean calling stringVal directly to exercise a
 //	               defensive branch no production path takes, so it is
 //	               recorded here rather than covered.
+
+// verdictLineOf returns the ONE line printVerdict's final switch
+// (report.go:106) emits, and fails if there is not exactly one. The three
+// possible values are kept apart on purpose: "FAIL (count floor)" comes from a
+// different arm of that switch than "FAIL", so a fixture whose floor is
+// breached must not be able to satisfy a Failed() assertion.
+func verdictLineOf(t *testing.T, out string) string {
+	t.Helper()
+	var found []string
+	for _, line := range strings.Split(out, "\n") {
+		switch line {
+		case "node-type-gate: OK", "node-type-gate: FAIL", "node-type-gate: FAIL (count floor)":
+			found = append(found, line)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("want exactly one verdict line, got %d %q:\n%s", len(found), found, out)
+	}
+	return found[0]
+}
+
+// TestPrintVerdict_EachFailedArmAloneFlipsTheVerdictLine grades report.go:106's
+// res.Failed() (gate.go:242) ARM BY ARM, through the line that renders it.
+//
+// #7086. Failed() is a three-arm disjunction — Failures, StaleBaseline,
+// UnreviewedSkips — and verdictFixture has all three non-empty simultaneously,
+// which is right for a golden and useless for grading the arms: delete any one
+// and the other two still print FAIL. Every arm was in fact killed, but each
+// only by a different fixture elsewhere in the package, none of which renders
+// the verdict line. That is a guard with an undeclared dependency: delete one of
+// those three tests and an arm becomes ungraded while the golden stays green and
+// still looks like the guard.
+//
+// VARIED, one axis per row: WHICH arm is non-empty. Exactly one is, and the
+// armed-count check below fails the row if a future edit arms a second — a
+// second red arm is precisely what made the golden blind here.
+// HELD CONSTANT: the resolved count (well clear of the count floor, so the
+// floor arm of the switch can never stand in for Failed()), the distinct count,
+// and the grammar list. Row "no arm fires" is the negative direction: without
+// it, a printer that always says FAIL would satisfy all three positive rows.
+func TestPrintVerdict_EachFailedArmAloneFlipsTheVerdictLine(t *testing.T) {
+	const js = "internal/extractors/javascript"
+	dead := miss(js, js+"/extractor.go", 99, "brand_new_dead", FormCmp, []string{"javascript", "tsx"}, false, false)
+	rows := []struct {
+		name string
+		arm  func(*Result)
+		want string
+	}{
+		{"no arm fires", func(*Result) {}, "node-type-gate: OK"},
+		{"Failures alone", func(r *Result) {
+			r.Misses = []Miss{dead}
+			r.Failures = []Miss{dead}
+		}, "node-type-gate: FAIL"},
+		{"StaleBaseline alone", func(r *Result) {
+			r.StaleBaseline = []BaselineEntry{{Class: "not-a-node-type", Dir: js, Lit: "gone_literal", File: js + "/old.go", Line: 3}}
+		}, "node-type-gate: FAIL"},
+		{"UnreviewedSkips alone", func(r *Result) {
+			skip := SkippedDir{Dir: "internal/custom/brandnew", Sites: 7}
+			r.Skipped = []SkippedDir{skip}
+			r.SkippedSites = 7
+			r.UnreviewedSkips = []SkippedDir{skip}
+		}, "node-type-gate: FAIL"},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			res := Result{Resolved: minResolvedSites * 2, Distinct: 900, DirsWithGrammar: []string{js}}
+			r.arm(&res)
+
+			armed := 0
+			for _, n := range []int{len(res.Failures), len(res.StaleBaseline), len(res.UnreviewedSkips)} {
+				if n > 0 {
+					armed++
+				}
+			}
+			wantArmed := 1
+			if r.want == "node-type-gate: OK" {
+				wantArmed = 0
+			}
+			if armed != wantArmed {
+				t.Fatalf("%d of Failed()'s three arms are non-empty, want %d — a row that arms two arms grades neither (Failures=%d StaleBaseline=%d UnreviewedSkips=%d)",
+					armed, wantArmed, len(res.Failures), len(res.StaleBaseline), len(res.UnreviewedSkips))
+			}
+
+			if got := verdictLineOf(t, verdictFor(res)); got != r.want {
+				t.Errorf("verdict line is %q, want %q — this arm of Failed() is not observable through the line that renders it", got, r.want)
+			}
+		})
+	}
+}
 
 // TestPrintVerdict_NoSkippedSurfaceSaysNothing scores TWO of printVerdict's
 // guards at once — the skip block (report.go:37) and the alias block
