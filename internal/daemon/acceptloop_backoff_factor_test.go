@@ -97,11 +97,28 @@ import (
 // and the vacuity floor never does. At factors 8 and 100 the ratio still fires
 // on the first pair (at 100 the first announced step is 500ms, still strictly
 // below the 1s ceiling, so the pair is graded rather than skipped) and the floor
-// fires TOO, because the clamp swallows the later steps. No row here is killed
-// by the floor alone, and none is killed by anything outside this file.
+// fires TOO, because the clamp swallows the later steps. No row on the FACTOR
+// axis is killed by the floor alone, and none is killed by anything outside
+// this file.
 //
-// AXES. VARIED: the growth factor (1, 3, 8 and 100 as well as 2 — both
-// directions, with enlargement split by magnitude), and the number of
+// THE FLOOR'S OWN POSITIVE CONTROL, so "no factor row kills on the floor alone"
+// is not read as "this floor is never exercised" — which would make it
+// indistinguishable from a dead vacuity guard. It IS exercised, on the
+// START-VALUE axis rather than the factor axis: mutating acceptBackoffStart
+// 5ms -> 900ms in production (both new files present) yields exactly 1
+// `--- FAIL`, this test, on the FLOOR ALONE — `only 0 of 5
+// consecutive-backoff ratios sat below the 1s ceiling (sequence
+// [900ms 1s 1s 1s 1s 1s])`, with 0 ratio errors. So the floor is live, it
+// tracks the sequence production actually emits rather than being satisfied by
+// a constant, and each site's floor now has a named killer: site A's on the
+// factor axis (`*= 100`), site B's here. Two consequences worth stating
+// plainly: this row is NOT this PR's arm (acceptBackoffStart's value is graded
+// by nothing else in the package — see #7174), and it is the row that proves
+// the guard is not self-satisfying.
+//
+// AXES. VARIED: the growth factor (1, 1.5, 3, 8 and 100 as well as 2 — both
+// directions, enlargement split by magnitude, and one NON-INTEGER factor so the
+// band is closed continuously rather than only at sampled integers), and the number of
 // consecutive growth steps measured (five, versus the single total the existing
 // floor looks at). HELD CONSTANT: the transient-error classification (the
 // scripted errors are the ones TestIsTransientAcceptErr already pins as
@@ -114,7 +131,10 @@ import (
 // the reset-on-success, and the shipped values of the two constants. A ratio
 // between neighbours is blind to all four — deleting the clamp leaves every
 // pre-clamp ratio at 2 and this file green, which keeps this arm disjoint from
-// the existing ones rather than overlapping them.
+// the existing ones rather than overlapping them. Nothing ELSE in the package
+// grades that clamp either — #7126 pinned the SUPERVISOR's clamp, not this twin
+// — so it is a real pre-existing hole, filed as #7174 and deliberately NOT
+// fixed here rather than left implied.
 //
 // The two constants were hoisted out of acceptLoop's body to package scope in
 // the same change, with no value or behaviour change, purely so the clamp-skip
@@ -129,15 +149,25 @@ import (
 //
 // PRE-FIX (this file absent), site internal/daemon/server.go `backoff *= 2`:
 //
-//	*= 1   -> 0 `--- FAIL`   ALIVE
-//	*= 3   -> 0 `--- FAIL`   ALIVE   (the row #7167 reported, re-derived here)
-//	*= 8   -> 0 `--- FAIL`   ALIVE
-//	*= 100 -> 0 `--- FAIL`   ALIVE
+//	*= 1                    -> 0 `--- FAIL`   ALIVE
+//	backoff = backoff*3 / 2  -> 0 `--- FAIL`   ALIVE   (NON-INTEGER, x1.5)
+//	*= 3                    -> 0 `--- FAIL`   ALIVE   (the row #7167 reported, re-derived here)
+//	*= 8                    -> 0 `--- FAIL`   ALIVE
+//	*= 100                  -> 0 `--- FAIL`   ALIVE
+//
+// The non-integer row is what makes the band claim a BAND rather than a set of
+// sampled points: `backoff *= 2` is integer-nanosecond arithmetic, which is
+// exactly where a rounding artefact could park a step back on an exact doubling
+// and make a continuous claim false between the integers. Measured, it does
+// not: x1.5 survives pre-fix and dies post-fix on the ratio like every integer
+// row, so the band closes CONTINUOUSLY at this site too.
 //
 // WITH THIS FILE, every row is exactly 1 `--- FAIL` and it is THIS test, with
 // no other test in the package reacting at any magnitude:
 //
-//	*= 1   -> ratio, sequence [5ms 5ms 5ms 5ms 5ms 5ms]
+//	*= 1   -> ratio (5 errors), sequence [5ms 5ms 5ms 5ms 5ms 5ms]
+//	*3/2   -> ratio (5 errors), floor NOT fired (5 of 5 pairs graded),
+//	          sequence [5ms 7.5ms 11.25ms 16.875ms 25.3125ms 37.96875ms]
 //	*= 3   -> ratio, sequence [5ms 15ms 45ms 135ms 405ms 1s]
 //	*= 4   -> ratio, sequence [5ms 20ms 80ms 320ms 1s 1s]
 //	*= 8   -> ratio AND floor (2 graded pairs), sequence [5ms 40ms 320ms 1s 1s 1s]

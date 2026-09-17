@@ -23,17 +23,43 @@ import (
 // reading an issue — and the verdict there says nothing about here, so it was
 // re-measured at this site independently.
 //
-// WHY NOTHING SAW IT. rebuildBackoff is reached in production through exactly
-// one reference, `backoff: rebuildBackoff` in newRebuildWorker, and every test
-// in the package that exercises that path REPLACES the field with a constant of
-// its own (`d.rebuilds.backoff = func(int) time.Duration { return 0 }` in
-// requests_drain_unblock_test.go, three times, and `return time.Minute` once).
-// So the production function's growth was not weakly graded, as at the
-// supervisor site — it had NO observer at all: grepping the package for
-// `rebuildBackoff` outside its own declaration returns the single wiring line
-// and nothing else. Injecting a constant is right for those tests (they grade
-// the GATE, not the curve); it just means the curve needs its own arm, which is
-// this file.
+// WHY NOTHING SAW IT. One test CALLS it; no test OBSERVES it. The distinction
+// is not pedantic — "nothing calls it" and "something calls it but cannot see
+// the result" imply different fixes, and the second is the true one here. An
+// earlier draft of this block claimed the first, inferred from a grep rather
+// than measured; it was wrong, and this is the corrected, re-derived statement.
+//
+// rebuildBackoff is reached in production through exactly one reference,
+// `backoff: rebuildBackoff` in newRebuildWorker (requests_drain.go:280). THREE
+// tests that exercise that path replace the field with a constant of their own
+// — requests_drain_unblock_test.go:167 (`return time.Minute`, in
+// TestRebuildWorker_CrashResumeBackoffGate), :230 (`return 0`, in
+// TestRebuildWorker_DeadLetterIsObservable) and :417 (`return 0`, in
+// TestDrainOnce_DuplicateDoesNotResetCrashAttempts). That is THREE injections
+// in THREE tests, counted off the file — not four.
+//
+// A FOURTH test reaches the SHIPPED function, and a grep for `rebuildBackoff`
+// cannot see it because it never names the symbol:
+// TestDrain_KindRebuild_CrashLoopIsBounded (requests_drain_resume_test.go:33)
+// calls drainRequestsOnce (requests_drain.go:236), which builds a fresh
+// requestsDrainer whose newRebuildWorker (requests_drain.go:172) carries the
+// DEFAULT `backoff: rebuildBackoff`, and whose panicking rebuildFn drives the
+// OutcomeCrashed branch that calls `w.backoff(rec.Attempts+1)`
+// (requests_drain.go:392). The shipped curve really is evaluated, at the
+// shipped factor.
+//
+// It cannot OBSERVE the factor, and THAT is the mechanism: each of that test's
+// 8 drain passes constructs a new drainer and therefore a new worker, so the
+// duration computed at :392 is written into that worker's in-memory
+// `nextAttempt` gate map (requests_drain.go:265) and discarded when the pass
+// ends. It never survives to the pass whose gate read (requests_drain.go:364)
+// would consult it, and nothing else in the package reads a backoff duration at
+// all. So the production function's growth was not weakly graded, as at the
+// supervisor site — it was CALLED AND UNOBSERVED, which is why every magnitude
+// in MEASURED below is ALIVE, the extremes included.
+//
+// Injecting a constant is right for the three gate tests (they grade the GATE,
+// not the curve); it just means the curve needs its own arm, which is this file.
 //
 // THE SEAM. There is one, and it is the cheapest kind: rebuildBackoff is a pure
 // function of `attempts` — no clock, no goroutine, no sleep, no process. This
@@ -95,8 +121,9 @@ import (
 // ceiling at factor 2, so this site has little headroom and the floor is the
 // assertion doing the work at the large end.
 //
-// AXES. VARIED: the growth factor (1, 3, 8 and 100 as well as 2 — both
-// directions, and enlargement split by magnitude), and the attempt index at
+// AXES. VARIED: the growth factor (1, 1.5, 3, 8 and 100 as well as 2 — both
+// directions, enlargement split by magnitude, and one NON-INTEGER factor so the
+// band is closed continuously rather than only at sampled integers), and the attempt index at
 // which the ratio is read (several consecutive pairs, versus the single value
 // the injected constants in requests_drain_unblock_test.go see). HELD CONSTANT:
 // rebuildBackoffBase and rebuildBackoffMax (this file injects neither and
@@ -117,15 +144,26 @@ import (
 //
 // PRE-FIX (this file absent), site internal/daemon/requests_drain.go `d *= 2`:
 //
-//	*= 1   -> 0 `--- FAIL`   ALIVE
-//	*= 3   -> 0 `--- FAIL`   ALIVE   (the row #7167 reported, re-derived here)
-//	*= 8   -> 0 `--- FAIL`   ALIVE
-//	*= 100 -> 0 `--- FAIL`   ALIVE
+//	*= 1        -> 0 `--- FAIL`   ALIVE
+//	d = d*3 / 2 -> 0 `--- FAIL`   ALIVE   (NON-INTEGER, x1.5)
+//	*= 3        -> 0 `--- FAIL`   ALIVE   (the row #7167 reported, re-derived here)
+//	*= 8        -> 0 `--- FAIL`   ALIVE
+//	*= 100      -> 0 `--- FAIL`   ALIVE
+//
+// The non-integer row is the one that makes the band claim a BAND rather than a
+// set of sampled points: `d *= 2` is integer-nanosecond arithmetic, which is
+// exactly where a rounding artefact could park a step back on an exact
+// doubling and make a continuous claim false between the integers. Measured, it
+// does not: x1.5 survives pre-fix and dies post-fix like every integer row, so
+// the band closes CONTINUOUSLY. (Same row, same conclusion, at the supervisor
+// site in #7165.)
 //
 // WITH THIS FILE, every row is exactly 1 `--- FAIL` and it is THIS test, with
 // no other test in the package reacting at any magnitude:
 //
-//	*= 1   -> ratio, sequence [30s 30s 30s 30s 30s 30s]
+//	*= 1   -> ratio (5 errors), sequence [30s 30s 30s 30s 30s 30s]
+//	d*3/2  -> ratio (5 errors), floor NOT fired (5 of 5 pairs graded),
+//	          sequence [30s 45s 1m7.5s 1m41.25s 2m31.875s 3m47.8125s]
 //	*= 3   -> ratio, sequence [30s 1m30s 4m30s 5m0s 5m0s 5m0s]
 //	*= 4   -> ratio AND floor (1 graded pair), sequence [30s 2m0s 5m0s 5m0s 5m0s 5m0s]
 //	*= 8   -> ratio AND floor (1 graded pair), sequence [30s 4m0s 5m0s 5m0s 5m0s 5m0s]
