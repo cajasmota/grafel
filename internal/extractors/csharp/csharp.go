@@ -39,6 +39,7 @@ package csharp
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -1851,12 +1852,54 @@ func buildClassSignature(node ts.Node, src []byte) string {
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]
 	}
-	// Strip inheritance (: BaseClass).
+	// Strip inheritance (: BaseClass) -- but NOT a generic constraint clause,
+	// whose colon is indistinguishable from the base-list colon to
+	// strings.Index. `public class Gen<T> where T : class` recorded as
+	// "public class Gen<T> where T", a dangling clause head (#7139).
+	//
+	// ECMA-334 6th ed. §15.2.1 orders class_declaration as
+	// ... identifier type_parameter_list? class_base?
+	// type_parameter_constraints_clause* class_body, so the base list ALWAYS
+	// precedes the clauses and there is at most one of it. Cutting at the
+	// FIRST " :" is therefore right whenever a base list exists; the only
+	// defect was that it also fired when one did not. So: cut at the first
+	// " :" unless a constraint clause starts before it.
+	//
+	// Kept deliberately narrow -- this suppresses the cut, it never adds one,
+	// so a false match can only leave a base list in place and can never
+	// truncate a header that was previously whole. The alternative (cut at
+	// whichever of " :" and `where` comes first, which would also drop the
+	// clause text in the constraint-only case and make the two cases agree)
+	// was rejected for the opposite reason: a `where`-like token inside a
+	// header string literal would then truncate a signature the old code
+	// emitted in full. The consequence is that the clause text SURVIVES when
+	// there is no base list and is dropped when there is one, because it sits
+	// after the base list. That asymmetry is pre-existing and out of scope.
+	//
+	// The two cuts remain mutually order-independent (see above): this only
+	// changes WHETHER the base-list cut fires, not that it truncates to a
+	// prefix when it does.
 	if idx := strings.Index(raw, " :"); idx >= 0 {
-		raw = raw[:idx]
+		if loc := csConstraintClause.FindStringIndex(raw); loc == nil || loc[0] >= idx {
+			raw = raw[:idx]
+		}
 	}
 	return strings.TrimSpace(raw)
 }
+
+// csConstraintClause matches the head of a C# generic constraint clause,
+// `where <type_parameter> :` (ECMA-334 §15.2.5). Three deliberate details:
+//
+//   - `where` must be preceded by a non-identifier character or start of
+//     string, so the tail of an identifier ("Nowhere T") is not a clause. A
+//     plain \s would be too strict: `>` needs no separator before `where`
+//     (§6.4.3), and `public class C<T>where T : class` is legal.
+//   - a type_parameter must follow, and a colon must follow THAT, so the bare
+//     contextual keyword (`public class where : Object`, legal per §6.4.4) and
+//     the word `where` inside a string literal are not clauses.
+//   - the identifier class allows `@` and Unicode letters, because a
+//     type_parameter is an identifier (§6.4.3).
+var csConstraintClause = regexp.MustCompile(`(?:^|[^\p{L}\p{N}_])where\s+@?[\p{L}_][\p{L}\p{N}_]*\s*:`)
 
 // stripCSharpAttributeArgs strips arguments from C# attributes: [Foo("bar")] -> [Foo].
 func stripCSharpAttributeArgs(s string) string {
