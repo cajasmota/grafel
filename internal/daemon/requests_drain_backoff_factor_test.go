@@ -130,6 +130,27 @@ import (
 // asserts no absolute duration — their own values are the subject of no arm
 // here), the clamp's comparison, and the `attempts < 1` normalisation.
 //
+// THE CLAMP-SKIP GUARD IN THIS FILE'S OWN GRADING LOOP is graded, in BOTH
+// directions, and — unlike its twin at the acceptLoop site — it is graded by
+// the SHIPPED walk with no extra fixture. #7162 established that a guard which
+// can silently empty its own input set grades nothing, so both arms are scored
+// (full package per row, `--- FAIL` LINES counted, vet 0):
+//
+//	`if true  || cur >= rebuildBackoffMax` -> DEAD 1, vacuity floor
+//	                                         (`only 0 of 5 ... want at least 2`)
+//	`if false && cur >= rebuildBackoffMax` -> DEAD 1, ratio, on exactly the two
+//	                                         pairs sitting at the 5m ceiling
+//
+// WHY THIS SITE NEEDS NO EXTRA PROBE AND THE OTHER ONE DOES — the two are NOT
+// symmetric, and saying so is the point. Here the shipped walk
+// [30s 1m0s 2m0s 4m0s 5m0s 5m0s] REACHES its 5m ceiling twice, so the exclusion
+// branch is taken by the natural fixture and both directions are live. At the
+// acceptLoop site the shipped start (5ms) is 200x below its ceiling (1s), so a
+// six-error script never reaches it: there, the `false &&` arm was ALIVE and
+// needed a longer, ceiling-crossing sub-probe
+// (TestAcceptLoopBackoffClampSkipExcludesOnlyCeilingPairs) before the guard was
+// graded in that direction at all.
+//
 // NOT GRADED HERE, on purpose: the clamp (`d >= rebuildBackoffMax`), the
 // `attempts < 1` floor, and the shipped values of the two constants. A ratio
 // between neighbours is deliberately blind to all three — deleting the clamp

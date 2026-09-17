@@ -210,6 +210,13 @@ const (
 	// on the ratio alone), while 8 grades two and 100 grades one, so both of
 	// those trip it in addition to the ratio.
 	acceptFactorMinRatios = 3
+	// acceptFactorCeilingProbeErrors is the SECOND probe's script length: long
+	// enough that the SHIPPED start value actually reaches the ceiling, so the
+	// clamp-skip guard has something to exclude. Doubling 5ms needs eight
+	// growth steps to pass 1s, so ten errors give seven sub-ceiling pairs and
+	// two at the ceiling. Six (the other probe) never reaches it at all, which
+	// is precisely why that probe cannot grade the guard.
+	acceptFactorCeilingProbeErrors = 10
 	// acceptFactorExpected is the factor under test. It appears once, as a
 	// RATIO between neighbouring waits — never as a sequence and never as an
 	// absolute duration.
@@ -270,22 +277,27 @@ func announcedAcceptBackoffs(t *testing.T, n int) []time.Duration {
 	return waits
 }
 
-// TestAcceptLoopBackoffGrowsByExactlyTwoPerStep is #7167's pin for the server.go
-// site: each announced transient-error backoff that the clamp did not cap must be
-// exactly twice its predecessor. Asserted as a ratio between neighbours, never as
-// a literal sequence and never as an elapsed duration.
-func TestAcceptLoopBackoffGrowsByExactlyTwoPerStep(t *testing.T) {
-	waits := announcedAcceptBackoffs(t, acceptFactorProbeErrors)
-
-	// THE PIN. Every consecutive pair whose SECOND wait is strictly below the
-	// ceiling is a step the clamp did not touch, so the whole of its ratio is
-	// the growth factor.
-	graded := 0
+// gradeAcceptBackoffRatios is THE PIN, and the SINGLE occurrence of the
+// clamp-skip guard in this file. Every consecutive pair whose SECOND wait is
+// strictly below the ceiling is a step the clamp did not touch, so the whole of
+// its ratio is the growth factor; a pair AT the ceiling has the ceiling's ratio,
+// not the factor's, and is excluded rather than graded.
+//
+// It lives in one place on purpose. The guard was written out twice in an
+// earlier draft — once per probe — and a guard with two copies is graded at
+// whichever copy a mutant happens to land on, which is how a twinned key hides
+// a hole (#7172 review). One occurrence means one thing to grade.
+//
+// It returns BOTH halves of the partition rather than asserting on them,
+// because the two probes below need different assertions about the split; each
+// caller keeps its own floor, so extracting the loop did not free either caller
+// from asserting.
+func gradeAcceptBackoffRatios(t *testing.T, waits []time.Duration) (graded, excluded int) {
+	t.Helper()
 	for i := 1; i < len(waits); i++ {
 		prev, cur := waits[i-1], waits[i]
 		if cur >= acceptBackoffMax {
-			// The clamp engaged: the ratio here is the ceiling's, not the
-			// factor's. Not this file's role.
+			excluded++
 			continue
 		}
 		graded++
@@ -295,12 +307,125 @@ func TestAcceptLoopBackoffGrowsByExactlyTwoPerStep(t *testing.T) {
 				float64(cur)/float64(prev), waits)
 		}
 	}
+	return graded, excluded
+}
+
+// TestAcceptLoopBackoffGrowsByExactlyTwoPerStep is #7167's pin for the server.go
+// site: each announced transient-error backoff that the clamp did not cap must be
+// exactly twice its predecessor. Asserted as a ratio between neighbours, never as
+// a literal sequence and never as an elapsed duration.
+func TestAcceptLoopBackoffGrowsByExactlyTwoPerStep(t *testing.T) {
+	waits := announcedAcceptBackoffs(t, acceptFactorProbeErrors)
+
+	graded, _ := gradeAcceptBackoffRatios(t, waits)
 
 	// Vacuity floor: the loop above must actually have graded steps. A tuning
 	// (or a mutant) that drove the early waits to the ceiling would skip every
 	// pair and assert nothing at all.
 	if graded < acceptFactorMinRatios {
 		t.Errorf("only %d of %d consecutive-backoff ratios sat below the %s ceiling (sequence %v), want at least %d: with fewer steps below the ceiling this test measures the clamp rather than the growth factor, and would pass vacuously",
+			graded, len(waits)-1, acceptBackoffMax, waits, acceptFactorMinRatios)
+	}
+}
+
+// TestAcceptLoopBackoffClampSkipExcludesOnlyCeilingPairs grades the clamp-skip
+// guard itself — the `cur >= acceptBackoffMax { continue }` exclusion in THIS
+// FILE's grading loop — in the direction the probe above structurally cannot
+// reach.
+//
+// NOT TO BE CONFUSED WITH the PRODUCTION clamp in server.go
+// (`if backoff > acceptBackoffMax { backoff = acceptBackoffMax }`). That one is
+// still ungraded by anything in the package and is filed as #7174; this test
+// does not close it and does not claim to. What is graded here is the TEST's
+// own exclusion rule — whether this file's assertions can be silently emptied.
+//
+// WHY A SECOND PROBE IS NEEDED, measured rather than assumed. #7162 established
+// that this guard must be load-bearing in BOTH directions: a guard that can
+// silently empty its own input set grades nothing. That property was never
+// transferred to this site.
+//
+// GUARD-DIRECTION ROWS, full ./internal/daemon/ per row, one occurrence mutated
+// at a time, `--- FAIL` LINES counted, `go vet` 0 on every row. BEFORE this
+// probe existed (on 62602d1b9):
+//
+//	site A `if true  || cur >= rebuildBackoffMax` -> DEAD 1 (graded-floor)
+//	site A `if false && cur >= rebuildBackoffMax` -> DEAD 1 (ratio)
+//	site B `if true  || cur >= acceptBackoffMax`  -> DEAD 1 (graded-floor)
+//	site B `if false && cur >= acceptBackoffMax`  -> ALIVE, 0 `--- FAIL`
+//
+// AFTER this probe, re-scored from scratch (baseline 0 `--- FAIL`):
+//
+//	site A `if true  || ...` -> DEAD 1: graded-floor, `only 0 of 5 ... want at
+//	                            least 2`, sequence [30s 1m0s 2m0s 4m0s 5m0s 5m0s]
+//	site A `if false && ...` -> DEAD 1: ratio, 2 errors — exactly the two pairs
+//	                            at the 5m ceiling
+//	site B `if true  || ...` -> DEAD 2: graded-floor in BOTH site-B tests
+//	                            (`only 0 of 5` and `only 0 of 9`) — one guard,
+//	                            two callers, so both react
+//	site B `if false && ...` -> DEAD 1: THIS test, killed twice over — the
+//	                            excluded-floor (`no consecutive pair reached the
+//	                            1s ceiling (... 9 graded / 0 excluded)`) AND the
+//	                            ratio (2 errors, the two ceiling pairs). The
+//	                            six-error probe still does not react, which is
+//	                            the masking below, preserved and now visible.
+//
+// The ALIVE row is NOT the guard being equivalent — recording it that way would
+// retire a real hole permanently. It is the guard being MASKED BY THE FIXTURE:
+// the probe above scripts six errors, whose announced sequence
+// [5ms 10ms 20ms 40ms 80ms 160ms] never reaches the 1s ceiling, so
+// `cur >= acceptBackoffMax` is false at every pair and deleting the branch
+// cannot change the graded set. The guard would matter the moment a sequence
+// reached the ceiling. This probe is that sequence.
+//
+// THE SITES ARE NOT SYMMETRIC HERE, and the file should not pretend otherwise.
+// At the rebuildBackoff site the natural probe ALREADY crosses its ceiling —
+// [30s 1m0s 2m0s 4m0s 5m0s 5m0s] hits 5m twice — so both directions of that
+// guard are graded by the shipped walk with no extra fixture. At THIS site the
+// shipped start (5ms) is 200x below the ceiling (1s), so a six-error script
+// cannot get there and the guard needs a longer script to be exercised at all.
+//
+// HOW IT CROSSES, and why by script length rather than by start value. The
+// obvious alternative was to raise acceptBackoffStart to 100ms, giving
+// [100ms 200ms 400ms 800ms 1s 1s]. Rejected on two counts, both checked rather
+// than asserted: acceptBackoffStart is a CONST, so there is no test seam for it
+// and using it would mean a production const->var change purely to serve a
+// test; and its split is 3 graded / 2 excluded, which sits EXACTLY on
+// acceptFactorMinRatios (3) with zero margin, so any retune of the other two
+// constants turns a vacuity floor into a spurious failure. Scripting more
+// errors instead keeps the SHIPPED start value — this probe grades the shipped
+// tuning, not an injected one — and needs no production change at all.
+//
+// THE ARITHMETIC, from the shipped constants. Doubling 5ms takes eight growth
+// steps to pass 1s, so ten scripted errors announce
+// [5ms 10ms 20ms 40ms 80ms 160ms 320ms 640ms 1s 1s]: nine consecutive pairs,
+// of which SEVEN sit below the ceiling and TWO are at it. Those counts are
+// documented, not asserted — asserting 7/2 would encode the start, the ceiling
+// and the factor at once, which is the literal-sequence shape this file exists
+// to avoid. What IS asserted is structural and survives a retune: the excluded
+// set must be NON-EMPTY (otherwise this probe has silently degenerated into a
+// duplicate of the one above and grades the guard no better), and the graded
+// set must still clear the same vacuity floor.
+//
+// COST: the real sleeps total ~3.3s (5+10+20+40+80+160+320+640+1000+1000 ms).
+// No assertion reads a clock — the waits are read out of the announced log
+// stream, as above — so `-race` cannot move the verdict (#7062).
+func TestAcceptLoopBackoffClampSkipExcludesOnlyCeilingPairs(t *testing.T) {
+	waits := announcedAcceptBackoffs(t, acceptFactorCeilingProbeErrors)
+
+	graded, excluded := gradeAcceptBackoffRatios(t, waits)
+
+	// THE GUARD'S OWN VACUITY FLOOR, and the reason this test exists: if the
+	// script never reached the ceiling, the clamp-skip branch was never taken
+	// and this probe graded exactly what the shorter one already did.
+	if excluded < 1 {
+		t.Errorf("no consecutive pair reached the %s ceiling (sequence %v, %d graded / %d excluded) — this probe is supposed to be the one that CROSSES the clamp, so with nothing excluded the clamp-skip guard was never exercised and this test grades no more than the six-error probe does",
+			acceptBackoffMax, waits, graded, excluded)
+	}
+
+	// ...and the guard must not have swallowed everything either, which is the
+	// other direction and the one the `true ||` mutant takes.
+	if graded < acceptFactorMinRatios {
+		t.Errorf("only %d of %d consecutive-backoff ratios sat below the %s ceiling (sequence %v), want at least %d: the clamp-skip guard excluded so much that this test measures the clamp rather than the growth factor, and would pass vacuously",
 			graded, len(waits)-1, acceptBackoffMax, waits, acceptFactorMinRatios)
 	}
 }
