@@ -91,10 +91,13 @@ func TestV2GraphCompleteGraphReportsNoEdgeTruncation(t *testing.T) {
 // the arithmetic is not left with an unexplained remainder.
 //
 // What this test does NOT grade, said plainly so it is not read into the case
-// count: the invariant compares two quantities both derived from the same
-// served payload, so it is cap-VALUE-agnostic by construction and survives any
-// mutant that only changes a cap's magnitude. Cap values are graded by
-// TestBuildV2GraphMetadataReportsEdgeCapWithoutNodeThinning and the LoD tests.
+// count: the INVARIANT it asserts compares two quantities both derived from the
+// same served payload, so the invariant is cap-VALUE-agnostic by construction
+// and survives any mutant that only changes a cap's magnitude. Cap values are
+// graded by TestBuildV2GraphMetadataReportsEdgeCapWithoutNodeThinning and the
+// LoD tests. Scope that claim to the invariant only: the bucket ARMS below do
+// read edgeCap, to classify which kind of truncation a case exhibits, so the
+// test as a whole is not cap-agnostic.
 func TestEdgeTruncatedEqualsServedEdgeDeficit(t *testing.T) {
 	entityCounts := []int{1, 2, 3, 4, 6, 9}
 	nodeCaps := []int{0, 1, 2, 3, 5, 9, 1000}
@@ -292,8 +295,7 @@ func makeTruncationEnumerationGroup(entityCount int, layout truncationEdgeLayout
 func TestCollectCappedGraphEdgesDropsInvisibleEndpoints(t *testing.T) {
 	nodes := []v2GraphNode{{ID: "a", PageRank: 0.9}, {ID: "b", PageRank: 0.8}}
 	// One fully-visible edge, then one with an invisible TARGET, one with an
-	// invisible SOURCE, and one with neither endpoint visible — so both halves
-	// of the guard are exercised, not just whichever is checked first.
+	// invisible SOURCE, and one with neither endpoint visible.
 	input := []v2GraphEdge{
 		{Source: "a", Target: "b", Kind: "CALLS"},
 		{Source: "a", Target: "ghost", Kind: "CALLS"},
@@ -302,6 +304,27 @@ func TestCollectCappedGraphEdgesDropsInvisibleEndpoints(t *testing.T) {
 	}
 	want := []v2GraphEdge{{Source: "a", Target: "b", Kind: "CALLS"}}
 
+	// What each cap value actually buys. The spread is NOT four equivalent
+	// probes of both branches and both halves of the guard — that claim was
+	// made in an earlier revision of this comment and is false:
+	//
+	//   cap = 0, -1 : the `cap <= 0` branch. Its two early returns are graded
+	//                 SEPARATELY here — deleting only the source check, or
+	//                 only the target check, dies on this test.
+	//   cap = 10    : the capped branch with no eviction. This is the ONLY
+	//                 value that grades that branch's `!sourceOK || !targetOK`
+	//                 guard arm by arm.
+	//   cap = 1     : grades NEITHER half of the capped branch's guard. With a
+	//                 one-slot heap, eviction discards exactly the edges the
+	//                 missing guard would have admitted, so a `!sourceOK`-only
+	//                 deletion still PASSES at cap=1 and fails only at cap=10
+	//                 (measured). It is kept because it exercises the eviction
+	//                 path, not because it grades the filter.
+	//
+	// Also a real limit, recorded rather than papered over: the both-invisible
+	// edge is not graded INDEPENDENTLY. Every mutant that would admit it also
+	// admits one of the single-invisible edges, so no assertion below fails on
+	// that edge alone.
 	for _, cap := range []int{0, -1, 1, 10} {
 		got, truncated := collectCappedGraphEdges(nodes, cap, func(yield func(v2GraphEdge)) {
 			for _, edge := range input {

@@ -460,14 +460,24 @@ func (s *Server) buildV2GraphWithLimits(repos []*DashRepo, grp *DashGroup, filte
 		// ever for the one reason.
 		//
 		// Two things that enumeration does NOT establish, stated so they are
-		// not read into it: the invariant compares two quantities both derived
-		// from the same served payload, so it is cap-VALUE-agnostic by
-		// construction and survives any mutant that changes a cap's magnitude
-		// (those are graded by TestBuildV2GraphMetadataReportsEdgeCapWithoutNodeThinning
-		// and the LoD tests, not here); and its four reported buckets
-		// partition only the 2,352 edge-bearing cases, the remaining 1,176
-		// being the TotalEdgeCount == 0 states, where the invariant is still
-		// asserted and still holds.
+		// not read into it.
+		//
+		// First, scope the cap-agnosticism precisely: it is the INVARIANT that
+		// is cap-VALUE-agnostic, not the whole test. The invariant compares two
+		// quantities both derived from the same served payload, so it survives
+		// any mutant that only changes a cap's magnitude — cap values are
+		// graded by TestBuildV2GraphMetadataReportsEdgeCapWithoutNodeThinning
+		// and the LoD tests, not here. The test's bucket ARMS do read edgeCap,
+		// to classify which kind of truncation a case exhibits, so the sentence
+		// must not be read as covering the test end to end.
+		//
+		// Second, the buckets: the test reports FIVE, and they partition ALL
+		// 3,528 cases — edgeless=1176 none=988 cap-only=444 thin-only=716
+		// both=204, summing to 3,528, asserted in-test. The 1,176 edgeless ones
+		// are the TotalEdgeCount == 0 states, where the invariant is still
+		// asserted and still holds. (An earlier revision of this note said four
+		// buckets partitioning only the 2,352 edge-bearing cases; that was true
+		// of the round-1 test and is not true of this one.)
 		EdgeTruncated: edgeCapTruncated || totalEdgeCount > len(edges),
 		Limits:        v2GraphLimits{NodeCap: nodeCap, EdgeCap: edgeCap},
 	}
