@@ -2206,10 +2206,20 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 // Whitespace is collapsed per part with strings.Fields, so a wrapped type
 // (#7114) and an intra-line whitespace RUN inside one (#7118 —
 // `Map<String,   String>`) both normalise to single spaces. Both call sites of
-// collapseJavaSpaces are graded separately: the type site by `spaced` (#7118)
-// and the dimensions site by `wrappedDims`, a `[` and `]` split across lines,
-// which is the only way the dimensions text can hold whitespace at all since
-// that node begins at `[`.
+// collapseJavaSpaces are graded separately, and separately per AXIS, because a
+// verdict on one does not carry to the other: guarding the HELPER on containing
+// a newline was killed only by `spaced`, while guarding the DIMENSIONS CALL
+// alone was ALIVE with 0 `--- FAIL` lines until #7118 added `spacedDims`. So
+// the type site is graded by `spaced` (intra-line) and `wrapped` (newline), and
+// the dimensions site by `spacedDims`/`tabbedDims` (intra-line — JLS 10.2
+// permits whitespace BETWEEN the brackets, `int arr[   ];`) and `wrappedDims`
+// (a `[` and `]` split across lines). Whitespace is ONE KIND of content that
+// run can hold, and the node's start at `[` does not bound it to whitespace:
+// `int withComment[/* a comment */];` and a TYPE_USE annotation
+// `int withAnno @NN [];` are both javac-clean and both put non-whitespace into
+// the dimensions text. Neither is graded here, deliberately — the point of the
+// `spacedDims`/`tabbedDims` rows is the collapse axis, not an inventory of what
+// the node can contain.
 //
 // # The three guards below are DEFENSIVE and ungraded on purpose
 //
