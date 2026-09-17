@@ -29,6 +29,14 @@ func SortDocumentForEmission(doc *Document) {
 	if doc == nil {
 		return
 	}
+	// #7105 — derive Properties["subtype"] from the canonical Entity.Subtype
+	// before serialization. This is the pre-serialization funnel every
+	// production writer reaches, and the derivation has to happen on the
+	// DOCUMENT (not in fbwriter's entity leaf) so the optional graph.json
+	// encoding of the same pass agrees with graph.fb. See
+	// DeriveSubtypeProperties (subtype_property.go) for the measurements and
+	// for why an empty Subtype must stay absent rather than become "".
+	DeriveSubtypeProperties(doc)
 	// Entity IDs are unique, so ID alone is a total order — no secondary keys.
 	sort.SliceStable(doc.Entities, func(i, j int) bool {
 		return doc.Entities[i].ID < doc.Entities[j].ID
