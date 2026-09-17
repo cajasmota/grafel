@@ -76,8 +76,20 @@ func TestDashboardSerializeEntity_SeesCanonicalSubtype_7105(t *testing.T) {
 		Subtype: "", SourceFile: "pay/impl.java", Language: "java",
 		StartLine: 20, EndLine: 26,
 	}
+	// A HYPOTHETICAL disagreement. Measured disagreement on the 38 golden
+	// fixtures is 0/211, so no producer emits this shape today — but the
+	// derivation makes a choice for it ("never overwrite an existing
+	// subtype property"), and an ungraded choice is prose. Without this row
+	// deleting the existing-key guard entirely is indistinguishable from
+	// keeping it, because every real pair agrees.
+	disagree := graph.Entity{
+		ID: "e-disagree", Name: "LegacyShim", Kind: "SCOPE.Component",
+		Subtype: "class", SourceFile: "pay/shim.java", Language: "java",
+		StartLine: 50, EndLine: 60,
+	}
+	disagree.PropsReplace(map[string]string{"subtype": "interface"})
 
-	loaded := roundTripThroughProductionWrite(t, []graph.Entity{gap, agree, emptyWithProps, emptyBare})
+	loaded := roundTripThroughProductionWrite(t, []graph.Entity{gap, agree, emptyWithProps, emptyBare, disagree})
 
 	propsOf := func(t *testing.T, id string) (map[string]string, bool) {
 		t.Helper()
@@ -133,6 +145,16 @@ func TestDashboardSerializeEntity_SeesCanonicalSubtype_7105(t *testing.T) {
 		}
 		if len(props) != 1 {
 			t.Fatalf("#7105 FORBIDDEN: subtype-less entity's properties = %v, want exactly {module}", props)
+		}
+	})
+
+	t.Run("forbidden_existing_property_is_never_overwritten", func(t *testing.T) {
+		props, present := propsOf(t, "e-disagree")
+		if !present {
+			t.Fatal("#7105: entity with a pre-existing subtype property lost it")
+		}
+		if got := props["subtype"]; got != "interface" {
+			t.Fatalf("#7105 FORBIDDEN: a pre-existing properties[\"subtype\"] = %q was overwritten with the canonical Entity.Subtype (now %q). Deriving must only FILL an absent key; overwriting changes what Properties-only consumers already see, and it is a merge rather than a derivation", "interface", got)
 		}
 	})
 
