@@ -1,6 +1,10 @@
 package graph
 
-import "sort"
+import (
+	"fmt"
+	"os"
+	"sort"
+)
 
 // Issue #5974 — canonical emission order, shared by every producer.
 //
@@ -30,13 +34,28 @@ func SortDocumentForEmission(doc *Document) {
 		return
 	}
 	// #7105 — derive Properties["subtype"] from the canonical Entity.Subtype
-	// before serialization. This is the pre-serialization funnel every
-	// production writer reaches, and the derivation has to happen on the
-	// DOCUMENT (not in fbwriter's entity leaf) so the optional graph.json
-	// encoding of the same pass agrees with graph.fb. See
-	// DeriveSubtypeProperties (subtype_property.go) for the measurements and
-	// for why an empty Subtype must stay absent rather than become "".
-	DeriveSubtypeProperties(doc)
+	// before serialization. The derivation happens on the DOCUMENT, in place,
+	// and the producers run this normaliser before EITHER encoder
+	// (cmd/grafel/index.go:999, internal/extractors/incremental.go:1700), which
+	// is what makes graph.json and graph.fb agree about the field — graph.json
+	// is written by graph.WriteAtomic, which normalises nothing. See
+	// DeriveSubtypeProperties (subtype_property.go) for the measurements, the
+	// full mechanism, and why an empty Subtype must stay absent rather than
+	// become "".
+	//
+	// A disagreeing twin is preserved, never overwritten, and reported: 0/211
+	// on measured data, so this line is silent on every known input, and a
+	// producer that starts emitting a second different answer for one entity
+	// becomes visible instead of being resolved quietly. It can appear more
+	// than once per index because the producers invoke this funnel more than
+	// once per write (index.go:999 and again inside fbwriter); that is
+	// preferred to silence.
+	if conflicts := DeriveSubtypeProperties(doc); len(conflicts) > 0 {
+		first := conflicts[0]
+		fmt.Fprintf(os.Stderr,
+			"grafel: subtype-property conflict: %d entities carry a Properties[\"subtype\"] that disagrees with the canonical Entity.Subtype; the existing property is PRESERVED. first: id=%s canonical=%q property=%q\n",
+			len(conflicts), first.EntityID, first.Canonical, first.Property)
+	}
 	// Entity IDs are unique, so ID alone is a total order — no secondary keys.
 	sort.SliceStable(doc.Entities, func(i, j int) bool {
 		return doc.Entities[i].ID < doc.Entities[j].ID
