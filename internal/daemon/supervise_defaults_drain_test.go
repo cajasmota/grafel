@@ -33,6 +33,16 @@ import (
 // Unix-only: on Windows signalTerminate IS p.Kill() (see supervise_windows.go),
 // so a child cannot ignore the first signal and the drain window is not
 // observable there at all. Stated rather than faked.
+//
+// Timing discipline (#7062): neither arm here is a FLOOR, so both are
+// enumerated with their slack rather than waved through (#7123).
+//
+//   - The graceful arm's "the escalation line was NOT emitted" needs a child
+//     that takes drainSlowChildExitDelay to unwind to finish inside
+//     production's real 5s window: 12.5x slack, so a machine would have to
+//     stretch a 400ms unwind past 5s to break it.
+//   - The escalation arm's waitFor(drainForceKillOuterBound) is a ceiling with
+//     4x slack, the shape #7110's outer bounds use.
 
 // drainSlowChildExitDelay is how long the graceful-arm helper takes to shut
 // down after SIGTERM. Production's drain window must comfortably cover a child
