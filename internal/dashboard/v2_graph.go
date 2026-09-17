@@ -32,6 +32,7 @@ package dashboard
 
 import (
 	"bytes"
+	"container/heap"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -82,6 +83,11 @@ type v2GraphRepo struct {
 	ColorIndex int    `json:"color_index"`
 }
 
+type v2GraphLimits struct {
+	NodeCap int `json:"node_cap"`
+	EdgeCap int `json:"edge_cap"`
+}
+
 // v2GraphResponse is the data payload inside the v2 envelope.
 type v2GraphResponse struct {
 	Nodes          []v2GraphNode      `json:"nodes"`
@@ -89,6 +95,31 @@ type v2GraphResponse struct {
 	Communities    []v2GraphCommunity `json:"communities"`
 	Repos          []v2GraphRepo      `json:"repos"`
 	TotalNodeCount int                `json:"total_node_count"`
+	TotalEdgeCount int                `json:"total_edge_count"`
+	NodeTruncated  bool               `json:"node_truncated"`
+	EdgeTruncated  bool               `json:"edge_truncated"`
+	Limits         v2GraphLimits      `json:"limits"`
+}
+
+type graphRequestOptions struct {
+	FilterKind      string
+	ReposParam      string
+	IncludeExternal bool
+	IncludeModules  bool
+	Ref             string
+	LOD             string
+}
+
+func parseGraphRequestOptions(r *http.Request) graphRequestOptions {
+	values := r.URL.Query()
+	return graphRequestOptions{
+		FilterKind:      values.Get("filter_kind"),
+		ReposParam:      values.Get("repos"),
+		IncludeExternal: values.Get("include_external") == "true",
+		IncludeModules:  values.Get("view") == "modules" || values.Get("include") == "modules",
+		Ref:             values.Get("ref"),
+		LOD:             values.Get("lod"),
+	}
 }
 
 // handleV2Graph — GET /api/v2/graph/{group}
@@ -102,25 +133,18 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 		writeV2Err(w, http.StatusBadRequest, "bad_request", "group required")
 		return
 	}
-	filterKind := r.URL.Query().Get("filter_kind")
-	reposParam := r.URL.Query().Get("repos")
-	includeExternal := r.URL.Query().Get("include_external") == "true"
-	includeModules := r.URL.Query().Get("view") == "modules" ||
-		r.URL.Query().Get("include") == "modules"
-	lodParam := r.URL.Query().Get("lod")
-	// PH1c: optional ref parameter.
-	refParam := r.URL.Query().Get("ref")
+	options := parseGraphRequestOptions(r)
 
 	// A valid disk payload can be served before graph.fb is materialised. The
 	// cheap source fingerprint is based only on artifact paths, sizes and mtimes.
-	cacheKey := "v2:" + payloadCacheKey(group, filterKind, "", reposParam, includeExternal, includeModules, refParam) + ":lod=" + lodParam
-	grp, warm := s.graphs.peekGroupCachedForRef(group, refParam)
+	cacheKey := "v2:" + payloadCacheKey(group, options.FilterKind, "", options.ReposParam, options.IncludeExternal, options.IncludeModules, options.Ref) + ":lod=" + options.LOD
+	grp, warm := s.graphs.peekGroupCachedForRef(group, options.Ref)
 	if warm {
 		if entry, hit := s.graphs.Payloads.Get(cacheKey, grp.sourceVersion); hit {
 			writeGraphPayloadCacheEntry(w, r, entry)
 			return
 		}
-	} else if sourceVersion, versionErr := dashboardSourceVersion(group, refParam); versionErr == nil {
+	} else if sourceVersion, versionErr := dashboardSourceVersion(group, options.Ref); versionErr == nil {
 		if entry, hit := s.graphs.Payloads.Get(cacheKey, sourceVersion); hit {
 			writeGraphPayloadCacheEntry(w, r, entry)
 			return
@@ -129,7 +153,7 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 
 	if !warm {
 		var err error
-		grp, err = s.graphs.GetGroupForRef(group, refParam)
+		grp, err = s.graphs.GetGroupForRef(group, options.Ref)
 		if err != nil {
 			writeV2Err(w, http.StatusNotFound, "not_found", err.Error())
 			return
@@ -154,9 +178,9 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	repos := sortedRepos(grp)
-	if reposParam != "" {
+	if options.ReposParam != "" {
 		slugSet := map[string]bool{}
-		for _, sl := range strings.Split(reposParam, ",") {
+		for _, sl := range strings.Split(options.ReposParam, ",") {
 			slugSet[strings.TrimSpace(sl)] = true
 		}
 		var filtered []*DashRepo
@@ -168,8 +192,8 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	nodeCap := lodNodeCap(lodParam)
-	resp := s.buildV2GraphWithNodeCap(repos, grp, filterKind, includeExternal, includeModules, nodeCap)
+	nodeCap, edgeCap := lodLimits(options.LOD)
+	resp := s.buildV2GraphWithLimits(repos, grp, options.FilterKind, options.IncludeExternal, options.IncludeModules, nodeCap, edgeCap)
 
 	if resp.TotalNodeCount > softNodeWarnThreshold {
 		w.Header().Set("X-Graph-Warning", "large-graph: node count exceeds 50k; consider filtering by repo or kind")
@@ -198,7 +222,8 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 // which nodes/edges exist; adds pagerank + source_file + repo/community color
 // indices that the cosmos.gl canvas needs.
 func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool) v2GraphResponse {
-	return s.buildV2GraphWithNodeCap(repos, grp, filterKind, includeExternal, includeModules, 0)
+	nodeCap, edgeCap := lodLimits("full")
+	return s.buildV2GraphWithLimits(repos, grp, filterKind, includeExternal, includeModules, nodeCap, edgeCap)
 }
 
 // buildV2GraphWithNodeCap applies LoD before allocating wire edges. For large
@@ -206,6 +231,10 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 // discarded immediately. A compact integer adjacency preserves the connected
 // thinning contract at a fraction of the memory cost.
 func (s *Server) buildV2GraphWithNodeCap(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool, nodeCap int) v2GraphResponse {
+	return s.buildV2GraphWithLimits(repos, grp, filterKind, includeExternal, includeModules, nodeCap, 0)
+}
+
+func (s *Server) buildV2GraphWithLimits(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool, nodeCap, edgeCap int) v2GraphResponse {
 	totalEntities, totalRels, totalCommunities := 0, 0, 0
 	for _, rp := range repos {
 		if rp.Doc == nil {
@@ -329,10 +358,13 @@ func (s *Server) buildV2GraphWithNodeCap(repos []*DashRepo, grp *DashGroup, filt
 	}
 
 	totalNodeCount := len(nodes)
+	totalEdgeCount := 0
 	var edges []v2GraphEdge
+	var edgeCapTruncated bool
 	if nodeCap > 0 && len(nodes) > nodeCap {
 		degrees := make([]int, len(nodes))
 		visitEdges(func(from, to int, _ string) {
+			totalEdgeCount++
 			degrees[from]++
 			degrees[to]++
 		})
@@ -348,16 +380,19 @@ func (s *Server) buildV2GraphWithNodeCap(repos []*DashRepo, grp *DashGroup, filt
 		originalNodes := nodes
 		var kept []bool
 		nodes, kept = thinByPagerankConnectedIndices(nodes, adjacency, nodeCap)
-		edges = make([]v2GraphEdge, 0, nodeCap*4)
-		visitEdges(func(from, to int, kind string) {
-			if kept[from] && kept[to] {
-				edges = append(edges, v2GraphEdge{Source: originalNodes[from].ID, Target: originalNodes[to].ID, Kind: kind})
-			}
+		edges, edgeCapTruncated = collectCappedGraphEdges(nodes, edgeCap, func(yield func(v2GraphEdge)) {
+			visitEdges(func(from, to int, kind string) {
+				if kept[from] && kept[to] {
+					yield(v2GraphEdge{Source: originalNodes[from].ID, Target: originalNodes[to].ID, Kind: kind})
+				}
+			})
 		})
 	} else {
-		edges = make([]v2GraphEdge, 0, totalRels)
-		visitEdges(func(from, to int, kind string) {
-			edges = append(edges, v2GraphEdge{Source: nodes[from].ID, Target: nodes[to].ID, Kind: kind})
+		edges, edgeCapTruncated = collectCappedGraphEdges(nodes, edgeCap, func(yield func(v2GraphEdge)) {
+			visitEdges(func(from, to int, kind string) {
+				totalEdgeCount++
+				yield(v2GraphEdge{Source: nodes[from].ID, Target: nodes[to].ID, Kind: kind})
+			})
 		})
 	}
 	recomputeServedDegree(nodes, edges)
@@ -368,7 +403,107 @@ func (s *Server) buildV2GraphWithNodeCap(repos []*DashRepo, grp *DashGroup, filt
 		Communities:    communities,
 		Repos:          reposOut,
 		TotalNodeCount: totalNodeCount,
+		TotalEdgeCount: totalEdgeCount,
+		NodeTruncated:  totalNodeCount > len(nodes),
+		EdgeTruncated:  edgeCapTruncated || totalEdgeCount > len(edges),
+		Limits:         v2GraphLimits{NodeCap: nodeCap, EdgeCap: edgeCap},
 	}
+}
+
+type rankedGraphEdge struct {
+	edge     v2GraphEdge
+	score    float64
+	sequence int
+}
+
+type rankedGraphEdgeHeap []rankedGraphEdge
+
+func (h rankedGraphEdgeHeap) Len() int { return len(h) }
+
+func (h rankedGraphEdgeHeap) Less(i, j int) bool {
+	return betterRankedGraphEdge(h[j], h[i])
+}
+
+func (h rankedGraphEdgeHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+
+func (h *rankedGraphEdgeHeap) Push(value any) {
+	*h = append(*h, value.(rankedGraphEdge))
+}
+
+func (h *rankedGraphEdgeHeap) Pop() any {
+	old := *h
+	last := len(old) - 1
+	value := old[last]
+	*h = old[:last]
+	return value
+}
+
+func collectCappedGraphEdges(nodes []v2GraphNode, cap int, visit func(func(v2GraphEdge))) ([]v2GraphEdge, bool) {
+	visible := make(map[string]float64, len(nodes))
+	for _, node := range nodes {
+		visible[node.ID] = node.PageRank
+	}
+	inputCount := 0
+	candidateCount := 0
+	if cap <= 0 {
+		result := make([]v2GraphEdge, 0)
+		visit(func(edge v2GraphEdge) {
+			inputCount++
+			if _, ok := visible[edge.Source]; !ok {
+				return
+			}
+			if _, ok := visible[edge.Target]; !ok {
+				return
+			}
+			candidateCount++
+			result = append(result, edge)
+		})
+		return result, inputCount != candidateCount
+	}
+
+	best := make(rankedGraphEdgeHeap, 0, min(cap, 4096))
+	visit(func(edge v2GraphEdge) {
+		inputCount++
+		sourceRank, sourceOK := visible[edge.Source]
+		targetRank, targetOK := visible[edge.Target]
+		if !sourceOK || !targetOK {
+			return
+		}
+		candidate := rankedGraphEdge{edge: edge, score: sourceRank + targetRank, sequence: candidateCount}
+		candidateCount++
+		if len(best) < cap {
+			heap.Push(&best, candidate)
+			return
+		}
+		if betterRankedGraphEdge(candidate, best[0]) {
+			best[0] = candidate
+			heap.Fix(&best, 0)
+		}
+	})
+
+	if candidateCount <= cap {
+		sort.Slice(best, func(i, j int) bool { return best[i].sequence < best[j].sequence })
+	} else {
+		sort.Slice(best, func(i, j int) bool { return betterRankedGraphEdge(best[i], best[j]) })
+	}
+	result := make([]v2GraphEdge, len(best))
+	for i := range best {
+		result[i] = best[i].edge
+	}
+	return result, inputCount != candidateCount || candidateCount > len(result)
+}
+
+func betterRankedGraphEdge(left, right rankedGraphEdge) bool {
+	if left.score != right.score {
+		return left.score > right.score
+	}
+	if left.edge.Source != right.edge.Source {
+		return left.edge.Source < right.edge.Source
+	}
+	if left.edge.Target != right.edge.Target {
+		return left.edge.Target < right.edge.Target
+	}
+	return left.edge.Kind < right.edge.Kind
 }
 
 // recomputeServedDegree rewrites every node's Degree field to count only the
@@ -402,27 +537,33 @@ func communityColorIndex(id int) int {
 
 // ── LoD helpers ──────────────────────────────────────────────────────────────
 
-// highLodNodeCap is THE single knob for the high/full level-of-detail node
-// budget. 0 = unlimited: per the current product decision, the high LoD serves
-// the WHOLE graph (delivered progressively via the /stream endpoint) rather
-// than capping the node count. To switch on a finite cap later — e.g. 50000 —
-// change THIS one constant; nothing else needs to move (handleV2Graph's
-// thinning at v2_graph.go already gates on `nodeCap > 0`).
-const highLodNodeCap = 0
+const (
+	overviewLodNodeCap = 500
+	normalLodNodeCap   = 3_000
+	highLodNodeCap     = 20_000
+	fullLodNodeCap     = 50_000
+	overviewEdgeCap    = 4_000
+	normalEdgeCap      = 24_000
+	highEdgeCap        = 120_000
+	fullEdgeCap        = 250_000
+)
 
-// lodNodeCap maps a ?lod= query value to a node budget (0 = unlimited).
-// Canonical names: overview|normal|full.
-// Legacy frontend LodLevel strings: low|mid|high are also accepted.
-func lodNodeCap(lod string) int {
+func lodLimits(lod string) (nodeCap, edgeCap int) {
 	switch lod {
 	case "overview", "low":
-		return 500
-	case "full", "high":
-		return highLodNodeCap
+		return overviewLodNodeCap, overviewEdgeCap
+	case "high":
+		return highLodNodeCap, highEdgeCap
+	case "full":
+		return fullLodNodeCap, fullEdgeCap
 	default:
-		// "normal", "mid", "" (no param), and unknown values all default to 3000.
-		return 3000
+		return normalLodNodeCap, normalEdgeCap
 	}
+}
+
+func lodNodeCap(lod string) int {
+	nodeCap, _ := lodLimits(lod)
+	return nodeCap
 }
 
 // thinByPagerank returns at most cap nodes from nodes, keeping those with

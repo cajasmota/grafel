@@ -36,7 +36,7 @@ const EDGE_KIND_GROUPS: { title: string; kinds: EdgeKind[] }[] = [
   { title: "Semantic", kinds: SEMANTIC_EDGE_KINDS },
 ];
 
-const LODS: LodLevel[] = ["low", "mid", "high"];
+const LODS: LodLevel[] = ["low", "mid", "high", "full"];
 
 // #4467 — min-degree quick toggles. 0 = show all (default), 1 = hide true
 // zero-edge orphans, 2 = also hide degree-1 leaves (DTO members / types / config
@@ -145,7 +145,7 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
 
           <section>
             <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-3">Level of detail</h4>
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-4 gap-1">
               {LODS.map((l) => (
                 <button
                   key={l}
@@ -161,6 +161,9 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
                 </button>
               ))}
             </div>
+            <p className="mt-1.5 text-xs text-text-3">
+              {lod === "full" ? "Full remains bounded to 50k nodes / 250k edges." : lod === "high" ? "High detail remains bounded to 20k nodes / 120k edges." : "Lower levels reduce transfer and rendering cost."}
+            </p>
           </section>
 
           <section>

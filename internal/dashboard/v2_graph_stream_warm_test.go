@@ -264,16 +264,11 @@ func TestGraphStream_ColdUnregisterableGroupSurfacesError(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 }
 
-// TestHighLodNodeCapKnob documents the single high/full LoD cap knob and its
-// current unlimited value, so a change to a finite cap is caught here.
-func TestHighLodNodeCapKnob(t *testing.T) {
-	if highLodNodeCap != 0 {
-		t.Fatalf("highLodNodeCap = %d; if you intentionally switched high LoD to a finite cap, update this test", highLodNodeCap)
+func TestHighAndFullLodHaveSeparateFiniteCaps(t *testing.T) {
+	if got := lodNodeCap("high"); got != 20_000 {
+		t.Fatalf("lodNodeCap(high) = %d, want 20000", got)
 	}
-	if got := lodNodeCap("high"); got != highLodNodeCap {
-		t.Fatalf("lodNodeCap(high) = %d, want highLodNodeCap=%d", got, highLodNodeCap)
-	}
-	if got := lodNodeCap("full"); got != highLodNodeCap {
-		t.Fatalf("lodNodeCap(full) = %d, want highLodNodeCap=%d", got, highLodNodeCap)
+	if got := lodNodeCap("full"); got != 50_000 {
+		t.Fatalf("lodNodeCap(full) = %d, want 50000", got)
 	}
 }

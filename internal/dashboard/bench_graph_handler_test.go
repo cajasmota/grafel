@@ -132,6 +132,22 @@ func BenchmarkServeGraphDense20k(b *testing.B) {
 	benchmarkServeGraphDense(b, 20_000, 4)
 }
 
+// BenchmarkServeV2GraphBounded20k measures the finite high-detail handler path.
+func BenchmarkServeV2GraphBounded20k(b *testing.B) {
+	doc := makeSyntheticDoc(20_000, 30)
+	server := newBenchServer(b, doc)
+	handler := server.routes()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v2/graph/bench?lod=high", nil))
+		if recorder.Code != http.StatusOK {
+			b.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
 func benchmarkServeGraphDense(b *testing.B, nEntities, avgDegree int) {
 	b.Helper()
 	doc := makeSyntheticDoc(nEntities, avgDegree)

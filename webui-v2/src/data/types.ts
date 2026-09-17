@@ -95,6 +95,10 @@ export interface GraphPayloadWire {
   communities: GraphCommunityWire[];
   repos: GraphRepoWire[];
   total_node_count: number;
+  total_edge_count?: number;
+  node_truncated?: boolean;
+  edge_truncated?: boolean;
+  limits?: { node_cap: number; edge_cap: number };
 }
 
 /** Normalized node consumed by the canvas + inspector. */
@@ -135,6 +139,143 @@ export interface GraphPayload {
   communities: GraphCommunity[];
   repos: GraphRepo[];
   totalNodeCount: number;
+  totalEdgeCount?: number;
+  nodeTruncated?: boolean;
+  edgeTruncated?: boolean;
+  limits?: { nodeCap: number; edgeCap: number };
+}
+
+export type RepositoryChannel = "dubbo" | "http" | "kafka" | "rabbitmq" | "other";
+export type RepositoryEvidence = "confirmed" | "inferred" | "dangling" | "ambiguous" | "external";
+export type RepositoryDirection = "inbound" | "outbound" | "both";
+
+export interface RepositoryTopologyFilters {
+  channels: RepositoryChannel[];
+  repos: string[];
+  focus: string;
+  direction: RepositoryDirection;
+  depth: 1 | 2 | 3;
+  evidence: RepositoryEvidence[];
+  minCount: number;
+  source: string;
+  target: string;
+  search: string;
+}
+
+export interface RepositoryEvidenceCounts {
+  confirmed: number;
+  inferred: number;
+  dangling: number;
+  ambiguous: number;
+  external: number;
+}
+
+export interface RepositoryTopologyNode {
+  id: string;
+  repository: string;
+  label: string;
+  primary_language?: string;
+  entity_count: number;
+  module_count: number;
+  inbound_relationships: number;
+  outbound_relationships: number;
+  connected_repositories: number;
+  evidence: RepositoryEvidenceCounts;
+  graph_state?: string;
+  modules: string[];
+}
+
+export interface RepositoryTopologySample {
+  id: string;
+  label: string;
+  identifier?: string;
+  evidence: RepositoryEvidence;
+}
+
+export interface RepositoryTopologyEdge {
+  id: string;
+  source: string;
+  target: string;
+  channel: RepositoryChannel;
+  relationship_count: number;
+  contract_count: number;
+  evidence: RepositoryEvidenceCounts;
+  labels: string[];
+  samples: RepositoryTopologySample[];
+  has_more: boolean;
+}
+
+export interface RepositoryTopologyFacet {
+  value: string;
+  count: number;
+}
+
+export interface RepositoryTopologyResponse {
+  nodes: RepositoryTopologyNode[];
+  edges: RepositoryTopologyEdge[];
+  facets: {
+    channels: RepositoryTopologyFacet[];
+    repositories: RepositoryTopologyFacet[];
+    evidence: RepositoryTopologyFacet[];
+  };
+  summary: {
+    repository_count: number;
+    edge_count: number;
+    relationship_count: number;
+    pre_limit_nodes: number;
+    pre_limit_edges: number;
+  };
+  limits: {
+    max_nodes: number;
+    max_edges: number;
+    inline_samples: number;
+    detail_page_size: number;
+    max_search_records: number;
+  };
+  path: string[];
+  path_found: boolean;
+  truncated: boolean;
+}
+
+export interface RepositoryTopologyDetail {
+  id: string;
+  source: string;
+  target: string;
+  channel: RepositoryChannel;
+  kind?: string;
+  method?: string;
+  identifier?: string;
+  label: string;
+  evidence: RepositoryEvidence;
+  confidence?: number;
+  source_entity?: string;
+  target_entity?: string;
+  source_file?: string;
+  source_line?: number;
+  target_file?: string;
+  target_line?: number;
+  properties: Record<string, string>;
+}
+
+export interface V2Pagination {
+  limit: number;
+  offset: number;
+  total: number;
+}
+
+export interface RepositoryTopologyEdgeFilters {
+  source: string;
+  target: string;
+  channel: RepositoryChannel;
+  evidence?: RepositoryEvidence[];
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface RepositoryTopologyEdgeDetailResponse {
+  data: RepositoryTopologyDetail[];
+  pagination: V2Pagination;
 }
 
 /** Tier-3 entity detail — GET /api/graph/{group}/entity/{id} (v1, reused). */

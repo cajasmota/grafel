@@ -152,10 +152,15 @@ func waitForWarmGroup(
 // the frontend's progress counter needs plus the legend/filter metadata
 // (communities + repos) so those panels can render before the node chunks land.
 type v2GraphStreamMeta struct {
-	TotalNodes  int                `json:"total_nodes"`
-	TotalEdges  int                `json:"total_edges"`
-	Communities []v2GraphCommunity `json:"communities"`
-	Repos       []v2GraphRepo      `json:"repos"`
+	TotalNodes     int                `json:"total_nodes"`
+	TotalEdges     int                `json:"total_edges"`
+	TotalNodeCount int                `json:"total_node_count"`
+	TotalEdgeCount int                `json:"total_edge_count"`
+	NodeTruncated  bool               `json:"node_truncated"`
+	EdgeTruncated  bool               `json:"edge_truncated"`
+	Limits         v2GraphLimits      `json:"limits"`
+	Communities    []v2GraphCommunity `json:"communities"`
+	Repos          []v2GraphRepo      `json:"repos"`
 }
 
 // v2GraphStreamChunk is a `chunk` event payload: a batch of nodes plus every
@@ -169,10 +174,8 @@ type v2GraphStreamChunk struct {
 // handleV2GraphStream — GET /api/v2/graph/{group}/stream
 //
 // SSE stream of the v2 graph, important-first, from the warm cache only.
-// Honours the same ?repos= / ?filter_kind= / ?include_external= / ?view=modules
-// / ?ref= query params as handleV2Graph so the two endpoints agree on which
-// nodes/edges exist. No ?lod= thinning — Cosmos handles scale on the GPU and the
-// point of streaming is to deliver the full graph progressively.
+// Honours the same query parameters, including finite LoD limits, as
+// handleV2Graph so the two endpoints agree on nodes, edges, and metadata.
 func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
 	if group == "" {
@@ -204,16 +207,11 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 		flusher = sw
 	}
 
-	filterKind := r.URL.Query().Get("filter_kind")
-	reposParam := r.URL.Query().Get("repos")
-	includeExternal := r.URL.Query().Get("include_external") == "true"
-	includeModules := r.URL.Query().Get("view") == "modules" ||
-		r.URL.Query().Get("include") == "modules"
-	refParam := r.URL.Query().Get("ref")
+	options := parseGraphRequestOptions(r)
 
 	// Try the warm cache first (fast path: an already-loaded group streams
 	// immediately). GetGroupCachedForRef also kicks a background warm when cold.
-	grp, warm := s.graphs.GetGroupCachedForRef(group, refParam)
+	grp, warm := s.graphs.GetGroupCachedForRef(group, options.Ref)
 
 	// `connected` tracks whether the SSE preamble has already been written: the
 	// cold-warm branch below opens the stream early so it can emit `warming`
@@ -224,7 +222,7 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 		// #5722 — a genuine load FAILURE (not merely "still warming") is
 		// distinguishable up front: surface it as a `connected`+`error` SSE
 		// frame so EventSource (which cannot read a non-2xx body) sees why.
-		if loadErr, failed := s.graphs.LastWarmError(group, refParam); failed {
+		if loadErr, failed := s.graphs.LastWarmError(group, options.Ref); failed {
 			writeV2GraphStreamLoadError(w, loadErr)
 			return
 		}
@@ -251,8 +249,8 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 		emitWarming(0) // immediate first frame so the browser paints "warming" now.
 
 		g, loadErr, outcome := waitForWarmGroup(
-			func() (*DashGroup, bool) { return s.graphs.GetGroupCachedForRef(group, refParam) },
-			func() (error, bool) { return s.graphs.LastWarmError(group, refParam) },
+			func() (*DashGroup, bool) { return s.graphs.GetGroupCachedForRef(group, options.Ref) },
+			func() (error, bool) { return s.graphs.LastWarmError(group, options.Ref) },
 			emitWarming,
 			streamWarmDeadline, streamWarmHeartbeat,
 		)
@@ -278,9 +276,9 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	repos := sortedRepos(grp)
-	if reposParam != "" {
+	if options.ReposParam != "" {
 		slugSet := map[string]bool{}
-		for _, sl := range strings.Split(reposParam, ",") {
+		for _, sl := range strings.Split(options.ReposParam, ",") {
 			slugSet[strings.TrimSpace(sl)] = true
 		}
 		var filtered []*DashRepo
@@ -292,8 +290,8 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	// Reuse the exact full-payload build so the streamed shape is identical.
-	resp := s.buildV2Graph(repos, grp, filterKind, includeExternal, includeModules)
+	nodeCap, edgeCap := lodLimits(options.LOD)
+	resp := s.buildV2GraphWithLimits(repos, grp, options.FilterKind, options.IncludeExternal, options.IncludeModules, nodeCap, edgeCap)
 
 	orderGraphStreamNodes(resp.Nodes)
 
@@ -307,10 +305,10 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := v2GraphStreamMeta{
-		TotalNodes:  len(resp.Nodes),
-		TotalEdges:  len(resp.Edges),
-		Communities: resp.Communities,
-		Repos:       resp.Repos,
+		TotalNodes: len(resp.Nodes), TotalEdges: len(resp.Edges),
+		TotalNodeCount: resp.TotalNodeCount, TotalEdgeCount: resp.TotalEdgeCount,
+		NodeTruncated: resp.NodeTruncated, EdgeTruncated: resp.EdgeTruncated, Limits: resp.Limits,
+		Communities: resp.Communities, Repos: resp.Repos,
 	}
 	writeV2SSEEvent(w, "meta", jsonString(meta))
 	flusher.Flush()

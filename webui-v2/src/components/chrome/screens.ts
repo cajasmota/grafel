@@ -28,6 +28,7 @@ import {
   Inbox,
   Settings,
   Cable,
+  GitFork,
 } from "lucide-react";
 
 export interface ScreenDef {
@@ -42,6 +43,7 @@ export interface ScreenDef {
 export const SCREENS: ScreenDef[] = [
   { to: "graph", label: "Graph", Icon: Network, shortcut: "G" },
   { to: "topology", label: "Topology", Icon: Radio, shortcut: "T" },
+  { to: "repository-topology", label: "Repository Topology", Icon: GitFork, shortcut: "Y" },
   { to: "paths", label: "Paths", Icon: RouteIcon, shortcut: "P" },
   { to: "links", label: "Links", Icon: Link2, shortcut: "L" },
   { to: "dubbo", label: "Dubbo", Icon: Cable, shortcut: "B" },

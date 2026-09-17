@@ -28,6 +28,11 @@ import type {
 export interface GraphStreamMetaWire {
   total_nodes: number;
   total_edges: number;
+  total_node_count?: number;
+  total_edge_count?: number;
+  node_truncated?: boolean;
+  edge_truncated?: boolean;
+  limits?: { node_cap: number; edge_cap: number };
   communities: GraphCommunityWire[];
   repos: GraphRepoWire[];
 }
@@ -104,6 +109,10 @@ export function applyMeta(
       // The Graph screen's LOD badge reads totalNodeCount as the denominator;
       // the stream knows the true total up front from `meta`.
       totalNodeCount: meta.total_nodes,
+      totalEdgeCount: meta.total_edge_count ?? meta.total_edges,
+      nodeTruncated: meta.node_truncated ?? false,
+      edgeTruncated: meta.edge_truncated ?? false,
+      limits: meta.limits ? { nodeCap: meta.limits.node_cap, edgeCap: meta.limits.edge_cap } : undefined,
     },
     totalNodes: meta.total_nodes,
     totalEdges: meta.total_edges,

@@ -13,12 +13,13 @@ import type {
   GraphPayloadWire,
   EntityDetailWire,
 } from "@/data/types";
+import type { GraphRequestParams } from "@/lib/graph-request-options";
 
 export const graphQueryKey = (groupId: string, repos?: string[], filterKind?: string, lod?: string) =>
   ["graph", groupId, repos?.slice().sort().join(",") ?? "", filterKind ?? "", lod ?? ""] as const;
 
 /** Normalize the wire payload (snake_case) into the domain shape. */
-function normalize(w: GraphPayloadWire): GraphPayload {
+export function normalizeGraphPayload(w: GraphPayloadWire): GraphPayload {
   return {
     nodes: w.nodes.map((n) => ({
       id: n.id,
@@ -40,6 +41,10 @@ function normalize(w: GraphPayloadWire): GraphPayload {
     })),
     repos: w.repos.map((r) => ({ id: r.id, language: r.language, colorIndex: r.color_index })),
     totalNodeCount: w.total_node_count,
+    totalEdgeCount: w.total_edge_count ?? w.edges.length,
+    nodeTruncated: w.node_truncated ?? false,
+    edgeTruncated: w.edge_truncated ?? false,
+    limits: w.limits ? { nodeCap: w.limits.node_cap, edgeCap: w.limits.edge_cap } : undefined,
   };
 }
 
@@ -50,12 +55,12 @@ function normalize(w: GraphPayloadWire): GraphPayload {
  */
 export function useGraph(
   groupId: string,
-  opts?: { repos?: string[]; filterKind?: string; lod?: string },
+  opts: GraphRequestParams = { lod: "mid" },
   queryOpts?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: graphQueryKey(groupId, opts?.repos, opts?.filterKind, opts?.lod),
-    queryFn: async () => normalize(await api.getGraph(groupId, opts)),
+    queryFn: async () => normalizeGraphPayload(await api.getGraph(groupId, opts)),
     // The payload is large + server-cached (ETag/304); keep it warm.
     staleTime: 5 * 60 * 1000,
     // #5446 — the full-payload fetch is the FALLBACK path: the Graph screen

@@ -18,6 +18,11 @@ import {
 const meta: GraphStreamMetaWire = {
   total_nodes: 3,
   total_edges: 2,
+  total_node_count: 30,
+  total_edge_count: 40,
+  node_truncated: true,
+  edge_truncated: true,
+  limits: { node_cap: 3, edge_cap: 2 },
   communities: [{ id: 1, label: "core", repo: "r", size: 3, color_index: 0 }],
   repos: [{ id: "r", language: "go", color_index: 0 }],
 };
@@ -51,6 +56,10 @@ describe("graph-stream-reducer", () => {
     expect(s.totalNodes).toBe(3);
     expect(s.totalEdges).toBe(2);
     expect(s.payload.totalNodeCount).toBe(3);
+    expect(s.payload.totalEdgeCount).toBe(40);
+    expect(s.payload.nodeTruncated).toBe(true);
+    expect(s.payload.edgeTruncated).toBe(true);
+    expect(s.payload.limits).toEqual({ nodeCap: 3, edgeCap: 2 });
     expect(s.payload.communities).toEqual([
       { id: 1, label: "core", repo: "r", size: 3, colorIndex: 0 },
     ]);

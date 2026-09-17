@@ -38,6 +38,7 @@
 
 import { useEffect, useReducer, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { graphRequestSearch, type GraphRequestParams } from "@/lib/graph-request-options";
 import {
   initialStreamState,
   applyMeta,
@@ -103,12 +104,15 @@ function reducer(state: GraphStreamState, action: Action): GraphStreamState {
  */
 export function useGraphStream(
   groupId: string,
+  params: GraphRequestParams,
   enabled = true,
   retryKey = 0,
 ): UseGraphStreamResult {
   const [state, dispatch] = useReducer(reducer, undefined, initialStreamState);
   const [phase, setPhase] = useState<GraphStreamPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const serializedParams = graphRequestSearch(params).toString();
+  const streamURL = api.graphStreamUrl(groupId, params);
 
   // Latest phase in a ref so the long-lived effect's handlers branch on the
   // current phase (warming-vs-mid-stream) without re-subscribing.
@@ -175,7 +179,7 @@ export function useGraphStream(
       closeES();
       sawMeta = false;
 
-      const conn = new EventSource(api.graphStreamUrl(groupId));
+      const conn = new EventSource(streamURL);
       es = conn;
 
       conn.addEventListener("meta", (ev: MessageEvent) => {
@@ -283,7 +287,7 @@ export function useGraphStream(
       clearRetry();
       closeES();
     };
-  }, [groupId, enabled, retryKey]);
+  }, [groupId, enabled, retryKey, serializedParams, streamURL]);
 
   return {
     state,

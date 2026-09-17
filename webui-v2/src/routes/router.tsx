@@ -18,6 +18,7 @@ import GraphScreen from "./graph";
 import FlowsScreen from "./flows";
 import EventFlowsScreen from "./event-flows";
 import TopologyScreen from "./topology";
+import RepositoryTopologyScreen from "./repository-topology";
 import PathsScreen from "./paths";
 import LinksScreen from "./links";
 import DubboScreen from "./dubbo";
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
           { path: "flows", element: <FlowsScreen />, handle: { surfaceLabel: "Flows" } },
           { path: "event-flows", element: <EventFlowsScreen />, handle: { surfaceLabel: "Event Flows" } },
           { path: "topology", element: <TopologyScreen />, handle: { surfaceLabel: "Topology" } },
+          { path: "repository-topology", element: <RepositoryTopologyScreen />, handle: { surfaceLabel: "Repository Topology" } },
           { path: "paths", element: <PathsScreen />, handle: { surfaceLabel: "Paths" } },
           { path: "links", element: <LinksScreen />, handle: { surfaceLabel: "Links" } },
           { path: "dubbo", element: <DubboScreen />, handle: { surfaceLabel: "Dubbo" } },

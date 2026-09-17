@@ -16,7 +16,8 @@ import type { EdgeKind } from "@/data/types";
 
 export type ColorMode = "repo" | "module" | "community" | "degree";
 export type GroupByMode = "repo" | "community" | "module" | "none";
-export type LodLevel = "low" | "mid" | "high";
+export type { LodLevel } from "@/lib/graph-request-options";
+import type { LodLevel } from "@/lib/graph-request-options";
 
 export interface SimulationConfig {
   linkSpring: number;

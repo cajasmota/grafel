@@ -19,6 +19,7 @@ import { SearchInput, Pill, Kbd, useSetInsight } from "@/components/ui";
 import type { InsightValue } from "@/components/ui";
 import { useGraph } from "@/hooks/use-graph";
 import { useGraphStream } from "@/hooks/use-graph-stream";
+import { graphRequestMode, type GraphRequestParams } from "@/lib/graph-request-options";
 import { useModuleAnalysis } from "@/hooks/use-module-analysis";
 import {
   useGraphStore,
@@ -44,6 +45,7 @@ import { CoverageKindIndicator } from "@/components/ui";
 import { useGraphJarvisReplay } from "@/hooks/use-graph-jarvis-replay";
 import { buildUndirectedAdjacency, bfsEgo as bfsEgoOver } from "@/lib/ego-bfs";
 import { deriveGraphLoading } from "@/lib/graph-loading-state";
+import { GraphTruncationBanner } from "@/components/graph/graph-truncation-banner";
 
 /**
  * #1386 — derive the entity-level "module key" from a node's source file.
@@ -139,12 +141,17 @@ export default function GraphScreen() {
   // #5722 — bump on manual "Retry" so a give-up/error state can be retried
   // without needing groupId/enabled to change.
   const [retryNonce, setRetryNonce] = useState(0);
-  const stream = useGraphStream(groupId, true, retryNonce);
+  const requestParams = useMemo<GraphRequestParams>(() => ({
+    lod: s.lod,
+    repos: s.activeRepos ? [...s.activeRepos].sort() : undefined,
+  }), [s.activeRepos, s.lod]);
+  const stream = useGraphStream(groupId, requestParams, !s.moduleOverviewMode, retryNonce);
   const streamFailed = stream.phase === "error";
+  const requestMode = graphRequestMode(s.moduleOverviewMode, stream.phase);
   // The full-payload fetch is the FALLBACK: only enabled once the stream has
   // genuinely failed. A tiny graph still streams instantly (it's a single
   // meta+chunk+done round-trip), so the small-graph case is not regressed.
-  const fallback = useGraph(groupId, { lod: s.lod }, { enabled: streamFailed });
+  const fallback = useGraph(groupId, requestParams, { enabled: requestMode.fallbackEnabled });
 
   // Unified view-model: the stream is the source of truth until it fails, then
   // the fallback fetch takes over. `data` is the accumulating (or complete)
@@ -182,7 +189,7 @@ export default function GraphScreen() {
   // fetched while the overview toggle is ON, so the default graph route has
   // zero extra network cost.
   const moduleAnalysis = useModuleAnalysis(groupId, {
-    enabled: s.moduleOverviewMode,
+    enabled: requestMode.modulesEnabled,
   });
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -580,7 +587,6 @@ export default function GraphScreen() {
     (prunedHubCount > 0
       ? ` · −${prunedHubCount} hub${prunedHubCount === 1 ? "" : "s"}`
       : "");
-
   // Edge-kind filters count as "active" when they deviate from the default-on
   // set (structural kinds ON, semantic kinds OFF): each structural kind turned
   // OFF and each semantic kind turned ON is one active filter.
@@ -680,7 +686,7 @@ export default function GraphScreen() {
       {/* Intro / legend header — the landing screen otherwise has no lead-in.
           Kept compact so the canvas stays the hero. */}
       <div className="shrink-0 border-b border-border bg-bg px-4 py-2 space-y-2">
-        
+        <GraphTruncationBanner data={data} />
       </div>
 
       {/* Canvas + overlays */}

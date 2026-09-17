@@ -824,6 +824,10 @@ func (s *Server) routes() http.Handler {
 	// generic /links payload because large groups can contain tens of thousands
 	// of unrelated cross-repo edges.
 	mux.HandleFunc("GET /api/v2/groups/{group}/dubbo", s.handleV2Dubbo)
+	// Repository-level cross-repository topology. Its dedicated path keeps the
+	// bounded repository payload separate from entity-level graph processing.
+	mux.HandleFunc("GET /api/v2/repository-topology/{group}", s.handleV2RepositoryTopology)
+	mux.HandleFunc("GET /api/v2/repository-topology/{group}/edge", s.handleV2RepositoryTopologyEdge)
 	// Graph — the WebUI v2 hero surface payload (nodes/edges/communities/repos).
 	// Carries pagerank + source_file for cosmos.gl node sizing + module group-by.
 	// PH1c (#2087): accepts ?ref= to query a specific git ref's graph.
@@ -885,14 +889,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups/{group}/candidates", s.handleV2Candidates)
 	mux.HandleFunc("PUT /api/v2/groups/{group}/candidates/{cid}/hint", s.handleV2CandidateHint)
 	// Flows (Process Flow Explorer) — v2 envelope wrappers (#1441).
-	// NOTE: /dead-ends and /truncated are registered before any wildcard so
-	// Go 1.22 ServeMux picks the more-specific path first.
+	// Go 1.22 ServeMux selects the most-specific matching pattern, independent
+	// of registration order, so these static suffixes coexist with flow routes.
 	mux.HandleFunc("GET /api/v2/groups/{group}/flows", s.handleV2FlowsList)
 	mux.HandleFunc("GET /api/v2/groups/{group}/flows/dead-ends", s.handleV2FlowDeadEnds)
 	mux.HandleFunc("GET /api/v2/groups/{group}/flows/truncated", s.handleV2FlowTruncated)
 	// Paths screen — API & Endpoints Explorer (#1439, epic #1432).
-	// NOTE: /orphans must be registered before /{hash} so the static suffix
-	// wins Go 1.22+ ServeMux precedence.
+	// The static /orphans suffix is more specific than /{hash} under Go 1.22+
+	// ServeMux matching, independent of registration order.
 	mux.HandleFunc("GET /api/v2/groups/{id}/paths", s.handleV2PathsList)
 	mux.HandleFunc("GET /api/v2/groups/{id}/paths/orphans", s.handleV2PathsOrphans)
 	mux.HandleFunc("GET /api/v2/groups/{id}/paths/{hash}", s.handleV2PathDetail)

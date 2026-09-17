@@ -394,8 +394,9 @@ type GraphCache struct {
 	// The old 60s wall-clock TTL evicted multi-minute Pass-4 warms before they
 	// could be reused; mtime-keyed invalidation keeps them until the data
 	// actually changes.
-	ttl      time.Duration
-	Payloads *graphPayloadCache // pre-serialised dense graph JSON, keyed by group+params
+	ttl                  time.Duration
+	Payloads             *graphPayloadCache       // pre-serialised dense graph JSON, keyed by group+params
+	RepositoryTopologies *repositoryTopologyCache // immutable repository-level aggregation, keyed by group+ref+source version
 }
 
 // loadGate coordinates a single in-flight loadGroup call so that N concurrent
@@ -414,12 +415,13 @@ type loadGate struct {
 // for production; tests may use a lower value.
 func NewGraphCache(ttl time.Duration) *GraphCache {
 	return &GraphCache{
-		entries:      map[string]*cacheEntry{},
-		loading:      map[string]*loadGate{},
-		warmErrs:     map[string]error{},
-		algoComputed: map[string]int64{},
-		ttl:          ttl,
-		Payloads:     newGraphPayloadCache(),
+		entries:              map[string]*cacheEntry{},
+		loading:              map[string]*loadGate{},
+		warmErrs:             map[string]error{},
+		algoComputed:         map[string]int64{},
+		ttl:                  ttl,
+		Payloads:             newGraphPayloadCache(),
+		RepositoryTopologies: newRepositoryTopologyCache(),
 	}
 }
 
@@ -522,6 +524,7 @@ func (c *GraphCache) Invalidate(group string) {
 	}
 	c.mu.Unlock()
 	c.Payloads.InvalidateGroup(group)
+	c.RepositoryTopologies.InvalidateGroup(group)
 }
 
 // InvalidateAll drops every cached entry and every pre-serialised payload.
@@ -539,6 +542,7 @@ func (c *GraphCache) InvalidateAll() {
 	c.warmErrs = map[string]error{}
 	c.mu.Unlock()
 	c.Payloads.InvalidateAll()
+	c.RepositoryTopologies.InvalidateAll()
 }
 
 // closeDashGroupReaders releases every mmap'd fbreader.Reader held by repos

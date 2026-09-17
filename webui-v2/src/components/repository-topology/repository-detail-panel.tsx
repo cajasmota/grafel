@@ -1,0 +1,11 @@
+import { Link } from "react-router-dom";
+import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { RepositoryTopologyEdge, RepositoryTopologyNode } from "@/data/types";
+
+export function RepositoryDetailPanel({ groupId, repository, edges, onClose, onFocus }: { groupId: string; repository: RepositoryTopologyNode; edges: RepositoryTopologyEdge[]; onClose: () => void; onFocus: () => void }) {
+  const channels = edges.filter((edge) => edge.source === repository.id || edge.target === repository.id).reduce<Record<string, number>>((result, edge) => ({ ...result, [edge.channel]: (result[edge.channel] ?? 0) + edge.relationship_count }), {});
+  return <aside className="w-80 shrink-0 overflow-y-auto border-l border-border bg-surface p-4"><div className="flex items-start justify-between"><div><h2 className="font-semibold text-text-1">{repository.label}</h2><p className="font-mono text-xs text-text-4">{repository.repository}</p></div><Button size="sm" variant="ghost" onClick={onClose}><X size={14} /></Button></div><div className="mt-4 grid grid-cols-2 gap-2 text-xs"><Metric label="Entities" value={repository.entity_count} /><Metric label="Modules" value={repository.module_count} /><Metric label="Inbound" value={repository.inbound_relationships} /><Metric label="Outbound" value={repository.outbound_relationships} /><Metric label="Connected" value={repository.connected_repositories} /><Metric label="Confirmed" value={repository.evidence.confirmed} /></div><h3 className="mt-5 text-xs font-semibold uppercase text-text-3">Channels</h3><div className="mt-2 space-y-1 text-xs">{Object.entries(channels).map(([channel, count]) => <div key={channel} className="flex justify-between"><span>{channel}</span><span>{count}</span></div>)}</div><div className="mt-5 flex flex-wrap gap-2"><Button size="sm" onClick={onFocus}>Focus</Button><Button size="sm" variant="secondary" asChild><Link to={`/g/${encodeURIComponent(groupId)}/graph?lod=mid&repos=${encodeURIComponent(repository.repository)}`}>Open bounded graph</Link></Button></div></aside>;
+}
+
+function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded border border-border p-2"><div className="text-text-4">{label}</div><div className="mt-0.5 font-semibold text-text-1">{value.toLocaleString()}</div></div>; }

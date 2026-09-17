@@ -86,7 +86,13 @@ import type {
   ControlFlowDetail,
   SourceReply,
   IndexStatusReply,
+  RepositoryTopologyFilters,
+  RepositoryTopologyResponse,
+  RepositoryTopologyEdgeFilters,
+  RepositoryTopologyEdgeDetailResponse,
 } from "@/data/types";
+import { graphRequestSearch, type GraphRequestParams } from "@/lib/graph-request-options";
+import { serializeRepositoryTopologyFilters } from "@/lib/repository-topology-filters";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
 const BASE_V2 = import.meta.env.VITE_AG_API_BASE_V2 ?? "/api/v2";
@@ -146,6 +152,23 @@ async function requestV2<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, body.error.message, body.error.code);
   }
   return body.data;
+}
+
+async function requestV2Page<T>(path: string, init?: RequestInit): Promise<{ data: T; pagination: { limit: number; offset: number; total: number } }> {
+  const res = await fetch(`${BASE_V2}${path}`, {
+    headers: { "Content-Type": "application/json", ...init?.headers },
+    ...init,
+  });
+  let body: V2Ok<T> | V2Err;
+  try {
+    body = (await res.json()) as V2Ok<T> | V2Err;
+  } catch {
+    throw new ApiError(res.status, `${init?.method ?? "GET"} ${path} failed: ${res.status}`);
+  }
+  if (!body.ok) {
+    throw new ApiError(res.status, body.error.message, body.error.code);
+  }
+  return { data: body.data, pagination: body.pagination ?? { limit: 0, offset: 0, total: 0 } };
 }
 
 /**
@@ -313,11 +336,8 @@ export const api = {
   },
   /** v2 — the full graph payload (nodes/edges/communities/repos) for the Graph
    *  screen. `params` maps to the daemon's repo/kind filters. */
-  getGraph: (groupId: string, params?: { repos?: string[]; filterKind?: string; lod?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.repos && params.repos.length > 0) qs.set("repos", params.repos.join(","));
-    if (params?.filterKind) qs.set("filter_kind", params.filterKind);
-    if (params?.lod) qs.set("lod", params.lod);
+  getGraph: (groupId: string, params: GraphRequestParams) => {
+    const qs = graphRequestSearch(params);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return requestV2<GraphPayloadWire>(`/graph/${encodeURIComponent(groupId)}${suffix}`);
   },
@@ -330,10 +350,8 @@ export const api = {
    * node/edge JSON is byte-for-byte the full-payload shape, so the same
    * normalize path applies.
    */
-  graphStreamUrl: (groupId: string, params?: { repos?: string[]; filterKind?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.repos && params.repos.length > 0) qs.set("repos", params.repos.join(","));
-    if (params?.filterKind) qs.set("filter_kind", params.filterKind);
+  graphStreamUrl: (groupId: string, params: GraphRequestParams) => {
+    const qs = graphRequestSearch(params);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return `${BASE_V2}/graph/${encodeURIComponent(groupId)}/stream${suffix}`;
   },
@@ -360,6 +378,30 @@ export const api = {
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return requestV2<ModuleAnalysisResponse>(
       `/groups/${encodeURIComponent(groupId)}/modules/analysis${suffix}`,
+    );
+  },
+
+  getRepositoryTopology: (groupId: string, filters: RepositoryTopologyFilters) => {
+    const query = serializeRepositoryTopologyFilters(filters).toString();
+    return requestV2<RepositoryTopologyResponse>(
+      `/repository-topology/${encodeURIComponent(groupId)}${query ? `?${query}` : ""}`,
+    );
+  },
+
+  getRepositoryTopologyEdge: (
+    groupId: string,
+    filters: RepositoryTopologyEdgeFilters,
+  ): Promise<RepositoryTopologyEdgeDetailResponse> => {
+    const query = new URLSearchParams();
+    query.set("source", filters.source);
+    query.set("target", filters.target);
+    query.set("channel", filters.channel);
+    if (filters.evidence && filters.evidence.length > 0) query.set("evidence", [...filters.evidence].sort().join(","));
+    if (filters.search) query.set("q", filters.search);
+    if (filters.page) query.set("page", String(filters.page));
+    if (filters.pageSize) query.set("page_size", String(filters.pageSize));
+    return requestV2Page<RepositoryTopologyEdgeDetailResponse["data"]>(
+      `/repository-topology/${encodeURIComponent(groupId)}/edge?${query.toString()}`,
     );
   },
 

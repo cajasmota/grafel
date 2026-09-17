@@ -14,11 +14,130 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/graph"
 )
+
+func TestParseGraphRequestOptions(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/graph/g?repos=b,a&filter_kind=function&include_external=true&view=modules&ref=release&lod=high", nil)
+	got := parseGraphRequestOptions(req)
+	want := graphRequestOptions{
+		FilterKind: "function", ReposParam: "b,a", IncludeExternal: true,
+		IncludeModules: true, Ref: "release", LOD: "high",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("options = %#v, want %#v", got, want)
+	}
+
+	includeReq := httptest.NewRequest(http.MethodGet, "/api/v2/graph/g?include=modules", nil)
+	if got := parseGraphRequestOptions(includeReq); !got.IncludeModules {
+		t.Fatalf("include=modules was ignored: %#v", got)
+	}
+}
+
+func TestLodLimitsAreFinite(t *testing.T) {
+	tests := map[string][2]int{
+		"low":      {500, 4_000},
+		"overview": {500, 4_000},
+		"mid":      {3_000, 24_000},
+		"normal":   {3_000, 24_000},
+		"":         {3_000, 24_000},
+		"high":     {20_000, 120_000},
+		"full":     {50_000, 250_000},
+	}
+	for lod, want := range tests {
+		nodeCap, edgeCap := lodLimits(lod)
+		if nodeCap != want[0] || edgeCap != want[1] {
+			t.Fatalf("lod=%q limits=(%d,%d), want=(%d,%d)", lod, nodeCap, edgeCap, want[0], want[1])
+		}
+	}
+}
+
+func TestCollectCappedGraphEdgesMatchesDeterministicOrdering(t *testing.T) {
+	nodes := []v2GraphNode{
+		{ID: "a", PageRank: 0.9}, {ID: "b", PageRank: 0.8}, {ID: "c", PageRank: 0.2}, {ID: "d", PageRank: 0.1},
+	}
+	edges := []v2GraphEdge{
+		{Source: "c", Target: "d", Kind: "CALLS"},
+		{Source: "a", Target: "c", Kind: "CALLS"},
+		{Source: "a", Target: "b", Kind: "CALLS"},
+	}
+	got, truncated := collectCappedGraphEdges(nodes, 2, func(yield func(v2GraphEdge)) {
+		for _, edge := range edges {
+			yield(edge)
+		}
+	})
+	if !truncated || !reflect.DeepEqual(got, []v2GraphEdge{
+		{Source: "a", Target: "b", Kind: "CALLS"},
+		{Source: "a", Target: "c", Kind: "CALLS"},
+	}) {
+		t.Fatalf("edges = %#v truncated=%v", got, truncated)
+	}
+}
+
+func TestBuildV2GraphMetadataReportsEdgesDroppedByNodeThinning(t *testing.T) {
+	grp := graphMetadataTestGroup()
+	got := (&Server{}).buildV2GraphWithLimits(
+		[]*DashRepo{grp.Repos["testrepo"]}, grp, "", false, false, 2, 100,
+	)
+
+	if got.TotalEdgeCount != 3 || len(got.Edges) != 1 {
+		t.Fatalf("edge counts = total:%d served:%d, want total:3 served:1", got.TotalEdgeCount, len(got.Edges))
+	}
+	if !got.NodeTruncated || !got.EdgeTruncated {
+		t.Fatalf("truncation metadata = node:%v edge:%v", got.NodeTruncated, got.EdgeTruncated)
+	}
+	if !reflect.DeepEqual(got.Edges, []v2GraphEdge{{Source: "testrepo::a", Target: "testrepo::b", Kind: "CALLS"}}) {
+		t.Fatalf("edges = %#v", got.Edges)
+	}
+}
+
+func TestBuildV2GraphMetadataReportsEdgeCapWithoutNodeThinning(t *testing.T) {
+	grp := graphMetadataTestGroup()
+	got := (&Server{}).buildV2GraphWithLimits(
+		[]*DashRepo{grp.Repos["testrepo"]}, grp, "", false, false, 10, 2,
+	)
+
+	if got.TotalEdgeCount != 3 || len(got.Edges) != 2 {
+		t.Fatalf("edge counts = total:%d served:%d, want total:3 served:2", got.TotalEdgeCount, len(got.Edges))
+	}
+	if got.NodeTruncated || !got.EdgeTruncated {
+		t.Fatalf("truncation metadata = node:%v edge:%v", got.NodeTruncated, got.EdgeTruncated)
+	}
+	if got.Limits.EdgeCap != 2 {
+		t.Fatalf("edge cap = %d, want 2", got.Limits.EdgeCap)
+	}
+}
+
+func graphMetadataTestGroup() *DashGroup {
+	ranks := []float64{0.9, 0.8, 0.2, 0.1}
+	ids := []string{"a", "b", "c", "d"}
+	entities := make([]graph.Entity, len(ids))
+	for index, id := range ids {
+		rank := ranks[index]
+		entities[index] = graph.Entity{ID: id, Kind: "function", PageRank: &rank}
+	}
+	return makeGraphTestGroup(entities, []graph.Relationship{
+		{FromID: "a", ToID: "b", Kind: "CALLS"},
+		{FromID: "a", ToID: "c", Kind: "CALLS"},
+		{FromID: "c", ToID: "d", Kind: "CALLS"},
+	})
+}
+
+func TestV2GraphLoDMetadataReportsAppliedLimits(t *testing.T) {
+	const n = 600
+	ts := makeV2GraphTestServer(t, n)
+	data := fetchV2Graph(t, ts, "low")
+	if data.Limits.NodeCap != 500 || data.Limits.EdgeCap != 4_000 {
+		t.Fatalf("limits = %#v", data.Limits)
+	}
+	if !data.NodeTruncated || data.TotalNodeCount != n || len(data.Nodes) != 500 {
+		t.Fatalf("metadata = %#v nodes=%d", data, len(data.Nodes))
+	}
+}
 
 // makeV2GraphTestServer builds a test server loaded with n fake entities.
 // Entities are given pagerank values 0..n-1 scaled to [0,1) (highest = n-1/n).

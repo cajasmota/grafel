@@ -195,6 +195,43 @@ func TestGraphStream_OrderingAndTotals(t *testing.T) {
 	}
 }
 
+func TestV2GraphStreamLoDMatchesFullPayload(t *testing.T) {
+	grp := makeStreamTestGroup(600)
+	ts := newV2GraphTestServerWithGroup(t, grp)
+	for _, lod := range []string{"low", "mid", "high", "full"} {
+		t.Run(lod, func(t *testing.T) {
+			full := fetchV2Graph(t, ts, lod)
+			events := fetchGraphStream(t, ts, "lod="+lod)
+			var meta v2GraphStreamMeta
+			var nodes []v2GraphNode
+			var edges []v2GraphEdge
+			for _, event := range events {
+				switch event.Type {
+				case "meta":
+					if err := json.Unmarshal([]byte(event.Data), &meta); err != nil {
+						t.Fatal(err)
+					}
+				case "chunk":
+					var chunk v2GraphStreamChunk
+					if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
+						t.Fatal(err)
+					}
+					nodes = append(nodes, chunk.Nodes...)
+					edges = append(edges, chunk.Edges...)
+				}
+			}
+			if meta.TotalNodes != len(full.Nodes) || meta.TotalEdges != len(full.Edges) ||
+				meta.TotalNodeCount != full.TotalNodeCount || meta.TotalEdgeCount != full.TotalEdgeCount ||
+				meta.NodeTruncated != full.NodeTruncated || meta.EdgeTruncated != full.EdgeTruncated || meta.Limits != full.Limits {
+				t.Fatalf("stream meta=%#v full=%#v", meta, full)
+			}
+			if len(nodes) != len(full.Nodes) || len(edges) != len(full.Edges) {
+				t.Fatalf("stream=(%d,%d) full=(%d,%d)", len(nodes), len(edges), len(full.Nodes), len(full.Edges))
+			}
+		})
+	}
+}
+
 // TestGraphStream_ShapeMatchesFullPayload asserts the streamed node/edge JSON is
 // the same shape (same fields) as the non-streaming /api/v2/graph endpoint, so
 // the frontend can switch with no data-model change.

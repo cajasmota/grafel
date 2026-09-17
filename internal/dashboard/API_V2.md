@@ -219,13 +219,21 @@ Returns the full dependency graph for the WebUI v2 hero surface, wrapped in a
   "edges": [{ "source", "target", "kind" }],
   "communities": [{ "id", "label", "repo", "size", "color_index" }],
   "repos": [{ "id", "language", "color_index" }],
-  "total_node_count": 1234
+  "total_node_count": 1234,
+  "total_edge_count": 4321,
+  "node_truncated": true,
+  "edge_truncated": true,
+  "limits": { "node_cap": 3000, "edge_cap": 24000 }
 }}
 ```
 
 Query params (mirror the v1 `/api/graph` handler): `repos=slug1,slug2`,
 `filter_kind=`, `include_external=true`, `view=modules`, and
-`lod=overview|normal|full` (`low|mid|high` remain accepted aliases). Capped LoD
+`lod=low|mid|high|full`. Every LoD is finite: low is capped at 500 nodes / 4,000
+edges, mid at 3,000 / 24,000, high at 20,000 / 120,000, and full at 50,000 /
+250,000. `total_*`, `*_truncated`, and `limits` distinguish returned cardinality
+from source cardinality; clients must not present a truncated result as complete.
+Capped LoD
 requests select their connected node set through compact integer adjacency and
 only then materialise response edges. The server therefore does not allocate a
 full wire-edge payload merely to discard most of it for overview or normal
@@ -255,7 +263,46 @@ uses the v1 `GET /api/graph/{group}/entity/{id}` (unchanged, raw JSON).
 
 ---
 
-## 6c. Action endpoints + async-job convention (#1512)
+## 6c. Repository topology surface
+
+`GET /api/v2/repository-topology/{group}` returns a bounded repository-level
+graph aggregated from persisted cross-repository links. It never embeds
+entity-level graph arrays.
+
+Query parameters:
+
+- `channels`: comma-separated `dubbo,http,kafka,rabbitmq,other`; defaults to
+  `dubbo,http,kafka,rabbitmq`.
+- `repos`: optional comma-separated repository whitelist.
+- `focus`: optional focus repository.
+- `direction`: `inbound`, `outbound`, or `both`; defaults to `both`.
+- `depth`: repository-hop depth `1..3`; defaults to `1`.
+- `evidence`: comma-separated
+  `confirmed,inferred,dangling,ambiguous,external`; defaults to
+  `confirmed,inferred`.
+- `min_count`: minimum relationships per aggregated edge; defaults to `1`.
+- `source` and `target`: when both are present, enable deterministic directed
+  shortest-path mode. A single value is accepted while the UI selection is in
+  progress and leaves the filtered graph visible; either value is mutually
+  exclusive with `focus`.
+- `q`: free-text match over repository, endpoint, contract, identifier, and
+  persisted relationship metadata.
+- `ref`: optional indexed Git ref.
+
+The response reports `truncated`, applied `limits`, pre-limit node/edge counts,
+facets, filtered summary counts, and `path_found`. Invalid filters or unknown
+repositories return `400 bad_request`; missing or unloadable groups return
+`404 not_found`.
+
+`GET /api/v2/repository-topology/{group}/edge` returns paginated persisted
+relationships for one ordered repository pair and channel. Required parameters
+are `source`, `target`, and `channel`. Optional parameters are `evidence`, `q`,
+`page` (default `1`), `page_size` (default `25`, maximum `100`), and `ref`.
+The standard v2 pagination object uses `limit`, `offset`, and `total`.
+
+---
+
+## 6d. Action endpoints + async-job convention (#1512)
 
 The Operations + Settings screens trigger CLI-equivalent mutating actions.
 Every such endpoint is a thin REST wrapper over the SAME internal function the
