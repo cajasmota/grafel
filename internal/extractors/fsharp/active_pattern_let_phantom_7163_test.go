@@ -322,29 +322,42 @@ func TestActivePatternLetPhantom_NoDedupCollapse(t *testing.T) {
 }
 
 // TestActivePatternLetPhantom_PlainLetStillExtracted is the too-strict
-// direction: the guard must not cost a plain `let` binding, a tuple-pattern
-// head, or a parenthesised operator definition its entity. Those last two are
-// the shapes a guard written as "reject any head containing a `(`" would
-// silently drop, and a silent miss is the worse failure mode.
+// direction: the guard must not cost a plain `let` binding its entity.
 //
-// Each row states what letRE ALREADY did before the fix, measured on the
-// pre-change file — not what it ought to do. `let (x, y) = …` and
-// `let (+.) a b = …` were NEVER extracted by letRE (its name class excludes
-// `(`), so their rows assert an unchanged ABSENCE, and are controls on the
-// guard not becoming a fix for a different issue by accident.
+// WHAT THIS TEST DOES *NOT* GRADE, said here because the label used to claim
+// it did. The last two rows — `let (x, y) = …` and `let (+.) a b = …` — carry
+// NO MODIFIER, and the modifier is the axis this entire PR is about. Without
+// one, letRE declines outright (its name class excludes `(`) and the rows
+// assert an unchanged ABSENCE. ADD a modifier and the same two heads mint a
+// phantom, on this fix, measured: `let private (x, y) = (1, 2)` gives a `let`
+// census of `private,sentinelValue`. So these rows grade the NO-MODIFIER axis
+// only, and the modifier-carrying case is residual — recorded, with its
+// measured census, in TestActivePatternLetPhantom_ResidualHeads below.
+// Labelling them "the two heads #7163 named" without that qualifier would
+// claim more than their content, which is the defect family this repo keeps
+// finding.
+//
+// The four modifier-carrying rows below use an IDENTIFIER head, so they do
+// grade the modifier axis — for the direction this test owns (the guard must
+// not suppress a real binding).
 func TestActivePatternLetPhantom_PlainLetStillExtracted(t *testing.T) {
 	for _, tc := range []struct {
 		label     string
 		decl      string
 		wantNames string // exact `let` census, sentinel included
 	}{
-		{"plain", `let target x = x`, "target,sentinelValue"},
-		{"rec", `let rec target x = target x`, "target,sentinelValue"},
-		{"inline private", `let inline private target x = x`, "target,sentinelValue"},
-		{"generic", `let inline target<'T> (x: 'T) = x`, "target,sentinelValue"},
-		// Pre-existing absences, unchanged by this fix (measured, not desired):
-		{"tuple head", `let (x, y) = (1, 2)`, "sentinelValue"},
-		{"operator defn", `let (+.) a b = a + b`, "sentinelValue"},
+		// Identifier head, modifier axis VARIED — the guard must not suppress
+		// any of these.
+		{"ident/plain", `let target x = x`, "target,sentinelValue"},
+		{"ident/rec", `let rec target x = target x`, "target,sentinelValue"},
+		{"ident/inline private", `let inline private target x = x`, "target,sentinelValue"},
+		{"ident/generic inline", `let inline target<'T> (x: 'T) = x`, "target,sentinelValue"},
+		// Parenthesised heads with NO MODIFIER: pre-existing absences,
+		// unchanged by this fix (measured, not desired). The modifier-carrying
+		// counterparts are NOT covered here — see the header and
+		// TestActivePatternLetPhantom_ResidualHeads.
+		{"tuple head/no modifier", `let (x, y) = (1, 2)`, "sentinelValue"},
+		{"operator defn/no modifier", `let (+.) a b = a + b`, "sentinelValue"},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			src := "module Values\n\n" + tc.decl + "\n\nlet sentinelValue = 0\n"
@@ -354,5 +367,102 @@ func TestActivePatternLetPhantom_PlainLetStillExtracted(t *testing.T) {
 			}
 			fsPhantomAssertNoPhantom(t, ents, tc.decl, specLegal)
 		})
+	}
+}
+
+// TestActivePatternLetPhantom_ResidualHeads records the heads this fix does
+// NOT reach, with the census each one MEASURED on the fixed extractor. Every
+// row here still mints the phantom.
+//
+// THIS TEST BLESSES NOTHING. It is an xfail ledger, and it is written to fail
+// LOUDLY the moment any row is fixed, with a message telling the fixer to
+// MOVE that row into TestActivePatternLetPhantom_IssueRows rather than to
+// update the expectation here. That is the opposite of the failure mode
+// #7135 arm 3 avoided by pinning nothing at all: an unrecorded residual is
+// how this PR's first revision came to name the ONE shape that has no
+// phantom (see below) while 24 shapes that do have one went unnamed.
+//
+// The residual is 24 (phrase, head) pairs — 4 modifier phrases × 10 heads —
+// in two families, each verified identical BEFORE and AFTER the guard, so
+// they are pre-existing and neither caused nor cured by it:
+//
+//   - WHITESPACE-BEARING BANANA CLIPS. `activePatternRE`'s clip class
+//     `[A-Za-z0-9_'|]+` excludes whitespace, so it declines and no offset is
+//     claimed. These are REAL active patterns and therefore #7163's OWN
+//     class: the fix is incomplete for the defect it closes, not merely
+//     adjacent to it. Both halves are wrong on one input — the phantom
+//     survives AND the SCOPE.Pattern is lost entirely. Filed separately.
+//     (Whitespace tolerance looks intended: `strings.TrimSpace(c)` in
+//     compexpr_active_patterns.go is unreachable under that clip class.
+//     Whether such a clip is LEGAL F# is not settled — no toolchain here, so
+//     these rows pin the SCANNER's behaviour, not the language.)
+//
+//   - NON-CLIP PARENTHESISED / PATTERN HEADS. Not active patterns at all, so
+//     no offset is ever claimed and they are outside approach (b)'s reach by
+//     construction. Filed separately.
+//
+// NOT a residual, and this PR's first revision said it was: the
+// `and`-continued form (#7166) mints NO phantom before or after the fix —
+// measured below as a control, because a residual stated in the REASSURING
+// direction is worse than one omitted.
+func TestActivePatternLetPhantom_ResidualHeads(t *testing.T) {
+	for _, tc := range []struct {
+		label      string
+		decl       string
+		wantCensus string // MEASURED on the fixed extractor
+		wantAP     bool   // is the SCOPE.Pattern still minted?
+	}{
+		// Family 1: whitespace-bearing clips — #7163's own class.
+		{"ws clip/inner spaces/rec", `let rec (| Even | Odd |) x = 1`, "rec,sentinelValue", false},
+		{"ws clip/inner spaces/private", `let private (| Even | Odd |) x = 1`, "private,sentinelValue", false},
+		{"ws clip/trailing space/rec", `let rec (|Even|Odd| ) x = 1`, "rec,sentinelValue", false},
+		{"ws clip/leading space/rec", `let rec ( |Even|Odd|) x = 1`, "rec,sentinelValue", false},
+		// Family 2: non-clip parenthesised / pattern heads.
+		{"tuple head/private", `let private (x, y) = (1, 2)`, "private,sentinelValue", false},
+		{"operator defn/private", `let private (+.) a b = a + b`, "private,sentinelValue", false},
+		{"operator defn/inline private", `let inline private (+.) a b = a + b`, "private,sentinelValue", false},
+		{"record pattern/private", `let private { Foo = f } = r`, "private,sentinelValue", false},
+		{"list pattern/private", `let private [a; b] = xs`, "private,sentinelValue", false},
+		{"union pattern/private", `let private (Some v) = o`, "private,sentinelValue", false},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			src := "module Values\n\n" + tc.decl + "\n\nlet sentinelValue = 0\n"
+			ents := runFSharp(t, src, "values.fs")
+			if got := strings.Join(fsLetNames(ents), ","); got != tc.wantCensus {
+				t.Errorf("RESIDUAL LEDGER MOVED for %q: let census=%q, recorded %q.\n"+
+					"If the phantom is now GONE, this row is FIXED: delete it here and add the "+
+					"head to TestActivePatternLetPhantom_IssueRows as a FORBIDDEN row. "+
+					"Do NOT update the expectation here — that would re-bless the phantom.",
+					tc.decl, got, tc.wantCensus)
+			}
+			if gotAP := len(fsAPNames(ents)) > 0; gotAP != tc.wantAP {
+				t.Errorf("RESIDUAL LEDGER MOVED for %q: SCOPE.Pattern present=%v, recorded %v (%v)",
+					tc.decl, gotAP, tc.wantAP, fsAPNames(ents))
+			}
+		})
+	}
+}
+
+// TestActivePatternLetPhantom_AndContinuedMintsNoPhantom is the control on
+// the claim this PR's first revision got BACKWARDS. It asserted that the
+// `and`-continued active-pattern head (#7166) "keeps its phantom". Measured,
+// it does not: `and` is not a `let` head, so letRE never reaches it and the
+// census holds the sentinel alone. #7166 is a MISSING entity, not a
+// surviving phantom — and this row is here so that mis-statement cannot be
+// made again from prose.
+//
+// The row deliberately does NOT assert that the `and` pattern IS extracted:
+// it is not (that is #7166, out of scope), and pinning the gap as correct is
+// exactly what #7135 arm 3 declined to do.
+func TestActivePatternLetPhantom_AndContinuedMintsNoPhantom(t *testing.T) {
+	src := "module Patterns\n\n" +
+		"let rec (|Even|Odd|) x =\n    1\n" +
+		"and private (|On|Off|) y =\n    2\n\n" +
+		"let sentinelValue = 0\n"
+	ents := runFSharp(t, src, "patterns.fs")
+	fsPhantomAssertNoPhantom(t, ents, "and private (|On|Off|) y =", specLegal)
+	if got := strings.Join(fsLetNames(ents), ","); got != "sentinelValue" {
+		t.Errorf("an `and`-continued active pattern produced let census=%q, want [sentinelValue]"+
+			" — the `and` head mints no phantom, before or after the #7163 guard", got)
 	}
 }
