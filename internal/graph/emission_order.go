@@ -1,6 +1,10 @@
 package graph
 
-import "sort"
+import (
+	"fmt"
+	"os"
+	"sort"
+)
 
 // Issue #5974 — canonical emission order, shared by every producer.
 //
@@ -28,6 +32,29 @@ import "sort"
 func SortDocumentForEmission(doc *Document) {
 	if doc == nil {
 		return
+	}
+	// #7105 — derive Properties["subtype"] from the canonical Entity.Subtype
+	// before serialization. The derivation happens on the DOCUMENT, in place,
+	// which is what lets graph.json agree with graph.fb: graph.json is written
+	// by graph.WriteAtomic, which normalises nothing, from the same doc pointer
+	// a normaliser has already mutated. Two redundant sites provide that and
+	// each masks the other (measured: removing either alone keeps the parity
+	// test green, removing both fails it) — see DeriveSubtypeProperties in
+	// subtype_property.go for the pair audit, the measurements, and why an
+	// empty Subtype must stay absent rather than become "".
+	//
+	// A disagreeing twin is preserved, never overwritten, and reported: 0/211
+	// on measured data, so this line is silent on every known input, and a
+	// producer that starts emitting a second different answer for one entity
+	// becomes visible instead of being resolved quietly. It can appear more
+	// than once per index because the producers invoke this funnel more than
+	// once per write (index.go:999 and again inside fbwriter); that is
+	// preferred to silence.
+	if conflicts := DeriveSubtypeProperties(doc); len(conflicts) > 0 {
+		first := conflicts[0]
+		fmt.Fprintf(os.Stderr,
+			"grafel: subtype-property conflict: %d entities carry a Properties[\"subtype\"] that disagrees with the canonical Entity.Subtype; the existing property is PRESERVED. first: id=%s canonical=%q property=%q\n",
+			len(conflicts), first.EntityID, first.Canonical, first.Property)
 	}
 	// Entity IDs are unique, so ID alone is a total order — no secondary keys.
 	sort.SliceStable(doc.Entities, func(i, j int) bool {
