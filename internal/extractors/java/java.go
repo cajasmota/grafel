@@ -2115,6 +2115,17 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 // buildFieldSignature produces "Type name" for a Java field, stripping visibility.
 func buildFieldSignature(node ts.Node, src []byte, name string) string {
 	raw := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
+	// Collapse interior whitespace FIRST, matching the four other signature
+	// builders in this file (issue #7091). It has to be first, not merely
+	// present (issue #7114): the visibility strip at the bottom matches
+	// "public ", "static ", "final " — patterns that each require a TRAILING
+	// SPACE — so on a declaration whose modifiers wrap onto their own lines,
+	// "public " does not match "public\n" and the modifier survives into the
+	// persisted signature. Collapsing is a no-op for the '=' truncation below:
+	// joining fields with a single space neither adds nor removes an '=', so
+	// strings.Index still finds the same '=' and the token prefix before it is
+	// unchanged.
+	raw = strings.Join(strings.Fields(raw), " ")
 	// Remove everything after '=' (initializer).
 	if idx := strings.Index(raw, "="); idx >= 0 {
 		raw = strings.TrimSpace(raw[:idx])
