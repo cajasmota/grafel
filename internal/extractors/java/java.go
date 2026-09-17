@@ -1282,11 +1282,18 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 }
 
 // collectLocalVarTypes walks the descendants of a method/constructor
-// body and returns a map of local-variable-name → declared leaf type
-// for every local_variable_declaration node, plus every
-// enhanced_for_statement loop variable. Used by the receiver binder so
-// calls like `Owner owner = new Owner(); owner.setId(...)` resolve to
-// "Owner.setId".
+// body and returns a map of local-variable-name → declared leaf type.
+// Used by the receiver binder so calls like
+// `Owner owner = new Owner(); owner.setId(...)` resolve to "Owner.setId".
+//
+// TWO of the binders it sees are TYPED — `local_variable_declaration` and
+// `enhanced_for_statement`. Every OTHER binder is recorded with an empty type,
+// which poisons its name rather than typing it; the arms are listed where they
+// are implemented below, and the COMPLETE enumeration of Java's name-binding
+// nodes — including the ones that need no arm and the one gap deliberately
+// left open — sits with the pattern arms at the end of this function (#7100).
+// This paragraph must not claim a shorter ledger than the code has: the
+// previous revision named only these two long after #7097 added three more.
 //
 // Variable declarations using `var` (Java 10+) are typed only when the
 // initialiser is a direct `new ClassName(...)`; anything else leaves the
@@ -1530,16 +1537,28 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// `cs.forEach(o -> o.b())` — lambda_expression's `parameters` field is
 	// one of three shapes: a bare `identifier` (single inferred parameter),
 	// `inferred_parameters` (`(o, p) -> …`), or `formal_parameters`
-	// (`(Customer o) -> …`, the only typed shape). All three bind — but this
-	// arm does NOT poison every binder they can hold: `formal_parameters`
-	// also admits a `spread_parameter` (a varargs lambda,
-	// `(Customer... o) -> …`), which the `formal_parameter` guard below
-	// skips, so that name still cedes to a same-name sibling. MEASURED on
-	// this tree, unchanged by this diff: `use((Customer... o) -> o.clone2())`
-	// beside an `Order o` sibling emits `Order.clone2` both before and after
-	// d1552ac26 — a wrong receiver this arm was believed to have removed.
-	// That hole is #7102, kept OUT of this diff on purpose so its gate stays
-	// attributable; no fixture here grades it.
+	// (`(Customer o) -> …` / `(Customer... o) -> …`, the only typed shapes).
+	// Every binder each shape can hold is poisoned — which is what #7099's
+	// version of this comment claimed and did not do. `formal_parameters`
+	// also admits a `spread_parameter` (a VARARGS lambda parameter), whose
+	// name does NOT sit in a `name` field: the grammar gives
+	// `spread_parameter → _unannotated_type, variable_declarator{name}`, and
+	// that variable_declarator is NOT reachable from the
+	// `local_variable_declaration` walk above, so the old
+	// `p.Type() == "formal_parameter"` guard dropped it entirely. MEASURED at
+	// 1a6a134f3, both before and after #7099: `use((Customer... o) ->
+	// o.toString())` beside an `Order o` sibling emitted `Order.toString` — a
+	// wrong receiver on a real same-file type, which binds (#7056). The
+	// receiver is an ARRAY, so only `Object` methods are callable on it, which
+	// bounds the harm to overridden `Object` members — and makes a same-type
+	// sibling's bind wrong TOO, unlike the three pattern constructs below
+	// (TestJava7102_VarargsSameTypeSiblingWasAlsoWrong). The
+	// MIXED form `(Customer a, Object... o) -> …` puts a `formal_parameter`
+	// and a `spread_parameter` in the SAME node, so both branches of the
+	// switch below run for one lambda; it is graded separately from the pure
+	// varargs form (#7102). `receiver_parameter` — the third thing
+	// `formal_parameters` admits — binds `this`, not a name, so there is
+	// nothing to record for it.
 	for _, lam := range findAllNodes(body, "lambda_expression") {
 		params := lam.ChildByFieldName("parameters")
 		if params == nil {
@@ -1558,12 +1577,120 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 		case "formal_parameters":
 			for i := 0; i < int(params.NamedChildCount()); i++ {
 				p := params.NamedChild(i)
-				if p != nil && p.Type() == "formal_parameter" {
+				if p == nil {
+					continue
+				}
+				switch p.Type() {
+				case "formal_parameter":
 					record(childFieldText(p, "name", src), "")
+				case "spread_parameter":
+					// No `name` field here — the binder is the
+					// variable_declarator child's `name` (#7102).
+					for j := 0; j < int(p.NamedChildCount()); j++ {
+						d := p.NamedChild(j)
+						if d != nil && d.Type() == "variable_declarator" {
+							record(childFieldText(d, "name", src), "")
+						}
+					}
 				}
 			}
 		}
 	}
+	// PATTERN BINDERS, LEDGER-ONLY (#7100). Java's pattern-matching forms bind
+	// a name too, and none of them was in the ledger. All three carry a
+	// declared type in source, so — like the try-with-resources arm — typing
+	// them is POSSIBLE; they are still recorded with an EMPTY type, because
+	// typing a binder is a recall addition with its own grading obligation and
+	// is not part of removing a wrong bind (#7099's reasoning, applied per
+	// construct). MEASURED at 1a6a134f3, each beside a sibling `{ Order o =
+	// new Order(); o.a(); }`, with the pattern variable's call INSIDE the
+	// binder's own scope: every one emitted `Order.b` — a wrong dotted
+	// receiver on a real same-file type, which binds and which bind/orphan/
+	// dangle all score as a success (#7056). Each ALONE emits the bare leaf,
+	// as the *AloneUnchanged fixtures pin.
+	//
+	// Spellings DERIVED from a parse dump of compilable Java, not assumed
+	// (`go run ./tools/node-type-gate` is the standing check that a matcher
+	// does not name a node the grammar lacks — a silent no-op reads as a pass):
+	//
+	//	instanceof pattern variable   instanceof_expression's `name` FIELD
+	//	                              (`x instanceof Customer o`). Optional in
+	//	                              the grammar: a plain `x instanceof
+	//	                              Customer` has no `name`, so record
+	//	                              no-ops and binds nothing.
+	//	switch type pattern           switch_label → pattern → type_pattern,
+	//	                              binder as an `identifier` CHILD (no
+	//	                              field). Covers BOTH label forms — arrow
+	//	                              (`case Customer o -> …`, switch_rule)
+	//	                              and colon (`case Customer o: …`,
+	//	                              switch_block_statement_group) — and the
+	//	                              guarded form (`case Customer o when
+	//	                              o.ok() -> …`), because the flat walk
+	//	                              matches the type_pattern directly rather
+	//	                              than routing through the label.
+	//	record deconstruction         record_pattern_body →
+	//	                              record_pattern_component, binder as an
+	//	                              `identifier` CHILD. Reached from BOTH
+	//	                              `instanceof` (the `pattern` field, which
+	//	                              is the alternative to `name`) and a
+	//	                              switch label, and NESTED patterns
+	//	                              (`Pair(Point(Customer o, …), …)`) are
+	//	                              reached for free because the components
+	//	                              are descendants.
+	//
+	// THE RECORD-PATTERN ARM MUST NOT MATCH `record_pattern` ITSELF: that node
+	// carries the record's TYPE name as its own `identifier` child (`Pair`),
+	// so poisoning it would refuse the type name, not the binder. Only
+	// `record_pattern_component` is matched, and the component's type is
+	// always an `_unannotated_type` (type_identifier / scoped_type_identifier
+	// / generic_type / array_type, plus `type_identifier "var"` for
+	// `Pair(var o, …)`) and NEVER an `identifier` — verified against the
+	// grammar's `_unannotated_type` supertype — which is what makes "the
+	// identifier child" an unambiguous reading of the binder in both
+	// patternBinderName callers.
+	for _, ie := range findAllNodes(body, "instanceof_expression") {
+		record(childFieldText(ie, "name", src), "")
+	}
+	for _, tp := range findAllNodes(body, "type_pattern") {
+		record(patternBinderName(tp, src), "")
+	}
+	for _, rc := range findAllNodes(body, "record_pattern_component") {
+		record(patternBinderName(rc, src), "")
+	}
+	// ENUMERATED AND DELIBERATELY NOT HERE (#7100's own recommendation was to
+	// stop finding these one pair at a time and enumerate the grammar). Every
+	// other name-binding node reachable inside a method body, and why it needs
+	// no arm:
+	//
+	//	receiver_parameter        `void m(Svc this)` binds `this`, not a name,
+	//	                          and it sits in the method's OWN
+	//	                          formal_parameters, which are a sibling of
+	//	                          `body` rather than a descendant.
+	//	underscore_pattern        the JLS 22 unnamed variable binds nothing
+	//	                          referenceable, so it can never be a
+	//	                          receiver. (In this grammar version a
+	//	                          `case Customer _` label actually yields
+	//	                          `identifier "_"`, which the type_pattern arm
+	//	                          records; poisoning `_` is inert for the same
+	//	                          reason.)
+	//	labeled_statement         its `identifier` is a LABEL — a separate
+	//	                          namespace that no expression can receive on.
+	//	type_parameter            binds a type name, not a variable.
+	//	local class / interface / enum / record DECLARATION names — likewise
+	//	                          type names.
+	//
+	// ONE GENUINE GAP REMAINS, measured not assumed, and left out because it
+	// is a different mechanism rather than a different spelling: members of an
+	// ANONYMOUS or LOCAL CLASS declared inside this body. A `new Go() { public
+	// void go(Customer o) { o.b(); } }` beside a sibling `Order o` emits
+	// `Order.b` at 1a6a134f3 — the same #7056 signature — because its
+	// `formal_parameter` is a descendant of this body but belongs to a
+	// different CLASS scope. Poisoning across that boundary is the question
+	// TestJava7094_ClassBodyShadowingCostsRecall already records a deliberate
+	// answer to for locals (refuse, and pay the recall), so widening to it is
+	// a policy change with its own recall cost to observe, not the one-line
+	// spelling fix the three arms above are. Reported for its own change; no
+	// fixture here grades it, and this comment is the only record of it.
 	out := map[string]string{}
 	for name, typ := range cand {
 		if ambiguous[name] {
@@ -1572,6 +1699,32 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 		out[name] = typ
 	}
 	return out
+}
+
+// patternBinderName returns the name a Java pattern node binds: the text of its
+// first `identifier` named child. Used by collectLocalVarTypes for `type_pattern`
+// (`case Customer o -> …`) and `record_pattern_component`
+// (`case Pair(Customer o, …)`), whose binder sits in an UNNAMED child rather
+// than a `name` field — so ChildByFieldName("name") returns nil for both and a
+// field-based reading is a silent no-op (#7100).
+//
+// Taking the first `identifier` is unambiguous because the sibling that could
+// be confused with it — the component's or pattern's declared type — is always
+// an `_unannotated_type` (type_identifier, scoped_type_identifier, generic_type,
+// array_type, or a primitive), and `identifier` is not a member of that
+// supertype. `var` in a record pattern arrives as `type_identifier "var"`, so it
+// does not shift which child is the binder.
+func patternBinderName(n ts.Node, src []byte) string {
+	if n == nil {
+		return ""
+	}
+	for i := 0; i < int(n.NamedChildCount()); i++ {
+		c := n.NamedChild(i)
+		if c != nil && c.Type() == "identifier" {
+			return strings.TrimSpace(string(src[c.StartByte():c.EndByte()]))
+		}
+	}
+	return ""
 }
 
 // newExprClassName returns the constructed class name when value is a direct
