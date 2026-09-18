@@ -121,6 +121,30 @@ func TestParseAnnouncedRetryIns(t *testing.T) {
 			waits: []time.Duration{5 * time.Microsecond},
 		},
 		{
+			// NEWLY ADMITTED BY `\S+`, AND THEREFORE GRADED HERE. The widening
+			// admits exactly two classes the old char class rejected: a leading
+			// sign, and a micro sign. Both are correctly valued, and an accept
+			// that nothing pins is the accept-direction hole the eight
+			// forbidden rows below cannot see. Under the old class this input
+			// produced 0 matches, so the row is also an extra killer for a
+			// revert of the regex arm.
+			name:  "a leading plus sign is accepted and valued, not rejected and not stripped",
+			logs:  `retry_in=+5ms`,
+			want:  wantOK,
+			waits: []time.Duration{5 * time.Millisecond},
+		},
+		{
+			// The OTHER micro sign. time.ParseDuration accepts U+03BC GREEK
+			// SMALL LETTER MU as well as U+00B5 MICRO SIGN, so both are new
+			// accepts under `\S+` and both are pinned to the same exact value.
+			// Testing only U+00B5 would leave half the admitted alphabet
+			// ungraded.
+			name:  "the greek-mu spelling of microseconds is carried at the same exact value as the micro sign",
+			logs:  "retry_in=5\u03bcs",
+			want:  wantOK,
+			waits: []time.Duration{5 * time.Microsecond},
+		},
+		{
 			// THE MUST-HAVE ROW (#7183). Under the old class this returned an
 			// empty slice and NO error: the announcement vanished.
 			name:   "a negative announcement is read with its sign and rejected, not read as its magnitude",
