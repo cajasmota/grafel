@@ -30,6 +30,13 @@
 // `enum_body` / `annotation_type_body`, and javaScopeCalls recurses into each
 // such body with its own ledger layered over the enclosing one.
 //
+// ONE CELL IS EMPTY AND IT WAS MEASURED, NOT ASSUMED: `annotation_type_body`.
+// javac 25.0.3 rejects "annotation interface declaration not allowed here" in
+// every place reachable from a method body — directly in the body, in a local
+// class, in a local interface, and in an anonymous class body — so no
+// compilable Java reaches it. The boundary entry for it was therefore DELETED
+// rather than shipped with a necessarily-ALIVE mutant.
+//
 // TWO DIRECTIONS, AND THE SECOND IS THE DANGEROUS ONE. A boundary that stops
 // the walk TOO EARLY silently re-opens #7094 / #7097 / #7099 / #7100: a nested
 // statement block, a lambda body, a catch clause, a try-with-resources
@@ -205,6 +212,28 @@ class Svc {
       Cust o = new Cust();
       void go() { o.b(); }
     }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b")
+	j7094MustCall(t, rels, "Cust.b", "Order.a")
+}
+
+// A local enum's METHOD PARAMETER. Its members sit in `enum_body_declarations`,
+// one level below the enum_body, and the member walk has to see through that
+// node to give the method its own parameter frame. A mutant that makes
+// `enum_body_declarations` opaque (falling to the default arm, which has NO
+// parameter frame) is ALIVE against a parameterless enum method, so this row
+// exists specifically to grade that transparency.
+func TestJava7109_LocalEnumMethodParamOwnsItsName(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} void b() {} }
+class Cust  { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    enum E { ONE; void go(Cust o) { o.b(); } }
   }
 }
 `)

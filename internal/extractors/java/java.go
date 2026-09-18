@@ -1028,7 +1028,7 @@ func javaScopeCalls(
 		})
 	}
 	for _, cb := range scopedFindNodes(scopeRoot,
-		"class_body", "interface_body", "enum_body", "annotation_type_body") {
+		"class_body", "interface_body", "enum_body") {
 		javaClassBodyCalls(cb, src, callerName, cc, ledger, imports, seen, rels)
 	}
 }
@@ -1549,6 +1549,8 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 // what this function sees: it does not descend into a `class_body` /
 // `interface_body` / `enum_body` / `annotation_type_body`, so a name bound
 // inside a local or anonymous class is not in this ledger at all.
+// (`annotation_type_body` is not a boundary — javac rejects an annotation-type
+// declaration anywhere under a method body, so nothing can reach it.)
 //
 // WHY, since it was deliberately not done for two rounds. An earlier revision
 // of this comment said Java "forbids an inner block from redeclaring a name
@@ -2092,9 +2094,14 @@ func collectPackageName(root ts.Node, src []byte) string {
 //	interface I { … }         interface_declaration      → interface_body
 //	enum E { … }              enum_declaration           → enum_body
 //
-// `annotation_type_body` cannot appear inside a method body (an annotation
-// type may not be declared locally) but is listed because these same helpers
-// walk MEMBER class bodies on the recursive descent, where it can.
+// `annotation_type_body` is DELIBERATELY ABSENT, and that is a measured claim
+// rather than an omission: javac 25.0.3 rejects an annotation-type declaration
+// ("annotation interface declaration not allowed here") in all four places
+// reachable from a method body — directly in the body, inside a local class,
+// inside a local interface, and inside an anonymous class body — so no
+// compilable Java can put one under the roots these helpers walk. A boundary
+// for it would be code no fixture can reach; it was in the set for one round
+// and its mutant was necessarily ALIVE, so it is gone instead of ungraded.
 //
 // WHAT IS DELIBERATELY *NOT* HERE — these are the permissive direction, and
 // they must keep binding exactly as they did before #7109:
@@ -2111,10 +2118,9 @@ func collectPackageName(root ts.Node, src []byte) string {
 // A boundary placed on any of those would stop the walk TOO EARLY and silently
 // re-open #7094 / #7097 / #7099 / #7100, which is why each has a fixture.
 var javaClassScopeBody = map[string]bool{
-	"class_body":           true,
-	"interface_body":       true,
-	"enum_body":            true,
-	"annotation_type_body": true,
+	"class_body":     true,
+	"interface_body": true,
+	"enum_body":      true,
 }
 
 // scopedFindNodes is findAllNodes restricted to ONE class scope: it returns
@@ -2123,9 +2129,29 @@ var javaClassScopeBody = map[string]bool{
 // returned — that is how the caller finds the boundaries to recurse into — but
 // its contents are not searched.
 //
-// root itself is never matched, matching findAllNodes' behaviour at every call
-// site here: root is always a method/constructor body, a class member, or a
-// member container, none of which is ever one of the kinds asked for.
+// root itself is never matched. That is EQUIVALENT to matching it at every
+// current call site, and the enumeration is what makes that a fact rather than
+// a hope — a mutant that adds `if set[root.Type()] { out = append(out, root) }`
+// is ALIVE, so it is recorded here rather than left as a silently untested
+// line. The three call sites and the kinds each asks for:
+//
+//	collectLocalVarTypes(body)   local_variable_declaration,
+//	                             enhanced_for_statement, resource,
+//	                             catch_formal_parameter, lambda_expression,
+//	                             instanceof_expression, type_pattern,
+//	                             record_pattern_component
+//	javaScopeCalls (calls)       method_invocation, object_creation_expression
+//	javaScopeCalls (boundaries)  class_body, interface_body, enum_body
+//
+// and every root passed in is a method/constructor body (`block` /
+// `constructor_body`), a DIRECT CHILD of a class-scope body (a member
+// declaration, a field declaration, an initialiser block, an enum constant),
+// or an `enum_body_declarations`. None of those is a member of any of the
+// three kind sets, so the extra match could never fire.
+//
+// The non-matching form is kept because it is the SAFE one: were a class-scope
+// body ever passed as root, matching it would make javaScopeCalls recurse into
+// the scope it is already resolving.
 func scopedFindNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
