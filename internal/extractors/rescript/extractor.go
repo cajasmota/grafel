@@ -328,8 +328,63 @@ func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	}
 
 	var bodyLines []string
-	// ReScript uses 2-space indent conventionally.
-	minBodyIndent := baseIndentLen + 2
+	// #7185: the threshold is baseIndentLen+1, not +2.
+	//
+	// It was +2, which left a DEAD BAND at exactly baseIndentLen+1: such a line
+	// satisfied neither `indent >= minBodyIndent` nor `indent <= baseIndentLen`,
+	// so the loop silently skipped it AND KEPT SCANNING. The emitted body then had
+	// a HOLE — the base+1 line gone while deeper lines below it were still
+	// collected.
+	//
+	// THE BOUNDARY IS NOT SOURCED TO A RESCRIPT LANGUAGE RULE, BECAUSE THERE IS
+	// NONE. fsharp's copy of this helper takes +1 from the F# offside rule (#7184)
+	// and nim's from the Nim manual's IND{>} (#7185); neither argument exists
+	// here. ReScript Language Manual v11, "Let Binding" -> Block Scope:
+	//
+	//	"Bindings can be scoped through `{}`."
+	//	"The value of the last line of a scope is implicitly returned."
+	//
+	// Scope is delimited by BRACES. The manual assigns no meaning to a line's
+	// column, so ANY column > 0 is a legal body indentation and ANY column is a
+	// legal top-level declaration indentation. No threshold can be CORRECT here;
+	// this whole helper is an approximation of brace matching, which this
+	// extractor does not do.
+	//
+	// The dead band is a defect independent of that: it did not pick a different
+	// threshold, it made the loop NON-TOTAL. No threshold justifies "skip this
+	// line and keep going". Of the two ways to make a column-classifying loop
+	// total — append at base+1 or terminate at base+1 — APPEND is chosen, and the
+	// ground is TABS, measured rather than supposed. countIndent below counts a TAB
+	// as ONE column, and ReScript has no column rule at all, so tab-indented source
+	// is legal and ordinary; every line of a tab-indented top-level body then sits
+	// at exactly base+1, i.e. the WHOLE body is inside the dead band:
+	//
+	//	"let alpha = () => {\n\tstepOne()\n\t<Comp />\n}"
+	//	  +2:  alpha 1-1  CALLS:[]         RENDERS:[]      <- entire body invisible
+	//	  +1:  alpha 1-3  CALLS:[stepOne]  RENDERS:[Comp]
+	//
+	// TERMINATE would have dropped those bodies too — it converts the silent skip
+	// into a silent truncation at the first tab. The weaker form of this argument,
+	// that a body line MAY legally sit at base+1, follows from the brace rule but
+	// is a hypothetical; the tab class is its measured instance and is what the
+	// decision rests on.
+	//
+	// The cost of APPEND — a top-level declaration hand-indented by one column is
+	// absorbed into the previous body — is NOT a regression: under +2 its deeper
+	// body lines were ALREADY absorbed, with only its header line missing. Both
+	// directions are pinned in indent_band_7185_test.go.
+	//
+	// A THIRD OPTION EXISTS AND IS DELIBERATELY OUT OF SCOPE: brace matching, which
+	// is what ReScript actually needs, braces being the real delimiter. "Two ways
+	// to make it total" is exhaustive only for a loop that classifies lines by
+	// column; replacing the column heuristic outright is a different change.
+	//
+	// DERIVED-NOT-EXECUTED: no ReScript toolchain exists on the build machine.
+	// FALSIFIER — a CORPUS claim, not a syntax one: real ReScript in which
+	// top-level declarations indented by exactly one column are more common than
+	// block bodies indented by exactly one column. `rescript format` normalises
+	// both away, so the band is empty in conforming source either way.
+	minBodyIndent := baseIndentLen + 1
 
 	for i, line := range lines {
 		if i == 0 && strings.TrimSpace(line) != "" {
