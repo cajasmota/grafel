@@ -84,8 +84,12 @@ import (
 // consume the SAME grammar production (`let`, § 14.6) and differ only in the
 // binding-pattern head, so a divergent allowlist would be a twinned surface
 // that drifts — the exact failure this three-arm issue is about, and the
-// reason `typeKindRE` was left un-widened and filed (#7153) rather than
-// hand-tuned. (b) The divergence would buy nothing measurable: `mutable` is
+// reason typeRE's dead twin was left un-widened and filed (#7153) rather than
+// hand-tuned. That twin, `typeKindRE`, has since been DELETED under #7153
+// (it was unreferenced), so the divergence it embodied no longer exists in
+// the tree; the hazard it documented survives as a note on typeRE in
+// extractor.go, for any future pattern keyed on the same declaration head.
+// (b) The divergence would buy nothing measurable: `mutable` is
 // unreachable on THIS sub-form, on three independent grounds — the spec
 // grammar admits `mutable` only in `value-defn := mutable? access? pat`,
 // while a parameterised active-pattern head is a
