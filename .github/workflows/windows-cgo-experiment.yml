@@ -3,17 +3,83 @@ name: Windows CGO Smoke
 # Previously "Windows CGO Experiment" — graduated to stable in #2230 (closes #937).
 # MinGW + CGO_ENABLED=1 are now standard on the main test matrix in test.yml.
 # This workflow retains the more thorough daemon smoke test (healthz + binary upload).
+#
+# CHECK NAMES, for anyone auditing a PR's check list by eye (this is the audit
+# #7244 is about — an absent job and a passing job look the same there).
+# Neither job sets `name:` at the job level, so GitHub renders them from the
+# workflow name plus the JOB ID, not from the string "windows-cgo-smoke" that
+# CONTRIBUTING.md and the issues use:
+#   Windows CGO Smoke / build
+#   Windows CGO Smoke / windows cgo smoke present
+# Searching a check list for "windows-cgo-smoke" therefore finds NOTHING even
+# when the smoke ran. Look for "Windows CGO Smoke".
 
+# Refs #7244 — this workflow had the same defect #7219/`d77b6bf73` fixed in
+# test.yml. `pull_request_target: types: [labeled]` fires ONCE, when `ci:full`
+# is applied, and never again: every subsequent push to that PR arrives as a
+# plain `pull_request`, which this file did not subscribe to at all. So
+# `windows-cgo-smoke` silently stopped running on the first push after
+# labelling, while the label stayed on and CONTRIBUTING.md kept promising that
+# `ci:full` runs `test` + `windows-cgo-experiment`. A dropped job reads
+# identically to a passing one in the check list — that is the actual defect;
+# the missing Windows CGO smoke is the instance.
+#
+# THE FIX HAS TWO HALVES, deliberately, as in d77b6bf73:
+#   1. a plain `pull_request` trigger (below), label-gated in the job's `if:`,
+#      so the smoke runs on EVERY push to a `ci:full` PR; and
+#   2. the `windows-cgo-smoke-present` job, which fails when the event owed a
+#      smoke run and no smoke run happened. (1) fixes today's instance; (2) is
+#      what makes the next regression of this shape loud instead of invisible.
+#
+# NOT DONE, ON PURPOSE: adding `synchronize` to `pull_request_target`'s
+# `types:`. That would also have made it run on every push, and it is a
+# code-execution hazard, not a CI improvement — this workflow checks out PR
+# HEAD (see the SECURITY NOTE on the checkout step), and under
+# `pull_request_target` it does so with the base repo's privileged token. With
+# `synchronize` that combination would run on every push to every FORK PR,
+# with no collaborator in the loop. #7219 rejected the same shortcut for
+# test.yml and did not need it. The `pull_request_target` block below is
+# byte-identical to before this commit.
 on:
   workflow_dispatch:
   pull_request_target:
     types: [labeled]
 
+  # Refs #7244. Plain `pull_request` (NOT `pull_request_target`): it runs with
+  # the read-only token pinned by `permissions:` below, and GitHub checks out
+  # the PR's HEAD for this event by default, so it carries none of the
+  # elevated-permission caveats of the trigger above. No `types:` filter:
+  # opened, synchronize (every push) and reopened — which is the point.
+  #
+  # This trigger alone does NOT make the job run on every PR: the job's `if:`
+  # requires the `ci:full` label on this path, so an unlabelled PR still runs
+  # no Windows CGO smoke and the workflow's cost profile is unchanged. Only
+  # labelled PRs gain runs, which is exactly what the label already promises.
+  # `github.event.pull_request.labels` IS present in the ordinary
+  # `pull_request` webhook payload — test.yml has depended on that in two
+  # independent places since d77b6bf73 (its matrix expression, and the `-race`
+  # clause, which has always read the label with no `event_name` guard).
+  pull_request:
+
+# Least privilege. This job reads the repo and uploads artifacts; it writes
+# nothing through the GITHUB_TOKEN (upload-artifact authenticates with
+# ACTIONS_RUNTIME_TOKEN, not GITHUB_TOKEN). Pinning `contents: read` here
+# matters most on the `pull_request_target` path, where the token would
+# otherwise inherit the repo default while the checkout is of PR HEAD.
+permissions:
+  contents: read
+
 jobs:
   build:
+    # Gate: workflow_dispatch, OR `ci:full` on either PR trigger. The first two
+    # clauses are unchanged; a plain `pull_request` event can never
+    # simultaneously be `workflow_dispatch` or `pull_request_target`, so the
+    # added clause can only make this condition true for an event type that
+    # previously produced no run at all.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'ci:full')) ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -21,9 +87,13 @@ jobs:
       # to checking out the BASE branch (main), not the PR's HEAD. This means CI
       # would test main's code, not the PR's changes — a silent correctness failure.
       # We explicitly ref the PR HEAD here. This is safe because the workflow is
-      # gated by the `ci:full` label (line 16 above), which only collaborators with
-      # write access can apply — making this functionally equivalent to pull_request.
-      # The `|| github.sha` fallback handles workflow_dispatch and push-to-main.
+      # gated by the `ci:full` label (see the `build` job's `if:` above), which only
+      # collaborators with write access can apply — making this functionally
+      # equivalent to pull_request.
+      # The `|| github.sha` fallback handles workflow_dispatch. On the plain
+      # `pull_request` trigger added for #7244 the explicit ref resolves to the PR
+      # HEAD sha, which is what GitHub would have checked out anyway — redundant
+      # there, but it keeps one checkout step correct for every trigger.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -99,3 +169,117 @@ jobs:
             daemon.err
           retention-days: 7
           if-no-files-found: ignore
+
+      # Refs #7244. Evidence that this smoke job EXISTED in this run, consumed
+      # by `windows-cgo-smoke-present` below. `if: always()` on purpose: the
+      # claim recorded is "the job ran", not "the job passed" — a red smoke
+      # test is already loud, a smoke test that was never scheduled is not.
+      # An artifact rather than a job output: this is the idiom d77b6bf73
+      # landed and measured in test.yml, and it needs no GITHUB_TOKEN grant at
+      # all (upload/download-artifact@v4 use ACTIONS_RUNTIME_TOKEN for
+      # same-run artifacts), so it behaves identically on a fork PR, where
+      # token scope differs, and under `permissions: contents: read` above.
+      - name: Record that the Windows CGO smoke ran (#7244)
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci-leg
+          echo "windows-cgo-smoke" > .ci-leg/job
+      - name: Upload smoke-presence marker (#7244)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-cgo-leg
+          path: .ci-leg/job
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Refs #7244. The presence gate: fails when the triggering event owed a
+  # Windows CGO smoke run and none happened.
+  #
+  # WHY IT EXISTS SEPARATELY FROM THE TRIGGER FIX ABOVE. The trigger fix makes
+  # the smoke run on every push to a `ci:full` PR. This job addresses the
+  # general defect: *an absent job reads identically to a passing one*. Nothing
+  # in GitHub's UI distinguishes "windows-cgo-smoke was never scheduled" from
+  # "windows-cgo-smoke is fine" — both render as the absence of a red X. So the
+  # expectation is asserted here, explicitly, and it keeps working if someone
+  # narrows the `build` job's `if:` again.
+  #
+  # ITS REACH STOPS AT THIS WORKFLOW'S OWN RUN, and that is not a quibble.
+  # This job is scheduled only when a run of THIS workflow exists. Remove the
+  # `on:` key, add a `paths:` filter that misses, or disable the workflow in
+  # the Actions UI, and there is no run — so this gate is exactly as invisible
+  # as the job it guards. That is the live state today: the workflow is
+  # `disabled_manually` and has produced no run since 2026-05-27 (#7248), so
+  # nothing below has executed once. Not hypothetical for the `on:` half
+  # either: `939a0b348` (#5728) stripped `windows.yml`'s triggers "to conserve
+  # free-tier Actions minutes" a month after that workflow was disabled.
+  # A guard that survives THOSE has to live in a workflow that is itself
+  # active and independently reachable (test.yml, with `actions: read`, could
+  # assert this one's `state: active`); see #7248.
+  #
+  # IT DOES NOT READ THE THING IT GUARDS. The expectation is recomputed from
+  # the event and the labels, in bash rather than in a GitHub expression, and
+  # compared against an artifact only a job that actually started can produce.
+  # A guard derived from the condition it checks is a tautology and can never
+  # fail; change the `build` job's `if:` to drop the labelled-PR path and this
+  # job goes red, which is the point.
+  #
+  # THE `if:` DELIBERATELY DOES NOT CONSULT `needs.build.result`. The obvious
+  # spelling, `always() && needs.build.result != 'skipped'`, has a hole in
+  # exactly the shape this gate exists to catch: whenever the guarded job does
+  # not run, GitHub reports `skipped`, so the guard would suppress itself in
+  # precisely the case it is there to detect. "Was a run owed" is therefore
+  # derived from the EVENT alone: owed for `workflow_dispatch`, and for either
+  # PR trigger carrying `ci:full`.
+  #
+  # FAIL-CLOSED: `continue-on-error: true` on the download step ONLY so that
+  # zero artifacts reaches the assert script as an empty directory with a
+  # legible message, instead of download-artifact@v4's own "unable to find any
+  # artifacts" error. Zero artifacts still fails, in the script.
+  #
+  # NOTE FOR #7243 (the Node20 -> Node24 action migration):
+  # `actions/download-artifact@v4` is new to THIS file but is already pinned at
+  # the same major in test.yml, so it lands in the existing Node20-era bucket
+  # that migration already covers. No version was bumped here.
+  # ---------------------------------------------------------------------------
+  windows-cgo-smoke-present:
+    name: windows cgo smoke present
+    needs: [build]
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
+       ((github.event_name == 'pull_request' || github.event_name == 'pull_request_target') &&
+        contains(github.event.pull_request.labels.*.name, 'ci:full')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download smoke-presence marker
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          path: legs
+          pattern: windows-cgo-leg
+
+      - name: Assert the Windows CGO smoke ran (#7244)
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_CI_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+        run: |
+          set -euo pipefail
+          echo "event=$EVENT_NAME ci:full=$HAS_CI_FULL"
+          echo "markers found:"
+          ls -1 legs 2>/dev/null || echo "  (none)"
+          marker="legs/windows-cgo-leg/job"
+          if [[ ! -s "$marker" ]] || [[ "$(cat "$marker")" != "windows-cgo-smoke" ]]; then
+            echo "::error::windows-cgo-smoke did not run on this head, but this event requires it (#7244)"
+            echo "A job the ci:full label promises produced no run at all."
+            echo "This is the #7244 / #7219 failure shape: an absent job is invisible"
+            echo "in the check list, so it is asserted here instead. Either the on:"
+            echo "block no longer subscribes to this event, or the build job's if:"
+            echo "no longer matches it, or the job never reached its marker step."
+            exit 1
+          fi
+          echo "windows-cgo-smoke ran"

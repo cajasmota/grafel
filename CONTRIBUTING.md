@@ -2,22 +2,39 @@
 
 ## CI overview
 
-CI is **fast by default**: PRs run zero CI except board-hygiene. Full 3-platform tests are manual or opt-in. Post-merge always validates.
+Most PR CI is automatic; the expensive platform coverage is opt-in via the
+**`ci:full`** label.
+
+> **Check names.** This document names workflows; the GitHub check list names
+> `<workflow> / <job id>`. Notably the CGO smoke renders as `Windows CGO Smoke /
+> build` and `Windows CGO Smoke / windows cgo smoke present` — the string
+> `windows-cgo-smoke` appears in **no** check name, so searching a check list for
+> it finds nothing whether or not the job ran.
+>
+> **Maintenance note.** The tables below are hand-maintained and have rotted
+> before — they described the pre-#6291 world (no automatic per-PR CI) long
+> after `test.yml` gained a plain `pull_request:` trigger, and they named a
+> `linux-smoke` workflow that does not exist in `.github/workflows/`. Re-derive
+> from the `on:` blocks before trusting any row.
 
 ### What runs on every PR
 
 | Workflow | Cost | Always? |
 |---|---|---|
 | `board-hygiene` (closure-keyword check) | ~5 s | Yes — all PRs |
-| `test` (3-platform: ubuntu / macos / windows with MinGW) | ~30 min | No — manual or `ci:full` label only |
-| `windows-cgo-smoke` (daemon healthz smoke, graduated from experiment in #2230) | ~5 min | No — manual or `ci:full` label only |
-| `linux-smoke` | ~3 min | Post-merge + tag only |
+| `cross-platform compile` (3-platform `go vet` / `go build`, no test bodies) | mins | Yes — all PRs |
+| `module hygiene`, `node-type gate`, `quality`, `windows installers` | mins | Yes — all PRs |
+| `coverage-docs` | mins | Yes, when the PR touches its `paths:` |
+| `test` (ubuntu + windows, no `-race`) | tens of min | Yes — all PRs (#6291) |
+| `test` (+ macos, and `-race` everywhere) | much longer — `-race` is ~5-10x | No — `ci:full` label or `workflow_dispatch` |
+| `Windows CGO Smoke` (daemon healthz smoke, graduated from experiment in #2230) | ~5 min | **No — DORMANT.** The workflow is `disabled_manually` (since 2026-06-10) and currently runs on **nothing**, label or not (#7248). |
 
 ---
 
-### When does `test` run on a PR?
+### When does the full `test` matrix run on a PR?
 
-`test` does **not** run automatically on any PR by default. To trigger it:
+The two-platform `test` matrix runs on every PR push automatically. To get the
+third platform (macOS) and `-race`:
 
 1. Apply the **`ci:full`** label (see below), OR
 2. Use `workflow_dispatch` from the Actions tab
@@ -26,7 +43,19 @@ CI is **fast by default**: PRs run zero CI except board-hygiene. Full 3-platform
 
 ### Opt-in: `ci:full` label
 
-Apply the **`ci:full`** label to trigger full 3-platform CI (`test` + `windows-cgo-experiment`) on any PR.
+Apply the **`ci:full`** label to get macOS and `-race` in `test`, on **every
+subsequent push** and not only at the moment the label is applied (#7219). A
+dropped `test` leg turns the `test legs present` check RED rather than vanishing
+quietly.
+
+**`Windows CGO Smoke` is a separate matter: the label does not currently get you
+one.** That workflow is `disabled_manually` and has produced no run of any kind
+since 2026-05-27; the trigger fix in #7244 is in the file but **dormant** until
+someone re-enables the workflow (#7248). Its presence gate cannot help here
+either — the gate lives inside the disabled workflow, so it is disabled with it.
+**Do not read the absence of a red CGO-smoke check as evidence the smoke ran.**
+Until #7248 is resolved, verify Windows CGO coverage from the `test
+(windows-latest)` leg, which does run and does build with CGO.
 
 **When to use it:**
 
@@ -36,7 +65,10 @@ Apply the **`ci:full`** label to trigger full 3-platform CI (`test` + `windows-c
 
 **How to apply:**
 
-In the GitHub PR sidebar → Labels → select `ci:full`. The `pull_request_target: labeled` trigger will start CI jobs immediately.
+In the GitHub PR sidebar → Labels → select `ci:full`. The
+`pull_request_target: labeled` trigger starts the labelled jobs immediately;
+every later push re-runs them through the plain `pull_request` trigger, which
+reads the same label.
 
 ---
 
@@ -57,7 +89,8 @@ The label is checked in the `board-hygiene` workflow. Applying `board:exempt` (o
 
 Any workflow that supports `workflow_dispatch` can be triggered from the **Actions tab** in GitHub:
 
-1. Go to `Actions` → select the workflow (e.g. `test`, `Linux Smoke Test`, `quality`).
+1. Go to `Actions` → select the workflow (e.g. `test`, `quality`, `acceptance`).
+   (There is no `Linux Smoke Test` workflow — see "Where smoke runs" below.)
 2. Click **Run workflow** → choose a branch → click the green button.
 
 Use this when you want to run CI on a branch that wouldn't otherwise trigger it automatically (e.g. a WIP branch, a branch that only touches docs).
@@ -66,7 +99,16 @@ Use this when you want to run CI on a branch that wouldn't otherwise trigger it 
 
 ### Where smoke runs
 
-`linux-smoke` runs **only on push to `main`** and on **tag pushes (`v*`)**. It is not a PR gate — its job is post-merge sanity: confirm the binary builds and indexes a golden fixture before the commit is considered stable.
+There is currently **no `linux-smoke` workflow** in `.github/workflows/`, and no
+`Linux Smoke Test` either — the only workflow matching `smoke` is `Windows CGO
+Smoke`, which is itself dormant (see above, #7248). `git log --all -S linux-smoke
+-- .github/workflows/` returns no commit: this section described a workflow that
+has never existed in this repository. Post-merge sanity on `main` comes
+from the workflows with a `push: branches: [main]` trigger (`cross-platform
+compile`, `module hygiene`, `node-type gate`, `quality`, `windows installers`,
+`coverage-docs`). Note that `test` is **not** among them: it has no `push`
+trigger at all, by design (#6056/#6064) — on a tag it is invoked by `release.yml`
+through `workflow_call`.
 
 ---
 
@@ -76,7 +118,9 @@ Pushing a tag matching `v*` triggers the full release pipeline (`release.yml`):
 
 - 5-platform binary builds (linux amd64/arm64, macos amd64/arm64, windows amd64)
 - Checksums + GitHub Release creation
-- Smoke also fires on the tag push
+- `acceptance` then runs the cross-OS install → `grafel selftest` → uninstall
+  ladder, triggered by `workflow_run` on the completed `release` workflow (not
+  by the tag itself). There is no separate smoke workflow on a tag.
 
 Tags should only be pushed from `main` after all CI is green.
 
@@ -86,11 +130,11 @@ Tags should only be pushed from `main` after all CI is green.
 
 | Scenario | Workflows triggered |
 |---|---|
-| Any PR (default) | `board-hygiene` only |
-| PR with `board:exempt` label | `board-hygiene` (passes via label) |
-| PR with `ci:full` label | `board-hygiene` + `test` (3 platforms) + `windows-cgo-smoke` |
-| Push to `main` | `board-hygiene` (passes) + `test` + `linux-smoke` |
-| Tag push (`v1.2.3`) | `board-hygiene` (passes) + `test` + `linux-smoke` + `release` pipeline |
+| Any PR (default) | `board-hygiene` + `cross-platform compile` + `module hygiene` + `node-type gate` + `quality` + `windows installers` + `test` (ubuntu + windows, no `-race`) |
+| PR with `board:exempt` label | as above; `board-hygiene` passes via the label |
+| PR with `ci:full` label | as above, plus macOS and `-race` in `test`, on **every push** while the label is applied. **Not** `Windows CGO Smoke` — dormant, see above (#7248). |
+| Push to `main` | the `push: branches: [main]` workflows (`cross-platform compile`, `module hygiene`, `node-type gate`, `quality`, `windows installers`, `coverage-docs`). **Not** `test`. |
+| Tag push (`v1.2.3`) | `release` pipeline, which calls `test` (3 platforms, `-race`) via `workflow_call` and blocks the publish on it; `acceptance` then fires via `workflow_run` once `release` completes |
 | `workflow_dispatch` from Actions UI | Whichever workflow(s) you trigger |
 
 ## Performance tests
@@ -109,10 +153,10 @@ They also run weekly (and on demand) via the `perf` workflow. That job is
 Separately, `go vet -tags perf ./...` runs as a step in the `test` workflow — so
 the tagged files are compile-checked on every release tag, every `ci:full` PR
 and every manual dispatch, i.e. everywhere the release gate itself runs. It is
-also in `pre-merge`, which is dispatch-only. There is deliberately no
-`pull_request` trigger anywhere: this repo runs no automatic per-PR CI, so if
-you are iterating on a perf-tagged file, run `go vet -tags perf ./...` locally —
-nothing will check it for you before you tag.
+also in `pre-merge`, which is dispatch-only. Since #6291 `test` has a plain
+`pull_request` trigger, so this compile check does run on every PR push — but
+only on the Linux leg, and it is still worth running `go vet -tags perf ./...`
+locally while iterating on a perf-tagged file.
 
 ### Which side of the line is a test on?
 
