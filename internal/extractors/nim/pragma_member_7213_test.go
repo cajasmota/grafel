@@ -163,12 +163,15 @@ const prag7213DistinctTuple = "type\n" + // 1
 // --- forbidden shapes -------------------------------------------------------
 
 // prag7213BareBraces — braces that are NOT a pragma. Nim's pragma delimiters
-// are the two-character tokens `{.` and `.}`; all three spellings below are
-// lexical errors in Nim, and all three are needed because each grades a
-// DIFFERENT half of the delimiter pair: `Bogus` has neither dot, `Half` only
-// the opening one, `Odd` only the closing one. `Real` is the POSITIVE CONTROL
-// inside the same fixture: the run is not vacuous, it produces exactly one
-// entity.
+// are the two-character TOKENS `{.` and `.}`; all four spellings below are
+// lexical errors in Nim, and all four are needed because each grades a
+// different property of the pair: `Bogus` has neither dot, `Half` only the
+// opening one, `Odd` only the closing one, and `Spaced` has both dots but
+// separated from their braces — `{ .` is `{` followed by a dot, not the `{.`
+// token, so it opens a set literal (#7230 review, P1: without this member the
+// row did not grade the token's ADJACENCY and a `\{[ \t]*\.` widening
+// survived). `Real` is the POSITIVE CONTROL inside the same fixture: the run
+// is not vacuous, it produces exactly one entity.
 const prag7213BareBraces = "type\n" + // 1
 	"  Bogus {packed} = object\n" + // 2
 	"    a*: int\n" + // 3
@@ -176,8 +179,10 @@ const prag7213BareBraces = "type\n" + // 1
 	"    h*: int\n" + // 5
 	"  Odd {packed.} = object\n" + // 6
 	"    o*: int\n" + // 7
-	"  Real* = object\n" + // 8
-	"    b*: int\n" // 9
+	"  Spaced { .packed. } = object\n" + // 8
+	"    s*: int\n" + // 9
+	"  Real* = object\n" + // 10
+	"    b*: int\n" // 11
 
 // prag7213UnterminatedPragma — the ABSORPTION shape. `Bad` opens a pragma and
 // never closes it on its own line. If the pragma body is allowed to match a
@@ -192,15 +197,28 @@ const prag7213UnterminatedPragma = "type\n" + // 1
 	"    a\n" + // 5
 	"    b\n" // 6
 
-// prag7213PragmaBeforeGenerics — nim-lang/Nim's own tests/types/told_pragma_syntax2.nim
-// asserts this form is a compile error ("invalid indentation"). `Ok` is the
-// positive control: the grammatical order in the same section must still be
-// extracted.
+// prag7213PragmaBeforeGenerics — every WRONG POSITION for a well-formed pragma
+// block. `typeDef = identVisDot genericParamList? pragma? ('=' …)` admits one
+// pragma, after the name and after the generic parameter list, so:
+//
+//	line 2  pragma BEFORE the generics — nim-lang/Nim's own
+//	        tests/types/told_pragma_syntax2.nim asserts the compiler rejects
+//	        this exact line ("invalid indentation");
+//	line 4  pragma BEFORE the name — `identVisDot` comes first, always;
+//	line 6  TWO pragma blocks — the production is `pragma?`, not `pragma*`.
+//
+// Lines 4 and 6 were added for #7230 review F2, which found the position axis
+// graded in only one of its three directions. `Ok` is the positive control:
+// the grammatical order in the same section must still be extracted.
 const prag7213PragmaBeforeGenerics = "type\n" + // 1
 	"  Bar {.final.} [T] = object\n" + // 2
 	"    v*: T\n" + // 3
-	"  Ok*[T] {.final.} = object\n" + // 4
-	"    w*: T\n" // 5
+	"  {.packed.} Wrong* = object\n" + // 4
+	"    w*: int\n" + // 5
+	"  Twice* {.packed.}{.pure.} = object\n" + // 6
+	"    t*: int\n" + // 7
+	"  Ok*[T] {.final.} = object\n" + // 8
+	"    x*: T\n" // 9
 
 // prag7213PragmaOnOwnLine — the pragma on a CONTINUATION line. The grammar puts
 // no `optInd` between the generic parameter list and the pragma, so a newline
@@ -244,6 +262,32 @@ const prag7213BraceInPragmaBody = "type\n" + // 1
 	"  Plain* {.packed.} = object\n" + // 4
 	"    p*: int\n" // 5
 
+// prag7213NewlineBeforeEquals — A DISCLOSED PRE-EXISTING OVER-MATCH, pinned so
+// it is not accidental (#7230 review, F4). The separator before the `=` is
+// `\s*`, which predates #7213 and matches a NEWLINE, so a declaration whose
+// `=` sits on the next line is matched. The grammar places `optInd` only AFTER
+// the `=` (`('=' optInd typeDefValue)?`), so `Alpha* {.pure.}` / newline /
+// `= enum` is not legal Nim and ideally would not be extracted.
+//
+// It is recorded rather than forbidden because narrowing `\s*=` to `[ \t]*=`
+// would change behaviour for every PRAGMA-FREE declaration too — a restrictive
+// change to a path #7213 does not touch, which belongs in its own issue with
+// its own corpus measurement. What #7213 does change is that the shape is now
+// reachable in combination with a pragma, so this row states exactly what that
+// costs: `Alpha` is minted as an `enum` spanning 2-4, and — the part that
+// matters — the sibling `Beta` is UNHARMED at 5-6, i.e. there is no absorption.
+// A future narrowing must edit this row and say so.
+//
+// Spans derived from the source: m[0] is on line 2, m[1] just past `enum` on
+// line 3; the body is line 4 alone (line 5 is a sibling at the same column), so
+// EndLine = lineOf(m[1]) + 1 = 4.
+const prag7213NewlineBeforeEquals = "type\n" + // 1
+	"  Alpha* {.pure.}\n" + // 2
+	"  = enum\n" + // 3
+	"    a\n" + // 4
+	"  Beta* = enum\n" + // 5
+	"    b\n" // 6
+
 func prag7213Corpus() map[string]string {
 	return map[string]string{
 		"7213/packed":               prag7213Packed,
@@ -259,6 +303,7 @@ func prag7213Corpus() map[string]string {
 		"7213/pragmaOnOwnLine":      prag7213PragmaOnOwnLine,
 		"7213/pragmaNoKindClause":   prag7213PragmaNoKindClause,
 		"7213/braceInPragmaBody":    prag7213BraceInPragmaBody,
+		"7213/newlineBeforeEquals":  prag7213NewlineBeforeEquals,
 	}
 }
 
@@ -367,7 +412,7 @@ func TestPragmaMember7213_ForbiddenBareBraces(t *testing.T) {
 	// POSITIVE CONTROL: the surviving member proves the fixture reaches the
 	// extractor and yields records, so the two absences above are enforced
 	// rather than merely unreachable.
-	prag7213Want(t, ents, "Real", "object", 8, 9)
+	prag7213Want(t, ents, "Real", "object", 10, 11)
 }
 
 // FORBIDDEN: the pragma body may not cross a line, because an unterminated `{.`
@@ -380,12 +425,14 @@ func TestPragmaMember7213_ForbiddenPragmaDoesNotSpanLines(t *testing.T) {
 	prag7213Want(t, ents, "Good", "enum", 4, 6)
 }
 
-// FORBIDDEN: pragma before the generic parameter list. nim-lang/Nim's
-// tests/types/told_pragma_syntax2.nim asserts the Nim compiler rejects it.
+// FORBIDDEN: every wrong position for a pragma — before the generics (which
+// nim-lang/Nim's tests/types/told_pragma_syntax2.nim asserts the compiler
+// rejects), before the name, and repeated. Kills a reversed-order alternation,
+// a group inserted ahead of the name capture, and a `*`-quantified group.
 func TestPragmaMember7213_ForbiddenPragmaBeforeGenerics(t *testing.T) {
 	ents := prag7213WantComponents(t, prag7213PragmaBeforeGenerics, "Ok")
 	// POSITIVE CONTROL: the grammatical order in the very same section.
-	prag7213Want(t, ents, "Ok", "object", 4, 5)
+	prag7213Want(t, ents, "Ok", "object", 8, 9)
 }
 
 // FORBIDDEN: a newline between the generic parameter list and the pragma. Kills
@@ -409,6 +456,15 @@ func TestPragmaMember7213_ForbiddenBraceInsidePragmaBody(t *testing.T) {
 	// POSITIVE CONTROL: a well-formed pragma in the same section is extracted,
 	// so the absence of `Emit` is enforced rather than merely unreachable.
 	prag7213Want(t, ents, "Plain", "object", 4, 5)
+}
+
+// DISCLOSED, NOT FORBIDDEN: a newline between the pragma and the `=`. See
+// prag7213NewlineBeforeEquals. The assertion that carries the weight is the
+// SIBLING's: whatever `Alpha` is called, the over-match must not absorb `Beta`.
+func TestPragmaMember7213_NewlineBeforeEqualsIsOverMatchedNotAbsorbing(t *testing.T) {
+	ents := prag7213WantComponents(t, prag7213NewlineBeforeEquals, "Alpha", "Beta")
+	prag7213Want(t, ents, "Alpha", "enum", 2, 4)
+	prag7213Want(t, ents, "Beta", "enum", 5, 6)
 }
 
 // POSITIVE CONTROL FOR THE SET COMPARATOR ITSELF. An absence assertion passes
@@ -454,8 +510,8 @@ func TestPragmaMember7213_SetComparatorFires(t *testing.T) {
 // pragma-carrying members again, moves this number.
 func TestPragmaMember7213_CorpusRecallFloor(t *testing.T) {
 	corpus := prag7213Corpus()
-	if len(corpus) < 13 {
-		t.Fatalf("corpus floor: %d fixtures, want >= 13 — a shrunken corpus makes these rows vacuous", len(corpus))
+	if len(corpus) < 14 {
+		t.Fatalf("corpus floor: %d fixtures, want >= 14 — a shrunken corpus makes these rows vacuous", len(corpus))
 	}
 	total, withPragma := 0, 0
 	for name, src := range corpus {
@@ -473,16 +529,18 @@ func TestPragmaMember7213_CorpusRecallFloor(t *testing.T) {
 			t.Errorf("%s: no components at all — cannot grade", name)
 		}
 	}
-	// 18 components across the 13 fixtures — 2+2+1+2+1+2+2+1+1+1+1+1+1,
+	// 20 components across the 14 fixtures — 2+2+1+2+1+2+2+1+1+1+1+1+1+2,
 	// counted off the fixture sources in prag7213Corpus's literal order — of
-	// which 15 carry a pragma on their own declaration line. The three that do
-	// not are Beta (packed), Leaf (genericsThenPragma) and Real (bareBraces).
-	// Derived by reading the fixtures, not from output.
-	if total != 18 {
-		t.Errorf("corpus emitted %d components, want 18", total)
+	// which 16 carry a pragma on their own declaration line. The four that do
+	// not are Beta (packed), Leaf (genericsThenPragma), Real (bareBraces) and
+	// Beta (newlineBeforeEquals). Derived by reading the fixtures, not from
+	// output. This is an EQUALITY, not a floor: a regression that drops a
+	// pragma-carrying member and one that mints an extra entity both move it.
+	if total != 20 {
+		t.Errorf("corpus emitted %d components, want 20", total)
 	}
-	if withPragma != 15 {
-		t.Errorf("corpus emitted %d pragma-carrying components, want 15", withPragma)
+	if withPragma != 16 {
+		t.Errorf("corpus emitted %d pragma-carrying components, want 16", withPragma)
 	}
 	t.Logf("#7213 corpus: %d components across %d fixtures, %d carrying a pragma", total, len(corpus), withPragma)
 }
