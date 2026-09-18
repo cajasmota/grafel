@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -230,4 +231,115 @@ func TestWaitDaemonReady_ReturnsBeforeTheDaemonIsReady(t *testing.T) {
 
 	// The gap is a delay, not a deadlock: readiness must still arrive.
 	ready.Wait(t, 30*time.Second)
+}
+
+// TestSignalHandler_DerivedLoggerStillRaisesTheSignal grades the plumbing the
+// comment on signalHandler asserts: "WithAttrs/WithGroup must carry the signals
+// through, or a record emitted by a derived logger would be missed."
+//
+// Nothing in the package derives from the injected logger today — server.go
+// passes cfg.Logger around verbatim — so the carry-through is live code that no
+// test reaches (#7236). That makes the comment the only thing standing between
+// an ordinary future edit (`logger = cfg.Logger.With("pkg", "daemon")` inside
+// Run) and every anchor in this package silently never firing again: ready
+// would stay false forever and the shutdown tests would go vacuous in the
+// opposite direction, with no test noticing.
+//
+// This exercises the derived path directly, so `sigs: nil` in either method is
+// a failing change rather than an invisible one.
+func TestSignalHandler_DerivedLoggerStillRaisesTheSignal(t *testing.T) {
+	cases := []struct {
+		name   string
+		derive func(*slog.Logger) *slog.Logger
+	}{
+		{"WithAttrs", func(l *slog.Logger) *slog.Logger { return l.With("pkg", "daemon") }},
+		{"WithGroup", func(l *slog.Logger) *slog.Logger { return l.WithGroup("startup") }},
+		{"WithGroup then WithAttrs", func(l *slog.Logger) *slog.Logger {
+			return l.WithGroup("startup").With("pkg", "daemon")
+		}},
+		{"WithAttrs twice", func(l *slog.Logger) *slog.Logger {
+			return l.With("pkg", "daemon").With("phase", "startup")
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logger, sigs := newSignalLogger(daemonReadySignal)
+			sig := sigs[0]
+
+			derived := tc.derive(logger)
+
+			// Control: the derivation must actually have gone through
+			// WithAttrs/WithGroup. slog skips both for an empty attr list or an
+			// empty group name, and a derivation that returned the same handler
+			// would make the assertion below pass without exercising anything.
+			if derived.Handler() == logger.Handler() {
+				t.Fatalf("%s returned a logger with the identical handler: slog did not call "+
+					"WithAttrs/WithGroup, so this case grades nothing", tc.name)
+			}
+			if sig.Fired() {
+				t.Fatalf("signal for %q fired before anything was logged", daemonReadySignal)
+			}
+
+			derived.Info(daemonReadySignal)
+
+			if !sig.Fired() {
+				t.Fatalf("a record logged through a logger derived by %s did not raise the %q "+
+					"signal: signalHandler.WithAttrs/WithGroup dropped the signal list, so every "+
+					"anchor in this package would be dead the moment any production path derives "+
+					"from the injected logger (#7236)", tc.name, daemonReadySignal)
+			}
+		})
+	}
+}
+
+// TestSignalHandler_MessageMerelyContainingTheMarkerDoesNotFire pins that the
+// anchor matches a message EXACTLY. Today equality and containment are
+// indistinguishable on this package's log vocabulary — the only records whose
+// message contains "ready" are the msg=ready records themselves — so widening
+// the matcher to strings.Contains survives the whole suite (#7236). The day a
+// record like "engine not ready" is logged on a path that PRECEDES msg=ready, a
+// containment matcher fires the anchor early and every wait built on it returns
+// against a daemon that has not started. This makes the exact match load-bearing
+// rather than coincidental, so "make the matcher more forgiving" goes red.
+func TestSignalHandler_MessageMerelyContainingTheMarkerDoesNotFire(t *testing.T) {
+	// Each decoy contains the marker in a different position: the widening this
+	// forbids is a substring test, and a single decoy would only pin one of its
+	// edges.
+	decoys := []string{
+		"ready to index",   // marker at the start
+		"engine not ready", // marker at the end
+		"not ready yet",    // marker in the middle
+		"already running",  // marker inside a longer word
+	}
+	for _, decoy := range decoys {
+		t.Run(decoy, func(t *testing.T) {
+			if !strings.Contains(decoy, daemonReadySignal) {
+				t.Fatalf("decoy %q does not contain %q, so it cannot distinguish an exact match "+
+					"from a containment match and this row grades nothing", decoy, daemonReadySignal)
+			}
+			if decoy == daemonReadySignal {
+				t.Fatalf("decoy %q IS the marker; it must only contain it", decoy)
+			}
+
+			// Positive control. The decoy is registered as a signal in its own
+			// right, so its firing proves the record reached the matching loop.
+			// Without that, the absence assertion below would pass identically
+			// if the record were dropped before ever being matched — an
+			// unreachable forbidden row and an enforced one look the same.
+			logger, sigs := newSignalLogger(daemonReadySignal, decoy)
+			ready, arrived := sigs[0], sigs[1]
+
+			logger.Info(decoy)
+
+			if !arrived.Fired() {
+				t.Fatalf("control failed: logging %q raised no signal at all, so the record never "+
+					"reached signalHandler.Handle and the assertion below proves nothing", decoy)
+			}
+			if ready.Fired() {
+				t.Fatalf("logging %q raised the %q signal: the anchor matches on containment, not "+
+					"equality, so any record that merely mentions the marker fires it — a wait on "+
+					"this anchor would return before the daemon is ready (#7236)", decoy, daemonReadySignal)
+			}
+		})
+	}
 }
