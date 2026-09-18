@@ -69,7 +69,9 @@ var (
 	// parameter list was admitted between the name and the `=`, and a pragma sits
 	// in exactly that position, so `Alpha* {.packed.} = object` never matched.
 	// Measured over 4431 .nim files (nim-lang/Nim, nimbus-eth2, pixie, nitter,
-	// jester): 839 of 6980 type members — 12.0% — were dropped for this reason.
+	// jester): 846 of 6987 type members — 12.1% — were dropped for this reason.
+	// (Every figure in this file and its test counts the FINAL pattern, the one
+	// with `\.?\}`; the pre-plain-close numbers were 839 of 6980.)
 	//
 	// The pragma group follows the generic group and never precedes it:
 	// doc/grammar.txt gives `typeDef = identVisDot genericParamList? pragma?

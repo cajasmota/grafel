@@ -46,7 +46,7 @@ import (
 // CORPUS MEASUREMENT (the population, not a hand-written fixture). 4431 .nim
 // files across nim-lang/Nim, status-im/nimbus-eth2, treeform/pixie,
 // zedeus/nitter and dom96/jester: 6141 type members matched before the fix,
-// 6980 after — 839 members, 12.0% of the population, were being dropped. Top
+// 6987 after — 846 members, 12.1% of the population, were being dropped. Top
 // pragmas by frequency: pure (287), importc (157), final (127), header (89),
 // inheritable (69), importcpp (61), acyclic (35). 44 of the gained sites carry
 // generic parameters AND a pragma together, and exactly 1 site in 4431 files
@@ -162,13 +162,17 @@ const prag7213DistinctTuple = "type\n" + // 1
 
 // --- forbidden shapes -------------------------------------------------------
 
-// prag7213BareBraces — braces that do NOT OPEN a pragma. Nim's lexer has a
-// single opening token, `tkCurlyDotLe` = `{.`, so all three spellings below are
-// lexical errors, and each grades a different property of it: `Bogus` has no
-// dot at all, `Odd` has a dot at the wrong end, and `Spaced` has the dot
-// detached from the brace — `{ .` is `{` followed by a dot, which opens a set
-// literal (#7230 review, P1: without this member the row did not grade the
-// token's ADJACENCY and a `\{[ \t]*\.` widening survived).
+// prag7213BareBraces — braces that do NOT OPEN a pragma. All three spellings
+// below LEX FINE — `{` is `tkCurlyLe`, a perfectly good token — they are SYNTAX
+// errors in `typeDef` position, which is the claim this row actually enforces
+// (#7230 review, NB-2). Nim's lexer emits the pragma opener `tkCurlyDotLe` only
+// for an ADJACENT `{.`, keyed on the next byte with no whitespace skip, and
+// every parsePragma call site gates on that token. Each member grades a
+// different property of it: `Bogus` has no dot at all, `Odd` has a dot at the
+// wrong end, and `Spaced` has the dot detached from the brace — `{ .` is `{`
+// followed by a dot, which opens a set literal (#7230 review, P1: without this
+// member the row did not grade the token's ADJACENCY and a `\{[ \t]*\.`
+// widening survived).
 //
 // A FOURTH MEMBER, `Half {.packed} = object`, WAS HERE AND WAS WRONG. It
 // asserted that a pragma closed with a plain `}` is not a pragma. It is one:
@@ -226,12 +230,34 @@ const prag7213PragmaBeforeGenerics = "type\n" + // 1
 	"  Ok*[T] {.final.} = object\n" + // 8
 	"    x*: T\n" // 9
 
-// prag7213PragmaOnOwnLine — the pragma on a CONTINUATION line. The grammar puts
-// no `optInd` between the generic parameter list and the pragma, so a newline
-// there ends the statement and this is not a type definition at all. Admitting
-// it (separating generics from pragma with `\s*` instead of `[ \t]*`) would
-// make `Alpha` an `enum` declared on line 2 whose span swallows line 3. `Ok` is
-// the positive control.
+// prag7213PragmaOnOwnLine — the pragma on a continuation line AT THE SAME OR A
+// LESSER INDENT. Admitting it (separating generics from pragma with `\s*`
+// instead of `[ \t]*`) would make `Alpha` an `enum` declared on line 2 whose
+// span swallows line 3. `Ok` is the positive control.
+//
+// #7230 REVIEW, NB-1 — THIS COMMENT USED TO CLAIM MORE THAN THE LANGUAGE DOES.
+// It said a newline between the generics and the pragma "ends the statement and
+// this is not a type definition at all". False in general. parser.nim's
+// optPragmas is
+//
+//	if p.tok.tokType == tkCurlyDotLe and (p.tok.indent < 0 or realInd(p)):
+//
+// so a pragma IS accepted on a continuation line MORE indented than the
+// declaration. What is rejected is a continuation at the same or a lesser
+// indent, where `realInd` is false — and that is exactly what this fixture
+// writes: `Alpha*[T]` and `{.pure.}` both sit at column 2. The ENFORCED claim is
+// true and M4's kill is earned on it; only the STATED rule was too broad. Same
+// defect class as the `Half {.packed}` row below, and found by auditing for it.
+//
+// DISCLOSED GAP, the corollary: the legal more-indented form
+//
+//	Alpha*[T]
+//	    {.pure.} = enum
+//
+// is NOT matched by the shipped pattern and no row here admits it. Measured over
+// the same 4431-file population: 0 sites — legal but unused, rather than
+// untested. Not widened in this PR: the separator is `[ \t]*`, and making it
+// newline-aware is the M4 direction, which needs its own grading.
 const prag7213PragmaOnOwnLine = "type\n" + // 1
 	"  Alpha*[T]\n" + // 2
 	"  {.pure.} = enum\n" + // 3
@@ -258,7 +284,7 @@ const prag7213PragmaNoKindClause = "type\n" + // 1
 // pragma whose argument contains a literal `}` (`{.emit: "struct {x;}".}`) is
 // therefore NOT extracted. That is a recall gap, and it is pinned here rather
 // than left accidental: measured over the same 4431-file population, 0 of the
-// 839 pragma-carrying type declarations contain a `}` in the pragma body, so
+// 846 pragma-carrying type declarations contain a `}` in the pragma body, so
 // the gap costs nothing today. A future change that deliberately admits `}`
 // must edit THIS row and say why — it must not widen the class silently, which
 // is what a `.*` body would do. `Plain` is the positive control.
@@ -296,25 +322,41 @@ const prag7213NewlineBeforeEquals = "type\n" + // 1
 
 // prag7213CloseAndSpacing — the two axes #7230's review round left ungraded:
 // the WHITESPACE before the pragma (review CM-15) and the CLOSING delimiter.
-// Every member is a line taken from the measured population, not invented:
+// Every member comes FROM the measured population — two of them adapted, and
+// said so below rather than silently presented as copies (#7230 review, NB-4):
 //
 //	line 2  `TIdent*{.acyclic.}`      Nim/tests/lexer/tident.nim — NO space
 //	                                  between the export marker and the pragma.
-//	                                  113 of the 839 recovered sites, 13.5%.
+//	                                  113 of the 846 recovered sites, 13.4%.
 //	line 4  `{.exportc: "ExtObject"}` Nim/tests/ccgbugs/tcgbug.nim — closed with
 //	                                  a PLAIN `}`. 7 sites.
-//	line 6  `MyPtr*[T]{.importcpp…}`  Nim/tests/cpp/tcovariancerules.nim — no
-//	                                  space after the GENERIC list either, which
-//	                                  is the cell where the two axes cross.
+//	line 6  `MyPtr*[T]{.importcpp…}`  ADAPTED. The `]{.`-adjacent shape is
+//	                                  lib/system.nim:209,
+//	                                  `UncheckedArray*[T]{.magic:
+//	                                  "UncheckedArray".}` — the only such site in
+//	                                  Nim, and the cell where the two axes cross:
+//	                                  no space after the GENERIC list. The name
+//	                                  and pragma body come from
+//	                                  tcovariancerules.nim, whose own line has a
+//	                                  space, no `*`, `[out T]` and a plain close.
+//	                                  This member is a CROSS of those two real
+//	                                  lines, not a copy of either.
 //	line 8  `TAnimal{.inheritable.}=` Nim/tests/typerel/tcommontype.nim — no
 //	                                  space anywhere: no export marker, none
 //	                                  before the pragma, none around the `=`.
-//	line 10 `TDog=object`             Nim/tests/typerel/tcommontype.nim — the
-//	                                  PRAGMA-FREE arm of the same separator.
+//	line 10 `TDog=object`             ADAPTED. tcommontype.nim:5 reads
+//	                                  `TDog=object of TAnimal`; the inheritance
+//	                                  is TRUNCATED here because this fixture does
+//	                                  not grade it. The PRAGMA-FREE arm of the
+//	                                  same separator.
 //
 // CM-15 made the separator `[ \t]+` instead of `[ \t]*` and the whole package
 // stayed green, so a pragma written directly against the name minted nothing
 // and nothing noticed. Lines 2, 6 and 8 are what notices.
+//
+// Every count in this file is against the FINAL pattern (846 recovered sites of
+// 6987 matched declaration lines); 839 of 6980 was the same measurement before
+// the closing delimiter was widened to `\.?\}`.
 //
 // That separator is UNCONDITIONAL — it sits outside the optional pragma group —
 // so it serves pragma-free declarations too, and CM-15 broke those as well.
