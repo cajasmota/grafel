@@ -28,19 +28,49 @@ import (
 // AXES VARIED here: (a) which call site — nim.go:150 `proc` vs nim.go:208
 // `type`; (b) trailing newline present vs absent, because the phantom element
 // exists ONLY in the former and a fix keyed on the wrong one passes half the
-// rows; (c) declaration position — sole declaration vs last-of-two; (d) whether
-// the body genuinely ends in blank lines before a sibling.
+// rows; (c) declaration position — sole declaration vs last-of-two; (d) what
+// sits at EOF — the body's last code line, a blank line, a whitespace-only
+// line, or nothing at all; (e) whether the body's blank lines precede a SIBLING
+// (mid-split) or run to EOF (end-of-split); (f) `baseIndentLen` — 0 at both the
+// top-level proc and the type pass's hard-coded 0, and 2 for a NESTED proc
+// (TestEOF7195NestedProcAtEOF). Axis (f) was ungraded in the first round and a
+// mutant keyed on `baseIndentLen == 0` survived every other row.
+//
+// AXES CROSSED, not merely listed: (b) x (d). Listing two axes separately is
+// not the same as crossing them, and the uncrossed cell is where this suite
+// leaked once already — every whitespace-at-EOF row below originally carried a
+// trailing newline, so the cell "final line is whitespace-only AND the file
+// does NOT end in a newline" was unforbidden, and a guard keyed on
+// `strings.TrimSpace(lines[n-1]) == ""` instead of `lines[n-1] == ""` passed
+// the whole package while silently dropping that real line from the span. See
+// TestEOF7195ForbiddenWhitespaceLineAtEOFNoTrailingNewline.
 //
 // AXES HELD CONSTANT: file path, language, indent width (two spaces), body
 // content, and the declaration keyword within each pair — so a failure is
 // attributable to the axis being varied and not to the surrounding source.
 //
-// DIRECTION. The obvious fix — "trim trailing blank lines off the body" — is
-// PERMISSIVE: it also shortens a body that legitimately ends in blank lines
-// before a sibling. TestEOF7195ForbiddenEarlierDeclUnchanged is the row for
-// that direction and it can FAIL ALONE: an over-trim shrinks an earlier
-// declaration's EndLine, which no at-EOF row and not the whole-file invariant
-// can observe (shrinking never exceeds EOF).
+// DIRECTION, and WHICH ROW GRADES WHICH. The permissive direction is "trim
+// more than the phantom", and it has TWO distinct routes that are graded by
+// DIFFERENT rows. Getting this pairing wrong is not academic: the first version
+// of this header named one row for the whole direction, and that row is
+// measurably not the grader for the route that actually threatens the fix.
+//
+//   - Trim from the END OF THE SPLIT (before the collection loop). Shortens a
+//     body whose blank or whitespace-only lines run to EOF. GRADED BY
+//     TestEOF7195ForbiddenTrailingBlankLinesAtEOFKept, its whitespace-only
+//     sibling, the type-site twin, and — for the crossed no-trailing-newline
+//     cell — TestEOF7195ForbiddenWhitespaceLineAtEOFNoTrailingNewline.
+//     NOT graded by TestEOF7195ForbiddenEarlierDeclUnchanged: a blank line
+//     before a sibling sits in the MIDDLE of the split and no trim working from
+//     the end can reach it. Two such mutants were scored and left that row
+//     GREEN.
+//   - Trim the COLLECTED BODY, or trim at the sibling `break`. Shortens an
+//     earlier declaration whose body ends in blank lines before a sibling.
+//     GRADED BY TestEOF7195ForbiddenEarlierDeclUnchanged and its type twin.
+//
+// Each of those rows CAN FAIL ALONE — an over-trim shrinks an EndLine, which no
+// at-EOF row and not the whole-file invariant can observe, since shrinking
+// never exceeds EOF.
 //
 // DERIVED-NOT-EXECUTED: no Nim toolchain exists on this machine, so the
 // fixtures' legality is read off the Nim manual, not compiled.
@@ -250,9 +280,10 @@ func TestEOF7195ForbiddenEarlierTypeUnchanged(t *testing.T) {
 //
 // The pin is a consistency argument, not a preference: the very same blank
 // lines ARE inside the span when a sibling follows them
-// (TestEOF7195ForbiddenEarlierDeclUnchanged), so EndLine must not depend on
-// whether anything follows. Real lines of the file stay in the span; only the
-// phantom empty element after the final newline goes.
+// (TestEOF7195ForbiddenEarlierDeclUnchanged — which grades the COLLECTED-BODY
+// route, not this one), so EndLine must not depend on whether anything follows.
+// Real lines of the file stay in the span; only the phantom empty element after
+// the final newline goes.
 
 func TestEOF7195ForbiddenTrailingBlankLinesAtEOFKept(t *testing.T) {
 	src := "proc alpha*() =\n" + // line 1
@@ -298,6 +329,63 @@ func TestEOF7195ForbiddenTrailingBlankLinesAtEOFKeptTypeSite(t *testing.T) {
 	}
 }
 
+// --- FORBIDDEN, CROSSED CELL: whitespace-only final line AND no trailing \n --
+//
+// The uncrossed pair. Every whitespace-at-EOF row above carries a trailing
+// newline, so a guard keyed on `strings.TrimSpace(lines[n-1]) == ""` rather
+// than `lines[n-1] == ""` passed the ENTIRE package — exit 0, zero failures —
+// while dropping a real line from the span on every source whose final line is
+// whitespace-only and which does NOT end in a newline. There is no phantom
+// element to drop in that shape at all: the last split element IS the file's
+// last line.
+//
+// This is the cell, not a variation on it: `"...\n   "` (no trailing newline)
+// versus `"...\n   \n"` (trailing newline) differ ONLY in axis (b), and the
+// second is already covered by
+// TestEOF7195ForbiddenTrailingWhitespaceLineAtEOFKept.
+func TestEOF7195ForbiddenWhitespaceLineAtEOFNoTrailingNewline(t *testing.T) {
+	src := "proc alpha*() =\n" + // line 1
+		"  echo 1\n" + // line 2
+		"   " // line 3 — whitespace-only AND no trailing newline
+	if got := lineCount7195(src); got != 3 {
+		t.Fatalf("fixture premise: lineCount = %d, want 3", got)
+	}
+	if strings.HasSuffix(src, "\n") {
+		t.Fatal("fixture premise: this row exists to cross whitespace-at-EOF with NO trailing newline")
+	}
+	ents := band7185Run(t, src, eofPath7195)
+	if e := band7185Get(t, ents, "alpha", "SCOPE.Operation"); e.StartLine != 1 || e.EndLine != 3 {
+		t.Errorf("alpha span = %d-%d, want 1-3: with no trailing newline the last split element IS "+
+			"line 3, a real line. Keying the phantom drop on TrimSpace rather than an exact empty "+
+			"string deletes it — the permissive over-fix this row forbids", e.StartLine, e.EndLine)
+	}
+}
+
+// Type-site twin of the crossed cell, scored separately.
+func TestEOF7195ForbiddenWhitespaceLineAtEOFNoTrailingNewlineTypeSite(t *testing.T) {
+	src := "type Alpha* = object\n" + // line 1
+		"  a*: int\n" + // line 2
+		"   " // line 3 — whitespace-only AND no trailing newline
+	if got := lineCount7195(src); got != 3 {
+		t.Fatalf("fixture premise: lineCount = %d, want 3", got)
+	}
+	if strings.HasSuffix(src, "\n") {
+		t.Fatal("fixture premise: this row exists to cross whitespace-at-EOF with NO trailing newline")
+	}
+	ents := band7185Run(t, src, eofPath7195)
+	if e := band7185Get(t, ents, "Alpha", "SCOPE.Component"); e.StartLine != 1 || e.EndLine != 3 {
+		t.Errorf("Alpha span = %d-%d, want 1-3", e.StartLine, e.EndLine)
+	}
+}
+
+// The same crossing with a BLANK (not whitespace-only) final line and no
+// trailing newline is not a reachable source: a file whose last line is empty
+// and which does not end in a newline is the empty-suffix file itself. The
+// nearest reachable neighbour is the trailing-newline form already covered by
+// TestEOF7195ForbiddenTrailingBlankLinesAtEOFKept, so the cell is closed by
+// construction rather than by a row — stated here so it is not read as an
+// omission.
+
 // --- NESTED declaration at EOF: baseIndentLen > 0 ---------------------------
 //
 // Every other row here has baseIndentLen == 0 (top-level proc, and the type
@@ -333,27 +421,30 @@ func TestEOF7195NestedProcAtEOF(t *testing.T) {
 func eofCorpus7195() map[string]string {
 	c := map[string]string{
 		// #7185 fixtures, reused from indent_band_7185_test.go.
-		"band7185/proc":        procBand7185,
-		"band7185/procAbove":   procAboveBand7185,
-		"band7185/type":        typeBand7185,
-		"band7185/typeAbove":   typeAboveBand7195Alias,
-		"band7185/widen":       widenBand7185,
-		"band7185/sameLine":    sameLineBody7185,
-		"7195/typeAtEOF":       "type Alpha* = object\n  a*: int\n",
-		"7195/typeAtEOFNoNL":   "type Alpha* = object\n  a*: int",
-		"7195/procAtEOF":       "proc alpha*() =\n  echo 1\n",
-		"7195/procAtEOFNoNL":   "proc alpha*() =\n  echo 1",
-		"7195/twoTypes":        "type Alpha* = object\n  a*: int\ntype Beta* = object\n  b*: int\n",
-		"7195/twoProcs":        "proc alpha*() =\n  echo 1\nproc beta*() =\n  echo 2\n",
-		"7195/trailingBlank":   "type Alpha* = object\n  a*: int\ntype Beta* = object\n  b*: int\n\n",
-		"7195/blankBeforeSib":  eofBlankBeforeSib7195,
-		"7195/blankAtEOF":      "proc alpha*() =\n  echo 1\n\n\n",
-		"7195/wsLineAtEOF":     "proc alpha*() =\n  echo 1\n   \n",
-		"7195/typeBlankAtEOF":  "type Alpha* = object\n  a*: int\n\n\n",
-		"7195/nestedProcAtEOF": "proc outer*() =\n  proc inner*() =\n    echo 1\n",
-		"7195/nestedBlankEOF":  "proc outer*() =\n  proc inner*() =\n    echo 1\n\n",
-		"7195/declOnlyNoBody":  "type Alpha* = object",
-		"7195/twoBlankMid":     "type Alpha* = object\n  a*: int\n\n\ntype Beta* = object\n  b*: int\n",
+		"band7185/proc":          procBand7185,
+		"band7185/procAbove":     procAboveBand7185,
+		"band7185/type":          typeBand7185,
+		"band7185/typeAbove":     typeAboveBand7195Alias,
+		"band7185/widen":         widenBand7185,
+		"band7185/sameLine":      sameLineBody7185,
+		"7195/typeAtEOF":         "type Alpha* = object\n  a*: int\n",
+		"7195/typeAtEOFNoNL":     "type Alpha* = object\n  a*: int",
+		"7195/procAtEOF":         "proc alpha*() =\n  echo 1\n",
+		"7195/procAtEOFNoNL":     "proc alpha*() =\n  echo 1",
+		"7195/twoTypes":          "type Alpha* = object\n  a*: int\ntype Beta* = object\n  b*: int\n",
+		"7195/twoProcs":          "proc alpha*() =\n  echo 1\nproc beta*() =\n  echo 2\n",
+		"7195/trailingBlank":     "type Alpha* = object\n  a*: int\ntype Beta* = object\n  b*: int\n\n",
+		"7195/blankBeforeSib":    eofBlankBeforeSib7195,
+		"7195/blankAtEOF":        "proc alpha*() =\n  echo 1\n\n\n",
+		"7195/wsLineAtEOF":       "proc alpha*() =\n  echo 1\n   \n",
+		"7195/wsLineAtEOFNoNL":   "proc alpha*() =\n  echo 1\n   ",
+		"7195/typeWsAtEOFNoNL":   "type Alpha* = object\n  a*: int\n   ",
+		"7195/nestedWsAtEOFNoNL": "proc outer*() =\n  proc inner*() =\n    echo 1\n     ",
+		"7195/typeBlankAtEOF":    "type Alpha* = object\n  a*: int\n\n\n",
+		"7195/nestedProcAtEOF":   "proc outer*() =\n  proc inner*() =\n    echo 1\n",
+		"7195/nestedBlankEOF":    "proc outer*() =\n  proc inner*() =\n    echo 1\n\n",
+		"7195/declOnlyNoBody":    "type Alpha* = object",
+		"7195/twoBlankMid":       "type Alpha* = object\n  a*: int\n\n\ntype Beta* = object\n  b*: int\n",
 		// Shapes drawn from the package's other fixtures.
 		"pkg/imports":     "import strutils, sequtils\n\nproc greet(name: string): string =\n  result = \"hi \" & name\n",
 		"pkg/typeSection": "type\n  Animal* = object\n    name*: string\n  Dog* = ref object of Animal\n    breed*: string\n",
@@ -374,16 +465,22 @@ const typeAboveBand7195Alias = typeAboveBand7185
 
 func TestEOF7195NoEmittedSpanPastEOF(t *testing.T) {
 	corpus := eofCorpus7195()
-	if len(corpus) < 15 {
-		t.Fatalf("corpus floor: %d fixtures, want >= 15 — a shrunken corpus makes this invariant vacuous", len(corpus))
+	if len(corpus) < 30 {
+		t.Fatalf("corpus floor: %d fixtures, want >= 30 — a shrunken corpus makes this invariant vacuous", len(corpus))
 	}
 	graded := 0
 	for name, src := range corpus {
-		max := lineCount7195(src)
 		ents := band7185Run(t, src, eofPath7195)
 		if len(ents) == 0 {
 			t.Errorf("%s: fixture emitted NO entities — it grades nothing", name)
 			continue
+		}
+		// The comparison itself runs through eofSpansPastEOF, so this invariant
+		// and TestEOF7195InvariantHelperFires grade the SAME code path. It was
+		// re-implemented inline once, which left the positive control guarding a
+		// function nothing executed.
+		for _, msg := range eofSpansPastEOF(src, ents) {
+			t.Errorf("%s: %s", name, msg)
 		}
 		spanned := 0
 		for _, e := range ents {
@@ -392,10 +489,6 @@ func TestEOF7195NoEmittedSpanPastEOF(t *testing.T) {
 			}
 			spanned++
 			graded++
-			if e.EndLine > max {
-				t.Errorf("%s: %s/%s span %d-%d exceeds EOF — the file has %d lines",
-					name, e.Kind, e.Name, e.StartLine, e.EndLine, max)
-			}
 			if e.StartLine > e.EndLine {
 				t.Errorf("%s: %s/%s span %d-%d is inverted", name, e.Kind, e.Name, e.StartLine, e.EndLine)
 			}
@@ -406,32 +499,25 @@ func TestEOF7195NoEmittedSpanPastEOF(t *testing.T) {
 	}
 	// A floor on the number of entities actually compared, so a harness that
 	// silently stops emitting spans reads RED rather than green.
-	if graded < 20 {
-		t.Errorf("graded only %d spanned entities, want >= 20", graded)
+	if graded < 40 {
+		t.Errorf("graded only %d spanned entities, want >= 40", graded)
 	}
+	t.Logf("invariant graded %d spanned entities across %d fixtures", graded, len(corpus))
 }
 
 // eofSpansPastEOF returns a message per entity whose EndLine exceeds src's line
 // count. Exposed as a value rather than a t.Errorf so its own detection can be
-// graded (TestEOF7195InvariantHelperFires) instead of assumed.
+// graded (TestEOF7195InvariantHelperFires) instead of assumed — and called by
+// TestEOF7195NoEmittedSpanPastEOF, so the control guards a LIVE path.
 func eofSpansPastEOF(src string, ents []types.EntityRecord) []string {
-	max := lineCount7195(src)
+	ceiling := lineCount7195(src) // not `max`: that shadows the Go 1.21 builtin
 	var out []string
 	for _, e := range ents {
-		if e.EndLine > max {
-			out = append(out, fmt.Sprintf("%s/%s span %d-%d exceeds EOF (%d lines)", e.Kind, e.Name, e.StartLine, e.EndLine, max))
+		if e.EndLine > ceiling {
+			out = append(out, fmt.Sprintf("%s/%s span %d-%d exceeds EOF (%d lines)", e.Kind, e.Name, e.StartLine, e.EndLine, ceiling))
 		}
 	}
 	return out
-}
-
-// eofAssertNoPastEOF is the invariant as a reusable assertion, so any future row
-// in this package can adopt it without re-deriving the ceiling.
-func eofAssertNoPastEOF(t *testing.T, src string, ents []types.EntityRecord) {
-	t.Helper()
-	for _, msg := range eofSpansPastEOF(src, ents) {
-		t.Error(msg)
-	}
 }
 
 func TestEOF7195InvariantHelperFires(t *testing.T) {
