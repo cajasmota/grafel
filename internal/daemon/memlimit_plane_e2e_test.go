@@ -254,8 +254,157 @@ func runServeCapturingLog(t *testing.T, splitMode string) string {
 			t.Log("RunServe did not exit within 15s")
 		}
 	})
+	// Socket-dialability is NOT the condition this test depends on (#7222).
+	// run() binds the socket (server.go "startup: socket-listen done") BEFORE
+	// it reaches the engine-plane block that logs the RSS marker, so a capture
+	// taken at dial time can legitimately predate the marker — on a loaded
+	// runner the capture wins the race and the positive control below fails
+	// spuriously. waitDaemonReady stays only as an early, well-labelled
+	// diagnostic for a daemon that never binds at all.
 	waitDaemonReady(t, layout.SocketPath, 20*time.Second)
-	return sb.String()
+
+	// serveStartupComplete is logged by run() AFTER the
+	// `if plane != planeServeOnly { startEnginePlane(...) }` block, in BOTH
+	// modes, and startEnginePlane logs the RSS marker synchronously before it
+	// returns. So this line is a happens-AFTER anchor for the marker:
+	//   - monolith: marker missing once the anchor is present means the
+	//     fixture genuinely cannot exhibit it (a real control failure), not
+	//     that we looked too early;
+	//   - split: the anchor proves serve ran PAST the point where the engine
+	//     plane would have been started, so the forbidden assertion is
+	//     judging a decision that has actually been made.
+	logged, ok := waitForLogMarker(sb.String, serveStartupComplete, 60*time.Second)
+	if !ok {
+		t.Fatalf("serve (GRAFEL_SPLIT_MODE=%s) never logged %q within 60s: startup never reached the point past the engine-plane block, so neither half of this test can be judged\n%s",
+			splitMode, serveStartupComplete, logged)
+	}
+	return logged
+}
+
+// serveStartupComplete is run()'s post-engine-plane startup line, as rendered
+// by slog's TextHandler (server.go: logger.Info("ready", "socket", ..., "pid",
+// ...)). It is the only message that RENDERS as `msg=ready`: server.go:504
+// also logs "engine: ready", which TextHandler renders quoted
+// (`msg="engine: ready"`) because of the space, so it cannot match. That
+// distinction rests on slog's quoting, and this fixture additionally leaves
+// the engine child's stdout/stderr unset so the child's log never reaches sb
+// at all (unlike helperEngineCommand in supervise_test.go, which wires them).
+// A future test that pipes the child's stderr into the same buffer would be
+// depending on the quoting alone.
+const serveStartupComplete = "msg=ready"
+
+// waitForLogMarker polls get() until marker appears or timeout elapses. It
+// returns the last snapshot it read and whether the marker was found — a
+// timeout is reported as NOT found, never as success, so a caller cannot
+// silently proceed on a log that never reached the state it needs.
+func waitForLogMarker(get func() string, marker string, timeout time.Duration) (string, bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		s := get()
+		if strings.Contains(s, marker) {
+			return s, true
+		}
+		if !time.Now().Before(deadline) {
+			return s, false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// The three tests below grade waitForLogMarker itself. The e2e test above can
+// only ever exercise its happy path (the anchor always arrives on an idle
+// machine), so without these a permissive rewrite — "timed out, call it found"
+// or "never poll, answer from the first read" — would be invisible: the e2e
+// test would stay green while the sequencing guarantee it rests on was gone.
+
+func TestWaitForLogMarker_TimeoutIsNotSuccess(t *testing.T) {
+	const text = "startup: socket-listen done\n"
+	start := time.Now()
+	got, ok := waitForLogMarker(func() string { return text }, "msg=ready", 200*time.Millisecond)
+	elapsed := time.Since(start)
+	if ok {
+		t.Errorf("reported the marker as found in a log that never contained it — a caller would proceed on a log that never reached the state it needs")
+	}
+	if got != text {
+		t.Errorf("returned snapshot %q, want the last log it read (%q) so the caller can print it", got, text)
+	}
+	if elapsed < 150*time.Millisecond {
+		t.Errorf("gave up after %s on a 200ms deadline — it is not waiting for the marker at all", elapsed)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("took %s on a 200ms deadline — the caller's timeout is not being honoured", elapsed)
+	}
+}
+
+func TestWaitForLogMarker_WaitsForALateMarker(t *testing.T) {
+	sb := &syncBuf{}
+	sb.Write([]byte("startup: socket-listen done\n"))
+	const late = 200 * time.Millisecond
+	timer := time.AfterFunc(late, func() { sb.Write([]byte("msg=ready socket=/x pid=1\n")) })
+	t.Cleanup(func() { timer.Stop() })
+
+	start := time.Now()
+	got, ok := waitForLogMarker(sb.String, "msg=ready", 10*time.Second)
+	elapsed := time.Since(start)
+	if !ok {
+		t.Fatalf("missed a marker written %s after the call — a single early read, not a poll\n%s", late, got)
+	}
+	if !strings.Contains(got, "msg=ready") {
+		t.Errorf("returned a snapshot without the marker it reported finding:\n%s", got)
+	}
+	if elapsed < 150*time.Millisecond {
+		t.Errorf("returned found after %s, before the marker was written at %s — it cannot have observed it", elapsed, late)
+	}
+}
+
+// TestWaitForLogMarker_AnchorFollowsTheRSSMarker grades the ANCHOR, not the
+// helper's mechanics: it replays run()'s startup emission order through the
+// same slog TextHandler the e2e fixture uses and requires that the snapshot
+// serveStartupComplete stops on ALREADY CONTAINS the RSS marker. Reverting the
+// constant to the pre-#7222 proxy ("startup: socket-listen done"), or to any
+// earlier line, fails here — whereas the e2e test alone cannot tell the two
+// apart: on an idle machine "ready" is already in the buffer by the time the
+// old capture point was reached.
+//
+// LIMITATION: this MODELS run()'s emission order, it does not derive it. It
+// pins "the anchor is not earlier than the marker", not "run() still emits
+// them in that order". The latter residual is only covered by running the e2e
+// test against a tree whose scheduler is artificially delayed (the #7222
+// review probe); nothing committed covers it.
+func TestWaitForLogMarker_AnchorFollowsTheRSSMarker(t *testing.T) {
+	sb := &syncBuf{}
+	lg := slog.New(slog.NewTextHandler(sb, nil))
+	// run()'s order: socket bound, THEN the engine plane arms the budget,
+	// THEN "ready". (server.go: socket-listen done -> startEnginePlane ->
+	// logger.Info("ready", ...); engineplane.go logs the marker before it
+	// returns.)
+	lg.Info("startup: socket-listen done")
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		lg.Info("scheduler: RSS-budget admission control enabled", "budget_mb", 2048)
+		time.Sleep(50 * time.Millisecond)
+		lg.Info("ready", "socket", "/x", "pid", 1)
+	}()
+
+	got, ok := waitForLogMarker(sb.String, serveStartupComplete, 10*time.Second)
+	if !ok {
+		t.Fatalf("anchor %q never matched run()'s startup log:\n%s", serveStartupComplete, got)
+	}
+	if !strings.Contains(got, "RSS-budget admission control enabled") {
+		t.Errorf("anchor %q matched a snapshot that PREDATES the RSS marker — that is a proxy for startup, not a happens-after anchor:\n%s", serveStartupComplete, got)
+	}
+}
+
+func TestWaitForLogMarker_ReturnsAsSoonAsThePresentMarkerIsSeen(t *testing.T) {
+	start := time.Now()
+	_, ok := waitForLogMarker(func() string { return "msg=ready socket=/x pid=1\n" }, "msg=ready", 30*time.Second)
+	elapsed := time.Since(start)
+	if !ok {
+		t.Fatal("did not find a marker that was present on the first read")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("took %s to return on an already-present marker — it is sleeping out the deadline instead of polling", elapsed)
+	}
 }
 
 // TestRSSBudgetAdmissionControl_IsEnginePlaneOnly is the companion check to the
