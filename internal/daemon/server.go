@@ -944,20 +944,27 @@ func shutdownWatchdogTimeout() time.Duration {
 	return defaultShutdownWatchdog
 }
 
+// acceptBackoffStart / acceptBackoffMax are the exponential-backoff bounds
+// acceptLoop applies to transient Accept() errors, mirroring the pattern in
+// net/http.Server.Serve (see "tempDelay"). They were function-local consts
+// until #7167, and are unchanged in value: they sit at package scope so the
+// growth-factor pin in acceptloop_backoff_factor_test.go can name the ceiling
+// its clamp-skip guard tests against, instead of hard-coding a duration into
+// the assertion.
+const (
+	acceptBackoffStart = 5 * time.Millisecond
+	acceptBackoffMax   = 1 * time.Second
+)
+
 // acceptLoop pulls connections off the listener and hands each to
 // jsonrpc.ServeConn under the registered server. The waitgroup tracks
 // each conn so Run can join them on shutdown.
 func acceptLoop(l net.Listener, srv *rpc.Server, wg *sync.WaitGroup, logger *slog.Logger, done chan<- struct{}) {
 	defer close(done)
-	// Exponential backoff bounds for transient Accept() errors, mirroring
-	// the pattern in net/http.Server.Serve (see "tempDelay"). A transient
-	// failure (e.g. EMFILE under fd pressure) must NOT bring the daemon
-	// down: returning here causes Run to unlink the socket and every MCP
-	// client drops. So we back off and keep serving instead.
-	const (
-		backoffStart = 5 * time.Millisecond
-		backoffMax   = 1 * time.Second
-	)
+	// A transient failure (e.g. EMFILE under fd pressure) must NOT bring the
+	// daemon down: returning here causes Run to unlink the socket and every
+	// MCP client drops. So we back off (acceptBackoffStart/acceptBackoffMax,
+	// declared above) and keep serving instead.
 	var backoff time.Duration
 	for {
 		conn, err := l.Accept()
@@ -974,12 +981,12 @@ func acceptLoop(l net.Listener, srv *rpc.Server, wg *sync.WaitGroup, logger *slo
 			// stand-in for the deprecated Temporary().
 			if isTransientAcceptErr(err) {
 				if backoff == 0 {
-					backoff = backoffStart
+					backoff = acceptBackoffStart
 				} else {
 					backoff *= 2
 				}
-				if backoff > backoffMax {
-					backoff = backoffMax
+				if backoff > acceptBackoffMax {
+					backoff = acceptBackoffMax
 				}
 				logger.Warn("accept: transient error, backing off",
 					"err", err, "retry_in", backoff)
