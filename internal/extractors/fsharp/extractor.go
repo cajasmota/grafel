@@ -1039,7 +1039,28 @@ func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	}
 
 	var bodyLines []string
-	minBodyIndent := baseIndentLen + 2 // F# typically uses 4-space indent, but 2 is minimum
+	// #7176: the body continues at any column STRICTLY GREATER than the
+	// declaration's own column, so the threshold is baseIndentLen+1 — not +2.
+	//
+	// It was +2, which left a DEAD BAND at exactly baseIndentLen+1: such a line
+	// satisfied neither `indent >= minBodyIndent` nor `indent <= baseIndentLen`,
+	// so the loop silently skipped it and kept scanning. The line vanished from
+	// the body while everything after it stayed, which moved EndLine, dropped
+	// calls, and lost `inherit` clauses and DU cases.
+	//
+	// +1 is F#'s offside rule, not a style guess. F# 4.1 Language Specification
+	// §15.1.4 "Offside Lines" gives a worked example indented by exactly one
+	// column — `let x = 1` / ` let y = 2` — in which the one-column-deeper `let`
+	// is "unmatched", i.e. absorbed as a continuation rather than read as a
+	// sibling; it is the RETURN to column 0 that goes offside (FS0058). §15.1.8
+	// states the same boundary from the closing side: "When a token occurs on or
+	// before the offside limit for the current offside stack ... enclosing
+	// contexts are closed." On-or-before closes; strictly greater continues —
+	// which is exactly the `indent <= baseIndentLen` terminator below.
+	//
+	// DERIVED-NOT-EXECUTED: no F# toolchain exists on the build machine, so this
+	// is read off the specification rather than compiled.
+	minBodyIndent := baseIndentLen + 1
 
 	for i, line := range lines {
 		if i == 0 && strings.TrimSpace(line) != "" {
@@ -1164,15 +1185,9 @@ func insideBraces(scrubbed string, off int) bool {
 // gate keys on `.fsi` specifically, not on "not `.fs`": a `.fsx` script is
 // standalone and keeps its edges.
 //
-// Two known upstream vectors that limit this scan, noted for the record and
-// deliberately NOT fixed here (each needs its own issue and its own tests):
+// One known upstream vector still limits this scan, noted for the record and
+// deliberately NOT fixed here (it needs its own issue and its own tests):
 //
-//   - extractIndentBody has a dead band. A line indented at exactly
-//     baseIndentLen+1 is neither appended nor treated as a terminator, so the
-//     scan silently skips it and keeps going. An off-by-one-indented sibling
-//     type can therefore fall inside the PREVIOUS type's body and have its
-//     `inherit` clause attributed to the wrong owner. Low frequency, and
-//     invisible to this suite.
 //   - typeRE does not admit the self-identifier form `type X() as this =`, so
 //     those types produce no entity at all — and hence no hierarchy edge. That
 //     form is common precisely on the inheriting classes this scan targets.
