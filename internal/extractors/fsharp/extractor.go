@@ -817,18 +817,31 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// (every other `len(...)` guard in these two files, with the reason):
 	//
 	//	compexpr_active_patterns.go, detectCEBuilder (memberRE) and
-	//	  collectBuilderBindings (ceBuilderBindRE), both `len(m) < 3`. These call
+	//	  collectBuilderBindings (ceBuilderBindRE), both `len(m) < 3`; and THIS
+	//	  file's collectOpenStatements (openRE), `len(m) < 2`. These call
 	//	  FindAllStringSubmatch, NOT ...Index. That API returns 1+n strings, not
 	//	  2*(1+n) ints, so the bound is arrived at by a DIFFERENT derivation and
-	//	  this comment does not settle them. Dead by that derivation (2 groups,
-	//	  len 3) but unmeasured here.
+	//	  this comment does not settle them. Dead by that derivation (memberRE
+	//	  and ceBuilderBindRE: 2 groups, len 3; openRE: 1 group, len 2 — all
+	//	  measured), but unmeasured as guards here.
+	//
+	//	  openRE's is the one entry where the DISTINCTION IS LOAD-BEARING, so do
+	//	  not collapse it back into the arithmetic bullet below. Under 2*(1+n) a
+	//	  `< 2` bound is dead for ANY pattern, because the length is at least 2
+	//	  whatever the group count. Under the real 1+n it is dead ONLY because
+	//	  openRE has exactly one group. Make that group non-capturing, or fold it
+	//	  into a wider one, and the length becomes 1, the guard FIRES, and
+	//	  collectOpenStatements silently returns no imports for every F# file.
+	//	  A reader who takes "dead by the same arithmetic" at face value would
+	//	  conclude it was still unreachable — which is why the reason is recorded
+	//	  here and not just the verdict.
 	//	compexpr_active_patterns.go, the compound `len(m) < 4 || m[2] < 0`
 	//	  guards: the arity half is dead by this derivation, but the `m[2] < 0`
 	//	  half is a participation test and the two halves must be graded
 	//	  separately before either is touched.
-	//	this file, the `len(m) < 2` and `len(m) < 4` guards over other patterns
-	//	  in unrelated functions: dead by the same arithmetic, out of #7197's
-	//	  scope (the repo has ~877 such guards) and simply not measured.
+	//	this file, the `len(m) < 4` guard in the typeRE-locs loop: ...Index, so
+	//	  dead by the same 2*(1+n) arithmetic as everything above (typeRE has 2
+	//	  groups, len 6). Out of #7197's scope and simply not measured.
 	//
 	// If you are reading this because you found a surviving arity guard nearby,
 	// it should be named above. If it is not, the list has gone stale — fix the
