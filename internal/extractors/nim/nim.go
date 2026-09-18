@@ -387,6 +387,23 @@ func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	if len(lines) == 0 {
 		return ""
 	}
+	// #7195: a source that ends in a newline makes strings.Split yield a FINAL
+	// EMPTY ELEMENT — the empty remainder after the last '\n'. It is not a line
+	// of the file, but it satisfies the `TrimSpace(line) == ""` arm below and was
+	// appended as a blank body line. `endLine := startLine + Count(body, "\n")`
+	// at both call sites then counted it, so the LAST declaration in every
+	// newline-terminated file reported EndLine = lineCount + 1: a span past EOF.
+	// Earlier declarations broke on their following sibling and never reached
+	// this element, which is why only the last one was ever wrong.
+	//
+	// Drop EXACTLY that one element and nothing else. This is deliberately not
+	// "trim trailing blank lines from the body": blank lines that genuinely
+	// precede a sibling are real lines of the file and must stay in the span.
+	// Trimming them would shorten a legitimate body — the permissive direction
+	// forbidden by TestEOF7195ForbiddenEarlierDeclUnchanged.
+	if n := len(lines); n > 1 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
 
 	var bodyLines []string
 	// The first line after '=' may be on the same line or the next.
