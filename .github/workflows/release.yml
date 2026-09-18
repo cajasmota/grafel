@@ -58,7 +58,7 @@ jobs:
   dashboard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Cache the built embed dir keyed on the SPA SOURCE hash. When webui-v2/**
       # hasn't changed since the last release build, the cached
@@ -69,12 +69,12 @@ jobs:
       # source/config/lockfile changes invalidate it.
       - name: Cache dashboard build
         id: dash-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: internal/dashboard/dist
           key: dashboard-dist-${{ hashFiles('webui-v2/**', '!webui-v2/node_modules/**', '!webui-v2/dist/**') }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.dash-cache.outputs.cache-hit != 'true'
         with:
           node-version: '20'
@@ -94,7 +94,7 @@ jobs:
           rm -rf internal/dashboard/dist
           cp -r webui-v2/dist internal/dashboard/dist
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
@@ -117,7 +117,7 @@ jobs:
 
       # Always upload the (cached or freshly built) dist so every matrix leg
       # restores the real UI into the embed dir before `go build`.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: dashboard-dist
           path: internal/dashboard/dist
@@ -147,7 +147,7 @@ jobs:
             goarch: amd64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -155,7 +155,7 @@ jobs:
       # embed dir so this OS/arch binary ships the real UI, not the blank
       # PLACEHOLDER.md placeholder. Fixes #4457.
       - name: Restore dashboard bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: dashboard-dist
           path: internal/dashboard/dist
@@ -165,6 +165,10 @@ jobs:
       # runtime dependency on MinGW DLLs. Closes #937.
       - name: Setup MSYS2 + MinGW (Windows only)
         if: matrix.goos == 'windows'
+        # NOT bumped by the #7243 Node20 -> Node24 action migration, and not an
+        # oversight: msys2/setup-msys2 already declares `runs.using: node24` at
+        # both `v2` and `v2.31.1` (checked against the action.yml at each tag),
+        # so it never emitted the forced-migration warning. There is no v3.
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -180,13 +184,13 @@ jobs:
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
           echo "CC=x86_64-w64-mingw32-gcc" >> $GITHUB_ENV
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           cache: true
 
       - name: Cache Go build and module cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -254,7 +258,7 @@ jobs:
           fi
         shell: bash
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: grafel-${{ matrix.goos }}-${{ matrix.goarch }}
           path: out/*
@@ -273,7 +277,7 @@ jobs:
       # Pull ONLY the per-OS/arch binary archives — exclude the dashboard-dist
       # bundle artifact (consumed by the build job) so it is not checksummed or
       # uploaded as a release asset.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts
           pattern: grafel-*
@@ -285,8 +289,18 @@ jobs:
           sha256sum -- * > checksums.txt
         shell: bash
 
+      # #7243: v3.0.0 is a runtime-only major — "moves the action runtime from
+      # Node 20 to Node 24", with v2.6.2 named as the last Node 20 line. No
+      # input or output changed, so `files`/`generate_release_notes`/`draft`/
+      # `prerelease` below carry over verbatim.
+      #
+      # UNVERIFIABLE BY ANY PR RUN: this job is gated on a version-tag push, so
+      # the migration PR's own run does not execute this step. Its failure mode
+      # is "the tag is cut and the assets never attach", which has bitten this
+      # repo before, so the first tag after this bump must be watched for the
+      # assets actually appearing — a green tag run is not by itself the check.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             artifacts/*

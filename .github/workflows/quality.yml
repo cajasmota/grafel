@@ -74,8 +74,8 @@ jobs:
     name: Extraction-quality gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           cache: true
@@ -102,7 +102,7 @@ jobs:
           QUALITY_MODE: ${{ inputs.mode || 'ratchet' }}
       - name: Upload quality reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: quality-reports
           path: reports/quality/*.json

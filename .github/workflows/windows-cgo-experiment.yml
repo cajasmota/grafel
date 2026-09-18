@@ -94,11 +94,23 @@ jobs:
       # `pull_request` trigger added for #7244 the explicit ref resolves to the PR
       # HEAD sha, which is what GitHub would have checked out anyway — redundant
       # there, but it keeps one checkout step correct for every trigger.
-      - uses: actions/checkout@v4
+      # #7243: pinned at v5 and deliberately not higher. This file is the
+      # SECOND of the repo's two `pull_request_target` workflows (the other is
+      # test.yml), and the `ref:` below checks out the PR head — which
+      # actions/checkout@v7 refuses to do for FORK pull request code under
+      # `pull_request_target`/`workflow_run` without
+      # `allow-unsafe-pr-checkout: true`. Bumping this to v7 would stop this
+      # job on exactly the fork PRs it was added to cover. See the longer note
+      # at the same step in test.yml.
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup MSYS2 + MinGW
+        # NOT bumped by the #7243 Node20 -> Node24 action migration, and not an
+        # oversight: msys2/setup-msys2 already declares `runs.using: node24` at
+        # both `v2` and `v2.31.1` (checked against the action.yml at each tag),
+        # so it never emitted the forced-migration warning. There is no v3.
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -113,7 +125,7 @@ jobs:
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
           echo "CC=x86_64-w64-mingw32-gcc" >> $GITHUB_ENV
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
           cache: true
@@ -153,7 +165,7 @@ jobs:
 
       - name: Upload binary
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: grafel-windows-amd64
           path: grafel.exe
@@ -161,7 +173,7 @@ jobs:
 
       - name: Upload daemon log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: daemon-logs
           path: |
@@ -176,8 +188,9 @@ jobs:
       # test is already loud, a smoke test that was never scheduled is not.
       # An artifact rather than a job output: this is the idiom d77b6bf73
       # landed and measured in test.yml, and it needs no GITHUB_TOKEN grant at
-      # all (upload/download-artifact@v4 use ACTIONS_RUNTIME_TOKEN for
-      # same-run artifacts), so it behaves identically on a fork PR, where
+      # all (upload-artifact@v6 and download-artifact@v7 use
+      # ACTIONS_RUNTIME_TOKEN for same-run artifacts), so it behaves
+      # identically on a fork PR, where
       # token scope differs, and under `permissions: contents: read` above.
       - name: Record that the Windows CGO smoke ran (#7244)
         if: always()
@@ -187,7 +200,7 @@ jobs:
           echo "windows-cgo-smoke" > .ci-leg/job
       - name: Upload smoke-presence marker (#7244)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-cgo-leg
           path: .ci-leg/job
@@ -236,13 +249,15 @@ jobs:
   #
   # FAIL-CLOSED: `continue-on-error: true` on the download step ONLY so that
   # zero artifacts reaches the assert script as an empty directory with a
-  # legible message, instead of download-artifact@v4's own "unable to find any
+  # legible message, instead of download-artifact@v7's own "unable to find any
   # artifacts" error. Zero artifacts still fails, in the script.
   #
-  # NOTE FOR #7243 (the Node20 -> Node24 action migration):
-  # `actions/download-artifact@v4` is new to THIS file but is already pinned at
-  # the same major in test.yml, so it lands in the existing Node20-era bucket
-  # that migration already covers. No version was bumped here.
+  # NOTE FOR #7243 (the Node20 -> Node24 action migration): this file's
+  # actions WERE bumped in that pass, to the same majors as everywhere else.
+  # UNVERIFIABLE HERE: this workflow is `disabled_manually` (#7248), so no run
+  # — not even the migration PR's own — exercises these bumps. They are pinned
+  # to the same versions the enabled workflows prove out, which is the only
+  # evidence available until #7248 re-enables this file.
   # ---------------------------------------------------------------------------
   windows-cgo-smoke-present:
     name: windows cgo smoke present
@@ -257,7 +272,7 @@ jobs:
     steps:
       - name: Download smoke-presence marker
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: legs
           pattern: windows-cgo-leg

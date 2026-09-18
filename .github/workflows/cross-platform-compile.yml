@@ -101,13 +101,17 @@ jobs:
     # step still fails rather than idling.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # MinGW provides the C toolchain the tree-sitter bindings need. Without
       # it, CGO_ENABLED=1 cannot link on Windows and we would be back to the
       # CGO_ENABLED=0 blind spot this workflow exists to avoid.
       - name: Setup MSYS2 + MinGW (Windows only)
         if: runner.os == 'Windows'
+        # NOT bumped by the #7243 Node20 -> Node24 action migration, and not an
+        # oversight: msys2/setup-msys2 already declares `runs.using: node24` at
+        # both `v2` and `v2.31.1` (checked against the action.yml at each tag),
+        # so it never emitted the forced-migration warning. There is no v3.
         uses: msys2/setup-msys2@v2.31.1
         with:
           msystem: MINGW64
@@ -130,7 +134,7 @@ jobs:
             echo "CC=x86_64-w64-mingw32-gcc" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           cache: true

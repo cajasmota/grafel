@@ -33,7 +33,7 @@ jobs:
       ISSUE_MARKER: 'grafel-tracker:a3-language-release-calendar'
       CALENDAR: docs/language-release-calendar.md
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Compute upcoming release windows (next ~8 weeks)
         id: windows

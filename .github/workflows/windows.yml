@@ -37,12 +37,16 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # MinGW gcc is required for CGO (the tree-sitter parser bindings in
       # internal/extractors, internal/custom, internal/engine, internal/mcp).
       # windows-latest ships an MSYS2 base; we install the gcc + make toolchain.
       - name: Setup MSYS2 + MinGW
+        # NOT bumped by the #7243 Node20 -> Node24 action migration, and not an
+        # oversight: msys2/setup-msys2 already declares `runs.using: node24` at
+        # both `v2` and `v2.31.1` (checked against the action.yml at each tag),
+        # so it never emitted the forced-migration warning. There is no v3.
         uses: msys2/setup-msys2@v2.31.1
         with:
           msystem: MINGW64
@@ -57,7 +61,7 @@ jobs:
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
           echo "CC=x86_64-w64-mingw32-gcc" >> $GITHUB_ENV
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           # Pinned to the repo's go.mod toolchain (go 1.26.0). setup-go's
           # built-in cache (module cache + ~/.cache/go-build) is enabled so
