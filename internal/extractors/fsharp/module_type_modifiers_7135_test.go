@@ -123,10 +123,11 @@ import (
 // are independent of the modifier sequence — they reproduce with NO modifier
 // at all — so neither is fixed here, and neither is asserted as correct:
 //
-//   - LOCAL MODULES ARE MISSED ENTIRELY. moduleRE's `\s*$` means the local
-//     form `module Target =` never matches, with or without a modifier. See
+//   - LOCAL MODULES WERE MISSED ENTIRELY. moduleRE's `\s*$` meant the local
+//     form `module Target =` never matched, with or without a modifier. See
 //     TestModuleModifiers_LocalModuleEqualsGapIsSeparate, which asserts the
-//     RELATION (the modifier changes nothing) rather than the gap.
+//     RELATION (the modifier changes nothing) rather than the gap. FIXED by
+//     #7151; the relation above still holds and now grades the fix.
 //   - BLOCK COMMENTS AND TRIPLE-QUOTED STRINGS PRODUCE PHANTOMS. A line
 //     `module Ghost` inside `(* ... *)` or `"""..."""` is extracted today.
 //     Line comments (`//`, `///`) are correctly ignored, and that direction
@@ -726,17 +727,23 @@ func TestModuleTypeModifiers_AllowlistUpperBoundary(t *testing.T) {
 	}
 }
 
-// TestModuleModifiers_LocalModuleEqualsGapIsSeparate records a pre-existing
-// defect found while enumerating this space, WITHOUT asserting that it is
-// correct. moduleRE ends `\s*$`, so the LOCAL module form `module Target =`
+// TestModuleModifiers_LocalModuleEqualsGapIsSeparate records a defect found
+// while enumerating this space, WITHOUT asserting that it is correct.
+// moduleRE ended `\s*$`, so the LOCAL module form `module Target =`
 // (MS Learn "Modules": `module [accessibility-modifier] module-name =`) never
-// matches — with or without a modifier. It is therefore not the fixed-modifier
-// -sequence defect and is not fixed here.
+// matched — with or without a modifier. It was therefore not the
+// fixed-modifier-sequence defect and was not fixed here.
 //
 // What is asserted is the RELATION: the modifier makes no difference to this
 // form. The test stays honest if the gap is later closed — it fails only if
 // one of the two is fixed and the other is not, which is exactly the pairing
 // a future fix must not get wrong.
+//
+// THE GAP IS NOW CLOSED, by #7151 (`([ \t]*=)?` on moduleRE). Both sides of
+// this relation are 1 rather than 0, so the relation now grades the fix
+// instead of the gap — and it is exactly the property #7151's one-sided-fix
+// guard needed. The must-have rows live in local_module_7151_test.go; this
+// one is kept because it is the pairing assertion, not a recall row.
 func TestModuleModifiers_LocalModuleEqualsGapIsSeparate(t *testing.T) {
 	plain := runFSharp(t, "namespace N\n\nmodule Target =\n    let x = 1\n", "Local.fs")
 	modified := runFSharp(t, "namespace N\n\nmodule private Target =\n    let x = 1\n", "Local.fs")
