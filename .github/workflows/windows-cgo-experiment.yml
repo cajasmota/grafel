@@ -3,6 +3,16 @@ name: Windows CGO Smoke
 # Previously "Windows CGO Experiment" — graduated to stable in #2230 (closes #937).
 # MinGW + CGO_ENABLED=1 are now standard on the main test matrix in test.yml.
 # This workflow retains the more thorough daemon smoke test (healthz + binary upload).
+#
+# CHECK NAMES, for anyone auditing a PR's check list by eye (this is the audit
+# #7244 is about — an absent job and a passing job look the same there).
+# Neither job sets `name:` at the job level, so GitHub renders them from the
+# workflow name plus the JOB ID, not from the string "windows-cgo-smoke" that
+# CONTRIBUTING.md and the issues use:
+#   Windows CGO Smoke / build
+#   Windows CGO Smoke / windows cgo smoke present
+# Searching a check list for "windows-cgo-smoke" therefore finds NOTHING even
+# when the smoke ran. Look for "Windows CGO Smoke".
 
 # Refs #7244 — this workflow had the same defect #7219/`d77b6bf73` fixed in
 # test.yml. `pull_request_target: types: [labeled]` fires ONCE, when `ci:full`
