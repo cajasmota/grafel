@@ -124,13 +124,67 @@ var (
 	// mint a module named `Loader`). Re-read this equivalence before touching
 	// the separator.
 	//
-	// NOT fixed here, and measured rather than assumed: the LOCAL module form
-	// `module Foo =` never matches this pattern, because of the `\s*$` anchor
-	// and with or without a modifier. That is a distinct defect from the
-	// fixed-modifier-sequence one; the tests pin the RELATION (a modifier
-	// makes no difference to that form) instead of asserting the gap.
+	// #7151 — group 3, `([ \t]*=)?`, is the LOCAL module form. F# spells a
+	// module two ways and they are different constructs with different
+	// scopes: `module Foo` is TOP-LEVEL and its scope is the remainder of the
+	// FILE, while `module Foo =` is LOCAL and its scope is the offside block
+	// beneath it (F# spec § 10 `module-defn := ... module access? ident =
+	// module-defn-body` vs the separate `named-module` production; MS Learn
+	// "Modules" gives both syntax blocks). Until #7151 the `\s*$` anchor
+	// meant the trailing ` =` killed the match outright, with or without a
+	// modifier, so the local form produced NO ENTITY AT ALL.
+	//
+	// Three properties of the new group, each deliberate:
+	//
+	//   - It is `[ \t]*=`, NOT `\s*=`. `\s` matches `\n` in Go, so a `\s*=`
+	//     could reach across a blank line to an `=` on a LATER line and
+	//     mis-attribute it to a top-level declaration. MEASURED, and the
+	//     measurement that matters is NOT a match count: on "module Foo\n=\n"
+	//     BOTH patterns match exactly ONCE. They differ only in whether
+	//     group 3 CAPTURES — `\s*` captures "\n=" and the declaration is
+	//     classified LOCAL with Signature "module Foo =", `[ \t]*` leaves it
+	//     unset and it stays TOP with Signature "module Foo". A match-count
+	//     comparison is blind to precisely the error this bullet claims to
+	//     prevent, so the row that grades it asserts the emitted SIGNATURE:
+	//     TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel.
+	//     The final `\s*$` is left alone for the OPPOSITE reason: `\s`
+	//     includes `\r`, and in Go's `(?m)` mode `$` matches before the
+	//     `\n` only — so `\s*$` is what absorbs the `\r` of a CRLF source.
+	//     Narrowing it to `[ \t]*$` cannot consume the `\r` and would drop
+	//     EVERY module, of BOTH forms, in EVERY CRLF file. MEASURED, not
+	//     asserted, and note the blast radius is far larger than the
+	//     newline-crossing hazard above: that is one shape this file itself
+	//     calls not-legal-F#, this is every module in a whole class of real
+	//     files. Graded by TestLocalModule7151_CRLFSourceMintsBothForms —
+	//     before it existed the package had ZERO CRLF fixtures and this
+	//     half of the bullet was ungraded prose.
+	//   - It is anchored at end-of-line, so the MODULE ABBREVIATION
+	//     `module M = A.B.C` (§ 10 `module-abbrev`) still does not match —
+	//     unchanged from before, and not decided by accident here. Whether
+	//     an alias SHOULD mint is #7194, filed, not decided here.
+	//   - The modifier group is untouched. #7181 measured that the allowlist
+	//     is graded in the NARROWING direction only; this commit neither
+	//     improves nor worsens that, because it edits nothing inside it and
+	//     nothing in the mandatory `\s+` separator whose equivalence
+	//     disposition is recorded above.
+	//
+	// Both forms keep Subtype "module". Exactly TWO consumers branch on that
+	// subtype in a way that carries behaviour, and both read it as "container
+	// scope, not a callable" — cited by SYMBOL rather than by line, because a
+	// line citation inside a comment is invalidated by editing the comment:
+	// resolve.BuildImportTable's pass-2 module reverse index skips it when
+	// indexing call targets, and mcp's classifyNoise labels it noiseContainer.
+	// A local module is a container scope by the same reading.
+	// (extractor's file-carrier clause 3 does NOT key on this subtype — it
+	// keys on `records[i].Name == path`, and that file has zero non-comment
+	// occurrences of "module" at all. An earlier revision of THIS comment
+	// claimed otherwise and was wrong.) The distinction between the two forms
+	// is carried in the SIGNATURE instead, which echoes the declaration head:
+	// "module Foo" vs "module Foo =". The full enumeration, with the grep or
+	// the read behind every row and line numbers anchored to the sha they
+	// were taken on, is in local_module_7151_test.go.
 	moduleRE = regexp.MustCompile(
-		`(?m)^([ \t]*)module(?:\s+(?:rec|public|private|internal)\b)*\s+([\w.]+)\s*$`,
+		`(?m)^([ \t]*)module(?:\s+(?:rec|public|private|internal)\b)*\s+([\w.]+)([ \t]*=)?\s*$`,
 	)
 
 	// namespace declaration: "namespace Foo" or "namespace Foo.Bar"
@@ -536,17 +590,72 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 
 	// 1. Module/namespace declarations → SCOPE.Component
 	seen := make(map[string]bool)
+	// #7151: the LOCAL arm (`module Foo =`) is gated on the comment/string
+	// scrub, computed lazily because most files have no local module at all.
+	// These declaration scanners otherwise read the RAW `src` (#7152), so
+	// widening the pattern would have enlarged what a `(* ... *)` block or a
+	// `"""..."""` literal can mint. The gate is applied to the LOCAL arm ONLY:
+	// the top-level arm's pre-existing phantom is #7152's to fix, and leaving
+	// it alone is what keeps this commit's before/after on the existing form
+	// empty. Pinned in both directions by
+	// TestLocalModule7151_MaskedLocalFormMintsNothing and
+	// TestLocalModule7151_MaskedTopLevelFormIsUNCHANGED.
+	//
+	// stripStringsAndComments is byte-offset preserving (it writes one output
+	// byte per input byte), so the NAME capture's offsets index the scrubbed
+	// copy directly; a name that survives the scrub unchanged was real source.
+	//
+	// STATED SCOPE LIMIT — #7193. stripStringsAndComments RUNS AWAY on two
+	// legal F# constructs: a verbatim string with a trailing backslash
+	// (`@"C:\"`) and a character literal holding a quote (`'"'`). Its
+	// `case '"'` arm carries the comment "Check for verbatim string @\"...\""
+	// and performs no such check, so `\` is treated as a C-style escape and
+	// eats the closing quote; and there is no general char-literal state.
+	//
+	// READ THIS BEFORE FIXING #7193 — the package ALREADY has a recorded
+	// decision that a GENERAL char-literal scrub is WRONG, and it is easy to
+	// walk straight into it. charBraceRE (below, #6326) deliberately matches
+	// ONLY `'{'` and `'}'` because F# identifiers may end in an apostrophe,
+	// so a general `'.'` scrub misreads `c' '}'` — a primed identifier next
+	// to a char literal, ordinary F# — as the span `' '`. That reasoning and
+	// its counter-example are pinned by
+	// TestFSharp_PrimedIdentifierBeforeCharLiteralBrace in hierarchy_test.go.
+	// A naive `'.'` state added to stripStringsAndComments turns that test
+	// RED at the same time as it turns the two recording subtests below
+	// GREEN. Any #7193 fix must satisfy both.
+	// Everything after such a construct scrubs to blank, so a REAL local
+	// module below one is dropped and this fix does not apply for the rest of
+	// that file. This is PRE-EXISTING and NOT caused here — the local form
+	// minted 0 unconditionally before #7151, and nine non-test call sites in
+	// this package share the defect. The attribution is clean because a
+	// TOP-LEVEL module in the byte-identical file still mints (that arm is
+	// ungated). Recorded, not fixed, by
+	// TestLocalModule7151_ScrubRunawayHidesLocalModule_7193.
+	var moduleScrubbed string
 	for _, m := range moduleRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 6 {
+		if len(m) < 8 {
 			continue
 		}
 		name := src[m[4]:m[5]]
+		isLocal := m[6] >= 0
+		if isLocal {
+			if moduleScrubbed == "" {
+				moduleScrubbed = stripStringsAndComments(src)
+			}
+			if moduleScrubbed[m[4]:m[5]] != name {
+				continue
+			}
+		}
 		key := "module:" + name
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
 		startLine := strings.Count(src[:m[0]], "\n") + 1
+		signature := "module " + name
+		if isLocal {
+			signature += " ="
+		}
 		entities = append(entities, types.EntityRecord{
 			Name:       name,
 			Kind:       "SCOPE.Component",
@@ -555,7 +664,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 			Language:   "fsharp",
 			StartLine:  startLine,
 			EndLine:    startLine,
-			Signature:  "module " + name,
+			Signature:  signature,
 			Properties: map[string]string{
 				"imports": strings.Join(imports, ","),
 			},
