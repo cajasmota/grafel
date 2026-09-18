@@ -191,6 +191,18 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		if m[6] >= 0 && m[7] >= 0 {
 			params = src[m[6]:m[7]]
 		}
+		// #7231, NOTED NOT FIXED — the trim above is load-bearing HERE TOO, and
+		// nothing grades it. Mutant CM-33 (key on the UNTRIMMED
+		// `indent + ":" + src[m[4]:m[5]]`) is ALIVE against this whole package:
+		// vet clean, suite green. Under it `proc foo*` and `proc foo` at one
+		// indent become two records — both still NAMED `foo`, since Name is
+		// built from the trimmed variable — which fold to one graph node by
+		// graph.EntityID, whose relationship loop runs OUTSIDE the fold, so the
+		// second record's CALLS are unioned onto the survivor. That is the
+		// identical mechanism #7231 fixed for EXTENDS in the type loop below.
+		// It is left alone deliberately: this key is a different question,
+		// tangled with the overload behaviour noted at the type loop, and is
+		// filed on its own rather than widened into that change.
 		key := indent + ":" + name
 		if seen[key] {
 			continue
@@ -397,6 +409,19 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		// of typeRE's FindAllStringSubmatchIndex — successive non-overlapping
 		// matches, left to right — never off map iteration. firstDeclSeen is
 		// read and written only along that ordered walk, once, here.
+		//
+		// THE KEY IS THE `*`-TRIMMED NAME, AND THE TRIM IS PART OF THE GATE.
+		// `Widget*` and `Widget` are one Nim name — the export marker is
+		// visibility on the declaration, not part of the identifier
+		// (doc/grammar.txt: `identVis = symbol OPR?`) — and it is the trimmed
+		// form that graph.EntityID hashes, so the gate key must agree with it.
+		// Keying on the raw `src[m[4]:m[5]]` gives a file that declares
+		// `Widget*` in one routine body and `Widget` in another TWO gate slots,
+		// and every manufactured edge above comes back for that shape. That was
+		// mutant CM-31 and it was ALIVE until nimExportMarkerDupFixture existed:
+		// every duplicated name in the earlier fixtures was spelled
+		// identically. The opposite error — normalising past the marker and
+		// merging two real names — is scored on the same fixture (CM-32).
 		//
 		// The gate is keyed on `name`, so it fires ONLY for a name this file
 		// declares more than once. A name declared once is untouched and keeps

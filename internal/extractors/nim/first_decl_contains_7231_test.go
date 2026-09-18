@@ -478,3 +478,153 @@ func TestFirstDecl7231_TotalExtendsUnchangedByDuplication(t *testing.T) {
 			len(all), strings.Join(all, "\n  "))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// THE GATE KEY IS A NORMALISED NAME, AND THE NORMALISATION IS PART OF THE GATE.
+//
+// `name := strings.TrimSuffix(src[m[4]:m[5]], "*")` strips Nim's export marker,
+// so `Widget*` and `Widget` are one name — which they are: the `*` is a
+// visibility marker on the declaration, not part of the identifier. That trim
+// is what makes the gate key agree with the identity the graph folds on, since
+// `graph.EntityID` hashes the trimmed Name.
+//
+// NOTHING GRADED IT. Mutant CM-31 — key the gate on the UNTRIMMED
+// `src[m[4]:m[5]]` — was ALIVE against the whole package: vet clean, suite
+// green. Under it a file declaring `Widget*` in one routine body and `Widget`
+// in another gets TWO gate slots, both declarations emit, and the manufactured
+// duplicate CONTAINS/EXTENDS edges this change exists to prevent come straight
+// back for that one shape. The shape is ordinary — the 221 routine-body groups
+// are the population this issue is about, and an export marker differing
+// between two scopes is a normal thing for Nim source to do. Every duplicated
+// name in the two fixtures above is spelled identically, which is exactly why
+// none of them could see it.
+//
+// THE OVER-COLLAPSE DIRECTION IS SCORED ON THE SAME AXIS, because "normalise
+// harder" is the obvious wrong repair. `Solo*` and `Sidecar` are two DISTINCT
+// singly-declared exported/unexported types sharing a first letter, each with
+// its own base and its own method, so a key that normalises past the export
+// marker — a prefix, a fold, anything that maps two real names together —
+// silences one of them. A fixture with only `Widget*`/`Widget` grades the
+// trim-enough direction and says nothing about trim-too-much.
+//
+// LEGALITY: `doc/grammar.txt` gives `identVis = symbol OPR?` with the export
+// marker as that trailing operator, so both spellings are the same identifier
+// declared with different visibility.
+const nimExportMarkerDupFixture = `
+type Solo* = ref object of SoloBase
+  x: int
+
+type Sidecar = ref object of SidecarBase
+  y: int
+
+proc firstUser() =
+  type Widget* = ref object of BaseA
+    a: int
+  discard
+
+proc secondUser() =
+  type Widget = ref object of BaseB
+    b: int
+  discard
+
+proc attach*(s: Solo) = discard
+proc dock*(s: Sidecar) = discard
+proc render*(w: Widget): string = discard
+`
+
+// TestFirstDecl7231_ExportMarkerDoesNotOpenASecondGateSlot kills CM-31. The
+// premise is asserted first — both records are NAMED `Widget`, i.e. the trim
+// really did happen — so a failure distinguishes "the gate key is wrong" from
+// "the name is no longer normalised at all".
+func TestFirstDecl7231_ExportMarkerDoesNotOpenASecondGateSlot(t *testing.T) {
+	ents := runNim(t, nimExportMarkerDupFixture, "exportdup.nim")
+
+	widgets := nimComponents(ents, "Widget")
+	if len(widgets) != 2 {
+		t.Fatalf("records named Widget = %d, want 2 — `Widget*` and `Widget` are ONE Nim name and "+
+			"both declarations must carry it", len(widgets))
+	}
+	for _, w := range widgets {
+		if w.Name != "Widget" {
+			t.Fatalf("record Name = %q, want %q — the export marker must be trimmed off the Name, "+
+				"which is the premise the gate key rests on", w.Name, "Widget")
+		}
+	}
+
+	lo, hi := widgets[0], widgets[1]
+	if lo.StartLine > hi.StartLine {
+		lo, hi = hi, lo
+	}
+
+	if got := nimContainsToIDs(lo); len(got) != 1 || !strings.Contains(got[0], "render") {
+		t.Errorf("Widget*@%d (first declaration) CONTAINS = %v, want exactly 1 edge to render", lo.StartLine, got)
+	}
+	if got := nimExtendsToIDs(lo); len(got) != 1 || got[0] != "BaseA" {
+		t.Errorf("Widget*@%d (first declaration) EXTENDS = %v, want exactly [BaseA]", lo.StartLine, got)
+	}
+	if got := nimContainsToIDs(hi); len(got) != 0 {
+		t.Errorf("Widget@%d (second declaration) CONTAINS = %v, want none — differing only by the "+
+			"export marker must NOT open a second gate slot", hi.StartLine, got)
+	}
+	if got := nimExtendsToIDs(hi); len(got) != 0 {
+		t.Errorf("Widget@%d (second declaration) EXTENDS = %v, want none — ungated, this edge is "+
+			"unioned onto the folded survivor and makes it claim BaseB as well as BaseA", hi.StartLine, got)
+	}
+}
+
+// TestFirstDecl7231_DistinctNamesAreNotCollapsedByNormalisation is the
+// over-collapse direction: two singly-declared types that a too-aggressive gate
+// key would merge must each keep BOTH of their edges. `Solo*` carries an export
+// marker and `Sidecar` does not, so this also holds the exported/unexported
+// axis open on the permissive side rather than only on the duplicated side.
+func TestFirstDecl7231_DistinctNamesAreNotCollapsedByNormalisation(t *testing.T) {
+	ents := runNim(t, nimExportMarkerDupFixture, "exportdup.nim")
+
+	for _, tc := range []struct{ typeName, base, method string }{
+		{"Solo", "SoloBase", "attach"},
+		{"Sidecar", "SidecarBase", "dock"},
+	} {
+		t.Run(tc.typeName, func(t *testing.T) {
+			got := nimComponents(ents, tc.typeName)
+			if len(got) != 1 {
+				t.Fatalf("%s records = %d, want 1", tc.typeName, len(got))
+			}
+			if ext := nimExtendsToIDs(got[0]); len(ext) != 1 || ext[0] != tc.base {
+				t.Errorf("%s EXTENDS = %v, want exactly [%s] — %s is declared ONCE and shares only a "+
+					"first letter with its neighbour; a gate key that maps two real names together "+
+					"silences whichever comes second", tc.typeName, ext, tc.base, tc.typeName)
+			}
+			if con := nimContainsToIDs(got[0]); len(con) != 1 || !strings.Contains(con[0], tc.method) {
+				t.Errorf("%s CONTAINS = %v, want exactly 1 edge to %s", tc.typeName, con, tc.method)
+			}
+		})
+	}
+}
+
+// TestFirstDecl7231_ExportMarkerFileTotals is the whole-file total for this
+// fixture, failing in both directions on both edge kinds at once: CM-31 makes
+// it 4 CONTAINS / 4 EXTENDS, an over-collapsing key makes it 2 / 2.
+func TestFirstDecl7231_ExportMarkerFileTotals(t *testing.T) {
+	ents := runNim(t, nimExportMarkerDupFixture, "exportdup.nim")
+
+	var contains, extends []string
+	for _, e := range ents {
+		if e.Kind != "SCOPE.Component" || e.Subtype == "import" {
+			continue
+		}
+		for _, id := range nimContainsToIDs(e) {
+			contains = append(contains, fmt.Sprintf("%s@%d -> %s", e.Name, e.StartLine, id))
+		}
+		for _, id := range nimExtendsToIDs(e) {
+			extends = append(extends, fmt.Sprintf("%s@%d -> %s", e.Name, e.StartLine, id))
+		}
+	}
+	if len(contains) != 3 {
+		t.Errorf("CONTAINS edges in the file = %d, want 3 (Solo->attach, Sidecar->dock, Widget->render); got:\n  %s",
+			len(contains), strings.Join(contains, "\n  "))
+	}
+	if len(extends) != 3 {
+		t.Errorf("EXTENDS edges in the file = %d, want 3 (Solo->SoloBase, Sidecar->SidecarBase, Widget->BaseA); got:\n  %s",
+			len(extends), strings.Join(extends, "\n  "))
+	}
+}
