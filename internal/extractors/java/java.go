@@ -2254,9 +2254,23 @@ func buildFieldSignature(node ts.Node, src []byte, name string) string {
 	// `{Annotation} [ ]`, so a TYPE_USE annotation belongs to the dimensions
 	// node and the text can begin at `@`. The source's separating space then
 	// falls BETWEEN the two operands and nothing puts it back —
-	// `int withAnno @NN [];` emitted `int withAnno@NN []` (#7161). Restore the
-	// separator exactly when the suffix does not open with a bracket, so
-	// `int plain[];` keeps its name and brackets touching.
+	// `int withAnno @NN [];` emitted `int withAnno@NN []` (#7161).
+	//
+	// The policy is to NORMALISE, not to replay: emit EXACTLY ONE space before
+	// a dimensions suffix that opens at `@`, whether or not the source had one,
+	// and none before one that opens at `[`. So `int a@NN[];` — javac-clean,
+	// no space anywhere — emits `int a @NN[]`, a space this code MANUFACTURES
+	// rather than restores. That is deliberate: a Signature is a rendered form
+	// and this function already collapses every whitespace run in it, so
+	// propagating incidental source spacing here would be the inconsistent
+	// choice. Graded by `normAnno`; `plainDims`/`plainTwoDims`/`annoNotFirst`
+	// grade the other branch, at both dimension counts and with an annotation
+	// present but not at position 0.
+	//
+	// The predicate reads position 0 rather than searching for `@`, and the
+	// first character of `dims` is exactly `@` or `[` — enumerated over 13
+	// javac-clean shapes on review, `@Sz(msg="[weird]")` included, where the
+	// bracket inside an annotation argument is never at position 0.
 	dims := javaDeclaratorDimensions(node, src)
 	if dims != "" && !strings.HasPrefix(dims, "[") {
 		dims = " " + dims

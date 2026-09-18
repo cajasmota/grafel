@@ -26,15 +26,26 @@
 //     (`@NN []`, the defect) vs the bracket itself (`[]`, which must NOT gain a
 //     space). Both directions are graded, so a fix that inserts the separator
 //     unconditionally fails on `plainDims`.
+//   - the NAME-to-ANNOTATION SPACING IN THE SOURCE — `int withAnno @NN [];`
+//     (one space) vs `int normAnno@NN[];` (none at all). This is the axis the
+//     emitted form differs on between a replay policy and a normalising one,
+//     and the choice made here is to NORMALISE: exactly one space is emitted
+//     before a dimensions suffix opening at `@`, whether or not the source had
+//     one. `normAnno` is therefore a row where the space is MANUFACTURED, not
+//     restored, and it is graded so the policy is observed rather than implied.
 //   - NON-WHITESPACE CONTENT INSIDE the brackets — `[/* a comment */]`. The
 //     claim this defect falsifies is that whitespace is the only content the
 //     dimensions text can hold; a comment falsifies it just as an annotation
 //     does, and a fix that special-cased annotations would leave the comment
 //     case free to regress. Its expected value is unchanged by this PR — it is
 //     a REGRESSION PIN, and it is asserted on exact equality so that it is.
-//   - the DIMENSION COUNT — one annotated dimension vs two (`@NN [] @NN []`),
-//     because a fix that patched only the head of the text would still be right
-//     on one dimension.
+//   - the DIMENSION COUNT — one vs two, on BOTH branches: `@NN [] @NN []` on
+//     the annotated side, and `[][]` on the plain side. The plain multi-
+//     dimension shape did not previously exist anywhere in this package, so the
+//     false branch had been pinned only at count 1.
+//   - the POSITION of the annotation within the dimensions text — at its head
+//     (`@NN []`) vs after a plain dimension (`[] @NN []`). The predicate must
+//     decide on character 0, not on whether an annotation occurs at all.
 //   - the SITE — the field builder (defective) against the two other places a
 //     name can be followed by an annotated dimension: a method PARAMETER
 //     (buildMethodSignature) and a RECORD COMPONENT (walk's own replay). Both
@@ -46,10 +57,16 @@
 // still open): the element type (`int` everywhere), the annotation identity
 // (`@NN`, no arguments), the line count (every declaration is single-line, and
 // asserted so — a wrap would move the row onto #7114's newline axis), the file,
-// the package, and the absence of any initializer. NOT varied and NOT claimed:
-// an annotation WITH arguments on a dimension, and whitespace or a comment
-// between the name and a `[` that carries no annotation (the dimensions node
-// starts at `[` there, so that text is outside the span this file grades).
+// the package, and the absence of any initializer.
+//
+// NOT varied here, and MEASURED-ON-REVIEW rather than pinned: an annotation
+// WITH ARGUMENTS on a dimension, and whitespace or a comment between the name
+// and a `[` that carries no annotation. Both were enumerated under javac
+// -Xlint:all across 13 shapes with the raw `dimensions` span printed — the
+// first character of that span is exactly `@` or `[`, never whitespace, a
+// comment or a newline, and a `[` inside an annotation argument
+// (`@Sz(msg="[weird]") []`) is never at position 0. Read their absence as
+// measured-but-unpinned: neither untested-and-unknown, nor graded.
 //
 // The fixture was compiled before being asserted on: javac 25.0.3,
 // `javac -Xlint:all`, written out as com/example/dims/DimHost.java, exit 0,
@@ -82,9 +99,15 @@ class DimHost {
 
     int twoAnnoDims @NN [] @NN [];
 
+    int normAnno@NN[];
+
     int withComment[/* a comment */];
 
     int plainDims[];
+
+    int plainTwoDims[][];
+
+    int annoNotFirst[] @NN [];
 
     int viaParam(int paramAnno @NN []) { return 0; }
 }
@@ -106,6 +129,13 @@ func TestJava7161_AnnotatedDimensionKeepsItsSeparator(t *testing.T) {
 		// ever stops being a separator and starts being a rewrite.
 		{"SCOPE.Schema", "DimHost.twoAnnoDims", "int twoAnnoDims @NN [] @NN []"},
 
+		// The NORMALISING direction, and the reason the doc block says
+		// "exactly one space" rather than "restore": the source here has NO
+		// space between the name and the `@`, and the emitted signature has
+		// one. That is a space this code MANUFACTURES, so it is graded rather
+		// than left to read as incidental.
+		{"SCOPE.Schema", "DimHost.normAnno", "int normAnno @NN[]"},
+
 		// Regression pin, unchanged by this PR: non-whitespace content INSIDE
 		// the brackets, emitted verbatim, with NO separator introduced.
 		{"SCOPE.Schema", "DimHost.withComment", "int withComment[/* a comment */]"},
@@ -113,6 +143,16 @@ func TestJava7161_AnnotatedDimensionKeepsItsSeparator(t *testing.T) {
 		// The negative direction: text that already starts at `[` must keep
 		// touching the name. Kills an unconditional separator.
 		{"SCOPE.Schema", "DimHost.plainDims", "int plainDims[]"},
+
+		// The negative direction at dimension count TWO. Before this row the
+		// false branch was pinned only at count 1, and nowhere in this package
+		// was there a plain `[][]` declaration at all.
+		{"SCOPE.Schema", "DimHost.plainTwoDims", "int plainTwoDims[][]"},
+
+		// The negative direction WITH an annotation present in the dimensions
+		// text but not at its head. `HasPrefix(dims, "[")` must decide on
+		// position 0, not on whether an annotation occurs anywhere.
+		{"SCOPE.Schema", "DimHost.annoNotFirst", "int annoNotFirst[] @NN []"},
 
 		// Pair-audit witnesses — the other two sites where a name is followed
 		// by an annotated dimension. Both replay a raw span, so neither ever
