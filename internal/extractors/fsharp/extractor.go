@@ -138,26 +138,41 @@ var (
 	//
 	//   - It is `[ \t]*=`, NOT `\s*=`. `\s` matches `\n` in Go, so a `\s*=`
 	//     could reach across a blank line to an `=` on a LATER line and
-	//     mis-attribute it to a top-level declaration. The final `\s*$` is
+	//     mis-attribute it to a top-level declaration. MEASURED, and the
+	//     measurement that matters is NOT a match count: on "module Foo\n=\n"
+	//     BOTH patterns match exactly ONCE. They differ only in whether
+	//     group 3 CAPTURES — `\s*` captures "\n=" and the declaration is
+	//     classified LOCAL with Signature "module Foo =", `[ \t]*` leaves it
+	//     unset and it stays TOP with Signature "module Foo". A match-count
+	//     comparison is blind to precisely the error this bullet claims to
+	//     prevent, so the row that grades it asserts the emitted SIGNATURE:
+	//     TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel.
+	//     The final `\s*$` is
 	//     left alone for the opposite reason: it is what absorbs the `\r` of
 	//     a CRLF file, and narrowing it to `[ \t]*$` would drop every module
 	//     in a CRLF source.
 	//   - It is anchored at end-of-line, so the MODULE ABBREVIATION
 	//     `module M = A.B.C` (§ 10 `module-abbrev`) still does not match —
-	//     unchanged from before, and not decided by accident here.
+	//     unchanged from before, and not decided by accident here. Whether
+	//     an alias SHOULD mint is #7194, filed, not decided here.
 	//   - The modifier group is untouched. #7181 measured that the allowlist
 	//     is graded in the NARROWING direction only; this commit neither
 	//     improves nor worsens that, because it edits nothing inside it and
 	//     nothing in the mandatory `\s+` separator whose equivalence
 	//     disposition is recorded above.
 	//
-	// Both forms keep Subtype "module" — every consumer that branches on that
-	// subtype reads it as "container scope, not a callable" (resolve/imports
-	// skips it when indexing call targets, mcp/denoise classifies it as a
-	// noise container, extractor/file_carrier's clause 3 keys on it), and a
-	// local module is a container scope by the same reading. The distinction
-	// is carried in the SIGNATURE instead, which echoes the declaration head:
-	// "module Foo" vs "module Foo =". See local_module_7151_test.go.
+	// Both forms keep Subtype "module". Exactly TWO consumers branch on that
+	// subtype in a way that carries behaviour, and both read it as "container
+	// scope, not a callable": resolve/imports.go:285 skips it when indexing
+	// call targets, and mcp/denoise.go:137 classifies it as a noise
+	// container. A local module is a container scope by the same reading.
+	// (extractor/file_carrier's clause 3 does NOT key on this subtype — it
+	// keys on `records[i].Name == path` at file_carrier.go:217; that file has
+	// zero non-comment occurrences of "module". An earlier revision of this
+	// comment claimed otherwise and was wrong.) The distinction between the
+	// two forms is carried in the SIGNATURE instead, which echoes the
+	// declaration head: "module Foo" vs "module Foo =". See
+	// local_module_7151_test.go for the full enumeration.
 	moduleRE = regexp.MustCompile(
 		`(?m)^([ \t]*)module(?:\s+(?:rec|public|private|internal)\b)*\s+([\w.]+)([ \t]*=)?\s*$`,
 	)
@@ -579,6 +594,21 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// stripStringsAndComments is byte-offset preserving (it writes one output
 	// byte per input byte), so the NAME capture's offsets index the scrubbed
 	// copy directly; a name that survives the scrub unchanged was real source.
+	//
+	// STATED SCOPE LIMIT — #7193. stripStringsAndComments RUNS AWAY on two
+	// legal F# constructs: a verbatim string with a trailing backslash
+	// (`@"C:\"`) and a character literal holding a quote (`'"'`). Its
+	// `case '"'` arm carries the comment "Check for verbatim string @\"...\""
+	// and performs no such check, so `\` is treated as a C-style escape and
+	// eats the closing quote; and there is no char-literal state at all.
+	// Everything after such a construct scrubs to blank, so a REAL local
+	// module below one is dropped and this fix does not apply for the rest of
+	// that file. This is PRE-EXISTING and NOT caused here — the local form
+	// minted 0 unconditionally before #7151, and nine non-test call sites in
+	// this package share the defect. The attribution is clean because a
+	// TOP-LEVEL module in the byte-identical file still mints (that arm is
+	// ungated). Recorded, not fixed, by
+	// TestLocalModule7151_ScrubRunawayHidesLocalModule_7193.
 	var moduleScrubbed string
 	for _, m := range moduleRE.FindAllStringSubmatchIndex(src, -1) {
 		if len(m) < 8 {

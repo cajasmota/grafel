@@ -78,36 +78,64 @@ import (
 //	module Foo    -> Signature "module Foo"
 //	module Foo =  -> Signature "module Foo ="
 //
-// Justification, from the consumers enumerated on a352a6a29. Every consumer
-// that branches on this subtype reads it as "this is a container scope, not a
-// callable or a resolvable target":
+// Justification, from the consumers enumerated on a352a6a29 and RE-DERIVED
+// from source one at a time on this branch (an earlier revision of this list
+// asserted eight rows and one of them — file_carrier — was false, so the
+// whole set was checked again rather than repaired in place). Exactly TWO of
+// them carry behaviour off this subtype, and both read it as "this is a
+// container scope, not a callable or a resolvable target":
 //
-//   - internal/resolve/imports.go:285 SKIPS `SCOPE.Component`+`module` when
-//     building the module→entity reverse index, so an import marker does not
-//     register as a call target. A local module is equally not a call target.
-//   - internal/mcp/denoise.go:137,141 classify `component`+`module` as
-//     `noiseContainer`. A local module is equally a container.
-//   - internal/docgen/llm_bundle.go:1617 `isModuleKind` matches any kind
-//     CONTAINING "module" — it reads the KIND, not the subtype, so it is
-//     indifferent either way.
-//   - internal/extractor/file_carrier.go clause 3 rejects a second file
-//     carrier when some record is already named after the path; the fsharp
-//     route it documents is a module whose dotted name equals the path. A
-//     local module can reach that route by the same dotted-name capture, and
-//     keeping the subtype keeps that rejection uniform.
-//   - cmd/grafel/nestjs_shadow_fold_test.go:37,89,162 fold `module` out of
-//     its census; a language-agnostic filter that must not start seeing a new
-//     fsharp subtype.
-//   - internal/dashboard/handlers_iac.go:270,312 and internal/vbnet/symbols.go
-//     :177 both key on "module" but are gated on Terraform / VB.NET
-//     respectively and never see an fsharp record.
+//   - internal/resolve/imports.go:285 — BEHAVIOUR-CARRYING.
+//     `if e.Kind == "SCOPE.Component" && e.Subtype == "module" { continue }`
+//     in pass 2 skips the entity when building the module→entity reverse
+//     index, so an import marker does not register as a call target. A local
+//     module is equally not a call target. A new subtype would start
+//     registering it as one.
+//   - internal/mcp/denoise.go:137 — BEHAVIOUR-CARRYING.
+//     `bareKind == "component" && (subtype == "file" || subtype == "module")`
+//     → `noiseContainer` (and again at :141 off the property fallback). A
+//     local module is equally a container. A new subtype would stop it being
+//     denoised. NOTE the consequence, stated plainly: the entity this commit
+//     adds to the GRAPH is classified as a noise container by MCP, so the
+//     payoff is graph-level (resolution, carriers, docgen) and the new record
+//     does not surface in ordinary MCP output.
 //
-// A new subtype (`local_module`) would therefore have silently CHANGED three
-// of those consumers' behaviour — a local module would start registering as a
-// resolvable target, stop being denoised, and split the carrier rule — in a
-// direction nobody asked for and nothing in this issue requires. The
-// construct-level distinction is real and is preserved, in the artefact these
-// rows assert.
+// The remaining consumers are INDIFFERENT to the subtype — verified, not
+// assumed:
+//
+//   - internal/extractor/file_carrier.go clause 3 — INDIFFERENT. It keys on
+//     `records[i].Name == path` (file_carrier.go:217), never on Subtype; the
+//     file has ZERO non-comment occurrences of "module" (its :48/:71/:72/:75/
+//     :207 hits are all inside `//` prose). A split subtype would have
+//     changed nothing there. What DOES change, and is a Name effect rather
+//     than a subtype one, is that a local `module Core.fs =` in a root
+//     Core.fs can now reach the same path-named route a top-level one
+//     already reached.
+//   - internal/docgen/llm_bundle.go:1615-1617 `isModuleKind` — INDIFFERENT.
+//     `strings.Contains(strings.ToLower(strings.TrimPrefix(kind,"SCOPE.")),
+//     "module")`: it reads the KIND, not the subtype.
+//   - cmd/grafel/nestjs_shadow_fold_test.go:37,89,162 — a test census that
+//     folds out `n.Subtype == "file" || "import" || "module"`. It reads the
+//     subtype, but it is a language-agnostic TEST filter with no product
+//     behaviour; a new fsharp subtype would merely start appearing in its
+//     census.
+//   - internal/dashboard/handlers_iac.go:270,312 — never sees an fsharp
+//     record. `iacToolForEntity` gates on
+//     `language == "terraform" || language == "hcl"` BEFORE testing
+//     `subtype == "resource" || subtype == "module"`; the :703 "module" is a
+//     Terraform ref-prefix string, not a subtype.
+//   - internal/vbnet/symbols.go:177 — never sees an fsharp record.
+//     `s.Kind == KindType && s.TypeName == "module"` reads the VB.NET
+//     symbol table's own Symbol type, not an EntityRecord.
+//   - internal/mcp/mmapview.go:125,180 (and mmapview_test.go:467) — "module"
+//     there is a PROPERTY KEY (the module-rollup label), unrelated to this
+//     subtype.
+//
+// A new subtype (`local_module`) would therefore have silently CHANGED two
+// consumers' behaviour — a local module would start registering as a
+// resolvable target and stop being denoised — in a direction nobody asked for
+// and nothing in this issue requires. The construct-level distinction is real
+// and is preserved, in the artefact these rows assert.
 //
 // # AXES
 //
@@ -125,6 +153,26 @@ import (
 // so no row depends on the `"module:"+name` dedup key — that key carries
 // neither indent nor scope and is #7144's arm 3, deliberately not exercised
 // here; and the file path within each table.
+//
+// STATED SCOPE LIMIT — #7193. The local arm's recall is CONDITIONAL on
+// stripStringsAndComments, and that function runs away on two legal F#
+// constructs: a verbatim string with a trailing backslash (`@"C:\"`) and a
+// character literal holding a quote (`'"'`). After either, the rest of the
+// file scrubs to blank and a REAL local module below it is dropped — this
+// fix does not apply for the remainder of such a file. PRE-EXISTING, not
+// caused here (the local form minted 0 unconditionally before #7151; nine
+// non-test call sites in this package share the defect), and the attribution
+// is clean because a TOP-LEVEL module in the byte-identical file still mints.
+// Recorded by TestLocalModule7151_ScrubRunawayHidesLocalModule_7193 below.
+//
+// ENLARGED SURFACE, stated rather than left to be inferred: the dedup key is
+// `"module:"+name` and carries neither indent nor scope, so a file declaring
+// BOTH a top-level `module Foo` and a local `module Foo =` now emits one
+// entity where before it emitted one for a different reason — the two forms
+// now compete for the same key. The key stays #7144's arm 3 and no row here
+// depends on it (one declaration of interest per source file), but the
+// widening does make the collision reachable and that is a fact about this
+// commit, not about #7144.
 //
 // NOT VARIED, and so not claimed: attributes (`[<AutoOpen>] module Foo =`);
 // `module type`; a local module nested inside another local module; and the
@@ -394,7 +442,7 @@ func TestLocalModule7151_MaskedTopLevelFormIsUNCHANGED(t *testing.T) {
 // abbreviation still does not match, which is exactly its behaviour at
 // a352a6a29 (measured: 0 module entities). Whether an alias SHOULD produce an
 // entity is not decided here; what is pinned is that this commit did not
-// decide it by accident.
+// decide it by accident. That decision is #7194.
 func TestLocalModule7151_ModuleAbbreviationStillMintsNothing(t *testing.T) {
 	for _, decl := range []string{
 		"module M = A.B.C",
@@ -440,4 +488,153 @@ func TestLocalModule7151_ModifierRelationHoldsForLocalForm(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel grades the ONE thing
+// the extractor comment claims about `[ \t]*=` vs the naive `\s*=`.
+//
+// A MATCH COUNT IS BLIND HERE, which is why this row asserts the emitted
+// artefact instead. On "module Foo\n=\n" (and on "module Foo\n\n   =\n")
+// BOTH patterns match exactly ONCE. They differ only in whether group 3
+// CAPTURES: `\s` matches `\n` in Go, so `\s*=` reaches across the line break,
+// captures "\n=" and classifies a TOP-LEVEL declaration as LOCAL with
+// Signature "module Foo =". `[ \t]*=` cannot cross the line break and the
+// declaration stays TOP with Signature "module Foo". A row that counted
+// matches, or merely asserted that one module entity exists, would pass under
+// both patterns and grade nothing.
+//
+// Both halves below can fail alone: the must-have fails if the declaration
+// stops being extracted or loses its top-level signature; the forbidden fails
+// if ANY module record in the file carries a local `=` signature, which is
+// what a `\s*` pattern produces even while the count stays 1.
+//
+// The shape guarded against — a `module Foo` line followed by a line whose
+// first non-whitespace byte is `=` — is not itself legal F#, so the hazard is
+// narrow; the mechanism claim is nonetheless the reason the pattern is
+// written the way it is, and this is what makes it falsifiable.
+func TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel(t *testing.T) {
+	for _, tc := range []struct {
+		label string
+		src   string
+	}{
+		{"= on the next line", "namespace Outer\n\nmodule Foo\n=\n"},
+		{"= after a blank line, indented", "namespace Outer\n\nmodule Foo\n\n   =\n"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			mods := fs7151Modules(runFSharp(t, tc.src, "Newline.fs"))
+
+			// MUST-HAVE: the declaration is extracted, and as TOP-LEVEL.
+			var foo *types.EntityRecord
+			for i := range mods {
+				if mods[i].Name == "Foo" {
+					foo = &mods[i]
+				}
+			}
+			if foo == nil {
+				t.Fatalf("`module Foo` with an `=` on a later line produced no module entity named Foo: %v",
+					fs7151ModNames(mods))
+			}
+			if foo.Signature != "module Foo" {
+				t.Errorf("got Signature %q, want \"module Foo\" — the `=` is on a LATER line, so this is a "+
+					"TOP-LEVEL declaration; a `\\s*=` group would cross the newline and mis-sign it \"module Foo =\"",
+					foo.Signature)
+			}
+			if foo.Subtype != "module" {
+				t.Errorf("got Subtype %q, want \"module\"", foo.Subtype)
+			}
+
+			// FORBIDDEN, and it can fail alone: no record in this file may
+			// carry the LOCAL signature, however many records there are.
+			for _, e := range mods {
+				if strings.HasSuffix(e.Signature, " =") {
+					t.Errorf("module %q got the LOCAL signature %q from a source whose `=` is on a "+
+						"different line; `[ \\t]*=` must not cross a newline", e.Name, e.Signature)
+				}
+			}
+		})
+	}
+}
+
+// TestLocalModule7151_ScrubRunawayHidesLocalModule_7193 RECORDS TODAY'S
+// BEHAVIOUR. IT IS NOT AN ENDORSEMENT, AND ITS FAILURE IS NOT A REGRESSION.
+//
+// The local arm is gated on stripStringsAndComments (see the comment in
+// extractFSharp). That function runs away on two legal F# constructs:
+//
+//	let p = @"C:\"     // verbatim string, trailing backslash
+//	let q = '"'        // character literal holding a quote
+//
+// Its `case '"'` arm carries the comment "Check for verbatim string @\"...\""
+// and performs NO such check, so `\` is treated as a C-style escape and eats
+// the closing quote; and there is no char-literal state at all. Everything
+// after either construct scrubs to blank, so a REAL `module Target =` below
+// one is silently dropped and #7151's fix does not apply for the rest of that
+// file.
+//
+// PRE-EXISTING, NOT CAUSED BY #7151: before this commit the local form minted
+// 0 unconditionally, so the count here was 0 then too. Nine non-test call
+// sites in this package share the defect. Filed as #7193.
+//
+// The ATTRIBUTION is what makes this clean, and it is the last subtest: a
+// TOP-LEVEL `module Target` in the BYTE-IDENTICAL file still mints, because
+// the top-level arm is ungated. So the loss is the scrubber's, and the
+// control also fails alone if anything else in the extractor breaks that file.
+//
+// # HOW TO UPDATE THIS ROW
+//
+// A fix for #7193 SHOULD TURN THE FIRST TWO SUBTESTS RED. That is the signal
+// that it worked. When that happens, flip those rows to want-1 with a note
+// saying #7193 landed — UPDATE them deliberately, do not delete them, and do
+// not read the failure as a regression in #7151.
+func TestLocalModule7151_ScrubRunawayHidesLocalModule_7193(t *testing.T) {
+	const decl = "module Target =\n    let x = 1\n"
+
+	t.Run("verbatim string with trailing backslash (want 1, #7193 makes it 0)", func(t *testing.T) {
+		src := "namespace Outer\n\nlet p = @\"C:\\\"\n\n" + decl
+		got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Runaway.fs")))
+		if len(got) != 0 {
+			t.Errorf("RECORDED BEHAVIOUR CHANGED: a local module below `@\"C:\\\"` now emits %v. "+
+				"If #7193 has been fixed this is the SIGNAL THAT IT WORKED, not a regression — "+
+				"update this row to want exactly [Target] with a note naming the fix.", got)
+		}
+	})
+
+	t.Run("char literal holding a quote (want 1, #7193 makes it 0)", func(t *testing.T) {
+		src := "namespace Outer\n\nlet q = '\"'\n\n" + decl
+		got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Runaway.fs")))
+		if len(got) != 0 {
+			t.Errorf("RECORDED BEHAVIOUR CHANGED: a local module below `'\\\"'` now emits %v. "+
+				"If #7193 has been fixed this is the SIGNAL THAT IT WORKED, not a regression — "+
+				"update this row to want exactly [Target] with a note naming the fix.", got)
+		}
+	})
+
+	t.Run("well-formed verbatim string is NOT affected", func(t *testing.T) {
+		src := "namespace Outer\n\nlet p = @\"say \"\"hi\"\"\"\n\n" + decl
+		got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Runaway.fs")))
+		if len(got) != 1 || got[0] != "Target" {
+			t.Errorf("a local module below a WELL-FORMED verbatim string emitted %v, want [Target]; "+
+				"#7193 is about the trailing-backslash and char-literal shapes only, and this row is "+
+				"what stops the two above being read as 'the gate drops everything'", got)
+		}
+	})
+
+	t.Run("POSITIVE CONTROL: top-level form in the identical file still mints", func(t *testing.T) {
+		src := "namespace Outer\n\nlet p = @\"C:\\\"\n\nmodule Target\n\nlet x = 1\n"
+		got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Runaway.fs")))
+		if len(got) != 1 || got[0] != "Target" {
+			t.Errorf("the TOP-LEVEL arm is ungated and must still mint from the byte-identical file; "+
+				"got %v, want [Target]. Without this row the loss above is not attributable to the "+
+				"scrubber rather than to something else in the extractor", got)
+		}
+	})
+}
+
+// fs7151ModNames is fs7151Names over an already-filtered slice.
+func fs7151ModNames(mods []types.EntityRecord) []string {
+	out := []string{}
+	for _, e := range mods {
+		out = append(out, e.Name)
+	}
+	return out
 }
