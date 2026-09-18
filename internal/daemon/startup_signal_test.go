@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -180,11 +181,51 @@ func TestWaitDaemonReady_ReturnsBeforeTheDaemonIsReady(t *testing.T) {
 		}
 	})
 
-	waitDaemonReady(t, layout.SocketPath, 10*time.Second)
-	if ready.Fired() {
-		t.Fatalf("the daemon reached msg=%q before waitDaemonReady returned: the socket-bound "+
-			"window installReadyGap exists to create did not happen, so nothing in this "+
-			"package's shutdown tests is grading its startup anchor", daemonReadySignal)
+	start := time.Now()
+	waitDaemonReady(t, layout.SocketPath, 30*time.Second)
+	dialTook := time.Since(start)
+	readyAtDial := ready.Fired()
+
+	if runtime.GOOS == "windows" {
+		// The window does not exist on Windows, and that is asserted here
+		// rather than skipped. The transport there is a named pipe, and
+		// go-winio only creates a CONNECTABLE pipe instance inside Accept():
+		// makeConnectedServerPipe -> connectPipe (go-winio pipe.go, v0.6.2).
+		// The instance ListenPipe reserves (firstHandle) is never put into
+		// ConnectNamedPipe. Run launches acceptLoop immediately AFTER logging
+		// msg=ready, so on Windows a successful dial implies the accept loop is
+		// already running, which implies readiness — a STRICTLY STRONGER
+		// anchor than msg=ready, not a weaker one.
+		//
+		// Measured: CI run 35341675670 (job 105588757562) on windows-latest,
+		// where the dial blocked for the whole of readyGapForTest and returned
+		// only once the daemon was up. The elapsed check below is what keeps
+		// that a measurement rather than an assumption.
+		//
+		// Consequence, stated so it is not mistaken for coverage: the two
+		// msg=ready anchors are mutation-EQUIVALENT to the dial-based proxy on
+		// Windows, so they are neither graded nor capable of being wrong there.
+		// If that ever changes — a pre-accept connect path appears — the first
+		// branch below fires and says exactly that.
+		if !readyAtDial {
+			t.Fatalf("waitDaemonReady returned after %s, before the daemon logged %q: a dial no "+
+				"longer implies the accept loop is running on this platform, so installReadyGap "+
+				"DOES open a socket-bound-but-not-ready window here — and the shutdown tests' "+
+				"startup anchors are ungraded on Windows with nothing else covering them (#7228)",
+				dialTook, daemonReadySignal)
+		}
+		if dialTook < readyGapForTest {
+			t.Fatalf("the dial succeeded after %s, less than the %s installReadyGap holds Run "+
+				"inside startup: the gap was not actually installed, so this test proves nothing "+
+				"about the ordering it claims to pin", dialTook, readyGapForTest)
+		}
+		return
+	}
+
+	if readyAtDial {
+		t.Fatalf("the daemon reached msg=%q before waitDaemonReady returned (dial took %s): the "+
+			"socket-bound window installReadyGap exists to create did not happen, so nothing in "+
+			"this package's shutdown tests is grading its startup anchor", daemonReadySignal, dialTook)
 	}
 
 	// The gap is a delay, not a deadlock: readiness must still arrive.
