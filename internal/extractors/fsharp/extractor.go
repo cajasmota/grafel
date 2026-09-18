@@ -1716,13 +1716,18 @@ func stripStringsAndComments(src string) string {
 			// Keeping them apart is what lets the runaway fix follow the lexer
 			// without betting a FABRICATED EDGE on an unexecuted reading of it:
 			//
-			//   - OPENING: `@"`, `$@"` and `@$"` open a verbatim string in any
-			//     position where the lexer would actually start a token there. NOT
-			//     "unconditional on adjacency" — that earlier framing was wrong in
-			//     the permissive direction and reintroduced this issue's own defect
-			//     on operator-suffix shapes like `$$@"` and `x=@"`, where a longer
-			//     operator munch reaches the quote and the lexer opens an ORDINARY
-			//     string. verbatimOpenerStart carries the rule citations and the
+			//   - OPENING: `@"`, `$@"` and `@$"` open a verbatim string where
+			//     lexerOpensTokenAt computes that the lexer starts a token at the
+			//     opener — NOT "unconditional on adjacency", and NOT "in any
+			//     position where the lexer starts a token" either. BOTH of those
+			//     framings shipped on this PR and both were over-stated: the first
+			//     reintroduced this issue's own defect on `$$@"`/`x=@"`, and the
+			//     second over-claimed by two constructs that are still NOT fixed —
+			//     an `@` before a TRIPLE quote (the triple-quote check runs first)
+			//     and a run whose start no operator rule can begin at other than
+			//     the COLON family (`.:@"`), which falls to the conservative
+			//     default. verbatimOpenerStart and lexerOpensTokenAt carry the
+			//     rule citations, the exhaustiveness argument and the
 			//     measurements.
 			//   - BLANKING: done only where the opener does not abut an identifier
 			//     or a closing bracket. Where it does — `xs@"abc"`, the shape a
@@ -1842,94 +1847,155 @@ func stripStringsAndComments(src string) string {
 // ending at the quote src[q] begins, or -1 if src[q] does not open a verbatim
 // string.
 //
-// THE OPENERS AND THE GUARD ARE BOTH THE LEXER'S, NOT A GUESS. dotnet/fsharp
-// `src/Compiler/lex.fsl`, all inside `rule token` (line 336), carries exactly
-// these double-quote-opening rules -- there are no others:
+// THE OPENERS ARE THE LEXER'S. dotnet/fsharp `src/Compiler/lex.fsl`, all inside
+// `rule token` (line 336), carries exactly these double-quote-opening rules --
+// there are no others:
 //
-//	586  | '"'                      // ordinary   -- `\` escapes
-//	599  | '$' '"' '"' '"'          // interpolated triple
-//	611  | ('$'+) '"' '"' '"'       // extended interpolated triple
-//	626  | '$' '"'                  // interpolated, NOT verbatim -- `\` escapes
-//	640  | '"' '"' '"'              // triple-quoted
-//	655  | '@' '"'                  // VERBATIM
-//	670  | ("$@" | "@$") '"'        // interpolated VERBATIM, either order
+//	586  ordinary            -- `\` escapes
+//	599  interpolated triple
+//	611  extended interpolated triple
+//	626  interpolated, NOT verbatim  -- `\` escapes
+//	640  triple-quoted
+//	655  VERBATIM                     `@` then a quote
+//	670  interpolated VERBATIM        `$@` or `@$` then a quote
 //
 // So `@"`, `$@"` and `@$"` admit a verbatim body and a plain `$"` does not.
 //
-// THE GUARD -- why a preceding operator byte DISQUALIFIES the opener. Rule 655
-// or 670 can only fire if the lexer actually STARTS a token at the opener, and
-// every symbolic-operator rule has the shape
+// BUT AN OPENER ONLY OPENS ANYTHING WHERE THE LEXER STARTS A TOKEN, which is
+// what lexerOpensTokenAt decides and what three earlier revisions of this
+// function got wrong in the same way -- see that function's comment. Each
+// revision approximated "does a token start here" with a LOCAL test on the
+// byte(s) next to the opener, and each leaked permissively at a cost of a
+// whole-file runaway:
+//
+//	round 2  no test at all        -> `$$@"`, `.@"`, `x=@"`, `@@"`, ... ran away
+//	round 3  reject if prev is an  -> fixed those, but the `=` exception it
+//	         op_char, except `=`      added was itself a flat byte test, so
+//	         before `$@`/`@$`         `x<=$@"`, `x==$@"`, `.=$@"`, ... ran away
+//
+// The lesson is in lexerOpensTokenAt: the question is not "what is the byte
+// before the opener" but "where does the token containing that byte BEGIN".
+//
+// THE `xs@"abc"` CASE is admitted, which is longest match read the other way:
+// the append rule `967 | ignored_op_char* ('@'|'^') op_char*` cannot include
+// the `"` (line 238's `op_char` has no `"`), so at the `@` it matches ONE byte
+// while 655 matches TWO. That fslex resolves by longest match is proven from
+// this same file rather than assumed: `586` (one quote) PRECEDES `640` (three
+// quotes), so under first-match-wins the triple-quote rule would be unreachable
+// dead code and F# would have no triple-quoted strings.
+//
+// NOT EXECUTED -- there is no F# toolchain on this machine, so all of this is
+// read off the reference implementation's lexer rather than observed from a
+// compile. Because it is unexecuted, the CALLS-edge consequence is declined at
+// the call site for the one shape a reader would most likely misread.
+//
+// Still NOT handled, now stated precisely rather than as "any position where
+// the lexer starts a token", which was over-stated: an `@` before a TRIPLE
+// quote never reaches here at all, because the triple-quote check runs first --
+// a disagreement with the lexer recorded by
+// TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC.
+func verbatimOpenerStart(src string, q int) int {
+	start := -1
+	if q >= 1 {
+		switch src[q-1] {
+		case '@':
+			if q >= 2 && src[q-2] == '$' {
+				start = q - 2 // $@"
+			} else {
+				start = q - 1 // @"
+			}
+		case '$':
+			if q >= 2 && src[q-2] == '@' {
+				start = q - 2 // @$"
+			}
+		}
+	}
+	if start < 0 || !lexerOpensTokenAt(src, start, q) {
+		return -1
+	}
+	return start
+}
+
+// lexerOpensTokenAt reports whether the F# lexer would START a token at index
+// `start`, where src[start:q] is a candidate verbatim opener and src[q] is its
+// quote. If a token beginning further left swallows the opener, rule 655/670
+// never fires and rule 586 opens an ORDINARY string at the quote -- where `\`
+// escapes, which is the difference between suppressing one literal and blanking
+// the rest of the file.
+//
+// WHY THIS WALKS LEFT INSTEAD OF TESTING A BYTE. Every symbolic-operator rule
+// in lex.fsl has the shape
 //
 //	| ignored_op_char* <core> op_char*
 //
 // with `ignored_op_char = '.' | '$' | '?'` (line 240) and `op_char` (line 238)
-// INCLUDING `@`. So when the byte before the opener is any op_char, a token
-// starting at or before it munches through our `@` via that trailing
-// `op_char*`, it is the longer match, and the only rule left to fire at the
-// quote is 586 -- an ORDINARY string, where `\` escapes. Measured, on the
-// commit that lacked this guard: `$$@"a\"b"`, `.@"a\"b"`, `?@"a\"b"`,
-// `$@$"a\"b"`, `@@"a\"b"`, `x=@"a\"b"`, `x<>@"a\"b"`, `x+@"a\"b"`,
-// `x&@"..."`, `x|@"..."`, `x!@"..."` and `x*@"..."` all entered verbatim mode
-// and BLANKED THE REST OF THE FILE -- #7199's own defect, reintroduced
-// permissively on shapes the pre-#7199 code read correctly.
+// INCLUDING `@`. The trailing `op_char*` is unbounded, so such a token swallows
+// an arbitrarily long run -- which is why no fixed-width lookbehind can decide
+// this, and why the two previous revisions each leaked on a slightly longer
+// prefix than the one before. A non-op_char is a hard boundary for these rules,
+// so the run of op_chars ending at the quote is the whole neighbourhood that
+// can matter, and the decision is made from ITS START.
 //
-// THE ONE EXCEPTION, also the lexer's: rule 976
-// `| '=' ("$@" | "@$") '"'` consumes just the `=` and rewinds so the opener is
-// re-lexed, which makes `x=$@"..."` and `x=@$"..."` verbatim after all. There
-// is NO `'=' '@' '"'` rule (verified: zero in the file), so the ONE-byte `@`
-// opener gets no such exception and `x=@"..."` really is operator + ordinary
-// string. That asymmetry is why the guard tests the two-byte forms separately
-// rather than taking a flat list of bytes.
+// THE CASE ANALYSIS IS EXHAUSTIVE, which is the property the byte tests lacked.
+// Of the 18 `op_char`s, every one is an `ignored_op_char`, or a `<core>` of some
+// rule, or `:` -- and `:` is the ONLY one that is neither (verified by
+// enumeration in TestScrub7199_OpCharsAreEitherIgnoredOrCoreOrColon). So from
+// the run start exactly three things can happen:
 //
-// THE `xs@"abc"` CASE is admitted, and that is the same longest-match rule read
-// the other way: the append rule is `967 | ignored_op_char* ('@'|'^') op_char*`
-// and `op_char` does not include `"`, so at the `@` it matches ONE byte while
-// 655 matches TWO. Longest match therefore makes `@"` win and `xs@"abc"` is
-// `xs` applied to a verbatim string, not a list append. That fslex resolves by
-// longest match is proven from this same file rather than assumed: `586 | '"'`
-// precedes `640 | '"' '"' '"'`, so under first-match-wins the triple-quote
-// rule would be unreachable dead code and F# would have no triple-quoted
-// strings.
+//  1. `:` -- starts no operator rule at all, only the fixed COLON family
+//     (`:` `::` `:>` `:?` `:=`, lines 846-862). The run continues after it, so
+//     `r:=@"C:\"` and `x::@"C:\"` ARE verbatim.
+//  2. `=` immediately followed by `$@`/`@$` and then the quote -- rule 976
+//     (`| '=' ("$@" | "@$") '"'`) matches four bytes, beating the three-byte
+//     operator munch, and consumes ONLY the `=` before rewinding (the file's
+//     one and only `LexemeLength <-`), so the opener is re-lexed. This is why
+//     `x=$@"` is verbatim while `x=@"` is not: there is no `'=' '@' '"'` rule
+//     (verified: zero occurrences). The `p+3 == q` test is what keeps the
+//     exception scoped to a `=` that STARTS the run -- without it `x<=$@"` and
+//     `x==$@"` run away, which is exactly the round-3 leak.
+//  3. anything else -- an operator rule starts at or before this position and
+//     its `op_char*` tail swallows the rest of the run, including our opener.
 //
-// NOT EXECUTED -- there is no F# toolchain on this machine, so all of the above
-// is read off the reference implementation's lexer rather than observed from a
-// compile. Because it is unexecuted, the CALLS-edge consequence is declined at
-// the call site for the one shape where a human reader would most likely see an
-// append.
+// Case 3 also absorbs the `<@` / `<@@` quotation rules (802/804) without
+// needing to break their length tie with the operator munch: both readings
+// consume the `@`, so both leave rule 586 at the quote and the verdict is the
+// same either way.
 //
-// Still not handled, and now measured rather than assumed: an `@` before a
-// TRIPLE quote never reaches here, because the triple-quote check runs first --
-// which DISAGREES with the lexer, since no rule matches `@` plus three quotes.
-// Recorded by TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC.
-func verbatimOpenerStart(src string, q int) int {
-	if q == 0 {
-		return -1
+// CONSERVATIVE WHERE IT IS UNSURE: a run whose start is an ignored_op_char
+// followed by something that is neither a core nor handled above (`.:@"`, not
+// real F#) falls into case 3 and is read as ORDINARY. That is the pre-#7199
+// reading, so it can only ever under-fix -- never blank a file that used to
+// survive.
+func lexerOpensTokenAt(src string, start, q int) bool {
+	runStart := start
+	for runStart > 0 && isOpChar(src[runStart-1]) {
+		runStart--
 	}
-	start := -1
-	twoByte := false // the `$@` / `@$` forms, which rule 976 exempts after a `=`
-	switch src[q-1] {
-	case '@':
-		if q >= 2 && src[q-2] == '$' {
-			start, twoByte = q-2, true // $@"
-		} else {
-			start = q - 1 // @"
+	for p := runStart; p < start; {
+		switch {
+		case src[p] == ':':
+			if p+1 < q && (src[p+1] == ':' || src[p+1] == '>' || src[p+1] == '?' || src[p+1] == '=') {
+				p += 2
+			} else {
+				p++
+			}
+		case src[p] == '=' && p+3 == q &&
+			(src[p+1] == '$' && src[p+2] == '@' || src[p+1] == '@' && src[p+2] == '$'):
+			p++ // rule 976: consumes the `=` only, then rewinds
+		default:
+			return false // an operator token swallows the opener
 		}
-	case '$':
-		if q >= 2 && src[q-2] == '@' {
-			start, twoByte = q-2, true // @$"
-		}
 	}
-	if start <= 0 {
-		return start // -1 for "not an opener", 0 for an opener at offset 0
-	}
-	prev := src[start-1]
-	if twoByte && prev == '=' {
-		return start // rule 976
-	}
-	if isOpChar(prev) {
-		return -1 // a longer INFIX_AT_HAT_OP-style munch reaches the quote
-	}
-	return start
+	// No overshoot check is needed, and one that was here has been DELETED as
+	// dead code after it scored ALIVE at 0. `p` advances by two only in the
+	// COLON branch, and only when src[p+1] is one of `:` `>` `?` `=`; the
+	// opener's first byte is always `@` or `$`, neither of which is in that
+	// set, so `p+1 == start` always takes the one-byte branch and `p` can never
+	// step OVER `start`. The loop therefore exits with `p == start` exactly,
+	// and the `p < start` condition is the only bound required. The three
+	// COLON cells in TestScrub7199_OpenerFormsAndAdjacency exercise the
+	// two-byte step.
+	return true
 }
 
 // isOpChar reports whether b is one of lex.fsl's `op_char` (line 238). Kept as
@@ -1949,6 +2015,15 @@ func isOpChar(b byte) bool {
 // literal. Used ONLY to decide whether the opener's prefix bytes are blanked,
 // never whether a verbatim string is opened. Non-ASCII is included because F#
 // identifiers admit Unicode letters.
+//
+// NO `'.'` ARM, deliberately, and this is a correction: one was here and was
+// UNREACHABLE. `.` is an `op_char`, so a `.`-preceded opener is rejected by
+// lexerOpensTokenAt before this function is consulted, and the arm could never
+// fire. It is deleted rather than kept as documentation of coverage that
+// cannot be exercised. The bytes that DO reach here are `)`, `]`, `}`, `_`,
+// a backtick, an apostrophe, alphanumerics, non-ASCII -- none of which is an
+// op_char -- plus `=`, which arrives via rule 976 and is deliberately not in
+// the set, so `x=$@"..."` has its prefix blanked.
 func abutsIdentifier(b byte) bool {
 	switch {
 	case b >= '0' && b <= '9',
@@ -1958,7 +2033,7 @@ func abutsIdentifier(b byte) bool {
 		return true
 	}
 	switch b {
-	case '_', '\'', '`', '.', ')', ']', '}':
+	case '_', '\'', '`', ')', ']', '}':
 		return true
 	}
 	return false

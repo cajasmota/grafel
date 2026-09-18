@@ -286,6 +286,7 @@ module Paths =
 // verbatim misreading really does run away rather than merely mis-suppress.
 func TestFSharp7199_OperatorSuffixOpenerDoesNotRunAway(t *testing.T) {
 	for _, lit := range []string{
+		// round-3 set: an operator run ending in `@`
 		`$$@"a\"b"`,
 		`x .@"a\"b"`,
 		`x ?@"a\"b"`,
@@ -294,6 +295,27 @@ func TestFSharp7199_OperatorSuffixOpenerDoesNotRunAway(t *testing.T) {
 		`x=@"a\"b"`,
 		`x<>@"a\"b"`,
 		`x+@"a\"b"`,
+		// round-4 set: a `$@`/`@$` opener whose `=` does NOT start the run, so
+		// rule 976 cannot fire. These ran away while the exception was keyed on
+		// the `=` byte instead of on the `=` starting a token.
+		`x==$@"a\"b"`,
+		`x<=$@"a\"b"`,
+		`x>=$@"a\"b"`,
+		`x+=$@"a\"b"`,
+		`x-=$@"a\"b"`,
+		`x*=$@"a\"b"`,
+		`x|=$@"a\"b"`,
+		`x&=$@"a\"b"`,
+		`x!=$@"a\"b"`,
+		`x%=$@"a\"b"`,
+		`x/=$@"a\"b"`,
+		`x~=$@"a\"b"`,
+		`.=$@"a\"b"`,
+		`$=$@"a\"b"`,
+		`?=$@"a\"b"`,
+		`x<>=$@"a\"b"`,
+		`x==@$"a\"b"`,
+		`x<=@$"a\"b"`,
 	} {
 		src := "namespace App\n\nlet p = " + lit + "\n\nmodule Paths =\n    let sep = 1\n"
 		ents := runFSharp(t, src, "src/App.fs")

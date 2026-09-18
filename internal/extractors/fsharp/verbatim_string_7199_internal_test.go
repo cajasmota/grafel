@@ -317,6 +317,90 @@ func openerCases7199() []openerCase7199 {
 		{"bar before @", "x|", `@`, false, false},
 		{"bang before @", "x!", `@`, false, false},
 		{"star before @", "x*", `@`, false, false},
+		// The `<@` / `<@@` QUOTATION rules (802/804) tie with the operator munch
+		// on length, and the tie does not need breaking: both readings consume the
+		// `@`, so both leave rule 586 at the quote and the verdict is ORDINARY
+		// either way.
+		{"quotation open before @", "x<", `@`, false, false},
+		{"typed quotation before @", "x<@", `@`, false, false},
+		// ---- ORDINARY: the `=` does not START the run (review round 4) ----
+		// Rule 976 can only fire where the lexer starts a token at the `=`. When
+		// the `=` is itself inside an operator run, the leftward munch swallows
+		// it: for `x<=$@"`, rule 981 matches `<=$@` at the `<` — four bytes, and
+		// `"` is not an op_char — which 976 cannot beat and cannot even start at.
+		// Every cell here ran away to EOF while the exception was keyed on the `=`
+		// BYTE rather than on the `=` starting a token, and the direction was
+		// COMPLETELY UNGRADED: the correct scoping left the suite at 0 --- FAIL.
+		{"double equals before $@", "x==", `$@`, false, false},
+		{"less-equals before $@", "x<=", `$@`, false, false},
+		{"greater-equals before $@", "x>=", `$@`, false, false},
+		{"plus-equals before $@", "x+=", `$@`, false, false},
+		{"minus-equals before $@", "x-=", `$@`, false, false},
+		{"star-equals before $@", "x*=", `$@`, false, false},
+		{"bar-equals before $@", "x|=", `$@`, false, false},
+		{"amp-equals before $@", "x&=", `$@`, false, false},
+		{"bang-equals before $@", "x!=", `$@`, false, false},
+		{"percent-equals before $@", "x%=", `$@`, false, false},
+		{"slash-equals before $@", "x/=", `$@`, false, false},
+		{"tilde-equals before $@", "x~=", `$@`, false, false},
+		{"dot-equals before $@", ".=", `$@`, false, false},
+		{"dollar-equals before $@", "$=", `$@`, false, false},
+		{"question-equals before $@", "?=", `$@`, false, false},
+		{"compare-equals before $@", "x<>=", `$@`, false, false},
+		{"double equals before @$", "x==", `@$`, false, false},
+		{"less-equals before @$", "x<=", `@$`, false, false},
+		// ---- VERBATIM via the COLON family (review round 4, finding 2) ----
+		// `:` is the ONLY op_char that is neither an ignored_op_char nor any
+		// rule's core, so no operator rule can start at it — only the fixed
+		// `:` `::` `:>` `:?` `:=` tokens (846-862). The run therefore CONTINUES
+		// after such a token and the opener does start a token. Round 3 read
+		// these as ordinary, which was an under-fix (not a regression: it matched
+		// pre-#7199), and the left-walk gets them right for free.
+		{"assign-colon before @", "r:=", `@`, true, true},
+		{"cons before @", "x::", `@`, true, true},
+		{"colon-greater before @", "x:>", `@`, true, true},
+	}
+}
+
+// TestScrub7199_OpCharsAreEitherIgnoredOrCoreOrColon is the enumeration that
+// makes lexerOpensTokenAt's case analysis EXHAUSTIVE rather than merely
+// plausible — the property three revisions of a flat byte test lacked.
+//
+// Every one of lex.fsl's 18 `op_char`s (line 238) must be an `ignored_op_char`
+// (line 240), or the `<core>` of some symbolic-operator rule (961-985), or `:`.
+// `:` being the sole leftover is what lets the walk treat "not a core and not
+// `:`" as unreachable-in-practice and fall back conservatively.
+func TestScrub7199_OpCharsAreEitherIgnoredOrCoreOrColon(t *testing.T) {
+	const opChars = "!$%&*+-./<=>?@^|~:" // lex.fsl:238, verbatim and in order
+	const ignored = ".$?"                // lex.fsl:240
+	const cores = "*/%+-@^=<>&|!~"       // the <core> of each rule at 961-985
+
+	if len(opChars) != 18 {
+		t.Fatalf("op_char set has %d entries, want 18 — it was edited without re-deriving it from lex.fsl:238", len(opChars))
+	}
+	var leftover []string
+	for i := 0; i < len(opChars); i++ {
+		c := opChars[i]
+		if strings.IndexByte(ignored, c) < 0 && strings.IndexByte(cores, c) < 0 {
+			leftover = append(leftover, string(c))
+		}
+		// Every op_char must also be reported as one by the implementation.
+		if !isOpChar(c) {
+			t.Errorf("isOpChar(%q) = false, but it is in lex.fsl:238", c)
+		}
+	}
+	if len(leftover) != 1 || leftover[0] != ":" {
+		t.Errorf("op_chars that are neither ignored nor a rule core = %v, want exactly [\":\"]. "+
+			"lexerOpensTokenAt's case analysis is built on `:` being the only one; if that changed, "+
+			"the walk has a new unhandled run-start class and its `default` arm is silently "+
+			"under-fixing it", leftover)
+	}
+	// And nothing OUTSIDE the set may be reported as an op_char, or the walk
+	// would treat ordinary code as an operator run.
+	for c := 0; c < 256; c++ {
+		if isOpChar(byte(c)) && strings.IndexByte(opChars, byte(c)) < 0 {
+			t.Errorf("isOpChar(%q) = true, but it is not in lex.fsl:238", byte(c))
+		}
 	}
 }
 
