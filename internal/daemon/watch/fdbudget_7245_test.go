@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/fsnotify/fsnotify"
 	"golang.org/x/sys/unix"
 )
 
@@ -49,9 +50,19 @@ import (
 // already behind perEntry() > 0 and inotifyCostModel.perEntry() is 0. The
 // second fact is why it is also SYMMETRIC: skipEventOpen records the skipped
 // path as already-released, so the Remove half cannot hand back a charge the
-// Create half never made. With both halves skipped, the trajectory is identical
-// on every backend and under every cost model, and every expectation below is
-// an unconditional `base` with no platform branch anywhere in this file.
+// Create half never made. That is why every expectation below is an
+// unconditional `base` with no platform branch anywhere in this file.
+//
+// BEST-EFFORT, not identity — the same standing the pre-existing #6293 marker
+// has, and it should not be described more strongly. Three sites clear a marker
+// without the entry ever having been charged (forgetReleasedEntriesLocked at
+// watcher.go:858 and :2284, reconcile.go:559), and two reset the map wholesale
+// (watcher.go:1419, and the cap inside recordReleasedDirLocked). A clear
+// between the skipped Create and a Remove would let that Remove release against
+// nothing. None of it is reachable in production — it needs perEntry() > 0 on a
+// backend that reports the Remove, which is only this suite's forced
+// kqueueCostModel on Linux — but "identical on every backend and under every
+// cost model" would be a stronger claim than the code delivers.
 // TestASkippedEntryReleasesNothing is the row that pins the second half, by
 // calling releaseEventClose directly — on kqueue no Remove for a FIFO ever
 // arrives on its own, so that is the only way to reach it here.
@@ -314,8 +325,14 @@ func TestASymlinkToAFifoIsStillCharged(t *testing.T) {
 // nothing, and with skipEventOpen's marker removed it takes the ledger BELOW
 // base, which is a failure no amount of waiting would produce naturally.
 //
-// The regular-file half is the control. Without it this test would pass against
-// a releaseEventClose that had simply stopped releasing anything.
+// The regular-file half is REDUNDANT, and is kept as documentation of the
+// discrimination rather than as a load-bearing row. The justification first
+// written here — that without it the test would pass against a
+// releaseEventClose that had stopped releasing anything — is false, and is
+// the class of claim the header rewrite above exists to remove: with
+// releaseEventClose stopped entirely this test fails three lines earlier, at
+// sentinel7245, which needs an ordinary release to reach base again. No mutant
+// found so far is caught by the control alone.
 func TestASkippedEntryReleasesNothing(t *testing.T) {
 	w, root, base := subscribedWatcher(t)
 
@@ -342,5 +359,82 @@ func TestASkippedEntryReleasesNothing(t *testing.T) {
 	if used, _ := w.fdb.snapshot(); used != base {
 		t.Fatalf("a Remove report for a charged regular file left the ledger at %d, want %d — "+
 			"the skip must not have stopped ordinary releases", used, base)
+	}
+}
+
+// TestPerWatchFifoMarker is the sibling of
+// TestOnAPerWatchModelAMarkerDoesNotOutliveTheDescriptor in fdbudget_6293_test.go,
+// and it lives here rather than beside it only because that file has no build
+// tag and is compiled on Windows, where unix.Mkfifo does not exist.
+//
+// #6293 established that a released-dir marker must not outlive the descriptor
+// it stands for: on a per-watch model nothing clears one until the cap resets
+// it, so a survivor is write-only state. Its test recreates the path as a
+// DIRECTORY, which reaches chargeEventOpen, whose pre-return
+// forgetReleasedDirLocked is the clear. #7245 introduced a path that does NOT
+// reach chargeEventOpen at all — a FIFO or socket, routed to skipEventOpen —
+// and so re-opened exactly that hole for the case where the marker's prior
+// owner was a watched directory and the path comes back unwatchable.
+//
+// The assertion is on the marker state, not the ledger, for the reason the
+// #6293 test gives: with perEntry() == 0 no ledger reading can tell the two
+// apart. The regular-file row is the control — it is the path #6293 already
+// covered, so if it ever fails the failure is not about FIFOs.
+//
+// The name is kept SHORT deliberately, and so are the subtest names: t.TempDir()
+// embeds both, and the socket row binds inside it against a 104-byte sun_path
+// on darwin. A more descriptive name pushed it to 117 bytes and the row failed
+// on its own premise check. mksock7245 reports that as a broken premise rather
+// than skipping, so the budget cannot be lost silently.
+func TestPerWatchFifoMarker(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		recreate func(t *testing.T, path string)
+	}{
+		{"fifo", func(t *testing.T, path string) { mkfifo7245(t, path) }},
+		{"socket", func(t *testing.T, path string) { mksock7245(t, path) }},
+		{"regular", func(t *testing.T, path string) {
+			if err := os.WriteFile(path, []byte("package p\n"), 0o644); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := makePrunedTree(t)
+			w := newInotifyWatcher(t, 10000)
+			if _, err := w.AddRepo(root); err != nil {
+				t.Fatalf("AddRepo: %v", err)
+			}
+			dir := filepath.Join(root, "src")
+
+			// Two Remove reports for a watched directory: one release, and a
+			// marker recorded so the second releases nothing (#6293).
+			windowsDoubleRemove(t, w, dir)
+			w.mu.Lock()
+			before := len(w.fdReleasedDirs)
+			w.mu.Unlock()
+			if before == 0 {
+				t.Fatal("premise broken: no released-dir marker was recorded, so this test " +
+					"cannot observe whether the Create clears one")
+			}
+
+			// The path comes back under the same name, as something that is not
+			// a directory. This is the moment the marker stands for nothing.
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatalf("rm dir: %v", err)
+			}
+			tc.recreate(t, dir)
+			w.handleEvent(fsnotify.Event{Name: dir, Op: fsnotify.Create})
+
+			w.mu.Lock()
+			after := len(w.fdReleasedDirs)
+			w.mu.Unlock()
+			if after != 0 {
+				t.Fatalf("markers before=%d after=%d: %d released-dir marker(s) survived the path "+
+					"being recreated. On a per-watch model that is write-only state cleared by "+
+					"nothing until the cap resets it — the #6293 defect, re-opened for a path "+
+					"that never reaches chargeEventOpen (#7245)", before, after, after)
+			}
+		})
 	}
 }

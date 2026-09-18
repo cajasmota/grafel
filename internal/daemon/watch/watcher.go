@@ -1795,27 +1795,23 @@ func (w *Watcher) chargeEventOpen(path string, isDir bool) {
 // IS charged, so a FIFO replaced by a regular file is charged and released
 // normally.
 //
-// Nothing is recorded where it could not matter, and unlike chargeEventOpen
-// this function has NO work to do before that return. chargeEventOpen must call
-// forgetReleasedDirLocked ahead of its own `n <= 0` (#6293), because on a
-// per-watch backend that is the only moment a name coming back as a
-// non-directory is seen. Here the opposite holds, on both arms:
+// The marker is cleared before the early return for exactly the reason
+// chargeEventOpen clears one before ITS `n <= 0` (#6293): a released-dir marker
+// must not outlive the descriptor it stands for, and on a per-watch backend
+// nothing else ever clears one — it is write-only state until the cap resets
+// it. This function is the ONLY place that can do it for a path whose marker
+// was recorded when it was a watched directory and which comes back as a FIFO
+// or a socket, because that path never reaches chargeEventOpen at all. Routing
+// it here without the clear re-opened #6293 for that shape;
+// TestOnAPerWatchModelAFifoAlsoClearsTheMarker is the row that says so.
 //
-//   - perEntry() > 0: recordReleasedDirLocked writes the same key
-//     forgetReleasedDirLocked would clear, so recording subsumes forgetting.
-//   - perEntry() <= 0: a marker left standing for this path is unobservable.
-//     The only reader is releaseEventClose's releasedDirLocked branch, reached
-//     only for a path that is NOT a watched directory — where n is perEntry(),
-//     so that call releases nothing with or without the marker. Enumerating
-//     what the path can become next: removed (identical, as just shown),
-//     a regular file (chargeEventOpen clears the marker), or a subscribed
-//     directory (the isWatchedDir branch never consults it). The cost model is
-//     fixed at construction (fdbudget.go:89-91), so perEntry() cannot become
-//     positive later and make it matter.
+// Recording, where it applies, subsumes the clear: recordReleasedDirLocked
+// writes the same key forgetReleasedDirLocked would delete.
 func (w *Watcher) skipEventOpen(path string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.fdb.model().perEntry() <= 0 || w.repoForLocked(path) == "" {
+		w.forgetReleasedDirLocked(path)
 		return
 	}
 	w.recordReleasedDirLocked(path)
