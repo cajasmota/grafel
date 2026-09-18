@@ -30,6 +30,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -415,13 +417,15 @@ var (
 	// reintroduced regexp, or an edit to this pattern — owns
 	// `(?:\s+(?:public|private|internal)\b)*` as a correctness dependency.
 	//
-	// Note also that this match ENDS AT the `=`, so `decl` is the head only
-	// ("type Foo ="). classifyTypeSubtype's `= {` / `= |` tests therefore
-	// never fire on a well-formed declaration — record and DU are decided by
-	// its BODY arms — and its `struct` arm, which has no body companion, is
-	// unreachable for real `struct` types while firing on any type whose NAME
-	// contains "struct". That is #7218, not this pattern's business, but a
-	// future author widening the head needs to know the classifier reads it.
+	// Note also that this match ENDS AT the `=`, so the matched text is the
+	// head only ("type Foo ="). classifyTypeSubtype used to read it and was
+	// wrong three ways for that one reason — an unreachable `struct` arm, an
+	// arm firing on the type's own NAME, and a `= {` arm firing on a block
+	// comment. #7218 fixed that by removing the head parameter entirely, so
+	// the classifier now takes only the body and NOTHING reads this match as
+	// a kind signal. A future author widening the head does not inherit the
+	// classifier as a dependency; reintroducing one means changing
+	// classifyTypeSubtype's signature and both of its call sites.
 	typeRE = regexp.MustCompile(
 		`(?m)^([ \t]*)type(?:\s+(?:public|private|internal)\b)*` +
 			`\s+([A-Z][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=`,
@@ -862,7 +866,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		endLine := startLine + strings.Count(body, "\n")
 
 		// Determine subtype
-		subtype := classifyTypeSubtype(src[m[0]:m[1]], body)
+		subtype := classifyTypeSubtype(body)
 
 		// Find members/functions that belong to this type (CONTAINS edges)
 		var rels []types.RelationshipRecord
@@ -1002,28 +1006,60 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		extractor.PrependFileCarrier(filePath, "fsharp", entities), filePath)
 }
 
-// classifyTypeSubtype determines the F# type subtype from the declaration context.
-func classifyTypeSubtype(decl, body string) string {
-	// Check for "= {" → record
-	if strings.Contains(decl, "= {") || strings.TrimSpace(body) != "" && strings.HasPrefix(strings.TrimSpace(body), "{") {
+// classifyTypeSubtype determines the F# type subtype from the type's BODY.
+//
+// #7218 — it used to take the declaration head as well (`decl`), and that
+// parameter is gone rather than merely unread, because the head is not a
+// weaker signal, it is a wrong one. typeRE's match ENDS AT the `=`, so `decl`
+// was only ever "type Foo =" and could not contain anything F# writes after
+// the `=`. One substring test over it produced three defects at once:
+//
+//	`strings.Contains(decl, "struct")`   the keyword can never be there, so the
+//	                                     arm was UNREACHABLE for a real struct
+//	                                     (`type Point3D = struct … end` -> "type"),
+//	                                     while the type's own IDENTIFIER was in
+//	                                     scope (`type Mystruct = int` -> "struct").
+//	`strings.Contains(decl, "= {")`      fired on any `= {` before the final `=`,
+//	                                     which in legal F# is a block comment:
+//	                                     `type Shape (* = { K: string } *) =` with
+//	                                     a DU body was classified "record".
+//
+// Removing the parameter is the structural half of the fix: a future author
+// cannot reintroduce a head test without changing the signature and both call
+// sites. Note that typeRE's `(?:\s+(?:public|private|internal)\b)*` allowlist
+// is still load-bearing for a DIFFERENT reason — it is what makes
+// `type private Foo = {` match at all, so the classifier is reached — and this
+// change does not touch it (#7135).
+//
+// The keyword arms compare a TOKEN, not a prefix. `strings.HasPrefix` alone
+// classified `type Alias2 = classic` as "class" (measured on the pre-#7218
+// binary), and would have newly minted `type Alias1 = structural` -> "struct"
+// once the struct arm started reading the body.
+//
+// isAliasBody carries the same keyword set and decides it with
+// strings.Fields(b)[0] == "struct". The two agree on every body whose keyword
+// is followed by whitespace or by end-of-body, which is every well-formed one;
+// they are NOT equal by construction, and the review of the first revision was
+// right to reject that claim. They diverge where punctuation abuts the keyword
+// (`struct{`): Fields keeps `struct{` as one field and calls the body an alias,
+// while the arm here treats `{` as a token boundary and returns "struct". Where
+// they diverge this arm runs first, so isAliasBody is never consulted; the
+// divergence is unreachable rather than resolved, and no fixture pins it.
+func classifyTypeSubtype(body string) string {
+	bodyTrimmed := strings.TrimSpace(body)
+	if strings.HasPrefix(bodyTrimmed, "{") {
 		return "record"
 	}
-	// Check for "= |" or body starting with "|" → discriminated union
-	if strings.Contains(decl, "= |") {
-		return "discriminated_union"
-	}
-	bodyTrimmed := strings.TrimSpace(body)
 	if strings.HasPrefix(bodyTrimmed, "|") {
 		return "discriminated_union"
 	}
-	// Check for interface/class keywords
-	if strings.Contains(decl, "interface") || strings.HasPrefix(bodyTrimmed, "interface") {
+	if bodyOpensWithKeyword(bodyTrimmed, "interface") {
 		return "interface"
 	}
-	if strings.Contains(decl, "class") || strings.HasPrefix(bodyTrimmed, "class") {
+	if bodyOpensWithKeyword(bodyTrimmed, "class") {
 		return "class"
 	}
-	if strings.Contains(decl, "struct") {
+	if bodyOpensWithKeyword(bodyTrimmed, "struct") {
 		return "struct"
 	}
 	// #4942: a pure alias (`type Foo = Bar`, `type Id = int`) is a distinct
@@ -1032,6 +1068,49 @@ func classifyTypeSubtype(decl, body string) string {
 		return "alias"
 	}
 	return "type"
+}
+
+// bodyOpensWithKeyword reports whether a trimmed type body STARTS WITH the
+// given F# kind keyword as a whole token — i.e. the keyword is not merely a
+// prefix of a longer identifier. `structural`, `classic` and `interfaces` are
+// legal lower-case abbreviation targets and are not `struct`, `class` or
+// `interface` (#7218).
+func bodyOpensWithKeyword(bodyTrimmed, kw string) bool {
+	if !strings.HasPrefix(bodyTrimmed, kw) {
+		return false
+	}
+	rest := bodyTrimmed[len(kw):]
+	// A body that is EXACTLY the keyword — an incomplete buffer, since a
+	// complete `struct`/`class`/`interface` body carries its members and its
+	// `end` — still opens with the keyword as a token.
+	if rest == "" {
+		return true
+	}
+	r, _ := utf8.DecodeRuneInString(rest)
+	return !isFSharpIdentContinuation(r)
+}
+
+// isFSharpIdentContinuation reports whether r may CONTINUE an F# identifier.
+//
+// The first revision of #7218 read `rune(rest[0])` — a BYTE — and tested it
+// with this package's ASCII-only isLetter. Every UTF-8 lead byte (0xC2-0xF4)
+// is then neither letter, digit, `_` nor `'`, so the boundary check said
+// "token" for any multi-byte continuation and `type AliasB = structא`
+// classified as "struct". That was a WRONG ANSWER newly introduced on the very
+// path the fix exists to open, not a coverage gap.
+//
+// F# 4.1 spec §3.4: ident-char = letter-char | digit-char | connecting-char |
+// combining-char | formatting-char | `'` | `_`, where letter-char is
+// \Lu \Ll \Lt \Lm \Lo \Nl, digit-char is \Nd, connecting-char is \Pc
+// (which is where `_` itself lives, so it needs no separate case),
+// combining-char is \Mn \Mc and formatting-char is \Cf. Only `'` sits
+// outside those categories (it is \Po) and is named explicitly.
+func isFSharpIdentContinuation(r rune) bool {
+	if r == '\'' {
+		return true
+	}
+	return unicode.IsLetter(r) ||
+		unicode.In(r, unicode.Nl, unicode.Nd, unicode.Pc, unicode.Mn, unicode.Mc, unicode.Cf)
 }
 
 // buildLetSig builds a signature string for a let binding from the raw declaration.

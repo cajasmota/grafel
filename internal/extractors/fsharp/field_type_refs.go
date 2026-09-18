@@ -223,7 +223,9 @@ type fsharpFieldTypeTarget struct {
 //	  SCOPE.Component/discriminated_union  type T = A | B
 //	  SCOPE.Component/interface            type T = interface ... / IFoo
 //	  SCOPE.Component/class                type T() = class ...
-//	  SCOPE.Component/struct               [<Struct>] type T = ...
+//	  SCOPE.Component/struct               type T = struct ... end  (#7218;
+//	                                       the [<Struct>] ATTRIBUTE form is not
+//	                                       recognised — attributes are not read)
 //	  SCOPE.Component/alias                type Id = int          (#4942)
 //	  SCOPE.Component/type                 classifyTypeSubtype catch-all
 //	  SCOPE.Component/computation_builder  detectCEBuilder (#5048)
