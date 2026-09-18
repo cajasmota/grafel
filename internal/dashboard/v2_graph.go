@@ -221,9 +221,10 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 // payload. Mirrors serveGraphDense's visibility + filter rules, so before LoD
 // thinning v1 and v2 agree on which nodes/edges exist; adds pagerank +
 // source_file + repo/community color indices that the cosmos.gl canvas needs.
-// The agreement is on the CANDIDATE set only: at any tier below `full` the
-// nodeCap/edgeCap below thin that set (pagerank-first), so the SERVED set is a
-// subset — at `overview` (500/4,000) a small one.
+// The agreement is on the CANDIDATE set only: whenever that set exceeds the
+// nodeCap/edgeCap arguments the served set is a pagerank-thinned subset of it,
+// which at `overview` (500/4,000) is most graphs and at `full`
+// (50,000/250,000) is few.
 //
 // It applies LoD before allocating wire edges. For large groups this avoids
 // materialising millions of v2GraphEdge values that would be discarded

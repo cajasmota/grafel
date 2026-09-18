@@ -52,11 +52,18 @@ func TestFullLoDHelperPinsFullTierCaps(t *testing.T) {
 	// No other tier may be indistinguishable from full on BOTH axes at once,
 	// otherwise the two assertions above could be satisfied by a tier that
 	// merely happens to share the whole cap pair. Sharing ONE cap is
-	// deliberately allowed: this fires only on a full pair match, so e.g.
-	// highLodNodeCap == fullLodNodeCap with a different edge cap passes
-	// (scored — it does). One differing axis is all the assertions above need,
-	// and requiring both would forbid a tier pairing that is a legitimate
-	// design choice rather than a defect.
+	// deliberately tolerated HERE: one differing axis is all the assertions
+	// above need, and requiring both would forbid a tier pairing that is a
+	// legitimate design choice rather than a defect. Scored:
+	// normalLodNodeCap = 50_000 (== fullLodNodeCap, edge caps still differ)
+	// leaves this row passing, which is the intended tolerance.
+	//
+	// Note what happens for a tier at or above `high`, though: aliasing
+	// highLodNodeCap to 50_000 does NOT slip through, because the subtest's
+	// fixture guard below is anchored on the `high` caps and fires instead
+	// (scored: exit 1 on "not above the HIGH caps (50000, 120000)"). So the
+	// pair-match assertion here is the weaker of the two checks, not the only
+	// one.
 	for _, tier := range []string{"overview", "low", "high", "normal"} {
 		otherNodes, otherEdges := lodLimits(tier)
 		if otherNodes == nodeCap && otherEdges == edgeCap {
