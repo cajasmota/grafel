@@ -27,14 +27,14 @@
 //
 // THE FIX IS A SCOPE BOUNDARY, NOT A NEW LEDGER ARM. collectLocalVarTypes now
 // walks with scopedFindNodes, which stops at `class_body` / `interface_body` /
-// `enum_body` / `annotation_type_body`, and javaScopeCalls recurses into each
-// such body with its own ledger layered over the enclosing one.
+// `enum_body`, and javaScopeCalls recurses into each such body with its own
+// ledger layered over the enclosing one.
 //
 // ONE CELL IS EMPTY AND IT WAS MEASURED, NOT ASSUMED: `annotation_type_body`.
 // javac 25.0.3 rejects "annotation interface declaration not allowed here" in
 // every place reachable from a method body — directly in the body, in a local
-// class, in a local interface, and in an anonymous class body — so no
-// compilable Java reaches it. The boundary entry for it was therefore DELETED
+// class, in a local interface, in an anonymous class body, and in a local enum
+// or record body — so no compilable Java reaches it. The boundary entry for it was therefore DELETED
 // rather than shipped with a necessarily-ALIVE mutant.
 //
 // TWO DIRECTIONS, AND THE SECOND IS THE DANGEROUS ONE. A boundary that stops
@@ -419,10 +419,16 @@ class Svc {
 	j7094MustCall(t, rels, "Cust.b", "Order.a")
 }
 
-// Capture with NO shadow anywhere. An effectively-final outer local used bare
-// inside an anonymous class body bound correctly at 83004cbef (the flat walk
-// reached it by accident) and must keep doing so — dropping it would be a
-// recall regression dressed as a fix.
+// Capture with NO shadow anywhere. An effectively-final outer local, DECLARED
+// BEFORE the nested class body, used bare inside it: this bound correctly at
+// 83004cbef (the flat walk reached it by accident) and must keep doing so —
+// dropping the inherited layer would be a recall regression dressed as a fix.
+//
+// WHAT THIS ROW CLAIMS, and all it claims: an earlier-declared,
+// effectively-final outer local MUST still bind bare inside the nested body.
+// It says nothing about the layer in general — #7209 records the rest of the
+// grading obligation, as two mutually-masking directions of which this is
+// one. Do not read a green here as blessing the inherited layer wholesale.
 func TestJava7109_CapturedOuterLocalStillBindsInside(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
 class Order { void a() {} }
@@ -564,6 +570,203 @@ class Svc {
 `)
 	j7094MustCall(t, rels, "Order.a", "Cust.b")
 	j7094MustNotCall(t, rels, "Order.b", "Cust.a")
+}
+
+// ---------------------------------------------------------------------------
+// B1 (#7203 review) — EVERY ONE OF THE EIGHT scopedFindNodes ARMS, SEPARATELY.
+//
+// collectLocalVarTypes calls scopedFindNodes eight times, once per binder
+// family. THE EIGHT MASK EACH OTHER: reverting all eight to findAllNodes at
+// once is killed by the `local_variable_declaration` arm ALONE, so the other
+// seven read as covered while grading nothing — the "score every occurrence,
+// not a representative site" failure mode, on the central change of this PR.
+// Reverting each arm on its own, before these rows existed, left SEVEN ALIVE
+// at 0 FAIL.
+//
+// They are not equivalences. Each arm reverted alone makes that arm descend
+// into the nested class body again, so the binder there enters the OUTER
+// ledger — with an empty type for the seven poison arms — and disagrees with
+// the outer `Order o`. #7094's refusal then drops the name and the outer
+// `Order.a` collapses to the bare leaf `a`. That is real recall loss on
+// compilable Java, so each sub-case asserts the OUTER receiver survives.
+//
+// THE RECEIVER GRADED IS THE OUTER ONE, deliberately: the binder that must
+// stay out of the outer ledger sits INSIDE the nested body, which is where an
+// over-broad walk reaches. A control placed outside it would grade nothing.
+//
+// `instanceof_expression` and `type_pattern` MASK EACH OTHER on an
+// instanceof-only fixture, so the type_pattern witness uses a SWITCH label
+// (`case String o ->`) and the instanceof witness uses only the `name`-field
+// form (`x instanceof String o`). Putting both in one fixture reproduces the
+// masking one level down.
+//
+// `record_pattern_component` is reached through `instanceof` but binds via the
+// component, not the `name` field — `x instanceof P(String o)` leaves
+// instanceof_expression with no `name` — so it is a third, separate fixture.
+func TestJava7109_EveryScopedWalkArmStopsAtTheBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		arm string
+		src string
+	}{
+		{"local_variable_declaration", `package com.x;
+class Order { void a() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() { String o = "x"; System.out.print(o); } };
+  }
+}
+`},
+		{"enhanced_for_statement", `package com.x;
+class Order { void a() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() { for (String o : new String[]{"x"}) { System.out.print(o); } } };
+  }
+}
+`},
+		{"resource", `package com.x;
+class Order { void a() {} }
+class Res implements AutoCloseable { public void close() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() { try (Res o = new Res()) { System.out.print(1); } } };
+  }
+}
+`},
+		{"catch_formal_parameter", `package com.x;
+class Order { void a() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() { try { System.out.print(1); } catch (RuntimeException o) { } } };
+  }
+}
+`},
+		{"lambda_expression", `package com.x;
+import java.util.List;
+class Order { void a() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() { List.of("x").forEach(o -> System.out.print(o)); } };
+  }
+}
+`},
+		{"instanceof_expression", `package com.x;
+class Order { void a() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() {
+      Object x = "y";
+      if (x instanceof String o) { System.out.print(o); }
+    } };
+  }
+}
+`},
+		{"type_pattern", `package com.x;
+class Order { void a() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() {
+      Object x = "y";
+      switch (x) { case String o -> System.out.print(o); default -> System.out.print(0); }
+    } };
+  }
+}
+`},
+		{"record_pattern_component", `package com.x;
+class Order { void a() {} }
+record P(String s) {}
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() {
+      Object x = new P("y");
+      if (x instanceof P(String o)) { System.out.print(o); }
+    } };
+  }
+}
+`},
+	} {
+		t.Run(tc.arm, func(t *testing.T) {
+			rels := j7094Calls(t, tc.src)
+			// Revert this arm alone and the nested binder poisons the outer
+			// `o`, so "Order.a" becomes the bare "a".
+			j7094MustCall(t, rels, "Order.a")
+			j7094MustNotCall(t, rels, "a")
+		})
+	}
+}
+
+// N3 (#7203 review) — A MEMBER TYPE NESTED ONE LEVEL FURTHER DOWN. The member
+// walk's default arm claims this remit in prose, and a scopeRoot dump over the
+// whole java suite showed `class_declaration` / `record_declaration` /
+// `interface_declaration` / `enum_declaration` / `static_initializer` NEVER
+// appearing as a root: no fixture reached the path, and M19 (drop the default
+// arm) was killed by the initialiser-block row only, masking it.
+//
+// The path IS behaviour-carrying — this fixture emits `Order.b` on 83004cbef
+// and `Cust.b` here — so without this row the change silently fixed a shape
+// nothing guarded.
+func TestJava7109_MemberClassInsideALocalClassOwnsItsName(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} void b() {} }
+class Cust  { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    class A { class B { void go(Cust o) { o.b(); } } }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b")
+	j7094MustCall(t, rels, "Cust.b", "Order.a")
+}
+
+// N4 (#7203 review) — SCOPE 2a *INSIDE* A NESTED BODY. The nested class body
+// gets a real ledger, so #7094's same-class-scope refusal has to apply within
+// it too: two sibling statement blocks there that disagree about a name must
+// refuse BOTH, exactly as they would in the outer method. The PR body claims
+// this; nothing graded it.
+//
+// Note what is NOT refused: the OUTER `Order.a` survives, because the
+// collision is contained in the inner scope's own ledger and never reaches the
+// outer one. A single shared ledger loses both.
+func TestJava7109_CollidingSiblingBlocksInsideANestedBodyStillRefuse(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} }
+class Cust  { void b() {} }
+class Note  { void c() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    Runnable r = new Runnable() { public void run() {
+      { Cust p = new Cust(); p.b(); }
+      { Note p = new Note(); p.c(); }
+    } };
+  }
+}
+`)
+	// Refused inside the nested scope, both directions.
+	j7094MustNotCall(t, rels, "Cust.b", "Note.c", "Cust.c", "Note.b")
+	j7094MustCall(t, rels, "b", "c")
+	// And the refusal does NOT leak across the boundary.
+	j7094MustCall(t, rels, "Order.a")
 }
 
 // STANDALONE — the nested member with NO outer sibling at all.

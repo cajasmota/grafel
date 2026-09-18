@@ -958,10 +958,26 @@ func extractCallRelationships(
 // The ledger for a scope is, in increasing precedence:
 //
 //	inherited   the ENCLOSING scope's resolved ledger. Java capture: an
-//	            effectively-final local of the enclosing method IS visible by
-//	            bare name inside a local/anonymous class body, so dropping it
-//	            would be a recall regression, not a fix
-//	            (TestJava7109_CapturedOuterLocalStillBindsInside).
+//	            effectively-final local DECLARED BEFORE the nested class body
+//	            is visible by bare name inside it, so dropping the layer would
+//	            be a recall regression, not a fix
+//	            (TestJava7109_CapturedOuterLocalStillBindsInside, which grades
+//	            exactly that shape and nothing wider).
+//
+//	            THE LAYER IS POSITION-BLIND, and that is a known defect rather
+//	            than a property of it (#7209). `inherited` is the enclosing
+//	            method's whole FLAT map, so a local declared textually AFTER
+//	            the nested class body — which is NOT in scope there, and which
+//	            javac rejects a capture of — is inherited anyway, and a
+//	            colliding name can take its type: the #7056 wrong-but-binding
+//	            signature this change otherwise removes. NOT a regression:
+//	            reverting java.go alone to 83004cbef emits the same edge, so
+//	            the flat walk had it too and this change neither introduces
+//	            nor widens it. Fixing it needs the call site's byte offset
+//	            compared against each declarator's, which is the per-site
+//	            resolution #7109 deliberately did not build. #7209 records the
+//	            grading obligation as two MUTUALLY-MASKING directions, which is
+//	            why only one of them is claimed here.
 //	locals      this scope's own #7094/#7097/#7099/#7100 ledger, now walked
 //	            with scopedFindNodes so it stops at the class boundary.
 //	params      this scope's member's formal parameters. Params win over
@@ -976,9 +992,9 @@ func extractCallRelationships(
 //
 // NOT FIXED HERE, recorded rather than claimed: receiverTypeName consults
 // cc.fields BEFORE the ledger, so an ENCLOSING-class field still outranks a
-// nested body's own local of the same name. That is the same precedence the
-// flat form had, it is wrong for the same reason, and it is a separate change
-// with its own grading obligation.
+// nested body's own local of the same name (#7207). That is the same
+// precedence the flat form had, it is wrong for the same reason, and it is a
+// separate change with its own grading obligation.
 func javaScopeCalls(
 	scopeRoot ts.Node,
 	src []byte,
@@ -1155,8 +1171,24 @@ func javaClassMemberCalls(
 		default:
 			// Field initialisers, instance/static initialiser blocks,
 			// enum-constant arguments and constant-specific bodies, and
-			// member types nested one level further down. No parameter
-			// frame of their own.
+			// member types nested one level further down (a class inside a
+			// class inside a method) — the last of which is graded by
+			// TestJava7109_MemberClassInsideALocalClassOwnsItsName. No
+			// parameter frame of their own.
+			//
+			// ChildCount includes the body's own ANONYMOUS tokens: `{`, `}`
+			// and a stray `;` accounted for 66 of the 596 scopeRoot values
+			// over the whole java suite (#7203 review), each allocating a
+			// ledger and running scopedFindNodes eight times for a node with
+			// no children. Skipping them is a pure cost guard, not a
+			// behaviour one: a token has no named descendants, so it can
+			// contribute neither a binder nor a call. The guard is written on
+			// IsNamed rather than on a token list so it cannot go stale, and
+			// its over-broad direction — skipping named members too — is
+			// killed by every row in this file.
+			if !m.IsNamed() {
+				continue
+			}
 			javaScopeCalls(m, src, callerName, cc, nil, ledger, imports, seen, rels)
 		}
 	}
@@ -1602,10 +1634,19 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 // THE WALK IS SCOPED AT CLASS BOUNDARIES (#7109) — scopedFindNodes, not
 // findAllNodes. Everything above describes ONE class scope, and that is now
 // what this function sees: it does not descend into a `class_body` /
-// `interface_body` / `enum_body` / `annotation_type_body`, so a name bound
-// inside a local or anonymous class is not in this ledger at all.
-// (`annotation_type_body` is not a boundary — javac rejects an annotation-type
-// declaration anywhere under a method body, so nothing can reach it.)
+// `interface_body` / `enum_body`, so a name bound inside a local or anonymous
+// class is not in this ledger at all. (`annotation_type_body` is not a
+// boundary — javac rejects an annotation-type declaration anywhere under a
+// method body, so nothing can reach it.)
+//
+// EVERY ONE OF THE EIGHT ARMS BELOW IS SEPARATELY GRADED (#7203 review). They
+// MASK EACH OTHER: reverting all eight to findAllNodes at once is killed by
+// the `local_variable_declaration` arm alone, so seven of them read as covered
+// while grading nothing. Each arm now has its own witness in
+// TestJava7109_EveryScopedWalkArmStopsAtTheBoundary, and each single-arm
+// revert is killed by its own sub-case. Note that `instanceof_expression` and
+// `type_pattern` mask each other on an instanceof-only fixture: the
+// type_pattern witness therefore uses a SWITCH label.
 //
 // WHY, since it was deliberately not done for two rounds. An earlier revision
 // of this comment said Java "forbids an inner block from redeclaring a name
@@ -2151,9 +2192,10 @@ func collectPackageName(root ts.Node, src []byte) string {
 //
 // `annotation_type_body` is DELIBERATELY ABSENT, and that is a measured claim
 // rather than an omission: javac 25.0.3 rejects an annotation-type declaration
-// ("annotation interface declaration not allowed here") in all four places
+// ("annotation interface declaration not allowed here") in all SIX places
 // reachable from a method body — directly in the body, inside a local class,
-// inside a local interface, and inside an anonymous class body — so no
+// inside a local interface, inside an anonymous class body, and (added by the
+// #7203 review) inside a local enum body and a local record body — so no
 // compilable Java can put one under the roots these helpers walk. A boundary
 // for it would be code no fixture can reach; it was in the set for one round
 // and its mutant was necessarily ALIVE, so it is gone instead of ungraded.
