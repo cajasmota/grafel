@@ -426,8 +426,138 @@ var (
 	// a kind signal. A future author widening the head does not inherit the
 	// classifier as a dependency; reintroducing one means changing
 	// classifyTypeSubtype's signature and both of its call sites.
+	// #7227 — the anchor was `^([ \t]*)type`, so a declaration preceded ON THE
+	// SAME LINE by an attribute section never matched and NO entity was minted:
+	// `[<Struct>] type StructRecord = { SX: int }` produced nothing at all. Same
+	// silent-total-miss family as #7135 above, different prefix.
+	//
+	// The prefix admitted is `(?:\[<[^\n]*?>\][ \t]*)*`. Four properties, of
+	// which THREE are graded and one is readability only:
+	//
+	//  1. `*` (zero or more SECTIONS) is READABILITY and is NOT graded: it says
+	//     "a run of attribute sections", which is what F# writes —
+	//     `[<NoEquality>][<NoComparison>]` above `type internal Tainted<'T> …`
+	//     in dotnet/fsharp's own shipping source,
+	//     src/Compiler/TypedTree/tainted.fs:91-92, which compiles. (An earlier
+	//     revision cited `[<Measure>] [<Measure>] type m` here; that line is an
+	//     `E_` NEGATIVE test pinned to FS0429 "AllowMultiple=false", so it
+	//     attests only that two sections PARSE.) But `*` -> `?`
+	//     is ALIVE at 0 `--- FAIL` and is believed EQUIVALENT, because the
+	//     content class `[^\n]` admits `>]`: one non-greedy section expands over
+	//     `Measure>] [<Measure` and closes on the LAST `>]`, so a single
+	//     optional section already covers a run of them. Do NOT record `*` as
+	//     covered by the two-section fixture; it is not.
+	//
+	//     THE EQUIVALENCE RESTS ON THE ARGUMENT, NOT ON THE ENUMERATION. Any
+	//     k-section match is re-derivable as a SINGLE section whose content is
+	//     `C1>]S1[<C2…[<Ck`, because `[^\n]` admits both `>` and `]`. The
+	//     candidate landing points are exactly the `>]` positions on the line,
+	//     and under Go's leftmost-first semantics `*` and `?` visit them in the
+	//     same text order — so the accepted language AND the submatch sets
+	//     coincide. For the second equivalent mutant (an extra `[ \t]*`
+	//     appended after the group): the leading `([ \t]*)` capture is greedy
+	//     and never shrinks, so the appended class always matches empty.
+	//
+	//     A brute-force enumeration corroborates both — 4 token alphabets,
+	//     ~470M strings to depth <=9 tokens, comparing FULL submatch index
+	//     sets, 0 divergences. Do NOT read that as proof, and do not cite the
+	//     string count as if it were. The SAME enumeration reports 0
+	//     divergences for the GREEDY mutant on its alphabet #1 at depth 9
+	//     (134,217,728 strings) — and greedy provably diverges one token
+	//     deeper, on `[<A>] type Foo = >] type A =`, where the shipped pattern
+	//     captures `Foo` and greedy captures `A`. Exhaustion to depth d says
+	//     nothing about depth d+1.
+	//  2. NON-greedy `*?`, not `[^>]*` and not greedy `.*`. `[^>]*` truncates
+	//     at the first `>`, which an attribute ARGUMENT routinely carries:
+	//     `[<Emit("$0 as LrcPtr<IntUnion>")>] type Wrapped = …` does not match
+	//     under it at all (measured). That witness compiles — 401 nested-`>`
+	//     sections occur in library corpus code, this one at
+	//     fable-compiler/Fable tests/Rust/tests/src/UnionTests.fs:189.
+	//     The tighter `>>]` shape, where the inner `>` ABUTS the close, is a
+	//     different matter: its only witness anywhere in the corpus is
+	//     `[<A<int>>] type C = class end` at dotnet/fsharp
+	//     tests/FSharp.Compiler.ComponentTests/Attributes/
+	//     GenericAttributeAbbreviations.fs:94, which sits inside an `Fsx`
+	//     string under `|> compile |> shouldFail` — the test's own comment says
+	//     the syntax "is rejected by the parser". So `>>]` is pinned as
+	//     robustness against source fsc rejects, NOT as legal F#. "Attested"
+	//     anywhere in this comment means the text occurs in the named file and
+	//     nothing more.
+	//     Greedy fails the other way, but ONLY on a particular shape. Go's
+	//     regexp is leftmost-FIRST, so greedy takes the LONGEST expansion under
+	//     which the whole pattern still matches and shrinks if it must: on
+	//     `[<M>] type Sec = float // [<M>] type Sec` — a comment REPEATING the
+	//     declaration — greedy's long match dies for want of a trailing `=` and
+	//     the engine falls back to the correct one, so that shape does not
+	//     discriminate (measured: the greedy mutant is ALIVE against it). The
+	//     shape that does is a comment carrying a DIFFERENT declaration:
+	//     `[<Measure>] type Sec = float // [<Foo>] type Bogus = int`, where
+	//     greedy captures `Bogus` and non-greedy captures `Sec`. That is the
+	//     fixture that kills the greedy mutant, paired with a forbidden row on
+	//     `Bogus`. `>]` being a two-byte sequence is also why a lone `]` in an
+	//     attribute-argument string does not close a section early
+	//     (`[<Emit("[0, $0]")>]`), and why `>>]` from a nested generic closes
+	//     correctly: the content `A<int>` is followed by exactly `>]`.
+	//  3. `[ \t]*` after each section, NOT `\s*`. The two differ only where an
+	//     attribute sits on its OWN line: under `\s*` the leftmost match starts
+	//     at the ATTRIBUTE line, moving the entity's StartLine and the indent
+	//     this pass hands to extractIndentBody. Pinned at the shipped behaviour
+	//     — the span starts at the `type` line — by
+	//     TestFSharpTypeAttrPrefix_SpanStartsAtTheTypeLine. Nothing else in the
+	//     package observes it; without that test the `\s*` mutant is ALIVE.
+	//     The OTHER direction of the same seam — `[ \t]*` -> `[ \t]+`, i.e.
+	//     REQUIRING a separator — was ALIVE at 0 `--- FAIL` against the whole
+	//     package until three rows were added for the tight form
+	//     (`[<Struct>]type Vec = { X: int }`). It is legal: F# 4.1 spec §3
+	//     "Lexical Analysis" requires whitespace only where two adjacent
+	//     tokens would otherwise lex as one, §3.6 makes `>]` a symbolic
+	//     keyword, and §3.4's identifier/keyword character class contains
+	//     neither `>` nor `]`, so `>]` cannot extend into `type`. Attested in
+	//     the population before a declaration keyword at
+	//     fsprojects/FSharpPlus src/FSharpPlus/Data/Kleisli.fs:43
+	//     (`[<RequireQualifiedAccess>]module Kleisli = …`) and 1,001 times
+	//     before an identifier (parameter attributes); before `type`
+	//     specifically the incidence is ZERO, so the rows pin a correct
+	//     permissiveness rather than an observed usage.
+	//
+	//     THE GENERAL LESSON, worth more than the row: when a change adds a
+	//     new group to a pattern, the author grades the GROUP — its content,
+	//     its repetition, its delimiters — and leaves the SEAM between the new
+	//     group and the pre-existing pattern ungraded. Depth on the group
+	//     reads as thoroughness and is exactly what hides the seam. This is
+	//     the third instance of that shape in this extractor family (see also
+	//     namespaceRE's leading keyword boundary, and the nim pragma work
+	//     where the whitespace BEFORE the pragma was ungraded and turned out
+	//     to be 13.5% of the recovered population). Anyone adding a further
+	//     group here: score the joins, not only the group.
+	//  4. `[^\n]`, not `.` with `(?s)` off — `.` already excludes `\n` in Go, so
+	//     this is explicit rather than different; it states that an attribute
+	//     section may NOT span a newline, which is what keeps a wrapped
+	//     `[<Struct\n>] type T =` from matching. That is a deliberate
+	//     under-match: such a wrap is legal F# and is not supported here.
+	//
+	// The prefix composes with the `access` allowlist that follows it
+	// (`[<Struct>] type private Hidden = { H: int }`), and it does NOT interact
+	// with classifyTypeSubtype: that function has taken only the BODY since
+	// #7218, and the body of an attribute-carrying declaration is whatever
+	// follows the `=`, exactly as before. `[<Struct>] type SPoint = { … }` is
+	// therefore classified "record" from its body form, not "struct" from its
+	// attribute — the attribute is a representation modifier, not a body form.
+	//
+	// KNOWN OVER-MATCH, disclosed and not fixed: an attribute argument STRING
+	// containing the literal two-byte sequence `>]` closes the section early
+	// (`[<Emit(">] type X = ")>] let y = 1` mints a type `X`). Deciding it needs
+	// a lexer, not a regexp — this pass reads raw `src`, not the scrubbed text.
+	// It is not hypothetical-only: it is simply absent from the population. Over
+	// 1,836,045 lines in 8,556 F# files (7 shallow clones, see
+	// type_attribute_prefix_7227_test.go for the list), the widened pattern
+	// newly matches 91 lines and NONE of them, nor any other line in the corpus,
+	// is a line the old pattern missed for a reason other than the attribute
+	// prefix; on all 91 the captured name equals a bracket-balanced human parse.
+	// Introduced false positives: 0. Cost of a real fix is a string-aware scan
+	// of the prefix; recorded here so the judgement can be revisited.
 	typeRE = regexp.MustCompile(
-		`(?m)^([ \t]*)type(?:\s+(?:public|private|internal)\b)*` +
+		`(?m)^([ \t]*)(?:\[<[^\n]*?>\][ \t]*)*type(?:\s+(?:public|private|internal)\b)*` +
 			`\s+([A-Z][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=`,
 	)
 
