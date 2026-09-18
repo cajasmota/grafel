@@ -156,7 +156,10 @@ func extractNim(src, filePath string) []types.EntityRecord {
 
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		body := extractIndentBody(src, m[1], len(indent))
-		endLine := startLine + strings.Count(body, "\n")
+		// #7212: measured from m[1], the same offset `body` starts at — NOT
+		// from startLine, which is m[0]'s line. A wrapped parameter list makes
+		// the match span lines and the two offsets diverge.
+		endLine := spanEndLine(src, m[1], body)
 		calls := collectCalls(body, name)
 
 		sig := buildSig(src[m[0]:m[1]], name, params)
@@ -221,7 +224,10 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		// "more indented than the declaration" and got absorbed into the first
 		// member's body.
 		body := extractIndentBody(src, m[1], len(indent))
-		endLine := startLine + strings.Count(body, "\n")
+		// #7212: same origin as `body`. A `= object` clause broken after the
+		// `=` or after `ref` puts m[1] lines below m[0], and those lines used
+		// to fall into neither term of the sum.
+		endLine := spanEndLine(src, m[1], body)
 
 		// Find methods declared for this type (methods take first param of this type).
 		var rels []types.RelationshipRecord
@@ -392,6 +398,27 @@ func importDisplayName(mod string) string {
 		mod = mod[slash+1:]
 	}
 	return mod
+}
+
+// #7212: the line on which byte offset `pos` sits, 1-based. Both call sites cut
+// the declaration's body at the regex match END (m[1]) and then measure its
+// length in newlines, so the line that length is added TO must be the line of
+// that same offset. It used to be the line of the match START (m[0]): sound
+// only while the match is confined to one line, and short by the match's own
+// line count whenever it is not — a `= object` clause broken after the `=` or
+// after `ref`, or a proc parameter list wrapped across lines. Not an
+// off-by-one; the deficit is the clause's line count, so it is 2 at three
+// lines. See span_origin_7212_test.go.
+func lineOf(src string, pos int) int {
+	return strings.Count(src[:pos], "\n") + 1
+}
+
+// spanEndLine assembles the end of a declaration's span from ONE origin: the
+// line of `afterPos` — the offset `body` was cut from — plus the body's own
+// line count. Callers keep deriving StartLine from the match start, which is
+// the declaration's own line and is correct there.
+func spanEndLine(src string, afterPos int, body string) int {
+	return lineOf(src, afterPos) + strings.Count(body, "\n")
 }
 
 // extractIndentBody returns the body text following a declaration line.
