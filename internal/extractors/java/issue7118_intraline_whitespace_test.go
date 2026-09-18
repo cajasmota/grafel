@@ -139,9 +139,11 @@ func TestJava7118_IntraLineWhitespaceRunsCollapseAtEverySite(t *testing.T) {
 		{"SCOPE.Schema", "TabAnno.n", "int n() default 1"},
 
 		// javaDeclaratorDimensions' own call of collapseJavaSpaces. JLS 10.2
-		// permits whitespace between the brackets, and that text is the only
-		// thing the dimensions node can hold besides the brackets themselves,
-		// so this is the only way to reach that caller with an intra-line run.
+		// permits whitespace between the brackets, which is how these two rows
+		// reach that caller with an intra-line run. Whitespace is NOT the only
+		// content the dimensions text can hold — it also holds comments and
+		// TYPE_USE annotations (#7161) — but those are not runs, so they belong
+		// to that issue's rows rather than to this collapse axis.
 		{"SCOPE.Schema", "SpaceHost.spacedDims", "int spacedDims[ ]"},
 		{"SCOPE.Schema", "SpaceHost.tabbedDims", "int tabbedDims[ ]"},
 	} {

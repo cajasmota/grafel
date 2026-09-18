@@ -2217,9 +2217,10 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 // run can hold, and the node's start at `[` does not bound it to whitespace:
 // `int withComment[/* a comment */];` and a TYPE_USE annotation
 // `int withAnno @NN [];` are both javac-clean and both put non-whitespace into
-// the dimensions text. Neither is graded here, deliberately — the point of the
-// `spacedDims`/`tabbedDims` rows is the collapse axis, not an inventory of what
-// the node can contain.
+// the dimensions text. Those two are graded by #7161's rows, not by the
+// `spacedDims`/`tabbedDims` pair here — the annotation one because it starts the
+// dimensions text at `@` rather than `[` and so exposed the missing separator in
+// the concatenation below, which no amount of collapsing can restore.
 //
 // # The three guards below are DEFENSIVE and ungraded on purpose
 //
@@ -2248,7 +2249,46 @@ func buildFieldSignature(node ts.Node, src []byte, name string) string {
 			parts = append(parts, txt)
 		}
 	}
-	if decl := name + javaDeclaratorDimensions(node, src); decl != "" {
+	// The declarator is `name` glued to its dimensions suffix. Gluing is right
+	// only while that suffix starts at `[`: JLS 10.2 spells it
+	// `{Annotation} [ ]`, so a TYPE_USE annotation belongs to the dimensions
+	// node and the text can begin at `@`. The source's separating space then
+	// falls BETWEEN the two operands and nothing puts it back —
+	// `int withAnno @NN [];` emitted `int withAnno@NN []` (#7161).
+	//
+	// The policy is to NORMALISE, not to replay: emit EXACTLY ONE space before
+	// a dimensions suffix that opens at `@`, whether or not the source had one,
+	// and none before one that opens at `[`. So `int a@NN[];` — javac-clean,
+	// no space anywhere — emits `int a @NN[]`, a space this code MANUFACTURES
+	// rather than restores. That is deliberate: a Signature is a rendered form
+	// and this function already collapses every whitespace run in it, so
+	// propagating incidental source spacing here would be the inconsistent
+	// choice. Graded by `normAnno`; `plainDims`/`plainTwoDims`/`annoNotFirst`
+	// grade the other branch, at both dimension counts and with an annotation
+	// present but not at position 0.
+	//
+	// The normalisation is POSITION-0 ONLY, and that is a scope boundary rather
+	// than a general rule about the suffix. Only the first character of the
+	// dimensions text is examined, so an annotation sitting LATER in the same
+	// text with no space in front of it keeps none: `int x[]@NN[];` emits
+	// `int x[]@NN[]`, while `int x@NN[];` emits `int x @NN[]`. One construct
+	// therefore renders three ways — leading-without-space gains a space,
+	// inner-without-space does not, inner-with-space keeps its own. Inner
+	// positions are NOT untouched territory, and saying they are unnormalised
+	// would be false: an inner whitespace RUN is already collapsed upstream by
+	// collapseJavaSpaces (`int x @NN[]   @NN   [];` emits `int x @NN[] @NN []`,
+	// measured on review). It is specifically the inner ZERO-space case that is
+	// left alone. Filed as #7180 and deliberately NOT fixed here.
+	//
+	// The predicate reads position 0 rather than searching for `@`, and the
+	// first character of `dims` is exactly `@` or `[` — enumerated over 13
+	// javac-clean shapes on review, `@Sz(msg="[weird]")` included, where the
+	// bracket inside an annotation argument is never at position 0.
+	dims := javaDeclaratorDimensions(node, src)
+	if dims != "" && !strings.HasPrefix(dims, "[") {
+		dims = " " + dims
+	}
+	if decl := name + dims; decl != "" {
 		parts = append(parts, decl)
 	}
 	return strings.Join(parts, " ")
