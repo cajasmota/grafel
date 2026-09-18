@@ -169,17 +169,22 @@ func TestIndentBand7185_Nim_ProcSite_AboveBandControl(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// CALL SITE 2 — nim.go:207, the type pass. baseIndentLen is hard-coded 0 there,
-// so the band is at exactly one space. Artefact: EndLine.
+// CALL SITE 2 — the type pass. This fixture's declarations sit at column 0, so
+// the base it passes is 0 and the band is at exactly one space. (Since #7190
+// that base is `len(indent)` — the declaration's own column — not a hard-coded
+// 0; at column 0 the two agree, which is why this row cannot see #7190.)
+// Artefact: EndLine.
 // A verdict at the proc site says nothing here: this site emits a different
 // Kind (SCOPE.Component), computes no CALLS, and passes a different base.
 //
 // SCOPE LIMIT OF THIS ROW: it grades the boundary at base 0, which is the right
 // base only because the fixture puts `type Alpha = object` at column 0.
-// Idiomatic Nim writes a `type` SECTION with the declarations indented, and
-// nim.go:207 hard-codes 0 regardless, so there every type absorbs the ones after
-// it. That is #7190 — it reproduces identically at +2 and at +1, so it is
-// neither caused nor cured here, and this row is structurally unable to see it.
+// Idiomatic Nim writes a `type` SECTION with the declarations indented, and the
+// type call site used to hard-code 0 regardless, so there every type absorbed
+// the ones after it. That was #7190 — fixed by capturing the declaration's own
+// indent and passing it as the base. It reproduced identically at +2 and at +1,
+// so it was neither caused nor cured here, and this row remains structurally
+// unable to see it: the base-at-nonzero rows live in type_section_7190_test.go.
 // ---------------------------------------------------------------------------
 
 const typeBand7185 = "type Alpha = object\n" + // line 1, base 0 (hard-coded)
