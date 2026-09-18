@@ -204,7 +204,20 @@ jobs:
   # in GitHub's UI distinguishes "windows-cgo-smoke was never scheduled" from
   # "windows-cgo-smoke is fine" — both render as the absence of a red X. So the
   # expectation is asserted here, explicitly, and it keeps working if someone
-  # edits the `on:` block or the `build` job's `if:` again.
+  # narrows the `build` job's `if:` again.
+  #
+  # ITS REACH STOPS AT THIS WORKFLOW'S OWN RUN, and that is not a quibble.
+  # This job is scheduled only when a run of THIS workflow exists. Remove the
+  # `on:` key, add a `paths:` filter that misses, or disable the workflow in
+  # the Actions UI, and there is no run — so this gate is exactly as invisible
+  # as the job it guards. That is the live state today: the workflow is
+  # `disabled_manually` and has produced no run since 2026-05-27 (#7248), so
+  # nothing below has executed once. Not hypothetical for the `on:` half
+  # either: `939a0b348` (#5728) stripped `windows.yml`'s triggers "to conserve
+  # free-tier Actions minutes" a month after that workflow was disabled.
+  # A guard that survives THOSE has to live in a workflow that is itself
+  # active and independently reachable (test.yml, with `actions: read`, could
+  # assert this one's `state: active`); see #7248.
   #
   # IT DOES NOT READ THE THING IT GUARDS. The expectation is recomputed from
   # the event and the labels, in bash rather than in a GitHub expression, and
