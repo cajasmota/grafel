@@ -101,6 +101,8 @@ class Svc {
 func TestJava7094_UntypedVarSiblingPoisonsTheName(t *testing.T) {
 	typedFirst := j7094Calls(t, `package com.x;
 class Order { void a() {} }
+class Customer { void b() {} }
+class MyFactory { static Customer makeCustomer() { return new Customer(); } }
 class Svc {
   void run() {
     { Order o = new Order(); o.a(); }
@@ -113,6 +115,8 @@ class Svc {
 
 	untypedFirst := j7094Calls(t, `package com.x;
 class Order { void a() {} }
+class Customer { void b() {} }
+class MyFactory { static Customer makeCustomer() { return new Customer(); } }
 class Svc {
   void run() {
     { var o = MyFactory.makeCustomer(); o.b(); }
@@ -142,8 +146,11 @@ class Svc {
 // because nothing was found that can reach it.
 func TestJava7094_LeadingAnnotationIsAnOrdinaryCollision(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
+@interface NonNull {}
 class Order { void a() {} }
+class Customer { void b() {} }
 class Svc {
+  Customer mk() { return new Customer(); }
   void run() {
     { Order o = new Order(); o.a(); }
     { @NonNull Customer o = mk(); o.b(); }
@@ -208,27 +215,60 @@ class Svc {
 	j7094MustCall(t, rels, "a", "b", "c")
 }
 
-// PINS `params win over locals` at extractCallRelationships' merge. The
-// precedence line was previously unexercised by any fixture — this one makes a
-// parameter and a local genuinely share a name, so inverting the merge fails.
-// (Java forbids a local shadowing a parameter, so this is not a compilable
-// program; tree-sitter parses it and the merge still has to answer, so the
-// answer is pinned where the code claims it. DERIVED FROM THE JLS §6.4 AND
-// UNDERIVED BY EXECUTION — no javac in this environment.)
-func TestJava7094_ParamsWinOverALocalOfTheSameName(t *testing.T) {
-	rels := j7094Calls(t, `package com.x;
-class Order { void a() {} void b() {} }
-class Customer { void b() {} }
-class Svc {
-  void run(Order o) {
-    o.a();
-    { Customer o = new Customer(); o.b(); }
-  }
-}
-`)
-	j7094MustCall(t, rels, "Order.a", "Order.b")
-	j7094MustNotCall(t, rels, "Customer.b")
-}
+// REMOVED, NOT MOVED: `TestJava7094_ParamsWinOverALocalOfTheSameName`. The old
+// name is written here so a grep for it lands on this note.
+//
+// It claimed to pin the `params win over locals` line in javaOverlayLedger by
+// making a parameter and a local of method `run` share the name `o`. Its own
+// comment conceded the source did not compile and said the answer was "DERIVED
+// FROM THE JLS §6.4 AND UNDERIVED BY EXECUTION — no javac in this
+// environment". There IS a javac in this environment (25.0.3), and it rejects
+// that fixture:
+//
+//	com/x/Svc.java:7: error: variable o is already defined in method run(Order)
+//
+// The conclusion the old comment did not draw is that the shape is not merely
+// uncompiled but UNREACHABLE, so the row graded the merge on input the
+// extractor can only meet in broken source (issue #7204).
+//
+// WHY UNREACHABLE, ENUMERATED RATHER THAN ARGUED. javaOverlayLedger's `top` is
+// the enclosing member's formal parameters and its `mid` is
+// collectLocalVarTypes over THAT member's scope root. For the ordering between
+// them to decide anything, one name must be in both. Every binder family that
+// feeds `mid` was compiled against a method parameter of the same name with
+// javac 25.0.3, and every one is rejected with "variable o is already defined
+// in method run(...)":
+//
+//	nested block local, flat-sibling local, enhanced-for variable,
+//	try-with-resources resource, catch parameter, instanceof type pattern,
+//	switch case pattern, lambda parameter, lambda-body local, for-init variable
+//
+// The only shadowings javac ACCEPTS put the inner binder inside a class body —
+// an anonymous-class method parameter, or a local class's own local. Since
+// #7109 collectLocalVarTypes stops at exactly that boundary, neither reaches
+// `mid`: each becomes its own scope whose ledger takes the outer one as `base`
+// and its own parameters as `top`. So `mid` ∩ `top` = ∅ in every compilable
+// Java program, and inverting the two loops is an EQUIVALENT mutant on
+// compilable Java. Verified by execution, not just derived: inverting them
+// with the old fixture present failed that fixture alone, and with it removed
+// the whole package is green.
+//
+// WHAT STILL GRADES THE PARAMS LAYER, so its removal is not a coverage loss.
+// The layer's PRESENCE — dropping it entirely, e.g. by weakening
+// javaOverlayLedger's shortcut to `if len(mid) == 0` so a params-only ledger
+// returns `base` — is killed by TestJava7096_QualifiedParamTypeReceiverBindsToLeaf
+// and TestJava_CallsParameterReceiverDottedTarget, both of which compile. Its
+// precedence over the INHERITED layer, which is the only precedence a legal
+// program can exercise, is killed by TestJava7109_AnonClassParamOwnsItsName and
+// its siblings. What is left ungraded is only the mid-vs-top ORDERING, which
+// the enumeration above shows nothing can reach — recorded here rather than
+// claimed, exactly as the empty-declType arm is above.
+//
+// This row was NOT rewritten into a legal shape because every legal shape it
+// could take is already a fixture: an anonymous-class or local-class parameter
+// shadowing an outer binder is TestJava7109_AnonClassParamOwnsItsName /
+// TestJava7109_LocalClassParamOwnsItsName. A duplicate would read as coverage
+// without adding any.
 
 // NEVER-FIRES control — an ordinary single declaration, and a nested block
 // binding a DIFFERENT name, must be untouched by the refusal.
