@@ -1039,7 +1039,35 @@ func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	}
 
 	var bodyLines []string
-	minBodyIndent := baseIndentLen + 2 // F# typically uses 4-space indent, but 2 is minimum
+	// #7176: the body continues at any column STRICTLY GREATER than the
+	// declaration's own column, so the threshold is baseIndentLen+1 — not +2.
+	//
+	// It was +2, which left a DEAD BAND at exactly baseIndentLen+1: such a line
+	// satisfied neither `indent >= minBodyIndent` nor `indent <= baseIndentLen`,
+	// so the loop silently skipped it and kept scanning. The line vanished from
+	// the body while everything after it stayed, which moved EndLine, dropped
+	// calls, and lost `inherit` clauses and DU cases.
+	//
+	// +1 is F#'s offside rule, not a style guess. F# 4.1 Language Specification
+	// §15.1.4 "Offside Lines" gives a worked example indented by exactly one
+	// column — `let x = 1` / ` let y = 2` — in which the one-column-deeper `let`
+	// is "unmatched", i.e. absorbed as a continuation rather than read as a
+	// sibling; it is the RETURN to column 0 that goes offside (FS0058). §15.1.8
+	// states the same boundary from the closing side: "When a token occurs on or
+	// before the offside limit for the current offside stack ... enclosing
+	// contexts are closed." On-or-before closes; strictly greater continues —
+	// which is exactly the `indent <= baseIndentLen` terminator below.
+	//
+	// §15.1.8 also names where a SIBLING sits, which is the sharpest form of the
+	// rule for this loop: "When a token other than `and` appears directly ON THE
+	// OFFSIDE LINE of Let context, and the next surrounding context is a
+	// SeqBlock, the $in token is inserted." Directly on the offside line means at
+	// exactly `base`, not `base+1` — and `and` is the single token the spec
+	// exempts. So `base+1` cannot be a sibling; it is body.
+	//
+	// DERIVED-NOT-EXECUTED: no F# toolchain exists on the build machine, so this
+	// is read off the specification rather than compiled.
+	minBodyIndent := baseIndentLen + 1
 
 	for i, line := range lines {
 		if i == 0 && strings.TrimSpace(line) != "" {
@@ -1164,15 +1192,23 @@ func insideBraces(scrubbed string, off int) bool {
 // gate keys on `.fsi` specifically, not on "not `.fs`": a `.fsx` script is
 // standalone and keeps its edges.
 //
-// Two known upstream vectors that limit this scan, noted for the record and
-// deliberately NOT fixed here (each needs its own issue and its own tests):
+// Two known vectors still limit this scan, noted for the record and deliberately
+// NOT fixed here:
 //
-//   - extractIndentBody has a dead band. A line indented at exactly
-//     baseIndentLen+1 is neither appended nor treated as a terminator, so the
-//     scan silently skips it and keeps going. An off-by-one-indented sibling
-//     type can therefore fall inside the PREVIOUS type's body and have its
-//     `inherit` clause attributed to the wrong owner. Low frequency, and
-//     invisible to this suite.
+//   - This scan has NO NOTION OF NESTING. It regex-scans the whole body for any
+//     `inherit` / `interface ... with`, so a nested sibling declaration's clause
+//     is attributed to the OUTER type. A `type Beta` indented inside `type
+//     Alpha`'s body puts Beta's `inherit Base ()` in Alpha's body text, and
+//     Alpha gets a spurious EXTENDS Base. Tracked as #7187.
+//
+//     An earlier version of this note blamed extractIndentBody's dead band
+//     (#7176) for this. That was the wrong MECHANISM and the bullet was briefly
+//     deleted as fixed-by-#7176; it is not. Measured on the fixture in #7187,
+//     the mis-attribution is byte-identical before and after #7176 — the nested
+//     clause was already inside the outer body under the old +2 threshold. The
+//     SYMPTOM the old note described is real and still live; only its stated
+//     cause was wrong.
+//
 //   - typeRE does not admit the self-identifier form `type X() as this =`, so
 //     those types produce no entity at all — and hence no hierarchy edge. That
 //     form is common precisely on the inheriting classes this scan targets.
