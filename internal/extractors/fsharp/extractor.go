@@ -188,6 +188,16 @@ var (
 	)
 
 	// namespace declaration: "namespace Foo" or "namespace Foo.Bar"
+	//
+	// The trailing `\s*$` is NOT narrowable to `[ \t]*$`. Go's `\s` includes
+	// `\r` and, in `(?m)` mode, `$` matches before the `\n` only — never
+	// before the `\r` of a CRLF pair — so this `\s*` is what absorbs that
+	// `\r`. Narrowing it drops EVERY namespace in EVERY CRLF file. The `$`
+	// itself is load-bearing in the other direction: it confines a
+	// declaration to a line carrying nothing else, so `namespace Foo Bar`
+	// mints nothing. Both directions are graded on CRLF input by
+	// namespace_crlf_7198_test.go (#7198); moduleRE above carries the
+	// identical exposure and its own rows.
 	namespaceRE = regexp.MustCompile(
 		`(?m)^([ \t]*)namespace\s+([\w.]+)\s*$`,
 	)
