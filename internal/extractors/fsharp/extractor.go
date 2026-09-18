@@ -30,6 +30,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -1032,9 +1034,17 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 // The keyword arms compare a TOKEN, not a prefix. `strings.HasPrefix` alone
 // classified `type Alias2 = classic` as "class" (measured on the pre-#7218
 // binary), and would have newly minted `type Alias1 = structural` -> "struct"
-// once the struct arm started reading the body. Token comparison is also what
-// isAliasBody has always done with the same keyword set
-// (strings.Fields(b)[0] == "struct"), so the two agree by construction.
+// once the struct arm started reading the body.
+//
+// isAliasBody carries the same keyword set and decides it with
+// strings.Fields(b)[0] == "struct". The two agree on every body whose keyword
+// is followed by whitespace or by end-of-body, which is every well-formed one;
+// they are NOT equal by construction, and the review of the first revision was
+// right to reject that claim. They diverge where punctuation abuts the keyword
+// (`struct{`): Fields keeps `struct{` as one field and calls the body an alias,
+// while the arm here treats `{` as a token boundary and returns "struct". Where
+// they diverge this arm runs first, so isAliasBody is never consulted; the
+// divergence is unreachable rather than resolved, and no fixture pins it.
 func classifyTypeSubtype(body string) string {
 	bodyTrimmed := strings.TrimSpace(body)
 	if strings.HasPrefix(bodyTrimmed, "{") {
@@ -1070,12 +1080,37 @@ func bodyOpensWithKeyword(bodyTrimmed, kw string) bool {
 		return false
 	}
 	rest := bodyTrimmed[len(kw):]
+	// A body that is EXACTLY the keyword — an incomplete buffer, since a
+	// complete `struct`/`class`/`interface` body carries its members and its
+	// `end` — still opens with the keyword as a token.
 	if rest == "" {
 		return true
 	}
-	r := rune(rest[0])
-	// F# identifier continuation: letters, digits, `_` and the prime `'`.
-	return !(isLetter(r) || (r >= '0' && r <= '9') || r == '_' || r == '\'')
+	r, _ := utf8.DecodeRuneInString(rest)
+	return !isFSharpIdentContinuation(r)
+}
+
+// isFSharpIdentContinuation reports whether r may CONTINUE an F# identifier.
+//
+// The first revision of #7218 read `rune(rest[0])` — a BYTE — and tested it
+// with this package's ASCII-only isLetter. Every UTF-8 lead byte (0xC2-0xF4)
+// is then neither letter, digit, `_` nor `'`, so the boundary check said
+// "token" for any multi-byte continuation and `type AliasB = structא`
+// classified as "struct". That was a WRONG ANSWER newly introduced on the very
+// path the fix exists to open, not a coverage gap.
+//
+// F# 4.1 spec §3.4: ident-char = letter-char | digit-char | connecting-char |
+// combining-char | formatting-char | `'` | `_`, where letter-char is
+// \Lu \Ll \Lt \Lm \Lo \Nl, digit-char is \Nd, connecting-char is \Pc
+// (which is where `_` itself lives, so it needs no separate case),
+// combining-char is \Mn \Mc and formatting-char is \Cf. Only `'` sits
+// outside those categories (it is \Po) and is named explicitly.
+func isFSharpIdentContinuation(r rune) bool {
+	if r == '\'' {
+		return true
+	}
+	return unicode.IsLetter(r) ||
+		unicode.In(r, unicode.Nl, unicode.Nd, unicode.Pc, unicode.Mn, unicode.Mc, unicode.Cf)
 }
 
 // buildLetSig builds a signature string for a let binding from the raw declaration.

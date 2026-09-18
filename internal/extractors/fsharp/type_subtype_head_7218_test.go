@@ -97,10 +97,31 @@ type fsSubtypeCase struct {
 	forbidden string
 }
 
+// fsSubtypeCaseDefect reports why a row cannot grade anything, or "" when the
+// row is well formed. It exists because the `forbidden` assertion is only
+// redundant (see the EQUIVALENT note above) so long as every row keeps
+// forbidden != want and a non-empty want. Nothing enforced that; a future row
+// with forbidden == want would look like coverage and be permanently ungraded.
+// It is a pure function so the guard itself has a positive control
+// (TestFSharpTypeSubtype_RowGuardFires) — a trip-wire that no row trips is
+// otherwise indistinguishable from one that is never consulted.
+func fsSubtypeCaseDefect(tc fsSubtypeCase) string {
+	if tc.want == "" {
+		return "row " + tc.name + " has an empty want: it asserts nothing"
+	}
+	if tc.forbidden == tc.want {
+		return "row " + tc.name + " forbids " + tc.forbidden + ", the value it also wants"
+	}
+	return ""
+}
+
 func runFSSubtypeCases(t *testing.T, cases []fsSubtypeCase) {
 	t.Helper()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if d := fsSubtypeCaseDefect(tc); d != "" {
+				t.Fatal(d)
+			}
 			ents := runFSharp(t, tc.src, "Types.fs")
 			if msg := fsSubtypeRowFailure(ents, tc.typeName, tc.want); msg != "" {
 				t.Errorf("%s\nsource:\n%s", msg, tc.src)
@@ -258,11 +279,18 @@ func TestFSharpTypeSubtype_BodyKeywordIsATokenNotAPrefix(t *testing.T) {
 			src:      "module M\n\ntype Alias3 = interfaces\n",
 			typeName: "Alias3", want: "alias", forbidden: "interface",
 		},
-		// The F# identifier CONTINUATION alphabet is letter / digit / `_` /
-		// `'` (reference, lexical rules for `ident`). It is enumerated here
-		// rather than sampled: the letter case above is the one a hand-picked
-		// fixture reaches, and each of the other three is separately deletable
-		// from the boundary check.
+		// The F# identifier CONTINUATION alphabet is enumerated here rather
+		// than sampled, by the CATEGORIES of F# 4.1 spec §3.4 — ident-char =
+		// letter-char (\Lu \Ll \Lt \Lm \Lo \Nl) | digit-char (\Nd) |
+		// connecting-char (\Pc, which is where `_` itself lives) |
+		// combining-char (\Mn \Mc) | formatting-char (\Cf) | `'` | `_`.
+		// Each category is separately deletable from the boundary check, and
+		// the ASCII rows above reach only two of them. The first revision of
+		// this fix read rest[0] as a BYTE and ran it through an ASCII-only
+		// isLetter, so every multi-byte continuation looked like a token
+		// boundary and `type AliasB = structא` classified as "struct" — a
+		// wrong answer this fix introduced on its own new path, caught in
+		// review of the first revision and pinned by the non-ASCII rows below.
 		{
 			name:     "abbreviation target: keyword then a digit",
 			src:      "module M\n\ntype Alias4 = struct2\n",
@@ -278,7 +306,109 @@ func TestFSharpTypeSubtype_BodyKeywordIsATokenNotAPrefix(t *testing.T) {
 			src:      "module M\n\ntype Alias6 = interface'\n",
 			typeName: "Alias6", want: "alias", forbidden: "interface",
 		},
+		{
+			// letter-char, non-ASCII: HEBREW LETTER ALEF U+05D0 is \Lo.
+			name:     "keyword then a non-ASCII letter (Lo)",
+			src:      "module M\n\ntype AliasB = struct\u05d0\n",
+			typeName: "AliasB", want: "alias", forbidden: "struct",
+		},
+		{
+			// letter-char, non-ASCII: GREEK SMALL LETTER ALPHA U+03B1 is \Ll.
+			name:     "keyword then a non-ASCII letter (Ll)",
+			src:      "module M\n\ntype AliasC = class\u03b1\n",
+			typeName: "AliasC", want: "alias", forbidden: "class",
+		},
+		{
+			// letter-char: ROMAN NUMERAL TWO U+2161 is \Nl, which is part of
+			// letter-char in §3.4 and is NOT covered by unicode.IsLetter.
+			name:     "keyword then a letter-number (Nl)",
+			src:      "module M\n\ntype AliasD = interface\u2161\n",
+			typeName: "AliasD", want: "alias", forbidden: "interface",
+		},
+		{
+			// digit-char, non-ASCII: ARABIC-INDIC DIGIT THREE U+0663 is \Nd.
+			name:     "keyword then a non-ASCII digit (Nd)",
+			src:      "module M\n\ntype AliasE = struct\u0663\n",
+			typeName: "AliasE", want: "alias", forbidden: "struct",
+		},
+		{
+			// connecting-char other than `_`: UNDERTIE U+203F is \Pc.
+			name:     "keyword then a connecting char (Pc)",
+			src:      "module M\n\ntype AliasF = class\u203ft\n",
+			typeName: "AliasF", want: "alias", forbidden: "class",
+		},
+		{
+			// combining-char: COMBINING GRAVE ACCENT U+0300 is \Mn.
+			name:     "keyword then a non-spacing mark (Mn)",
+			src:      "module M\n\ntype AliasG = interface\u0300\n",
+			typeName: "AliasG", want: "alias", forbidden: "interface",
+		},
+		{
+			// combining-char: DEVANAGARI SIGN VISARGA U+0903 is \Mc.
+			name:     "keyword then a spacing mark (Mc)",
+			src:      "module M\n\ntype AliasH = struct\u0903\n",
+			typeName: "AliasH", want: "alias", forbidden: "struct",
+		},
+		{
+			// formatting-char: ZERO WIDTH JOINER U+200D is \Cf.
+			name:     "keyword then a formatting char (Cf)",
+			src:      "module M\n\ntype AliasI = class\u200dt\n",
+			typeName: "AliasI", want: "alias", forbidden: "class",
+		},
 	})
+}
+
+// TestFSharpTypeSubtype_BodyIsExactlyTheKeyword grades the boundary check's
+// `rest == ""` branch, which nothing else reaches: every other fixture has
+// something after the keyword, so flipping that branch to `return false` was
+// ALIVE at 0 `--- FAIL` in the first revision's table (found in review, N1).
+//
+// FIXTURE HONESTY: `type Point = struct` with nothing after it is NOT a
+// complete F# declaration — the explicit form requires members and `end`. It is
+// an INCOMPLETE BUFFER, which is a real input for an extractor that indexes
+// files as they are edited, and it is labelled as such rather than dressed up
+// as legal source. What is pinned is that a half-written struct is recognised
+// as a struct and not as an alias to a type named `struct`.
+func TestFSharpTypeSubtype_BodyIsExactlyTheKeyword(t *testing.T) {
+	runFSSubtypeCases(t, []fsSubtypeCase{
+		{
+			name:     "incomplete buffer: body is exactly the keyword",
+			src:      "module M\n\ntype Point = struct\n",
+			typeName: "Point", want: "struct", forbidden: "type",
+		},
+	})
+}
+
+// TestFSharpTypeSubtype_RowGuardFires is the positive control for
+// fsSubtypeCaseDefect. A guard that no row trips passes identically whether it
+// is enforced or never consulted — the same hole the forbidden rows have — so a
+// defective row is planted here and the guard must name it.
+func TestFSharpTypeSubtype_RowGuardFires(t *testing.T) {
+	if d := fsSubtypeCaseDefect(fsSubtypeCase{
+		name: "planted", want: "struct", forbidden: "struct",
+	}); d == "" {
+		t.Error("guard accepted a row that forbids the value it wants: every " +
+			"`forbidden` assertion in this file is then unconstrained")
+	}
+	// This row carries a NON-EMPTY forbidden on purpose: with forbidden also
+	// empty the two guards mask each other, and the empty-want branch is then
+	// ungraded no matter how it is mutated (measured: ALIVE at 0 --- FAIL).
+	if d := fsSubtypeCaseDefect(fsSubtypeCase{
+		name: "planted", want: "", forbidden: "struct",
+	}); d == "" {
+		t.Error("guard accepted a row with an empty want")
+	}
+	// Inverted control: a well-formed row must pass, so the guard is a
+	// discrimination and not a constant failure.
+	if d := fsSubtypeCaseDefect(fsSubtypeCase{
+		name: "ok", want: "alias", forbidden: "struct",
+	}); d != "" {
+		t.Errorf("guard rejected a well-formed row: %s", d)
+	}
+	// A row may legitimately omit `forbidden` — most controls do.
+	if d := fsSubtypeCaseDefect(fsSubtypeCase{name: "ok", want: "record"}); d != "" {
+		t.Errorf("guard rejected a control row with no forbidden value: %s", d)
+	}
 }
 
 // TestFSharpTypeSubtype_ControlsUnchanged pins what the fix must NOT move. The
