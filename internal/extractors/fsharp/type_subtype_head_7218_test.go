@@ -104,7 +104,18 @@ type fsSubtypeCase struct {
 // with forbidden == want would look like coverage and be permanently ungraded.
 // It is a pure function so the guard itself has a positive control
 // (TestFSharpTypeSubtype_RowGuardFires) — a trip-wire that no row trips is
-// otherwise indistinguishable from one that is never consulted.
+// otherwise indistinguishable from one that is never consulted. Both halves
+// of the guard are scored there, and the control row for the empty-want half
+// carries a NON-EMPTY forbidden on purpose: with both empty the two halves
+// mask each other and the first is ungraded.
+//
+// Its CALL SITE in runFSSubtypeCases below is a different matter and is
+// PRICED AND DECLINED, not unkillable: short-circuiting it is ALIVE at 0
+// `--- FAIL`, and killing it would take a fake testing.TB seam — roughly
+// 30-40 lines plus a fake type — to observe that the helper fatals on a
+// defective row. For a trip-wire on the test table that is not worth it; the
+// cost is recorded here so the judgement can be revisited rather than
+// re-derived.
 func fsSubtypeCaseDefect(tc fsSubtypeCase) string {
 	if tc.want == "" {
 		return "row " + tc.name + " has an empty want: it asserts nothing"
@@ -305,6 +316,35 @@ func TestFSharpTypeSubtype_BodyKeywordIsATokenNotAPrefix(t *testing.T) {
 			name:     "abbreviation target: keyword then a prime",
 			src:      "module M\n\ntype Alias6 = interface'\n",
 			typeName: "Alias6", want: "alias", forbidden: "interface",
+		},
+		{
+			// CASE. `strings.HasPrefix` is case-sensitive and so is F#, but
+			// nothing in this package said so: making the prefix match
+			// case-insensitive (`strings.ToLower(bodyTrimmed)`) survived the
+			// whole package suite at 0 `--- FAIL`, and it is REACHABLE, not
+			// equivalent — under it `type AliasJ = Struct` classifies
+			// "struct". F# types are PascalCase by convention, so a
+			// user-defined type named `Struct` is idiomatic rather than
+			// exotic, and a later "robustness" tidy-up that normalises case
+			// would misclassify it while every other row here stayed green.
+			//
+			// Note the boundary check does NOT cover this: `Classy` is
+			// rejected by the boundary whatever the case folding, so only an
+			// exactly-case-differing keyword misclassifies. That is why the
+			// row is the bare keyword and not a longer identifier.
+			name:     "capitalised keyword as an abbreviation target",
+			src:      "module M\n\ntype AliasJ = Struct\n",
+			typeName: "AliasJ", want: "alias", forbidden: "struct",
+		},
+		{
+			name:     "capitalised keyword as an abbreviation target (interface)",
+			src:      "module M\n\ntype AliasK = Interface\n",
+			typeName: "AliasK", want: "alias", forbidden: "interface",
+		},
+		{
+			name:     "capitalised keyword as an abbreviation target (class)",
+			src:      "module M\n\ntype AliasL = Class\n",
+			typeName: "AliasL", want: "alias", forbidden: "class",
 		},
 		{
 			// letter-char, non-ASCII: HEBREW LETTER ALEF U+05D0 is \Lo.
