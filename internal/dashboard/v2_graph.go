@@ -217,19 +217,19 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// buildV2Graph walks the loaded repos and assembles the v2 graph payload.
-// Mirrors serveGraphDense's visibility + filter rules so v1 and v2 agree on
-// which nodes/edges exist; adds pagerank + source_file + repo/community color
-// indices that the cosmos.gl canvas needs.
-func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool) v2GraphResponse {
-	nodeCap, edgeCap := lodLimits("full")
-	return s.buildV2GraphWithLimits(repos, grp, filterKind, includeExternal, includeModules, nodeCap, edgeCap)
-}
-
-// buildV2GraphWithLimits applies LoD before allocating wire edges. For large
-// groups this avoids materialising millions of v2GraphEdge values that would be
-// discarded immediately: a compact integer adjacency preserves the connected
-// thinning contract at a fraction of the memory cost.
+// buildV2GraphWithLimits walks the loaded repos and assembles the v2 graph
+// payload. Mirrors serveGraphDense's visibility + filter rules, so before LoD
+// thinning v1 and v2 agree on which nodes/edges exist; adds pagerank +
+// source_file + repo/community color indices that the cosmos.gl canvas needs.
+// The agreement is on the CANDIDATE set only: whenever that set exceeds the
+// nodeCap/edgeCap arguments the served set is a pagerank-thinned subset of it,
+// which at `overview` (500/4,000) is most graphs and at `full`
+// (50,000/250,000) is few.
+//
+// It applies LoD before allocating wire edges. For large groups this avoids
+// materialising millions of v2GraphEdge values that would be discarded
+// immediately: a compact integer adjacency preserves the connected thinning
+// contract at a fraction of the memory cost.
 //
 // Both production entry points (serveV2Graph and the stream handler) derive
 // nodeCap/edgeCap from lodLimits, which never returns 0 for either, so every

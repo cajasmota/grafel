@@ -9,7 +9,7 @@ package dashboard
 // The daemon rebuild indexed each repo with an EMPTY repoTag, so doc.Repo fell
 // back to the on-disk directory basename ("acme_core", with an underscore).
 // When the wizard slugified the config slug ("acme_core" -> "acme-core")
-// the two no longer matched, so buildV2Graph's `visible[l.Source] &&
+// the two no longer matched, so buildV2GraphWithLimits' `visible[l.Source] &&
 // visible[l.Target]` guard dropped every cross-repo edge.
 //
 // These tests pin the serving-layer invariant: a cross-repo link whose
@@ -77,7 +77,7 @@ func repoOfPrefixed(id string) string {
 func TestBuildV2Graph_CrossRepoEdge_SlugsMatch(t *testing.T) {
 	var s Server
 	grp := twoRepoGroup("acme-core-frontend", "acme-core", "acme-core-frontend", "acme-core")
-	resp := s.buildV2Graph(sortedRepos(grp), grp, "", false, false)
+	resp := s.buildV2GraphFullLoD(t, sortedRepos(grp), grp, "", false, false)
 	if got := countCrossRepoEdges(resp); got != 1 {
 		t.Fatalf("cross-repo edges = %d; want 1 (slugs match, edge must be served) — #1576", got)
 	}
@@ -91,7 +91,7 @@ func TestBuildV2Graph_CrossRepoEdge_SlugsMatch(t *testing.T) {
 func TestBuildV2Graph_CrossRepoEdge_SlugMismatchDrops(t *testing.T) {
 	var s Server
 	grp := twoRepoGroup("acme-core-frontend", "acme-core", "acme_core_frontend", "acme_core")
-	resp := s.buildV2Graph(sortedRepos(grp), grp, "", false, false)
+	resp := s.buildV2GraphFullLoD(t, sortedRepos(grp), grp, "", false, false)
 	if got := countCrossRepoEdges(resp); got != 0 {
 		t.Fatalf("cross-repo edges = %d; want 0 for the divergent-slug bug condition — guards the #1576 contract", got)
 	}
@@ -102,9 +102,9 @@ func TestBuildV2Graph_CrossRepoEdge_SlugMismatchDrops(t *testing.T) {
 // ("acme_core_frontend", "acme_core") even after #1576/#1579, while the
 // dashboard repos / served node IDs use the dash form. normalizeLinkEndpoints
 // (called from loadGroup at link-load time) rewrites the slug prefix to the
-// canonical config slug, so buildV2Graph's visibility guard then matches and
-// the cross-repo edge IS served. Without the rewrite the edge is silently
-// dropped (the symptom: 0 of 37,104 served edges were cross-repo).
+// canonical config slug, so buildV2GraphWithLimits' visibility guard then
+// matches and the cross-repo edge IS served. Without the rewrite the edge is
+// silently dropped (the symptom: 0 of 37,104 served edges were cross-repo).
 func TestNormalizeLinkEndpoints_UnderscoreSlugRewrite(t *testing.T) {
 	grp := twoRepoGroup("acme-core-frontend", "acme-core", "acme_core_frontend", "acme_core")
 	grp.Links = normalizeLinkEndpoints(grp.Links, grp.Repos)
@@ -117,7 +117,7 @@ func TestNormalizeLinkEndpoints_UnderscoreSlugRewrite(t *testing.T) {
 	}
 
 	var s Server
-	resp := s.buildV2Graph(sortedRepos(grp), grp, "", false, false)
+	resp := s.buildV2GraphFullLoD(t, sortedRepos(grp), grp, "", false, false)
 	if got := countCrossRepoEdges(resp); got != 1 {
 		t.Fatalf("cross-repo edges = %d; want 1 after slug normalisation — #1582", got)
 	}

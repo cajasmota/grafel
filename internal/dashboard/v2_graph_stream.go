@@ -10,8 +10,8 @@
 // Increment 1 of epic #5446 — BACKEND ONLY. The existing /api/v2/graph/{group}
 // full-payload endpoint is left untouched; the frontend can switch to this
 // stream later with no data-model change because the per-node / per-edge JSON
-// is byte-for-byte the same shape buildV2Graph produces (v2GraphNode /
-// v2GraphEdge).
+// is byte-for-byte the same shape buildV2GraphWithLimits produces
+// (v2GraphNode / v2GraphEdge).
 //
 // ── Format: SSE (not NDJSON) ─────────────────────────────────────────────────
 //
@@ -347,8 +347,8 @@ func orderGraphStreamNodes(nodes []v2GraphNode) {
 // flushing after each. An edge rides in the first chunk by which BOTH of its
 // endpoints have already been streamed, so the frontend never sees an edge that
 // references a node it has not received yet. Any edge whose endpoint never
-// appears in the served node set (should not happen — buildV2Graph filters
-// edges to visible nodes) is skipped.
+// appears in the served node set (should not happen — buildV2GraphWithLimits
+// filters edges to visible nodes) is skipped.
 func streamGraphChunks(w http.ResponseWriter, flusher http.Flusher, nodes []v2GraphNode, edges []v2GraphEdge) {
 	// chunkIndex[id] = index of the chunk in which the node is streamed.
 	chunkIndex := make(map[string]int, len(nodes))

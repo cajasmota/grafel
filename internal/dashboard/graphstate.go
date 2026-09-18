@@ -935,9 +935,9 @@ func hashDashboardArtifact(h interface{ Write([]byte) (int, error) }, kind, path
 // cross-repo links so each one matches the canonical prefixed node ID used by
 // the served graph (built with dashPrefixedID(rp.Slug, entity.ID)). Without
 // this rewrite the merge guard `visible[l.Source] && visible[l.Target]` in
-// buildV2Graph / serveGraphDense never matches and every cross-repo edge is
-// silently dropped from the served graph — the #1582 symptom (0 of 37,104
-// served edges were cross-repo).
+// buildV2GraphWithLimits / serveGraphDense never matches and every cross-repo
+// edge is silently dropped from the served graph — the #1582 symptom (0 of
+// 37,104 served edges were cross-repo).
 //
 // The repo-slug PREFIX written by the link pass diverges from the dashboard
 // repo slugs in (at least) two ways observed in the corpus:
