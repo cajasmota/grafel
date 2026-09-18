@@ -32,9 +32,9 @@ jobs:
       # the title so a retitle cannot fork the thread (#6636).
       ISSUE_MARKER: 'grafel-tracker:a2-grammar-freshness'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 

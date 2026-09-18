@@ -7,8 +7,16 @@ jobs:
   closure-keyword:
     runs-on: ubuntu-latest
     steps:
+      # #7243: v8 is the first github-script major on the Node 24 runtime, and
+      # is a runtime-only change. v9 was deliberately NOT taken: it is the
+      # ESM/octokit-v9 major — `require('@actions/github')` stops working and
+      # `getOctokit` becomes an injected script parameter, so a script that
+      # redeclares it with const/let is a SyntaxError. The script below touches
+      # only `context` and `core`, so v9 would in fact be safe today, but it
+      # buys nothing this issue is about and widens the blast radius of a CI
+      # gate that runs on every PR.
       - name: Check PR body has closure keyword
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const body = context.payload.pull_request.body || '';

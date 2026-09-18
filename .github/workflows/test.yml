@@ -207,7 +207,30 @@ jobs:
       # plain `pull_request` trigger (#6291) — which GitHub already checks out at
       # HEAD by default, so the explicit ref there is redundant but harmless, and
       # keeps this one checkout step correct for every trigger this workflow has.
-      - uses: actions/checkout@v4
+      # #7243: pinned at v5 — the FIRST checkout major on the Node 24 runtime —
+      # and deliberately not higher. v6 moves persisted credentials out of the
+      # git config into a separate file. v7 refuses to check out FORK pull
+      # request code from a workflow triggered by `pull_request_target` or
+      # `workflow_run` unless the new `allow-unsafe-pr-checkout: true` input is
+      # passed — and the `ref:` below is exactly that checkout, so on a fork PR
+      # carrying `ci:full` this job would stop until someone opted back in to
+      # the thing v7 exists to prevent.
+      #
+      # THE AFFECTED SITES ARE THIS FILE AND `windows-cgo-experiment.yml`, and
+      # only those two: they are the only workflows with a
+      # `pull_request_target` trigger, and both check out
+      # `github.event.pull_request.head.sha`. `acceptance.yml` is NOT affected
+      # even though it is the repo's one `workflow_run` consumer — it is gated
+      # on `workflow_run.event == 'push'` and checks out
+      # `workflow_run.head_sha`, i.e. a tag push from `release.yml`, never fork
+      # PR code. Stated here precisely because a reader who checks a wrong
+      # example and finds it wrong will discard the whole rationale and bump.
+      #
+      # Every `actions/checkout` in this repo is pinned at v5 for that reason.
+      # There is no `.github/dependabot.yml`, so nothing will re-bump these
+      # automatically; this comment is the only thing standing between a future
+      # sweep and a broken fork-PR leg.
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -215,6 +238,10 @@ jobs:
       # Resolves #937 / #1796 — no vendor patch needed with CGO_ENABLED=1.
       - name: Setup MSYS2 + MinGW (Windows only)
         if: runner.os == 'Windows'
+        # NOT bumped by the #7243 Node20 -> Node24 action migration, and not an
+        # oversight: msys2/setup-msys2 already declares `runs.using: node24` at
+        # both `v2` and `v2.31.1` (checked against the action.yml at each tag),
+        # so it never emitted the forced-migration warning. There is no v3.
         uses: msys2/setup-msys2@v2.31.1
         with:
           msystem: MINGW64
@@ -230,7 +257,20 @@ jobs:
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
           echo "CC=x86_64-w64-mingw32-gcc" >> $GITHUB_ENV
 
-      - uses: actions/setup-go@v5
+      # #7243: setup-go@v6 is the first major on the Node 24 runtime. It
+      # carries TWO behavioural changes, both from actions/setup-go#460:
+      #   1. it exports GOTOOLCHAIN=local, so `go` no longer silently
+      #      downloads a newer toolchain than the one installed; and
+      #   2. it prefers a `toolchain` directive over the `go` directive when
+      #      resolving a version from a go.mod/go.work.
+      # Both are inert here. Every go.mod in the tree was swept — the root
+      # (go 1.26.0), third_party/tree-sitter-swift (1.26.0) and
+      # internal/quality/golden/go-chi-mini/src (1.25.5) — and NONE carries a
+      # `toolchain` line, so (2) has nothing to prefer. No workflow uses
+      # `go-version-file`; all 18 setup-go sites pass `go-version: '1.26'`
+      # explicitly, which installs a 1.26.x that already satisfies the root
+      # module's `go 1.26.0`, so (1) never has to download anything.
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           cache: true
@@ -306,7 +346,7 @@ jobs:
       - run: go build ./...
 
       # Purge BOTH the test-result cache AND the compiled-object cache.
-      # actions/setup-go@v5 with cache:true persists ~/.cache/go-build across
+      # actions/setup-go@v6 with cache:true persists ~/.cache/go-build across
       # runs, including compiled test binaries. -count=1 only disables result
       # caching; `go clean -testcache` flushes test results but NOT compiled
       # binaries; only `go clean -cache` flushes the build cache. Without
@@ -476,7 +516,7 @@ jobs:
       # Written as an artifact rather than a job output because matrix legs
       # share one output namespace (last writer wins), so outputs cannot tell
       # you WHICH legs existed. Artifact names must be unique within a run in
-      # actions/upload-artifact@v4; `test-leg-<os>` is.
+      # actions/upload-artifact@v6; `test-leg-<os>` is.
       - name: Record that this OS leg ran (#7219)
         if: always()
         shell: bash
@@ -485,7 +525,7 @@ jobs:
           echo "${{ matrix.os }}" > ".ci-leg/os"
       - name: Upload OS-leg marker (#7219)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-leg-${{ matrix.os }}
           path: .ci-leg/os
@@ -525,7 +565,7 @@ jobs:
   #
   # FAIL-CLOSED: the download step is `continue-on-error: true` ONLY so that
   # zero artifacts reaches the assert script as an empty directory and produces
-  # a legible message, instead of actions/download-artifact@v4's own
+  # a legible message, instead of actions/download-artifact@v7's own
   # "unable to find any artifacts" error. Zero artifacts still fails, in the
   # script.
   #
@@ -550,9 +590,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # #7243: upload-artifact@v6 and download-artifact@v7 are the first major
+      # of each on the Node 24 runtime — upload@v5 and download@v5/v6 are still
+      # node20, so the v4 -> v5 step that fits the other actions would NOT have
+      # fixed these two. The one breaking change crossed on the way, the
+      # download@v5 path fix, applies only to downloading a SINGLE artifact by
+      # `artifact-ids`; no workflow in this repo uses `artifact-ids` at all —
+      # every download selects by `name` or `pattern`, whose layout is
+      # unchanged. Same-run downloads still take no `github-token` in v7
+      # (`github-token`/`repository`/`run-id` remain the opt-in for reading
+      # ANOTHER run), so the ACTIONS_RUNTIME_TOKEN premise above still holds.
       - name: Download OS-leg markers
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: legs
           pattern: test-leg-*
@@ -671,7 +721,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Python version
         run: python3 --version
