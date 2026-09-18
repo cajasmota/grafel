@@ -341,3 +341,60 @@ func TestFSharp_NestedType7187_NameCollisionDropsTheEdge(t *testing.T) {
 		t.Errorf("distinct-name control: CollideHost EXTENDS = %v, want none", got)
 	}
 }
+
+// TestFSharp_NestedType7187_BraceGuardReadsTheUnmaskedBody grades the CHOICE of
+// input to the object-expression brace guard (#6326's `insideBraces`), which
+// this change had to make and which nothing observed until PR #7188's EC-1
+// mutant — swapping both guard call sites to consult the MASKED text — came
+// back ALIVE at 0 `--- FAIL`.
+//
+// The two inputs can differ, and the shape required is narrow. Masking replaces
+// bytes with spaces and preserves length, so offsets are identical and only
+// content differs; `insideBraces` asks `count("{") > count("}")` over the
+// prefix. A verdict flip therefore needs a masked region holding MORE `}` than
+// `{` — i.e. a brace region that OPENS outside a nested type's block and CLOSES
+// inside it. Masking then eats the closer, the prefix looks permanently open,
+// and every later clause is suppressed. The opposite imbalance cannot flip the
+// verdict, because `>` reads a negative depth the same as zero.
+//
+// Below: the object expression opens on line 11 at column 8, the nested header
+// is on line 13 at column 4, and the closing `}` on line 14 is inside the
+// nested block. `BraceHost`'s own `inherit` on line 15 sits AFTER the object
+// expression has closed, so it is genuinely its own clause and must be emitted.
+// Measured: emitted with the guard on `scrubbed`; SILENTLY DROPPED with the
+// guard on `masked`.
+//
+// Axis VARIED: nothing — this is a single constructed witness. Its role is to
+// make the guard's input choice observable, not to sweep a space.
+// Axes HELD CONSTANT: one nesting level, one object expression, the outer
+// clause after the nested block, the file path.
+//
+// HONEST SCOPE, because the doc comment on maskNestedTypeBodies must not
+// overstate it: a nested `type` header inside an unclosed object-expression
+// brace is almost certainly NOT legal F#, and DERIVED-NOT-EXECUTED applies (no
+// toolchain here). What this row proves is that the two inputs are NOT
+// interchangeable in the extractor's own alphabet, so the choice is a real one
+// and `scrubbed` is the conservative side of it. It does not claim the shape
+// occurs in real code, and no corpus incidence has been counted.
+func TestFSharp_NestedType7187_BraceGuardReadsTheUnmaskedBody(t *testing.T) {
+	const src = "module M\n" + // 1
+		"\n" + // 2
+		"type BraceBase() =\n" + // 3
+		"    class end\n" + // 4
+		"\n" + // 5
+		"type IThing =\n" + // 6
+		"    abstract member Ping : unit -> unit\n" + // 7
+		"\n" + // 8
+		"type BraceHost() =\n" + // 9
+		"    member _.Make () =\n" + // 10
+		"        { new IThing with\n" + // 11  '{' OUTSIDE any nested block
+		"            member _.Ping () = ()\n" + // 12
+		"    type BraceNested() =\n" + // 13  nested header, column 4
+		"        member _.Q = 0 }\n" + // 14  '}' INSIDE the nested block
+		"    inherit BraceBase()\n" // 15  outer's own clause, after the close
+
+	ents := runFSharp(t, src, "src/Brace.fs")
+	if got := fsHierTargets(t, ents, "BraceHost", "EXTENDS"); !eqStrs(got, []string{"BraceBase"}) {
+		t.Errorf("brace guard: BraceHost EXTENDS = %v, want [BraceBase] — the object expression closes on line 14, so line 15's inherit is BraceHost's own; a guard reading the MASKED body loses the closing brace with the nested block and suppresses it", got)
+	}
+}

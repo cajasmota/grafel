@@ -1221,8 +1221,24 @@ func collectHierarchyEdges(body string, typeStartLine int, signatureFile bool) [
 	scrubbed := stripStringsAndComments(body)
 
 	// #7187: a nested type's clauses are its own. Matching runs over the masked
-	// text; the BRACE guard below deliberately keeps consulting the unmasked
-	// `scrubbed`, so masking cannot change any object-expression depth count.
+	// text; the BRACE guard below keeps consulting the unmasked `scrubbed`.
+	//
+	// That is a real choice, not a formality, and it is GRADED —
+	// TestFSharp_NestedType7187_BraceGuardReadsTheUnmaskedBody is the witness,
+	// added after PR #7188's EC-1 mutant (both guard sites swapped to `masked`)
+	// came back ALIVE at 0 --- FAIL and showed the claim was unobserved. The two
+	// inputs differ exactly when a masked region holds MORE `}` than `{`, i.e. a
+	// brace region that opens OUTSIDE a nested block and closes INSIDE it:
+	// masking eats the closer, insideBraces reads the prefix as permanently
+	// open, and every later clause is silently suppressed. The opposite
+	// imbalance cannot flip the verdict, since `count("{") > count("}")` reads a
+	// negative depth the same as zero.
+	//
+	// So `scrubbed` is the conservative side, on a shape that is almost
+	// certainly not legal F# (DERIVED-NOT-EXECUTED; no toolchain here) and whose
+	// corpus incidence is uncounted. Stated as what is known, not as "masking
+	// cannot change any depth count" — that earlier wording asserted a causal
+	// claim nothing in the suite observed.
 	masked := maskNestedTypeBodies(scrubbed)
 
 	var out []types.RelationshipRecord
