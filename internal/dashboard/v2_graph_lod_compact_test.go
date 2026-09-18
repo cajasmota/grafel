@@ -19,7 +19,7 @@ func TestCompactNodeThinningMatchesLegacyThinning(t *testing.T) {
 	grp := makeCompactLODFixture(120, 900)
 	server := &Server{}
 	repos := sortedRepos(grp)
-	full := server.buildV2Graph(repos, grp, "", false, false)
+	full := server.buildV2GraphFullLoD(t, repos, grp, "", false, false)
 	const cap = 30
 	_, edgeCap := lodLimits("normal")
 	wantNodes := thinByPagerankConnected(full.Nodes, full.Edges, cap)
@@ -75,7 +75,7 @@ func BenchmarkBuildV2GraphLegacy20K300K(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		resp := server.buildV2Graph(repos, grp, "", false, false)
+		resp := server.buildV2GraphFullLoD(b, repos, grp, "", false, false)
 		resp.Nodes = thinByPagerankConnected(resp.Nodes, resp.Edges, 3_000)
 		kept := make(map[string]bool, len(resp.Nodes))
 		for _, node := range resp.Nodes {

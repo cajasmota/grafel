@@ -144,7 +144,7 @@ Invalid repository slugs, channels, evidence values, directions, depths, or coun
 ### Data source and aggregation
 
 - Build repository topology directly from repository metadata and persisted cross-repository links in the loaded group.
-- Do not call `buildV2Graph`, allocate entity-level wire nodes, or traverse all internal repository relationships.
+- Do not call `buildV2GraphWithLimits`, allocate entity-level wire nodes, or traverse all internal repository relationships.
 - Normalize the channel from structured link metadata first, then stable method/kind fields, then contract identifiers. Use a deterministic `other` fallback rather than dropping unknown cross-repository relationships.
 - Resolve source and target repository from persisted link endpoints. Never infer a repository solely from a display label.
 - Aggregate in one pass over the relevant link set using a key of `(sourceRepo, targetRepo, channel)`.
