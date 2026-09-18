@@ -721,14 +721,16 @@ func TestLocalModule7151_CRLFSourceMintsBothForms(t *testing.T) {
 // BEHAVIOUR. IT IS NOT AN ENDORSEMENT, AND ITS FAILURE IS NOT A REGRESSION.
 //
 // The local arm is gated on stripStringsAndComments (see the comment in
-// extractFSharp). That function runs away on two legal F# constructs:
+// extractFSharp). That function used to run away on two legal F# constructs:
 //
-//	let p = @"C:\"     // verbatim string, trailing backslash
-//	let q = '"'        // character literal holding a quote
+//	let p = @"C:\"     // verbatim string, trailing backslash — FIXED by #7199
+//	let q = '"'        // character literal holding a quote — STILL OPEN, #7193
 //
-// Its `case '"'` arm carries the comment "Check for verbatim string @\"...\""
-// and performs NO such check, so `\` is treated as a C-style escape and eats
-// the closing quote; and there is no general char-literal state.
+// The verbatim half is fixed: the scrubber now has a verbatim mode in which `\`
+// is an ordinary character and the quote escape is `""`, and the first subtest
+// below has been FLIPPED to want [Target] accordingly. The char-literal half
+// remains: there is still no general char-literal state, so `'"'` opens a
+// string that never closes.
 //
 // READ THIS BEFORE FIXING #7193. The package already has a RECORDED DECISION
 // that a GENERAL char-literal scrub is wrong, and it is easy to walk straight
@@ -754,20 +756,27 @@ func TestLocalModule7151_CRLFSourceMintsBothForms(t *testing.T) {
 //
 // # HOW TO UPDATE THIS ROW
 //
-// A fix for #7193 SHOULD TURN THE FIRST TWO SUBTESTS RED. That is the signal
-// that it worked. When that happens, flip those rows to want-1 with a note
-// saying #7193 landed — UPDATE them deliberately, do not delete them, and do
-// not read the failure as a regression in #7151.
+// A fix SHOULD TURN THE RECORDING SUBTEST RED. That is the signal that it
+// worked. When that happens, flip the row to want-1 with a note naming the
+// fix — UPDATE it deliberately, do not delete it, and do not read the failure
+// as a regression in #7151. The verbatim subtest has already been through this
+// (#7199); the char-literal subtest is the one still recording a 0.
 func TestLocalModule7151_ScrubRunawayHidesLocalModule_7193(t *testing.T) {
 	const decl = "module Target =\n    let x = 1\n"
 
-	t.Run("verbatim string with trailing backslash: RECORDS 0, a #7193 fix makes it 1", func(t *testing.T) {
+	// UPDATED BY #7199 (the verbatim half), following this test's own "HOW TO
+	// UPDATE THIS ROW" instruction: the scrubber gained a verbatim mode in
+	// which `\` is an ordinary character and `""` is the quote escape, so
+	// `@"C:\"` is a complete string and the local module below it is seen.
+	// The row is FLIPPED to want [Target], not deleted — it is now the
+	// regression pin for that fix at this call site.
+	t.Run("verbatim string with trailing backslash: #7199 LANDED, wants [Target]", func(t *testing.T) {
 		src := "namespace Outer\n\nlet p = @\"C:\\\"\n\n" + decl
 		got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Runaway.fs")))
-		if len(got) != 0 {
-			t.Errorf("RECORDED BEHAVIOUR CHANGED: a local module below `@\"C:\\\"` now emits %v. "+
-				"If #7193 has been fixed this is the SIGNAL THAT IT WORKED, not a regression — "+
-				"update this row to want exactly [Target] with a note naming the fix.", got)
+		if len(got) != 1 || got[0] != "Target" {
+			t.Errorf("a local module below `@\"C:\\\"` emitted %v, want [Target] — #7199 gave the "+
+				"scrubber a verbatim mode; a return to 0 here is that fix regressing, not the "+
+				"recorded runaway", got)
 		}
 	})
 

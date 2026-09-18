@@ -605,12 +605,13 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// byte per input byte), so the NAME capture's offsets index the scrubbed
 	// copy directly; a name that survives the scrub unchanged was real source.
 	//
-	// STATED SCOPE LIMIT — #7193. stripStringsAndComments RUNS AWAY on two
-	// legal F# constructs: a verbatim string with a trailing backslash
-	// (`@"C:\"`) and a character literal holding a quote (`'"'`). Its
-	// `case '"'` arm carries the comment "Check for verbatim string @\"...\""
-	// and performs no such check, so `\` is treated as a C-style escape and
-	// eats the closing quote; and there is no general char-literal state.
+	// STATED SCOPE LIMIT — #7193. stripStringsAndComments RUNS AWAY on a
+	// character literal holding a quote (`'"'`): there is no general
+	// char-literal state. The OTHER runaway this comment used to name, a
+	// verbatim string with a trailing backslash (`@"C:\"`), is FIXED — #7199
+	// gave the scrubber a verbatim mode in which `\` is an ordinary character
+	// and `""` is the quote escape, so the `case '"'` arm's
+	// "Check for verbatim string" comment now describes a check that exists.
 	//
 	// READ THIS BEFORE FIXING #7193 — the package ALREADY has a recorded
 	// decision that a GENERAL char-literal scrub is WRONG, and it is easy to
@@ -621,13 +622,15 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// its counter-example are pinned by
 	// TestFSharp_PrimedIdentifierBeforeCharLiteralBrace in hierarchy_test.go.
 	// A naive `'.'` state added to stripStringsAndComments turns that test
-	// RED at the same time as it turns the two recording subtests below
-	// GREEN. Any #7193 fix must satisfy both.
-	// Everything after such a construct scrubs to blank, so a REAL local
-	// module below one is dropped and this fix does not apply for the rest of
-	// that file. This is PRE-EXISTING and NOT caused here — the local form
-	// minted 0 unconditionally before #7151, and nine non-test call sites in
-	// this package share the defect. The attribution is clean because a
+	// RED at the same time as it turns the remaining recording subtest below
+	// GREEN. Any #7193 fix must satisfy both. #7199's verbatim mode needed no
+	// such trade: `@"` is unambiguous, so that half is fixed and only the
+	// char-literal half is still open.
+	// Everything after the char-literal construct scrubs to blank, so a REAL
+	// local module below one is dropped and this fix does not apply for the
+	// rest of that file. This is PRE-EXISTING and NOT caused here — the local
+	// form minted 0 unconditionally before #7151, and nine non-test call sites
+	// in this package share the defect. The attribution is clean because a
 	// TOP-LEVEL module in the byte-identical file still mints (that arm is
 	// ungated). Recorded, not fixed, by
 	// TestLocalModule7151_ScrubRunawayHidesLocalModule_7193.
@@ -1639,8 +1642,26 @@ func stripStringsAndComments(src string) string {
 	i := 0
 	inStr := byte(0) // 0=none, '"'=double-quote
 	inTriple := false
+	inVerbatim := false
 	for i < len(src) {
 		ch := src[i]
+		if inVerbatim {
+			// Inside @"..." a `\` is an ORDINARY character, not an escape
+			// (#7199). The only escape is a DOUBLED quote `""`, which denotes
+			// one literal quote and does NOT close the string — so both bytes
+			// are consumed together. A single `"` closes.
+			out[i] = ' '
+			if ch == '"' {
+				if i+1 < len(src) && src[i+1] == '"' {
+					out[i+1] = ' '
+					i += 2
+					continue
+				}
+				inVerbatim = false
+			}
+			i++
+			continue
+		}
 		if inTriple {
 			out[i] = ' '
 			if i+2 < len(src) && ch == '"' && src[i+1] == '"' && src[i+2] == '"' {
@@ -1677,7 +1698,35 @@ func stripStringsAndComments(src string) string {
 				inTriple = true
 				continue
 			}
-			// Check for verbatim string @"..."
+			// Check for verbatim string @"..." — the `@` immediately before the
+			// quote is what opens it. The lookbehind matches the F# lexer,
+			// which munches `@"` maximally: `xs@"abc"` — no space around what
+			// would otherwise be the list-append operator — lexes as a verbatim
+			// string rather than an append, so agreeing with it here needs no
+			// extra condition. DERIVED, NOT EXECUTED: there is no F# toolchain
+			// on this machine, so that reading comes from the lexical spec and
+			// nothing compiled it.
+			//
+			// The `@` is blanked TOO — it is part of the literal's opening
+			// delimiter, so suppression should cover it. Before the verbatim
+			// mode existed it stayed visible, and that accident was doing
+			// defensive work: a leaked body behind a surviving `@`
+			// could not match the `^\s*`-anchored patterns (moduleRE, the
+			// inheritance clauses), so a scrub that stopped suppressing a
+			// verbatim body was INVISIBLE to every anchored consumer. Blanking
+			// it makes the verbatim path defended for the same reason the
+			// ordinary one is, rather than by a delimiter left lying in the
+			// output — and it is what makes this commit's forbidden row able to
+			// observe a permissive regression on the verbatim path at all.
+			// Length is preserved: index i-1 already exists and is rewritten in
+			// place.
+			if i > 0 && src[i-1] == '@' {
+				out[i-1] = ' '
+				out[i] = ' '
+				i++
+				inVerbatim = true
+				continue
+			}
 			inStr = '"'
 			out[i] = ' '
 			i++
