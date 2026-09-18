@@ -77,10 +77,21 @@ import (
 // parameter list wrapped across lines is a separate shape, untouched here);
 // no generic parameters (that group is non-capturing and cannot be the -1 pair).
 //
-// DERIVED-NOT-EXECUTED. No Nim toolchain exists on this machine, so the
-// expected signatures below are derived from buildSig (keyword + " " + name,
-// with params appended only when non-empty) and never from what the extractor
-// emitted.
+// DERIVED-NOT-EXECUTED. No Nim toolchain exists on this machine, so every
+// expected signature below is derived from buildSig — `kw + " " + name`, with
+// `params` appended only when non-empty — and `params` is group 3 of procRE
+// and nothing else. That derivation settles every cell including `typed`:
+// `proc typed*(a: string): int =` has a participating group 3 of `(a: string)`,
+// and the return-type annotation is a NON-CAPTURING group that can never reach
+// buildSig, so the expected value is "proc typed(a: string)".
+//
+// Honesty about how that cell got here: it was first written as
+// "proc typed(a: string): int", which is what the DECLARATION HEAD reads, and
+// the run disagreed. The value above is the re-derivation, not the observation
+// copied back — the observation only showed that the first derivation had
+// silently switched from "group 3" to "the text I can see". That is the exact
+// failure a derived-not-executed rule exists to catch, so the cell is kept as
+// the file's own worked example rather than quietly corrected.
 // ---------------------------------------------------------------------------
 
 const parens7197Path = "src/domain/routines.nim"
@@ -165,6 +176,15 @@ func TestParensGroup7197_ParenlessRoutineExtractsWithEmptyParamSignature(t *test
 
 // TestParensGroup7197_ParenlessCrossedWithTheOtherOptionalPieces holds the
 // export marker, return type and pragma axes against the same -1 pair.
+//
+// NOT independent evidence for the proc-loop wrapper, and it must not be counted
+// as a second kill for it. A slice-bounds panic aborts the whole test BINARY, so
+// when that wrapper is deleted the Mixed row above panics first and this row
+// never executes — it is masked. Its value is as a SIGNATURE pin across the
+// non-capturing axes (a widening that started capturing the return type or the
+// pragma shows up here and nowhere else), not as coverage of the guard. The
+// guard's two copies are each killed by exactly one designated row: Mixed for
+// the proc loop, WithType for the type re-scan.
 func TestParensGroup7197_ParenlessCrossedWithTheOtherOptionalPieces(t *testing.T) {
 	ents := band7185Run(t, parens7197Decorated, parens7197Path)
 
@@ -175,10 +195,9 @@ func TestParensGroup7197_ParenlessCrossedWithTheOtherOptionalPieces(t *testing.T
 	parens7197Sig(t, ents, "countUp", "iterator countUp")
 	// NOT "proc typed(a: string): int". The return-type annotation is a
 	// NON-CAPTURING group, so it never reaches `params` and buildSig never sees
-	// it — the signature carries the parameter list alone. This expectation was
-	// derived wrongly the first time and corrected against the observed value;
-	// it is recorded here because it is the cell that distinguishes "the
-	// signature echoes the declaration head" from "the signature echoes group 3".
+	// it — the signature carries the parameter list alone. This is the cell that
+	// distinguishes "the signature echoes the declaration head" from "the
+	// signature echoes group 3"; see the header for why it is kept.
 	parens7197Sig(t, ents, "typed", "proc typed(a: string)")
 }
 

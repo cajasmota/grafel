@@ -390,8 +390,24 @@ func extractActivePatterns(src, filePath string, imports []string) []types.Entit
 	// omitted — so reading m[4]..m[7] below needs no arity guard. #7197 removed
 	// the unreachable `if len(m) < 8`. Adding a fourth group changes this
 	// invariant, not the guard. All three groups are mandatory, so none of them
-	// can be the `-1,-1` pair here; the compound `len(m) < 4 || m[2] < 0` guards
-	// further down this file are a different question and were left alone.
+	// can be the `-1,-1` pair here.
+	//
+	// #7197 also retired the arity guard on this file's typeRE loop (the same
+	// regex object as extractor.go's typeRE loop, 2 groups, len 6), measured
+	// with its own probe pair. What SURVIVES in this file, exhaustively:
+	//
+	//	detectCEBuilder (memberRE) and collectBuilderBindings (ceBuilderBindRE),
+	//	  both `len(m) < 3` — these call FindAllStringSubmatch, not ...Index,
+	//	  which returns 1+n STRINGS rather than 2*(1+n) ints. Dead by that
+	//	  derivation, but it is a different derivation and was not measured here,
+	//	  so they stay. Note the bound is the odd-looking one for its API: 2
+	//	  groups give len 3 exactly, so `< 3` is tight rather than off by one.
+	//	the compound `len(m) < 4 || m[2] < 0` guards below — arity half dead,
+	//	  participation half unscored; grade the halves separately.
+	//
+	// That list is meant to be exhaustive for this file. If you find a surviving
+	// arity guard that is not on it, the list is stale — fix it rather than
+	// concluding the guard is reachable.
 	for _, m := range activePatternRE.FindAllStringSubmatchIndex(src, -1) {
 		clip := src[m[4]:m[5]]   // e.g. "Even|Odd" or "Positive|_"
 		params := src[m[6]:m[7]] // tokens between `|)` and `=`
@@ -515,10 +531,11 @@ func collectActivePatternCases(apEntities []types.EntityRecord) map[string]strin
 func collectCEBuilderTypes(src string) (types_ map[string]bool, ceMembers map[string]bool) {
 	types_ = make(map[string]bool)
 	ceMembers = make(map[string]bool)
+	// typeRE has 2 capture groups, so len(m) is invariantly 6 — the SAME regex
+	// object as the typeRE loop in extractor.go, and the same derivation.
+	// #7197 removed the unreachable `if len(m) < 6`, measured here with its own
+	// panic probe rather than transferred from that loop.
 	for _, m := range typeRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 6 {
-			continue
-		}
 		name := src[m[4]:m[5]]
 		body := extractIndentBody(src, m[1], len(src[m[2]:m[3]]))
 		members, ok := detectCEBuilder(body)

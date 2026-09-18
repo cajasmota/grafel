@@ -808,13 +808,31 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// not the guard.
 	//
 	// The same derivation retired the arity guards on this file's namespaceRE,
-	// letRE, memberRE and typeRE loops (2 groups each, len(m) == 6), each
-	// measured with its own panic probe under #7197 rather than by transferring
-	// this verdict. Deliberately left in place: the compound
-	// `len(m) < 4 || m[2] < 0` guards in compexpr_active_patterns.go, whose
-	// arity half is dead by this derivation but whose `m[2] < 0` half is a
-	// participation test that has not been scored — the two halves must be
-	// graded separately before either is touched.
+	// letRE, memberRE and typeRE loops (2 groups each, len(m) == 6), the
+	// memberRE re-scan inside the typeRE loop, and the typeRE loop in
+	// compexpr_active_patterns.go — each measured with its own panic probe under
+	// #7197 rather than by transferring this verdict.
+	//
+	// DELIBERATELY LEFT, exhaustively, so this list can be read as complete
+	// (every other `len(...)` guard in these two files, with the reason):
+	//
+	//	compexpr_active_patterns.go, detectCEBuilder (memberRE) and
+	//	  collectBuilderBindings (ceBuilderBindRE), both `len(m) < 3`. These call
+	//	  FindAllStringSubmatch, NOT ...Index. That API returns 1+n strings, not
+	//	  2*(1+n) ints, so the bound is arrived at by a DIFFERENT derivation and
+	//	  this comment does not settle them. Dead by that derivation (2 groups,
+	//	  len 3) but unmeasured here.
+	//	compexpr_active_patterns.go, the compound `len(m) < 4 || m[2] < 0`
+	//	  guards: the arity half is dead by this derivation, but the `m[2] < 0`
+	//	  half is a participation test and the two halves must be graded
+	//	  separately before either is touched.
+	//	this file, the `len(m) < 2` and `len(m) < 4` guards over other patterns
+	//	  in unrelated functions: dead by the same arithmetic, out of #7197's
+	//	  scope (the repo has ~877 such guards) and simply not measured.
+	//
+	// If you are reading this because you found a surviving arity guard nearby,
+	// it should be named above. If it is not, the list has gone stale — fix the
+	// list, do not infer that the guard is reachable.
 	//
 	// Note what this derivation does NOT cover: a guard testing whether an
 	// OPTIONAL group participated (`m[k] >= 0`) is about the `-1,-1` pair, not
