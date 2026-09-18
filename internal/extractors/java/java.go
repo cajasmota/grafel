@@ -2217,9 +2217,10 @@ func buildAnnotationElementSignature(node ts.Node, src []byte) string {
 // run can hold, and the node's start at `[` does not bound it to whitespace:
 // `int withComment[/* a comment */];` and a TYPE_USE annotation
 // `int withAnno @NN [];` are both javac-clean and both put non-whitespace into
-// the dimensions text. Neither is graded here, deliberately — the point of the
-// `spacedDims`/`tabbedDims` rows is the collapse axis, not an inventory of what
-// the node can contain.
+// the dimensions text. Those two are graded by #7161's rows, not by the
+// `spacedDims`/`tabbedDims` pair here — the annotation one because it starts the
+// dimensions text at `@` rather than `[` and so exposed the missing separator in
+// the concatenation below, which no amount of collapsing can restore.
 //
 // # The three guards below are DEFENSIVE and ungraded on purpose
 //
@@ -2248,7 +2249,19 @@ func buildFieldSignature(node ts.Node, src []byte, name string) string {
 			parts = append(parts, txt)
 		}
 	}
-	if decl := name + javaDeclaratorDimensions(node, src); decl != "" {
+	// The declarator is `name` glued to its dimensions suffix. Gluing is right
+	// only while that suffix starts at `[`: JLS 10.2 spells it
+	// `{Annotation} [ ]`, so a TYPE_USE annotation belongs to the dimensions
+	// node and the text can begin at `@`. The source's separating space then
+	// falls BETWEEN the two operands and nothing puts it back —
+	// `int withAnno @NN [];` emitted `int withAnno@NN []` (#7161). Restore the
+	// separator exactly when the suffix does not open with a bracket, so
+	// `int plain[];` keeps its name and brackets touching.
+	dims := javaDeclaratorDimensions(node, src)
+	if dims != "" && !strings.HasPrefix(dims, "[") {
+		dims = " " + dims
+	}
+	if decl := name + dims; decl != "" {
 		parts = append(parts, decl)
 	}
 	return strings.Join(parts, " ")
