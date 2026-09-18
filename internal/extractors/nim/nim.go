@@ -387,6 +387,36 @@ func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	if len(lines) == 0 {
 		return ""
 	}
+	// #7195: a source that ends in a newline makes strings.Split yield a FINAL
+	// EMPTY ELEMENT — the empty remainder after the last '\n'. It is not a line
+	// of the file, but it satisfies the `TrimSpace(line) == ""` arm below and was
+	// appended as a blank body line. `endLine := startLine + Count(body, "\n")`
+	// at both call sites then counted it, so the LAST declaration in every
+	// newline-terminated file reported EndLine = lineCount + 1: a span past EOF.
+	// Earlier declarations broke on their following sibling and never reached
+	// this element, which is why only the last one was ever wrong.
+	//
+	// Drop EXACTLY that one element and nothing else — and test `== ""`, never
+	// `strings.TrimSpace(...) == ""`. Every widening of this guard is the
+	// PERMISSIVE direction and deletes a real line from a span:
+	//
+	//   - trimming trailing blank lines from the COLLECTED BODY shortens an
+	//     earlier declaration whose body ends in blanks before a sibling —
+	//     forbidden by TestEOF7195ForbiddenEarlierDeclUnchanged and its type
+	//     twin (these do NOT grade the two routes below; a blank before a
+	//     sibling is mid-split and unreachable from the end);
+	//   - looping the drop over every trailing empty element shortens a body
+	//     whose blanks run to EOF — forbidden by
+	//     TestEOF7195ForbiddenTrailingBlankLinesAtEOFKept and its type twin;
+	//   - keying on TrimSpace deletes the last line of any file whose final
+	//     line is whitespace-only and which does NOT end in a newline, where
+	//     that element IS the line and no phantom exists — forbidden by
+	//     TestEOF7195ForbiddenWhitespaceLineAtEOFNoTrailingNewline and its type
+	//     twin. This crossed cell was unforbidden in the first round and the
+	//     TrimSpace mutant passed the whole package.
+	if n := len(lines); n > 1 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
 
 	var bodyLines []string
 	// The first line after '=' may be on the same line or the next.
