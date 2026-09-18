@@ -48,6 +48,10 @@ import (
 //   - A trailing COMMENT after the declaration (`namespace Foo // why`), in
 //     either line ending. That does not match today and this file takes no
 //     position on whether it should.
+//   - The INDENTATION capture `([ \t]*)` is not graded here in any direction;
+//     every fixture below is at column 0. (Its value is never read for a
+//     namespace record, so this is permissive dead weight rather than a
+//     correctness hole.)
 //   - The other `regexp.MustCompile` patterns in this package are still
 //     unaudited for CRLF sensitivity (#7198's remaining half). A `$` anchor is
 //     a filter, not the population.
@@ -106,10 +110,20 @@ func TestNamespace7198_CRLFSourceMintsNamespace(t *testing.T) {
 			startLine: 3,
 		},
 		{
-			label:     "CRLF, file has no trailing newline",
-			src:       "namespace N\r\n\r\nmodule Target =\r\n    let x = 1",
+			// FILE TERMINATION, and this is the member that actually crosses
+			// that axis: the namespace is the LAST line and the file has NO
+			// terminator at all, so `$` must match at end-of-text rather than
+			// before a `\n`. A row whose namespace sits on line 1 with the
+			// missing newline three lines below does NOT cross it — its local
+			// context is byte-identical to the bare row, and it was measured
+			// identical under every pattern variant probed. Note this row
+			// SURVIVES the `[ \t]*$` narrowing (that anchor still matches at
+			// EOF), so it grades the end-of-text anchor and NOT the `\r`
+			// absorption; the rows above are the ones that grade the latter.
+			label:     "CRLF, namespace is the last line with no terminator",
+			src:       "// header\r\nnamespace N",
 			name:      "N",
-			startLine: 1,
+			startLine: 2,
 		},
 		{
 			// ATTRIBUTION CONTROL. The byte-identical declaration with LF
@@ -143,6 +157,13 @@ func TestNamespace7198_CRLFSourceMintsNamespace(t *testing.T) {
 			if e.StartLine != tc.startLine {
 				t.Errorf("%s got StartLine %d, want %d", tc.label, e.StartLine, tc.startLine)
 			}
+			// DOMINATED, kept because #7198 asked for it and it mirrors the
+			// module rows — NOT an independent guard. `name` comes from
+			// `([\w.]+)` and `\w` cannot match `\r`, and `Signature` is
+			// derived from `Name`, so this cannot fire unless the Name
+			// equality above fires on the same row. MEASURED with a leaky-name
+			// mutant `([\w.]+)` -> `(.+)`: the two lines fired together on
+			// every row, never alone.
 			if strings.ContainsAny(e.Name+e.Signature, "\r") {
 				t.Errorf("%s leaked a CR byte into Name %q / Signature %q", tc.label, e.Name, e.Signature)
 			}
@@ -170,5 +191,50 @@ func TestNamespace7198_CRLFTrailingTokensMintNothing(t *testing.T) {
 	if got := fs7198NsNames(fs7198Namespaces(runFSharp(t, src, "Crlf.fs"))); len(got) != 0 {
 		t.Errorf("`namespace Foo Bar` produced %v, want none — the trailing anchor must absorb the "+
 			"`\\r` and NOTHING ELSE; a namespace declaration owns its whole line", got)
+	}
+}
+
+// TestNamespace7198_KeywordBoundaryMintsNothing is the second FORBIDDEN row,
+// and it grades the LEADING boundary — the separator between the keyword and
+// the name — which the trailing-anchor rows above leave completely open.
+//
+// `namespaceRE` spells that separator `namespace\s+([\w.]+)`. The `+` is what
+// makes `namespace` a KEYWORD rather than a prefix: relax it to `\s*` and a
+// bare identifier line `namespaceFoo` — an ordinary F# value or module name,
+// not a declaration — mints the namespace `Foo`. MEASURED under that mutant,
+// before this row existed: the whole package stayed GREEN, and probing the
+// extractor directly showed
+//
+//	"namespaceFoo\n"            pristine -> []     `\s*` -> [Foo]
+//	"namespaceFoo\nlet x = 1\n" pristine -> []     `\s*` -> [Foo]
+//	"namespace Bar\n"           pristine -> [Bar]  `\s*` -> [Bar]   (unchanged)
+//
+// so the mutant is reachable, not equivalent, and nothing graded it.
+//
+// POSITIVE CONTROL, run by hand rather than asserted here, because an absence
+// assertion passes identically whether it is ENFORCED or merely UNREACHABLE.
+// With `namespace\s+` replaced by `namespace\s*` in the worktree this test
+// FAILS on both rows with `produced [Foo], want none`, while every must-have
+// row above still PASSES — so it fires, and it fires alone.
+//
+// Both line endings are carried because this is the package's CRLF file and
+// the boundary is orthogonal to the terminator: the LF row is the general
+// statement, the CRLF row is the one that shares its bytes with the rows
+// above.
+func TestNamespace7198_KeywordBoundaryMintsNothing(t *testing.T) {
+	for _, tc := range []struct {
+		label string
+		src   string
+	}{
+		{"LF", "namespaceFoo\nlet x = 1\n"},
+		{"CRLF", "namespaceFoo\r\nlet x = 1\r\n"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			if got := fs7198NsNames(fs7198Namespaces(runFSharp(t, tc.src, "Crlf.fs"))); len(got) != 0 {
+				t.Errorf("%s `namespaceFoo` produced %v, want none — `namespace` is a KEYWORD, and the "+
+					"mandatory `\\s+` after it is what stops a bare identifier line from minting a namespace",
+					tc.label, got)
+			}
+		})
 	}
 }
