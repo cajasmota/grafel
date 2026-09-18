@@ -15,7 +15,7 @@ import (
 // #7245 — a FIFO or a socket created in a watched directory must not be charged
 // a descriptor, because fsnotify's kqueue backend never opens one for it.
 //
-// addWatch (backend_kqueue.go:365-368) returns ("", nil) — SUCCESS, with no
+// addWatch (backend_kqueue.go:363-368) returns ("", nil) — SUCCESS, with no
 // watch established — for os.ModeSocket or os.ModeNamedPipe. sendCreateIfNew
 // (:657-664) has already emitted Create by then, so grafel is told Create and
 // charges perEntry for a path that has no descriptor behind it. Nothing ever
@@ -28,15 +28,33 @@ import (
 // skip. A fix that simply stopped charging everything would pass the FIFO and
 // socket rows and fail the regular-file rows.
 //
-// Platform note: the claim is a fact about the kqueue backend. On Linux the
-// inotify backend takes no per-entry descriptor at all and reports Remove for a
-// FIFO through the directory's own watch, so the charge and the release are
-// symmetric there and the code must keep charging — see
-// backendSkipsPipesAndSockets. Every assertion below is written in terms of the
-// SETTLED ledger across a create/remove pair, which holds on both: on kqueue
-// because nothing was charged, on inotify because what was charged was
-// released. Only the mid-sequence "still at base while the FIFO exists" rows
-// are kqueue-only, and they are guarded.
+// PLATFORM. Two facts are in play and the first version of this file conflated
+// them, then the second version conflated them the other way. Both are recorded
+// because the conflation is easy to make again:
+//
+//   - The COST MODEL is arithmetic — how many units a directory and an entry
+//     each cost. newBudgetedWatcherCfg forces kqueueCostModel on every platform
+//     (fdbudget_test.go:192) so ledger deltas are countable everywhere. It is
+//     deliberately NOT the platform's own model, and must not be:
+//     inotifyCostModel.perEntry() is 0, so matching the model per platform
+//     would collapse every delta in this file to zero and the suite would go
+//     vacuously green on Linux.
+//
+//   - The BACKEND decides which events arrive at all. That does NOT follow from
+//     the cost model. In particular a backend can report a Remove for an entry
+//     grafel never charged — inotify watches the DIRECTORY and reports entries
+//     by name, with no filter on mode anywhere.
+//
+// The production fix is ungated by GOOS, because every site it touches is
+// already behind perEntry() > 0 and inotifyCostModel.perEntry() is 0. The
+// second fact is why it is also SYMMETRIC: skipEventOpen records the skipped
+// path as already-released, so the Remove half cannot hand back a charge the
+// Create half never made. With both halves skipped, the trajectory is identical
+// on every backend and under every cost model, and every expectation below is
+// an unconditional `base` with no platform branch anywhere in this file.
+// TestASkippedEntryReleasesNothing is the row that pins the second half, by
+// calling releaseEventClose directly — on kqueue no Remove for a FIFO ever
+// arrives on its own, so that is the only way to reach it here.
 // ---------------------------------------------------------------------------
 
 // mkfifo7245 creates a FIFO inside a watched directory.
@@ -85,12 +103,14 @@ func mksock7245(t *testing.T, path string) {
 // leaving the ledger where it found it.
 //
 // This is the positive control that stops every absence assertion in this file
-// from being vacuous. fsnotify's dirChange (backend_kqueue.go:625-650) lists
-// the whole directory and reports every unseen entry in readdir order, so a
-// Create delivered for a later-sorting name proves the earlier-sorting FIFO or
-// socket was walked past in the same listing (or in an earlier one). Without
-// it, "the ledger is still at base" is equally true of a fix that works and of
-// an event that has not arrived yet.
+// from being vacuous. Both backends give the ordering, by different means:
+// kqueue's dirChange (backend_kqueue.go:625-650) lists the whole directory and
+// reports every unseen entry in readdir order, so a Create for a later-sorting
+// name proves the earlier-sorting FIFO was walked past in the same listing;
+// inotify queues one event per operation in the order the operations happened,
+// so the FIFO's IN_CREATE precedes the sentinel's. Without this, "the ledger is
+// still at base" is equally true of a fix that works and of an event that has
+// not arrived yet.
 func sentinel7245(t *testing.T, w *Watcher, dir string, base int, what string) {
 	t.Helper()
 	p := filepath.Join(dir, "zz-sentinel.go")
@@ -134,12 +154,10 @@ func TestAFifoDoesNotStrandAnFDCharge(t *testing.T) {
 	mkfifo7245(t, p)
 	sentinel7245(t, w, root, base, "the FIFO was created")
 
-	if backendSkipsPipesAndSockets {
-		// kqueue opened nothing, so nothing may be charged while the FIFO is
-		// still on disk. The sentinel above proves the listing that contains
-		// the FIFO has been processed, so this row is reachable.
-		waitLedger(t, w, base, "a live FIFO in a watched directory")
-	}
+	// Nothing is charged while the FIFO is on disk. The sentinel above proves
+	// the FIFO's own event has already been processed, so this is an assertion
+	// rather than a race the test happens to win.
+	waitLedger(t, w, base, "a live FIFO in a watched directory")
 
 	if err := os.Remove(p); err != nil {
 		t.Fatalf("remove fifo: %v", err)
@@ -158,10 +176,7 @@ func TestSocketChargeNotStranded(t *testing.T) {
 	p := filepath.Join(root, "s")
 	mksock7245(t, p)
 	sentinel7245(t, w, root, base, "the socket was created")
-
-	if backendSkipsPipesAndSockets {
-		waitLedger(t, w, base, "a live socket in a watched directory")
-	}
+	waitLedger(t, w, base, "a live socket in a watched directory")
 
 	if err := os.Remove(p); err != nil {
 		t.Fatalf("remove socket: %v", err)
@@ -185,9 +200,10 @@ func TestARecreatedFifoDoesNotChargeTwice(t *testing.T) {
 	for i := range 2 {
 		mkfifo7245(t, p)
 		sentinel7245(t, w, root, base, "FIFO cycle create")
-		if backendSkipsPipesAndSockets {
-			waitLedger(t, w, base, "a live FIFO on cycle")
-		}
+		// Exactly base on the SECOND cycle too. addWatch handed "" back, so
+		// markSeen never marked the FIFO's own path and the entry is reported
+		// as a Create again — before the fix, charged again.
+		waitLedger(t, w, base, "a live FIFO on cycle")
 		if err := os.Remove(p); err != nil {
 			t.Fatalf("remove fifo (cycle %d): %v", i, err)
 		}
@@ -217,9 +233,6 @@ func TestPreexistingFifoSock(t *testing.T) {
 	}
 	used, _ := w.fdb.snapshot()
 	want := prunedTreeKqueueOpens
-	if !backendSkipsPipesAndSockets {
-		want += 2 // inotify arithmetic: the entries are counted as they always were
-	}
 	if used != want {
 		t.Fatalf("subscription over a tree holding a FIFO and a socket charged %d, want %d — "+
 			"fsnotify opened no descriptor for either (#7245)", used, want)
@@ -279,4 +292,55 @@ func TestASymlinkToAFifoIsStillCharged(t *testing.T) {
 	// and the FIFO first does not help; the descriptor is already open. That is
 	// a pre-existing property of watching a FIFO, unchanged by #7245, recorded
 	// here so the next reader does not take the stall for a regression.
+}
+
+// TestASkippedEntryReleasesNothing pins the half of the skip that this
+// platform cannot reach on its own, and it is the reason skipEventOpen exists
+// rather than the skip being a bare `if`.
+//
+// Not charging a path and not releasing it are two separate decisions made by
+// two separate functions, and only the first follows from addWatch's early
+// return. Whether a Remove is REPORTED for the path is a property of the
+// backend: kqueue cannot report one, because the path is unwatched, but a
+// backend that watches the directory instead of the entry reports the entry's
+// removal by name and knows nothing about what grafel charged. releaseEventClose
+// would then hand back a descriptor that was never charged — the #6268
+// under-count, reached from the direction #7245 opens. That is not a
+// hypothetical: it is what an ungated, asymmetric skip does under this suite's
+// forced kqueueCostModel on Linux.
+//
+// Since no such report can arrive here, it is delivered by hand. Calling
+// releaseEventClose directly is the planted violation: on the fix it releases
+// nothing, and with skipEventOpen's marker removed it takes the ledger BELOW
+// base, which is a failure no amount of waiting would produce naturally.
+//
+// The regular-file half is the control. Without it this test would pass against
+// a releaseEventClose that had simply stopped releasing anything.
+func TestASkippedEntryReleasesNothing(t *testing.T) {
+	w, root, base := subscribedWatcher(t)
+
+	pipe := filepath.Join(root, "aa-pipe")
+	mkfifo7245(t, pipe)
+	sentinel7245(t, w, root, base, "the FIFO was created")
+	waitLedger(t, w, base, "a live FIFO before the hand-delivered Remove")
+
+	// The violation. One Remove report for a path that was never charged.
+	w.releaseEventClose(pipe)
+	if used, _ := w.fdb.snapshot(); used != base {
+		t.Fatalf("a Remove report for a never-charged FIFO moved the ledger to %d, want %d — "+
+			"releasing against a charge that was never made is the #6268 under-count (#7245)", used, base)
+	}
+
+	// Control: the same call on a path that WAS charged must still release it,
+	// or the row above is satisfied by a releaseEventClose that does nothing.
+	reg := filepath.Join(root, "regular.go")
+	if err := os.WriteFile(reg, []byte("package p\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	waitLedger(t, w, base+1, "a regular file before the hand-delivered Remove")
+	w.releaseEventClose(reg)
+	if used, _ := w.fdb.snapshot(); used != base {
+		t.Fatalf("a Remove report for a charged regular file left the ledger at %d, want %d — "+
+			"the skip must not have stopped ordinary releases", used, base)
+	}
 }
