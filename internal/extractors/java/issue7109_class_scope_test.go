@@ -291,6 +291,106 @@ class Svc {
 	j7094MustCall(t, rels, "Cust.b", "Order.a")
 }
 
+// A RECORD COMPONENT is the one class-scope binder that does not live inside
+// the body: the grammar hangs it off the record_declaration as
+// `parameters: formal_parameters`, a SIBLING of the class_body. So the
+// boundary cut alone does not reach it — MEASURED at 9fe0b2be5, with the
+// boundary already in place, this still emitted "Order.b".
+func TestJava7109_LocalRecordComponentOwnsItsName(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} void b() {} }
+class Cust  { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    record R(Cust o) { void go() { o.b(); } }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b")
+	j7094MustCall(t, rels, "Cust.b", "Order.a")
+}
+
+// The COMPACT constructor form of the same binder. It has no `parameters`
+// field of its own — the component it refers to is the record's — so it is
+// graded separately from the accessor form above rather than assumed to share
+// its fate.
+func TestJava7109_LocalRecordCompactConstructorSeesTheComponent(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} void b() {} }
+class Cust  { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    record R(Cust o) { R { o.b(); } }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b")
+	j7094MustCall(t, rels, "Cust.b", "Order.a")
+}
+
+// An INTERFACE field is a `constant_declaration`, a DIFFERENT node kind from
+// `field_declaration` with an identical shape — so the field arm that covers
+// class and enum bodies cannot see it, and at 9fe0b2be5 this still emitted
+// "Order.b" with the boundary in place. Node kind DERIVED from a parse dump.
+func TestJava7109_LocalInterfaceConstantOwnsItsName(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} void b() {} }
+class Cust  { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    interface I { Cust o = new Cust(); default void go() { o.b(); } }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b")
+	j7094MustCall(t, rels, "Cust.b", "Order.a")
+}
+
+// A MULTI-DECLARATOR interface constant binds EVERY name, not just the first.
+// The outer collision is on the SECOND declarator, so a first-only reading
+// leaves `q` to the outer `Order q` and emits "Order.b".
+func TestJava7109_MultiDeclaratorInterfaceConstantBindsEveryName(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} void b() {} }
+class Cust  { void b() {} void c() {} }
+class Svc {
+  void run() {
+    Order q = new Order();
+    q.a();
+    interface I { Cust p = new Cust(), q = new Cust(); default void go() { p.c(); q.b(); } }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b")
+	j7094MustCall(t, rels, "Cust.c", "Cust.b", "Order.a")
+}
+
+// A local enum's CONSTRUCTOR parameter. Unlike the three rows above this one
+// already worked once the boundary was in place — the member walk's
+// constructor arm reaches it through `enum_body_declarations` — and it is
+// recorded so the cell is occupied rather than argued.
+func TestJava7109_LocalEnumConstructorParamOwnsItsName(t *testing.T) {
+	rels := j7094Calls(t, `package com.x;
+class Order { void a() {} void b() {} }
+class Cust  { void b() {} }
+class Svc {
+  void run() {
+    Order o = new Order();
+    o.a();
+    enum E { ONE(null); E(Cust o) { o.b(); } }
+  }
+}
+`)
+	j7094MustNotCall(t, rels, "Order.b")
+	j7094MustCall(t, rels, "Cust.b", "Order.a")
+}
+
 // ---------------------------------------------------------------------------
 // THE CONJUNCTION. A shadow and a capture in the SAME nested body. This is the
 // row that separates the implementations; each half alone is passed by a wrong

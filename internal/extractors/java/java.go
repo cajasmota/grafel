@@ -1081,12 +1081,35 @@ func javaClassBodyCalls(
 	for name, typ := range collectFieldTypes(classBody, src) {
 		own[name] = typ
 	}
+	// RECORD COMPONENTS are the one class-scope binder that does not live
+	// inside the body at all: the grammar hangs them off the
+	// record_declaration as `parameters: formal_parameters`, a SIBLING of the
+	// body. They are bare-reachable from every member. MEASURED at 9fe0b2be5,
+	// with the class boundary already in place: `record R(Cust o) { void go()
+	// { o.b(); } }` beside an outer `Order o` still emitted `Order.b`, and so
+	// did the compact-constructor form `record R(Cust o) { R { o.b(); } }` —
+	// the boundary cut alone does not reach a name bound outside the body.
+	if parent := classBody.Parent(); parent != nil && parent.Type() == "record_declaration" {
+		for name, typ := range collectParamTypes(parent, src) {
+			own[name] = typ
+		}
+	}
 	for i := 0; i < int(classBody.ChildCount()); i++ {
 		ch := classBody.Child(i)
 		if ch == nil {
 			continue
 		}
 		switch ch.Type() {
+		case "constant_declaration":
+			// An INTERFACE field is a `constant_declaration`, NOT a
+			// `field_declaration` — a different node with the same
+			// type/variable_declarator shape, so collectFieldTypes cannot see
+			// it. DERIVED from a parse dump, and MEASURED at 9fe0b2be5:
+			// `interface I { Cust o = new Cust(); default void go() {
+			// o.b(); } }` beside an outer `Order o` still emitted `Order.b`.
+			for name, typ := range javaDeclaratorTypes(ch, src) {
+				own[name] = typ
+			}
 		case "enum_constant":
 			if name := childFieldText(ch, "name", src); name != "" {
 				own[name] = ""
@@ -1137,6 +1160,38 @@ func javaClassMemberCalls(
 			javaScopeCalls(m, src, callerName, cc, nil, ledger, imports, seen, rels)
 		}
 	}
+}
+
+// javaDeclaratorTypes reads a declaration node of the shape
+// `type: <type>, declarator: variable_declarator{name}+` — an interface
+// `constant_declaration`, whose node kind differs from `field_declaration`
+// even though the shape is identical — and returns name → leaf type for every
+// declarator. Multi-declarator constants (`Cust p = …, q = …;`) bind every
+// name (#7109).
+func javaDeclaratorTypes(decl ts.Node, src []byte) map[string]string {
+	if decl == nil {
+		return nil
+	}
+	typ := leafTypeName(decl.ChildByFieldName("type"), src)
+	if typ == "" {
+		return nil
+	}
+	var out map[string]string
+	for i := 0; i < int(decl.ChildCount()); i++ {
+		d := decl.Child(i)
+		if d == nil || d.Type() != "variable_declarator" {
+			continue
+		}
+		name := childFieldText(d, "name", src)
+		if name == "" {
+			continue
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		out[name] = typ
+	}
+	return out
 }
 
 // javaOverlayLedger layers three name→type maps in increasing precedence and
