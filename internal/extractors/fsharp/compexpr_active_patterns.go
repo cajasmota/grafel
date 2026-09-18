@@ -383,10 +383,14 @@ func activePatternLetOffsets(src string) map[int]bool {
 func extractActivePatterns(src, filePath string, imports []string) []types.EntityRecord {
 	var out []types.EntityRecord
 	seen := make(map[string]bool)
+	// activePatternRE has exactly 3 capture groups (indent, clip, params);
+	// fsLetModifiers and the `(?:\|_)?` tail are non-capturing.
+	// FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints per match invariantly
+	// — a non-participating group contributes a `-1,-1` pair rather than being
+	// omitted — so indexing m[2]..m[7] below needs no arity guard. #7197 removed
+	// the unreachable `if len(m) < 8`. Adding a fourth group changes this
+	// invariant, not the guard.
 	for _, m := range activePatternRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 8 {
-			continue
-		}
 		clip := src[m[4]:m[5]]   // e.g. "Even|Odd" or "Positive|_"
 		params := src[m[6]:m[7]] // tokens between `|)` and `=`
 		// Name the pattern by its case set, banana-clipped, so it is recognisable

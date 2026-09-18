@@ -168,10 +168,15 @@ func extractNim(src, filePath string) []types.EntityRecord {
 
 	// 1. Proc/func/method/template/macro/iterator declarations.
 	seen := make(map[string]bool)
+	// procRE has exactly 3 capture groups (indent, name, the optional
+	// `(\([^)]*\))?` params); the generic-params, return-type and pragma groups
+	// are all non-capturing. FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints
+	// per match invariantly — the optional params group contributes a `-1,-1`
+	// pair when absent rather than being omitted, which is why the m[6] >= 0
+	// test below is the real check — so indexing m[2]..m[7] needs no arity
+	// guard. #7197 removed the unreachable `if len(m) < 7`. Adding a fourth
+	// group changes this invariant, not the guard.
 	for _, m := range procRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 7 {
-			continue
-		}
 		indent := src[m[2]:m[3]]
 		name := strings.TrimSuffix(src[m[4]:m[5]], "*") // strip export marker
 		params := ""
@@ -221,10 +226,14 @@ func extractNim(src, filePath string) []types.EntityRecord {
 
 	// 2. Type declarations — objects, enums, tuples.
 	typeSeen := make(map[string]bool)
+	// typeRE has exactly 3 capture groups (indent, name, kind alternation); the
+	// `(?:type[ \t]+)?` prefix, the generics and the pragma block are all
+	// non-capturing. FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints per
+	// match invariantly — a non-participating group contributes a `-1,-1` pair
+	// rather than being omitted — so indexing m[2]..m[7] below needs no arity
+	// guard. #7197 removed the unreachable `if len(m) < 8`. Adding a fourth
+	// group changes this invariant, not the guard.
 	for _, m := range typeRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 8 {
-			continue
-		}
 		indent := src[m[2]:m[3]] // #7190: the DECLARATION's own indent
 		name := strings.TrimSuffix(src[m[4]:m[5]], "*")
 		kind := src[m[6]:m[7]]

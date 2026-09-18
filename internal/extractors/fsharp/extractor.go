@@ -798,10 +798,13 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// ungated). Recorded, not fixed, by
 	// TestLocalModule7151_ScrubRunawayHidesLocalModule_7193.
 	var moduleScrubbed string
+	// moduleRE has exactly 3 capture groups (indent, name, the `=` local-form
+	// marker); its modifier alternation is non-capturing. FindAllStringSubmatchIndex
+	// returns 2*(1+n) = 8 ints per match invariantly — a non-participating group
+	// contributes a `-1,-1` pair rather than being omitted — so indexing m[2]..m[7]
+	// below needs no arity guard. #7197 removed the unreachable `if len(m) < 8`.
+	// An author adding a fourth group changes this invariant, not the guard.
 	for _, m := range moduleRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 8 {
-			continue
-		}
 		name := src[m[4]:m[5]]
 		isLocal := m[6] >= 0
 		if isLocal {
