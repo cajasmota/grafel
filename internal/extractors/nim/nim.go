@@ -64,8 +64,38 @@ var (
 	// wrong anchor. Group 1 is the DECLARATION's own indent and is what the
 	// call site passes to extractIndentBody as baseIndentLen; it was hard-coded
 	// 0 there, which is right only for a declaration at column 0.
+	//
+	// #7213: a member carrying a PRAGMA produced no entity at all. Only a generic
+	// parameter list was admitted between the name and the `=`, and a pragma sits
+	// in exactly that position, so `Alpha* {.packed.} = object` never matched.
+	// Measured over 4431 .nim files (nim-lang/Nim, nimbus-eth2, pixie, nitter,
+	// jester): 846 of 6987 type members — 12.1% — were dropped for this reason.
+	// (Every figure in this file and its test counts the FINAL pattern, the one
+	// with `\.?\}`; the pre-plain-close numbers were 839 of 6980.)
+	//
+	// The pragma group follows the generic group and never precedes it:
+	// doc/grammar.txt gives `typeDef = identVisDot genericParamList? pragma?
+	// ('=' optInd typeDefValue)?`, and nim-lang/Nim's own
+	// tests/types/told_pragma_syntax2.nim asserts the reverse order is a compile
+	// error. Its body is `[^}\n]*`, NOT `[^}]*`: `[^}]` matches a NEWLINE, so an
+	// unterminated `{.` would run through every following declaration to the next
+	// `.}` and absorb them. The cost of that choice is the multi-line pragma
+	// (361 further sites, 4.9%), left unmatched deliberately.
+	//
+	// THE CLOSING DELIMITER IS `\.?\}`, NOT `\.\}` — the dot is optional. Nim's
+	// compiler/parser.nim, parsePragma, accepts either token:
+	//
+	//	while p.tok.tokType notin {tkCurlyDotRi, tkCurlyRi, tkEof}: ...
+	//	if p.tok.tokType in {tkCurlyDotRi, tkCurlyRi}: getTok(p)
+	//
+	// and doc/grammar.txt states it as `pragma = '{.' optInd (exprColonEqExpr
+	// comma?)* optPar ('.}' | '}')`. 7 sites in the population close with a
+	// plain `}` (`MyObject {.exportc: "ExtObject"} = object`). The OPENING
+	// delimiter has no such latitude: the lexer has one token, tkCurlyDotLe, so
+	// `{` alone never opens a pragma and neither does `{ .` — the two
+	// characters must be adjacent.
 	typeRE = regexp.MustCompile(
-		`(?m)^([ \t]*)(?:type[ \t]+)?([A-Z][a-zA-Z0-9_]*\*?)\s*(?:\[[^\]]*\])?\s*=\s*(object|ref\s+object|enum|tuple|distinct\s+\w+)`,
+		`(?m)^([ \t]*)(?:type[ \t]+)?([A-Z][a-zA-Z0-9_]*\*?)\s*(?:\[[^\]]*\])?[ \t]*(?:\{\.[^}\n]*\.?\})?\s*=\s*(object|ref\s+object|enum|tuple|distinct\s+\w+)`,
 	)
 
 	// typeBlockStartRE marks the start of a "type" keyword block (unused but kept for documentation)
