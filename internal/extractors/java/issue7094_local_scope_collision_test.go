@@ -24,6 +24,13 @@
 // Every assertion is on the EMITTED EDGE (Relationships[].ToID for CALLS), not
 // on the map's contents: a test that asserts the map lost an entry grades
 // bookkeeping, not outcome.
+//
+// "ON COMPILABLE JAVA" HOLDS FOR EVERY FIXTURE HERE BUT ONE, and the exception
+// is named rather than left to be found with a compiler (#7204): every unit in
+// this file was compiled with javac 25.0.3 and all of them are accepted except
+// TestJava7094_ParamsWinOverALocalOnDeliberatelyUncompilableSource, which is
+// rejected ON PURPOSE and says so at the row, with the reason the input class
+// it grades still matters.
 
 package java_test
 
@@ -101,6 +108,8 @@ class Svc {
 func TestJava7094_UntypedVarSiblingPoisonsTheName(t *testing.T) {
 	typedFirst := j7094Calls(t, `package com.x;
 class Order { void a() {} }
+class Customer { void b() {} }
+class MyFactory { static Customer makeCustomer() { return new Customer(); } }
 class Svc {
   void run() {
     { Order o = new Order(); o.a(); }
@@ -113,6 +122,8 @@ class Svc {
 
 	untypedFirst := j7094Calls(t, `package com.x;
 class Order { void a() {} }
+class Customer { void b() {} }
+class MyFactory { static Customer makeCustomer() { return new Customer(); } }
 class Svc {
   void run() {
     { var o = MyFactory.makeCustomer(); o.b(); }
@@ -142,8 +153,11 @@ class Svc {
 // because nothing was found that can reach it.
 func TestJava7094_LeadingAnnotationIsAnOrdinaryCollision(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
+@interface NonNull {}
 class Order { void a() {} }
+class Customer { void b() {} }
 class Svc {
+  Customer mk() { return new Customer(); }
   void run() {
     { Order o = new Order(); o.a(); }
     { @NonNull Customer o = mk(); o.b(); }
@@ -208,14 +222,90 @@ class Svc {
 	j7094MustCall(t, rels, "a", "b", "c")
 }
 
-// PINS `params win over locals` at extractCallRelationships' merge. The
-// precedence line was previously unexercised by any fixture — this one makes a
-// parameter and a local genuinely share a name, so inverting the merge fails.
-// (Java forbids a local shadowing a parameter, so this is not a compilable
-// program; tree-sitter parses it and the merge still has to answer, so the
-// answer is pinned where the code claims it. DERIVED FROM THE JLS §6.4 AND
-// UNDERIVED BY EXECUTION — no javac in this environment.)
-func TestJava7094_ParamsWinOverALocalOfTheSameName(t *testing.T) {
+// RELABELLED, NOT REMOVED AND NOT REPAIRED: this row was
+// `TestJava7094_ParamsWinOverALocalOfTheSameName`. The old name is written here
+// so a grep for it lands on this note, and the new name carries the caveat the
+// old one hid — THIS IS THE ONE FIXTURE IN THIS FILE WHOSE SOURCE DOES NOT
+// COMPILE, DELIBERATELY, and that is stated at the row rather than left for the
+// next reader to discover with a compiler (issue #7204).
+//
+// It pins the `params win over locals` line in javaOverlayLedger by making a
+// parameter and a local of method `run` share the name `o`. Its own comment
+// conceded the source did not compile and said the answer was "DERIVED FROM THE
+// JLS §6.4 AND UNDERIVED BY EXECUTION — no javac in this environment". There IS
+// a javac in this environment (25.0.3), and it rejects that fixture:
+//
+//	com/x/Svc.java:7: error: variable o is already defined in method run(Order)
+//
+// The conclusion the old comment did not draw is that the shape is not merely
+// uncompiled but UNREACHABLE, so the row grades the merge on input the
+// extractor can only meet in broken source. That is not a reason to delete the
+// row, but it IS a reason it may not claim to be JLS-derived evidence about
+// legal Java, which is what the old comment did and what #7204 was filed for.
+//
+// WHY UNREACHABLE, ENUMERATED RATHER THAN ARGUED. javaOverlayLedger's `top` is
+// the enclosing member's formal parameters and its `mid` is
+// collectLocalVarTypes over THAT member's scope root. For the ordering between
+// them to decide anything, one name must be in both. Every binder family that
+// feeds `mid` was compiled against a method parameter of the same name with
+// javac 25.0.3, and every one is rejected with "variable o is already defined
+// in method run(...)":
+//
+//	nested block local, flat-sibling local, enhanced-for variable,
+//	try-with-resources resource, catch parameter, instanceof type pattern,
+//	switch case pattern, lambda parameter, lambda-body local, for-init variable
+//
+// The only shadowings javac ACCEPTS put the inner binder inside a class body —
+// an anonymous-class method parameter, or a local class's own local. Since
+// #7109 collectLocalVarTypes stops at exactly that boundary, neither reaches
+// `mid`: each becomes its own scope whose ledger takes the outer one as `base`
+// and its own parameters as `top`. So `mid` ∩ `top` = ∅ in every compilable
+// Java program, and inverting the two loops is an EQUIVALENT mutant on
+// compilable Java. Verified by execution, not just derived: inverting the two
+// loops fails THIS ROW and nothing else in the package, and with this row
+// muted the inverted form is green everywhere.
+//
+// SO WHY KEEP IT, given the file's header promises compilable Java. Because
+// "unreachable in legal Java" is not "unreachable". grafel indexes partial,
+// mid-edit and generated sources, and on those `mid` ∩ `top` IS non-empty —
+// that is precisely the population in which a parameter and a local can share
+// a name. There the ordering still decides which layer types the receiver, and
+// the wrong layer yields a dotted target on a REAL same-file type: it binds,
+// and bind/orphan/dangle all score it as a success (#7056), the same signature
+// this whole file exists to catch. Delete the row and inverting the loops is
+// silently green across the entire suite; keep it and the decision is pinned.
+//
+// WHAT THE ROW MAY AND MAY NOT BE READ AS. It pins a CHOICE, not a language
+// rule: on input javac rejects, the JLS answers nothing, so there is no
+// "correct" layer to prefer. The choice is justified rather than arbitrary —
+// the local is the declaration javac rejects, so the author's repair will
+// rename or remove IT, leaving the parameter's binding the one the eventual
+// legal program keeps — but that is a bet about repairs, not a derivation.
+// Whoever changes the ordering deliberately should update this row, not treat
+// its red as proof of a bug.
+//
+// WHAT ELSE GRADES THE PARAMS LAYER, so this row is not its only guard. The
+// layer's PRESENCE — dropping it entirely, e.g. by weakening
+// javaOverlayLedger's shortcut to `if len(mid) == 0` so a params-only ledger
+// returns `base` — is killed by TestJava7096_QualifiedParamTypeReceiverBindsToLeaf
+// and TestJava_CallsParameterReceiverDottedTarget, both of which compile. Its
+// precedence over the INHERITED layer, which is the only precedence a LEGAL
+// program can exercise, is killed by TestJava7109_AnonClassParamOwnsItsName and
+// its siblings. This row is the only grader of the mid-vs-top ORDERING, and it
+// can only be that on non-compilable input.
+//
+// This row was NOT rewritten into a legal shape because every legal shape it
+// could take is already a fixture: an anonymous-class or local-class parameter
+// shadowing an outer binder is TestJava7109_AnonClassParamOwnsItsName /
+// TestJava7109_LocalClassParamOwnsItsName. A duplicate would read as coverage
+// without adding any, and would NOT grade the ordering — a nested scope's
+// parameters arrive as `top` over an INHERITED `base`, never over `mid`.
+//
+// grafel:fixture-does-not-compile — machine-readable opt-out for the
+// compile-every-Java-fixture guard #7204 prices, whose requirement 3 is exactly
+// such a marker. PROPOSED HERE, NOT YET A CONVENTION: nothing reads it today,
+// and if the guard lands with a different spelling this line moves.
+func TestJava7094_ParamsWinOverALocalOnDeliberatelyUncompilableSource(t *testing.T) {
 	rels := j7094Calls(t, `package com.x;
 class Order { void a() {} void b() {} }
 class Customer { void b() {} }
