@@ -42,20 +42,43 @@ on test.yml the day it was written:
      (`on: push: tags: ['v*']`) calls it via `uses: ./.github/workflows/
      test.yml`. So a workflow_call-subscribed workflow inherits the effective
      set of every local workflow that calls it, resolved transitively.
+
+     KNOWN OVER-PERMISSIVENESS, deliberately not fixed here (#7254): the
+     caller's WHOLE effective set is unioned in, without asking whether the
+     calling JOB is reachable under each event. If `a.yml` were
+     `on: [push, schedule]` and its `uses:`-job were gated
+     `if: github.event_name == 'schedule'`, this gate would still let the
+     `b.yml` it calls guard on `== 'push'`. That is a false NEGATIVE, never a
+     false positive, so it cannot turn the tree red for a wrong reason — it can
+     only decline to catch something. It is latent today: the one local call
+     site, release.yml's `test` job, carries no `if:` at all. Do NOT read the
+     rule above as accounting for caller-job reachability; it does not.
   2. `workflow_run` does NOT propagate. A workflow_run-triggered run sees
      `github.event_name == 'workflow_run'`; the upstream event is available at
      `github.event.workflow_run.event`, a different expression this gate does
      not look at. acceptance.yml reads exactly that, correctly.
 
+UNRESOLVABLE WORKFLOWS ARE A FAILURE, NOT A SKIP
 A workflow that subscribes to `workflow_call` and is called by NOTHING local
-cannot have its guards resolved (a caller could live in another repository), so
-its guards are reported as unresolvable and counted, never silently skipped.
+cannot have its guards resolved from this repository alone — a caller may live
+elsewhere. Such a file USED to have every guard silently skipped, with a NOTE
+line inside an otherwise green run as the only trace. That was a second,
+unbounded exemption channel sitting beside the ticketed allow-list: it required
+no ticket, could never go stale, covered every guard in the file at once, and
+was not even limited to workflow_call-ONLY files — `workflow_call` alongside
+`push: [main]` would have silenced a live `pull_request` guard in the same file.
+It is now a VIOLATION, suppressible only by a ticket-bearing row in
+UNRESOLVABLE_ALLOWED, which is graded for staleness exactly like ALLOWED. That
+dict is empty today: no workflow in this repo is unresolvable, so closing the
+channel costs nothing and the bound is real rather than aspirational.
 
-ALLOW-LIST
-An entry suppresses one (workflow, job/step, event) violation and must carry a
-ticket. A row that matches nothing is itself a failure: an allow-list is prose,
-and prose rots — this one cannot rot silently, because deleting the job it
-covers turns the gate red until the row goes too.
+ALLOW-LISTS
+An ALLOWED entry suppresses one (workflow, job/step, event) violation and must
+carry a ticket. The key includes the FILENAME on purpose: two workflows may
+carry identically-named jobs, and a justification written about one of them is
+not true of the other. A row that matches nothing is itself a failure: an
+allow-list is prose, and prose rots — this one cannot rot silently, because
+deleting the job it covers turns the gate red until the row goes too.
 
 EXIT CODES
   0  no unallowed violations, and the scan met its floors.
@@ -87,6 +110,39 @@ from dataclasses import dataclass, field
 MIN_WORKFLOWS = 12
 MIN_GUARDS = 15
 
+# ── The scan manifest: an EXACT pin, not a floor ─────────────────────────────
+# The floors above are a backstop for a run pointed at an arbitrary directory.
+# They are NOT the instrument, because a floor with slack is a hole the exact
+# size of the slack, and the guard population here is concentrated rather than
+# spread: three files carry every guard (11 + 6 + 6) and thirteen carry none.
+# MIN_GUARDS=15 against a live 23 therefore left room for a whole guard-bearing
+# file to vanish and still print a well-formed green line — which is the same
+# defect class this gate exists to catch, one level up.
+#
+# So `--manifest` (used by CI) pins the exact filename SET and the exact guard
+# count per file. Any workflow added, removed or renamed fails until this dict
+# is updated, and that update is the moment somebody looks at whether the new
+# file has guards. Re-derive with `--print-manifest`; never edit a number here
+# to make a run green without knowing which guard moved.
+SCAN_MANIFEST: dict[str, int] = {
+    "acceptance.yml": 11,
+    "board-hygiene.yml": 0,
+    "coverage-docs.yml": 0,
+    "cross-platform-compile.yml": 0,
+    "grammar-freshness.yml": 0,
+    "language-release-calendar.yml": 0,
+    "module-hygiene.yml": 0,
+    "node-type-gate.yml": 0,
+    "perf.yml": 0,
+    "pre-merge.yml": 0,
+    "quality.yml": 0,
+    "release.yml": 0,
+    "test.yml": 6,
+    "windows-cgo-experiment.yml": 6,
+    "windows-installers.yml": 0,
+    "windows.yml": 0,
+}
+
 # ── Allow-list ───────────────────────────────────────────────────────────────
 # (workflow filename, job or step id, event literal) -> justification.
 # Each row MUST name a ticket. A row that matches no violation fails the gate.
@@ -105,6 +161,13 @@ ALLOWED: dict[tuple[str, str, str], str] = {
         "stale row fails this gate."
     ),
 }
+
+# Workflows whose `workflow_call` subscription has no local caller, and whose
+# guards therefore cannot be resolved from this repository alone. Same contract
+# as ALLOWED: a ticket is required, and a row matching nothing fails the gate.
+# EMPTY, and that is the point — every workflow here is currently resolvable,
+# so the exemption channel is closed rather than merely documented.
+UNRESOLVABLE_ALLOWED: dict[str, str] = {}
 
 EVENT_NAME_CMP = re.compile(
     r"github\.event_name\s*(==|!=)\s*(['\"])([A-Za-z_][A-Za-z0-9_]*)\2"
@@ -136,10 +199,21 @@ class Workflow:
 def strip_comment(line: str) -> str:
     """Drop a trailing YAML comment, respecting quotes.
 
-    Comments matter here: acceptance.yml's `on:` block *documents* the dormant
-    guard in prose that contains the exact expression the regex looks for. A
-    gate that read comments would find its own violation inside the note that
-    discloses it.
+    WHERE THIS IS ACTUALLY LOAD-BEARING. The obvious motivation is wrong, and
+    the control that used to guard this function tested the wrong thing because
+    of it: acceptance.yml's `on:` block documents the dormant guard in prose
+    containing the exact expression the regex looks for — but guards are only
+    collected while `in_jobs` is true, so a comment up in `on:` could never
+    have produced a phantom guard, with or without this function. A control
+    planted there passes identically whether stripping works or not.
+
+    The real case is a trailing comment on a real `if:` line inside `jobs:`.
+    acceptance.yml now carries one — `if: github.event_name == 'pull_request'
+    # never matches — see banner above` — and a comment-blind scan is fine
+    there, but the moment a comment on a job-level `if:` MENTIONS another
+    event ("# not 'release', see #123") the gate invents a violation in a file
+    that has none. That is the direction a false positive comes from, and it is
+    what the control now plants.
     """
     out = []
     quote = None
@@ -306,6 +380,18 @@ def main() -> int:
     ap.add_argument("--min-workflows", type=int, default=MIN_WORKFLOWS)
     ap.add_argument("--min-guards", type=int, default=MIN_GUARDS)
     ap.add_argument(
+        "--manifest",
+        action="store_true",
+        help="enforce SCAN_MANIFEST: the exact set of workflow files and the "
+        "exact guard count in each. CI runs with this on; it is what makes a "
+        "vanished workflow red instead of quietly green.",
+    )
+    ap.add_argument(
+        "--print-manifest",
+        action="store_true",
+        help="print the manifest this tree would produce, for re-pinning.",
+    )
+    ap.add_argument(
         "--no-allow-list",
         action="store_true",
         help="ignore ALLOWED; every violation is reported. Used by the self-tests "
@@ -351,16 +437,25 @@ def main() -> int:
     violations: list[tuple[Guard, set[str]]] = []
     allowed_hits: set[tuple[str, str, str]] = set()
     unresolvable: list[str] = []
+    unresolvable_hits: set[str] = set()
 
     for wf in workflows:
         events, resolvable = effective_events(wf, by_name)
         total_guards += len(wf.guards)
         if not resolvable:
-            if wf.guards:
-                unresolvable.append(
-                    f"  {wf.name}: subscribes to workflow_call with no local caller; "
-                    f"{len(wf.guards)} guard(s) unresolvable"
+            if not wf.guards:
+                continue
+            if not args.no_allow_list and wf.name in UNRESOLVABLE_ALLOWED:
+                unresolvable_hits.add(wf.name)
+                print(
+                    f"ALLOWED (unresolvable) {wf.name}: {len(wf.guards)} guard(s) "
+                    f"— {UNRESOLVABLE_ALLOWED[wf.name]}"
                 )
+                continue
+            unresolvable.append(
+                f"  {wf.name}: subscribes to workflow_call with no local caller; "
+                f"{len(wf.guards)} guard(s) unresolvable"
+            )
             continue
         for g in wf.guards:
             if g.event in events:
@@ -380,10 +475,68 @@ def main() -> int:
         f"{total_guards} github.event_name comparison(s) in `if:` guards, "
         f"{len(violations)} violation(s), {len(allowed_hits)} allow-listed."
     )
-    for line in unresolvable:
-        print(line)
-
     failed = False
+
+    actual_manifest = {w.name: len(w.guards) for w in workflows}
+    if args.print_manifest:
+        for name in sorted(actual_manifest):
+            print(f'    "{name}": {actual_manifest[name]},')
+    if args.manifest:
+        missing = sorted(set(SCAN_MANIFEST) - set(actual_manifest))
+        extra = sorted(set(actual_manifest) - set(SCAN_MANIFEST))
+        drifted = sorted(
+            (n, SCAN_MANIFEST[n], actual_manifest[n])
+            for n in set(SCAN_MANIFEST) & set(actual_manifest)
+            if SCAN_MANIFEST[n] != actual_manifest[n]
+        )
+        if missing or extra or drifted:
+            print("\nSCAN MANIFEST MISMATCH", file=sys.stderr)
+            for n in missing:
+                print(
+                    f"  MISSING {n}: pinned, but not scanned. A guard-bearing "
+                    f"workflow that disappears is exactly what a slack floor "
+                    f"cannot see.",
+                    file=sys.stderr,
+                )
+            for n in extra:
+                print(
+                    f"  UNPINNED {n}: scanned, but not in SCAN_MANIFEST. Add it "
+                    f"— and while you are there, check whether its guards are "
+                    f"reachable.",
+                    file=sys.stderr,
+                )
+            for n, want, got in drifted:
+                print(
+                    f"  DRIFT {n}: pinned {want} guard(s), scanned {got}. Either "
+                    f"a guard moved and the pin must follow, or the parser has "
+                    f"gone blind to one.",
+                    file=sys.stderr,
+                )
+            print(
+                "  Re-derive with --print-manifest once you know WHICH guard "
+                "moved.",
+                file=sys.stderr,
+            )
+            failed = True
+
+    if unresolvable:
+        print(
+            "\nUNRESOLVABLE WORKFLOW(S) — guards that cannot be checked from this "
+            "repository alone:",
+            file=sys.stderr,
+        )
+        for line in unresolvable:
+            print(line, file=sys.stderr)
+        print(
+            "  Each subscribes to `workflow_call` with no local `uses:` caller, so "
+            "its `github.event_name` values come from a caller this repo cannot "
+            "see. Skipping them silently is an unbounded exemption — add a local "
+            "caller, drop the workflow_call subscription, or add a ticket-bearing "
+            "row to UNRESOLVABLE_ALLOWED in "
+            f"{os.path.basename(__file__)}.",
+            file=sys.stderr,
+        )
+        failed = True
 
     for g, events in violations:
         print(
@@ -419,6 +572,25 @@ def main() -> int:
                 f"  justification: {why}\n"
                 f"  {key[0]} is in the tree but no guard there matches this row. "
                 f"The job it covers was fixed, renamed or deleted — delete the row.",
+                file=sys.stderr,
+            )
+            failed = True
+
+    if not args.no_allow_list:
+        for wfname, why in UNRESOLVABLE_ALLOWED.items():
+            if wfname in unresolvable_hits:
+                continue
+            if wfname not in by_name:
+                print(
+                    f"NOTE: unresolvable allow-list row {wfname!r} not checked — "
+                    f"not in {args.dir}."
+                )
+                continue
+            print(
+                f"\nSTALE UNRESOLVABLE ALLOW-LIST ROW {wfname!r}\n"
+                f"  justification: {why}\n"
+                f"  {wfname} is in the tree and IS resolvable now (or has no "
+                f"guards). Delete the row.",
                 file=sys.stderr,
             )
             failed = True

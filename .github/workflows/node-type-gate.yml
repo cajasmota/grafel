@@ -152,7 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # stdlib-only python, no pip install, no setup-python — the runner image's
       # preinstalled python3 is the entire dependency set, the same contract
@@ -176,5 +176,12 @@ jobs:
       - name: Positive controls
         run: python3 -m unittest -v scripts.ci.test_workflow_event_gate
 
+      # --manifest pins the exact filename set and the exact guard count per
+      # file. Without it the only population check is a floor, and a floor with
+      # slack is a hole the size of the slack: the guards here are concentrated
+      # in three files (11 + 6 + 6) with thirteen carrying none, so losing
+      # test.yml entirely still cleared the old floor and printed a green line.
+      # A control asserts this step passes the flag, because a manifest nobody
+      # turns on is the same nothing as no manifest.
       - name: workflow-event gate (all workflows)
-        run: python3 scripts/ci/workflow_event_gate.py
+        run: python3 scripts/ci/workflow_event_gate.py --manifest
