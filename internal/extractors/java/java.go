@@ -927,35 +927,78 @@ func extractCallRelationships(
 	if body == nil || callerName == "" {
 		return nil
 	}
+	seen := make(map[string]bool)
+	var rels []types.RelationshipRecord
+	javaScopeCalls(body, src, callerName, cc, paramTypes, nil, imports, seen, &rels)
+	if len(rels) == 0 {
+		return nil
+	}
+	return rels
+}
+
+// javaScopeCalls emits the CALLS edges for ONE class scope rooted at
+// scopeRoot, then recurses into each nested class scope with its own ledger
+// (#7109).
+//
+// BEFORE #7109 this was one flat pass: `collectLocalVarTypes(body)` over the
+// whole method body, merged with the method's parameters, consulted by every
+// call site in it. A local or anonymous CLASS body is a descendant of that
+// body but a DIFFERENT class scope, and its calls are attributed to the
+// enclosing method entity, so the flat pass both (a) let a nested member's
+// binder collide with an outer local — refusing BOTH under #7094's ledger, the
+// recall cost TestJava7094_ClassBodyShadowingRecallRecoveredBy7109 recorded
+// before this change recovered it — and (b)
+// resolved a call INSIDE the nested body against the OUTER ledger, which is
+// the wrong-receiver bug #7109 reports: a nested `formal_parameter` was in no
+// ledger arm at all, so a sibling `Order o` owned the name and `o.b()` in the
+// nested body came out `Order.b` — a WRONG dotted receiver on a real same-file
+// type, which BINDS and which bind/orphan/dangle all score as a success
+// (#7056).
+//
+// The ledger for a scope is, in increasing precedence:
+//
+//	inherited   the ENCLOSING scope's resolved ledger. Java capture: an
+//	            effectively-final local of the enclosing method IS visible by
+//	            bare name inside a local/anonymous class body, so dropping it
+//	            would be a recall regression, not a fix
+//	            (TestJava7109_CapturedOuterLocalStillBindsInside).
+//	locals      this scope's own #7094/#7097/#7099/#7100 ledger, now walked
+//	            with scopedFindNodes so it stops at the class boundary.
+//	params      this scope's member's formal parameters. Params win over
+//	            locals, unchanged from the flat form.
+//
+// Shadowing is therefore an OVERLAY rather than a collision: the outer name is
+// not refused, it is replaced for the duration of the inner scope, which is
+// what the language says happens.
+//
+// `seen` is shared across the whole recursion, as the single flat map was, so
+// a target is still emitted once per caller entity.
+//
+// NOT FIXED HERE, recorded rather than claimed: receiverTypeName consults
+// cc.fields BEFORE the ledger, so an ENCLOSING-class field still outranks a
+// nested body's own local of the same name. That is the same precedence the
+// flat form had, it is wrong for the same reason, and it is a separate change
+// with its own grading obligation.
+func javaScopeCalls(
+	scopeRoot ts.Node,
+	src []byte,
+	callerName string,
+	cc *classCtx,
+	params, inherited map[string]string,
+	imports map[string]bool,
+	seen map[string]bool,
+	rels *[]types.RelationshipRecord,
+) {
+	if scopeRoot == nil {
+		return
+	}
 	// Issue #120 — local variables typed via explicit declarations
 	// (`Owner owner = new Owner()`, `LocalDate today = LocalDate.now()`)
 	// are bound to their declared leaf type so a follow-up
-	// `owner.setName(...)` resolves to "Owner.setName". Locals are
-	// merged with paramTypes — declared params are visible in the same
-	// lookup scope as locals — but param types take precedence so a
-	// loop-local that shadows a parameter doesn't change the param's
-	// type for the rest of the method (Java forbids name-shadowing of
-	// parameters in the top-level method scope, so this only matters
-	// for nested blocks; conservative bias, no harm).
-	locals := collectLocalVarTypes(body, src)
-	merged := paramTypes
-	if len(locals) > 0 {
-		merged = make(map[string]string, len(paramTypes)+len(locals))
-		for k, v := range locals {
-			merged[k] = v
-		}
-		for k, v := range paramTypes {
-			merged[k] = v // params win over locals
-		}
-	}
-	calls := findAllNodes(body, "method_invocation", "object_creation_expression")
-	if len(calls) == 0 {
-		return nil
-	}
-	seen := make(map[string]bool, len(calls))
-	rels := make([]types.RelationshipRecord, 0, len(calls))
-	for _, call := range calls {
-		target := javaCallTarget(call, src, cc, merged, imports)
+	// `owner.setName(...)` resolves to "Owner.setName".
+	ledger := javaOverlayLedger(inherited, collectLocalVarTypes(scopeRoot, src), params)
+	for _, call := range scopedFindNodes(scopeRoot, "method_invocation", "object_creation_expression") {
+		target := javaCallTarget(call, src, cc, ledger, imports)
 		if target == "" {
 			continue
 		}
@@ -978,13 +1021,145 @@ func extractCallRelationships(
 		seen[target] = true
 		// Line is 1-based: tree-sitter StartPoint().Row is 0-based.
 		callLine := strconv.Itoa(int(call.StartPoint().Row) + 1)
-		rels = append(rels, types.RelationshipRecord{
+		*rels = append(*rels, types.RelationshipRecord{
 			ToID:       target,
 			Kind:       "CALLS",
 			Properties: types.Props{{K: "line", V: callLine}},
 		})
 	}
-	return rels
+	for _, cb := range scopedFindNodes(scopeRoot,
+		"class_body", "interface_body", "enum_body", "annotation_type_body") {
+		javaClassBodyCalls(cb, src, callerName, cc, ledger, imports, seen, rels)
+	}
+}
+
+// javaClassBodyCalls resolves the calls inside ONE nested class-scope body
+// against that class's own ledger (#7109).
+//
+// The class scope contributes two binder families of its own, and BOTH are
+// load-bearing: without them the inherited ledger still carries the outer
+// local under the same name and the wrong dotted receiver survives the
+// boundary cut.
+//
+//	field_declaration   TYPED, via the collectFieldTypes machinery the
+//	                    enclosing class already uses. A field of an anonymous
+//	                    class is bare-reachable from its methods and shadows
+//	                    the captured local. MEASURED at 83004cbef: a
+//	                    `Runnable(){ Cust o = new Cust(); public void run(){
+//	                    o.b(); } }` beside an outer `Order o` emitted
+//	                    `Order.b`.
+//	enum_constant       POISONED (empty type). This is the `enum_constant`
+//	                    entry the #7100 enumeration named and deferred to
+//	                    "the anonymous/local-class-member gap", i.e. to here.
+//	                    A local `enum E { Cust; void go(){ Cust.b(); } }`
+//	                    beside an outer `Order Cust` emitted `Order.b` at
+//	                    83004cbef. The constant's type IS the enum, but that
+//	                    enum is a local type with no entity (walk returns at
+//	                    method_declaration and never emits members of a
+//	                    method-local class), so typing it would fabricate a
+//	                    target; "" refuses instead, and the call falls back
+//	                    through receiverTypeName's empty mask. An enum
+//	                    constant starts with an uppercase letter by
+//	                    convention, so the PascalCase static-call arm then
+//	                    yields `Cust.b` — a target that DANGLES rather than
+//	                    binding to the wrong real type, which is the
+//	                    direction #7094 chose explicitly.
+func javaClassBodyCalls(
+	classBody ts.Node,
+	src []byte,
+	callerName string,
+	cc *classCtx,
+	inherited map[string]string,
+	imports map[string]bool,
+	seen map[string]bool,
+	rels *[]types.RelationshipRecord,
+) {
+	if classBody == nil {
+		return
+	}
+	own := map[string]string{}
+	for name, typ := range collectFieldTypes(classBody, src) {
+		own[name] = typ
+	}
+	for i := 0; i < int(classBody.ChildCount()); i++ {
+		ch := classBody.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "enum_constant":
+			if name := childFieldText(ch, "name", src); name != "" {
+				own[name] = ""
+			}
+		case "enum_body_declarations":
+			// An enum's methods and fields sit one level deeper, in
+			// `enum_body_declarations`, but belong to the SAME class scope
+			// as the constants.
+			for name, typ := range collectFieldTypes(ch, src) {
+				own[name] = typ
+			}
+		}
+	}
+	ledger := javaOverlayLedger(inherited, own, nil)
+	javaClassMemberCalls(classBody, src, callerName, cc, ledger, imports, seen, rels)
+}
+
+// javaClassMemberCalls walks the members of one class scope, giving each
+// method / constructor its own parameter frame on top of the class ledger.
+// `enum_body_declarations` is transparent: its children are members of the
+// same class scope, not a nested one (#7109).
+func javaClassMemberCalls(
+	container ts.Node,
+	src []byte,
+	callerName string,
+	cc *classCtx,
+	ledger map[string]string,
+	imports map[string]bool,
+	seen map[string]bool,
+	rels *[]types.RelationshipRecord,
+) {
+	for i := 0; i < int(container.ChildCount()); i++ {
+		m := container.Child(i)
+		if m == nil {
+			continue
+		}
+		switch m.Type() {
+		case "method_declaration", "constructor_declaration", "compact_constructor_declaration":
+			javaScopeCalls(m.ChildByFieldName("body"), src, callerName, cc,
+				collectParamTypes(m, src), ledger, imports, seen, rels)
+		case "enum_body_declarations":
+			javaClassMemberCalls(m, src, callerName, cc, ledger, imports, seen, rels)
+		default:
+			// Field initialisers, instance/static initialiser blocks,
+			// enum-constant arguments and constant-specific bodies, and
+			// member types nested one level further down. No parameter
+			// frame of their own.
+			javaScopeCalls(m, src, callerName, cc, nil, ledger, imports, seen, rels)
+		}
+	}
+}
+
+// javaOverlayLedger layers three name→type maps in increasing precedence and
+// returns the result. It never mutates its arguments, and returns `base`
+// itself when both overlays are empty so the common no-locals no-params case
+// allocates nothing — the same shortcut the pre-#7109 flat merge had.
+func javaOverlayLedger(base, mid, top map[string]string) map[string]string {
+	if len(mid) == 0 && len(top) == 0 {
+		return base
+	}
+	out := make(map[string]string, len(base)+len(mid)+len(top))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range mid {
+		out[k] = v
+	}
+	// params win over locals — a loop-local that shadows a parameter must not
+	// change the parameter's type for the rest of the method.
+	for k, v := range top {
+		out[k] = v
+	}
+	return out
 }
 
 // javaCallTarget resolves the callee target from a method_invocation or
@@ -1369,45 +1544,48 @@ func collectParamTypes(node ts.Node, src []byte) map[string]string {
 // asserted: TestJava7094_AmbiguityIsStickyAcrossAnAgreeingRedeclaration kills
 // the one-stage form.
 //
-// NESTED SHADOWING is treated identically to sibling reuse, because a flat
-// walk cannot tell them apart, AND IT COSTS REAL RECALL. An earlier revision of
-// this comment said Java "forbids an inner block from redeclaring a name
+// THE WALK IS SCOPED AT CLASS BOUNDARIES (#7109) — scopedFindNodes, not
+// findAllNodes. Everything above describes ONE class scope, and that is now
+// what this function sees: it does not descend into a `class_body` /
+// `interface_body` / `enum_body` / `annotation_type_body`, so a name bound
+// inside a local or anonymous class is not in this ledger at all.
+//
+// WHY, since it was deliberately not done for two rounds. An earlier revision
+// of this comment said Java "forbids an inner block from redeclaring a name
 // already in scope, so a compilable program cannot contain that case". That is
 // FALSE, and it was load-bearing — it is how a reader concludes there is
 // nothing here to grade. JLS §6.4 restricts redeclaration only within the
 // DIRECTLY ENCLOSING method, constructor or initializer block; a local or
 // anonymous CLASS BODY is a new class scope and may legally shadow. The calls
-// inside such a body are attributed to the enclosing method entity, so this
-// flat walk reaches straight across the class boundary:
+// inside such a body are attributed to the enclosing method entity, so a flat
+// walk reached straight across the class boundary:
 //
 //	Order o = new Order();
-//	o.a();                                   // was Order.a, now bare `a`
+//	o.a();                                   // was bare `a`, now Order.a
 //	Runnable r = new Runnable() {
 //	  public void run() { Customer o = new Customer(); o.b(); }
 //	};
 //
-// MEASURED, on compilable Java, with the control (inner variable renamed)
-// still emitting `Order.a` and `Customer.b` — so the loss is caused by
-// cross-class-boundary poisoning, not by the fixture. Recorded as a FIXTURE
-// (TestJava7094_ClassBodyShadowingCostsRecall) rather than as prose, so the
-// cost is observed and moves when the behaviour does.
+// The recall loss that cost (both receivers) was recorded as a FIXTURE rather
+// than as prose, and that fixture named this fix and predicted its own red:
+// TestJava7094_ClassBodyShadowingRecallRecoveredBy7109 now asserts the
+// recovery it anticipated.
 //
-// The behaviour is left as-is deliberately: refusing across a class boundary
-// is defensible and recall loss is the honest direction, whereas the
-// alternative is guessing which of two real types a name has. Recovering it
-// needs the symbol table described below, which would stop the walk at the
-// class boundary for free.
+// REFUSAL WAS NEVER THE GOAL HERE, only the answer available without a scope
+// model. Across a class boundary the two declarations do not disagree about
+// anything — they are different variables — so refusing them was not the
+// #7094 "do not guess between two real types" judgement, it was a flat walk
+// mistaking two scopes for one. Inside one class scope that judgement stands
+// unchanged, which is why the statement-level binders below still poison.
 //
-// WHAT A REAL SYMBOL TABLE WOULD COST, since refusal is the cheaper of two
-// defensible answers and the more expensive one is not wrong: a block-scoped
-// table means walking the body RECURSIVELY instead of via findAllNodes,
-// pushing a frame at every scope-introducing node (block, for, enhanced_for,
-// try-with-resources, catch clause, switch block, lambda body), and resolving
-// each call site against the frame stack LIVE at that site's position rather
-// than against one flat map — which means extractCallRelationships can no
-// longer take a prebuilt map and its `params win over locals` merge has to
-// become the bottom frame of that stack. That is the right end state; nothing
-// here blocks it, since a per-site table simply stops consulting this ledger.
+// WHAT THIS IS NOT: a general block-scoped symbol table. Statement scopes
+// (block, for, enhanced_for, try-with-resources, catch clause, switch block,
+// lambda body) are still one flat map, and #7094's refusal is still how a
+// collision between them is answered. A real per-site table would push a frame
+// at each of those and resolve every call against the stack LIVE at that
+// site's position; nothing here blocks it, since a per-site table simply stops
+// consulting this ledger. #7109 deliberately stopped at the class boundary
+// because that is where the language stops too.
 //
 // BOTH DIRECTIONS ARE GRADED BY FIXTURES. A collision guard that never fires
 // and one that always fires are indistinguishable on a corpus where the
@@ -1435,7 +1613,7 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 		}
 		cand[name] = typ
 	}
-	for _, decl := range findAllNodes(body, "local_variable_declaration") {
+	for _, decl := range scopedFindNodes(body, "local_variable_declaration") {
 		declType := leafTypeName(decl.ChildByFieldName("type"), src)
 		// `var` (Java 10+) carries no declared leaf type. Mirror the TS/JS
 		// (#4680) and Python (#4716) local-receiver wins: when the
@@ -1474,7 +1652,7 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// the loop variable to its declared type so calls inside the body can
 	// be receiver-typed. Same ledger as the declaration walk: this arm used
 	// to overwrite `out` unconditionally.
-	for _, fr := range findAllNodes(body, "enhanced_for_statement") {
+	for _, fr := range scopedFindNodes(body, "enhanced_for_statement") {
 		record(childFieldText(fr, "name", src),
 			leafTypeName(fr.ChildByFieldName("type"), src))
 	}
@@ -1525,13 +1703,13 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// that is a plain existing variable (`try (existing) { … }`) has NO
 	// `name` field, so childFieldText yields "" and record no-ops: that form
 	// binds nothing and must not poison the outer name.
-	for _, res := range findAllNodes(body, "resource") {
+	for _, res := range scopedFindNodes(body, "resource") {
 		record(childFieldText(res, "name", src), "")
 	}
 	// `catch (MyEx o) { … }` — catch_clause holds a catch_formal_parameter
 	// whose `name` field is the bound identifier (its type sits in an
 	// unnamed `catch_type` child, not a `type` field).
-	for _, cfp := range findAllNodes(body, "catch_formal_parameter") {
+	for _, cfp := range scopedFindNodes(body, "catch_formal_parameter") {
 		record(childFieldText(cfp, "name", src), "")
 	}
 	// `cs.forEach(o -> o.b())` — lambda_expression's `parameters` field is
@@ -1559,7 +1737,7 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// varargs form (#7102). `receiver_parameter` — the third thing
 	// `formal_parameters` admits — binds `this`, not a name, so there is
 	// nothing to record for it.
-	for _, lam := range findAllNodes(body, "lambda_expression") {
+	for _, lam := range scopedFindNodes(body, "lambda_expression") {
 		params := lam.ChildByFieldName("parameters")
 		if params == nil {
 			continue
@@ -1652,13 +1830,13 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	// which child patternBinderName returns, so it is GRADED by
 	// TestJava7100_RecordPatternVarComponentCollisionRefuses — were `var` an
 	// `identifier`, the binder would go unpoisoned and the sibling would win.
-	for _, ie := range findAllNodes(body, "instanceof_expression") {
+	for _, ie := range scopedFindNodes(body, "instanceof_expression") {
 		record(childFieldText(ie, "name", src), "")
 	}
-	for _, tp := range findAllNodes(body, "type_pattern") {
+	for _, tp := range scopedFindNodes(body, "type_pattern") {
 		record(patternBinderName(tp, src), "")
 	}
-	for _, rc := range findAllNodes(body, "record_pattern_component") {
+	for _, rc := range scopedFindNodes(body, "record_pattern_component") {
 		record(patternBinderName(rc, src), "")
 	}
 	// ENUMERATED AND DELIBERATELY NOT HERE (#7100's own recommendation was to
@@ -1690,28 +1868,26 @@ func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	//	                          constants, and inside that enum's OWN body a
 	//	                          constant is reachable bare — so `Customer.b()`
 	//	                          there could take a sibling local's type. It
-	//	                          needs no arm because it is a strict sub-case of
-	//	                          the anonymous/local-class-member gap below: the
-	//	                          only place the name is bare-reachable is inside
-	//	                          a different CLASS scope, which is exactly the
-	//	                          boundary that gap is about. From this method's
+	//	                          needs no arm HERE, and now for a reason that is
+	//	                          graded rather than deferred: the enum's body is
+	//	                          a class scope this walk stops at, and the
+	//	                          constant is bound in THAT scope's ledger by
+	//	                          javaClassBodyCalls (#7109). From this method's
 	//	                          own scope the constant must be qualified
 	//	                          (`E.Customer`), and a qualified receiver never
 	//	                          reaches this ledger under the bare name.
-	//	                          UNGRADED, with that gap.
+	//	                          TestJava7109_LocalEnumConstantOwnsItsName.
 	//
-	// ONE GENUINE GAP REMAINS, measured not assumed, and left out because it
-	// is a different mechanism rather than a different spelling: members of an
+	// THE GAP THAT USED TO BE RECORDED HERE IS CLOSED (#7109): members of an
 	// ANONYMOUS or LOCAL CLASS declared inside this body. A `new Go() { public
-	// void go(Customer o) { o.b(); } }` beside a sibling `Order o` emits
-	// `Order.b` at 1a6a134f3 — the same #7056 signature — because its
+	// void go(Customer o) { o.b(); } }` beside a sibling `Order o` emitted
+	// `Order.b` at 83004cbef — the #7056 signature — because its
 	// `formal_parameter` is a descendant of this body but belongs to a
-	// different CLASS scope. Poisoning across that boundary is the question
-	// TestJava7094_ClassBodyShadowingCostsRecall already records a deliberate
-	// answer to for locals (refuse, and pay the recall), so widening to it is
-	// a policy change with its own recall cost to observe, not the one-line
-	// spelling fix the three arms above are. Reported for its own change; no
-	// fixture here grades it, and this comment is the only record of it.
+	// different CLASS scope, and no arm here bound it. It is not an arm here
+	// now either: scopedFindNodes stops before it, and javaScopeCalls resolves
+	// that body's calls against its own ledger. Nested class members are
+	// therefore OUT of this function's remit entirely, which is why no
+	// enumeration entry above needs to cover them.
 	out := map[string]string{}
 	for name, typ := range cand {
 		if ambiguous[name] {
@@ -1898,6 +2074,89 @@ func collectPackageName(root ts.Node, src []byte) string {
 		}
 	}
 	return ""
+}
+
+// javaClassScopeBody is the set of tree-sitter-java node types that open a
+// NEW CLASS SCOPE. A name bound inside one of these is a member (or a local of
+// a member) of a DIFFERENT class than the method the node sits in, so it is
+// invisible to that method's bare-name lookups and must not enter its ledger
+// (#7109).
+//
+// Reached inside a method body by five source forms, all of which funnel into
+// one of these four nodes — DERIVED from parse dumps of compilable Java, not
+// assumed:
+//
+//	new Go() { … }            object_creation_expression → class_body
+//	class Inner { … }         class_declaration          → class_body
+//	record R(int x) { … }     record_declaration         → class_body
+//	interface I { … }         interface_declaration      → interface_body
+//	enum E { … }              enum_declaration           → enum_body
+//
+// `annotation_type_body` cannot appear inside a method body (an annotation
+// type may not be declared locally) but is listed because these same helpers
+// walk MEMBER class bodies on the recursive descent, where it can.
+//
+// WHAT IS DELIBERATELY *NOT* HERE — these are the permissive direction, and
+// they must keep binding exactly as they did before #7109:
+//
+//	block                  a nested statement block is the SAME class scope;
+//	                       JLS §6.4 even forbids redeclaring the method's own
+//	                       locals there. #7094's sibling-collision refusal
+//	                       lives on this node and must survive.
+//	lambda_expression      a lambda body is not a class body; its parameter is
+//	                       a #7099 ledger arm and stays one.
+//	switch_block / for /   all statement scopes, all in the same class.
+//	try / catch_clause
+//
+// A boundary placed on any of those would stop the walk TOO EARLY and silently
+// re-open #7094 / #7097 / #7099 / #7100, which is why each has a fixture.
+var javaClassScopeBody = map[string]bool{
+	"class_body":           true,
+	"interface_body":       true,
+	"enum_body":            true,
+	"annotation_type_body": true,
+}
+
+// scopedFindNodes is findAllNodes restricted to ONE class scope: it returns
+// every descendant of root whose Type() is in kinds, WITHOUT descending into a
+// nested class-scope body (#7109). A matching class-scope body is itself
+// returned — that is how the caller finds the boundaries to recurse into — but
+// its contents are not searched.
+//
+// root itself is never matched, matching findAllNodes' behaviour at every call
+// site here: root is always a method/constructor body, a class member, or a
+// member container, none of which is ever one of the kinds asked for.
+func scopedFindNodes(root ts.Node, kinds ...string) []ts.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []ts.Node
+	var stack []ts.Node
+	for i := 0; i < int(root.ChildCount()); i++ {
+		stack = append(stack, root.Child(i))
+	}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n == nil {
+			continue
+		}
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		if javaClassScopeBody[n.Type()] {
+			// New class scope — its names belong to a different ledger.
+			continue
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
