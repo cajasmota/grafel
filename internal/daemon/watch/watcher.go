@@ -976,6 +976,17 @@ func chargeDirRecording(dir string, cost fdCostModel, record map[string]struct{}
 		if e.IsDir() {
 			continue
 		}
+		// A FIFO or a socket already sitting in the directory costs nothing
+		// either: watchDirectoryFiles calls the same internalWatch -> addWatch
+		// that returns ("", nil) for those two modes (backend_kqueue.go:594,
+		// :365-368). Counting one here charges a descriptor that was never
+		// opened AND overstates dirEntries, which would make reconcileDir
+		// believe the directory is fully covered. DirEntry.Type() is the
+		// unresolved d_type, so a symlink reports ModeSymlink and stays
+		// charged — the same discrimination handleEvent makes (#7245).
+		if unwatchableEntryMode(e.Type()) {
+			continue
+		}
 		entries++
 		n += cost.perEntry()
 		if record != nil {
@@ -1584,10 +1595,33 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	// -----------------------------------------------------------------------
 	createdDir := false
 	if ev.Op.Has(fsnotify.Create) {
-		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
-			createdDir = true
+		charge := true
+		if fi, err := os.Stat(ev.Name); err == nil {
+			createdDir = fi.IsDir()
+			// #7245, the ONE arm of the divergence above that is not a race.
+			// addWatch returns ("", nil) — success with NO watch — for a FIFO
+			// or a socket (backend_kqueue.go:365-368), so no descriptor exists
+			// to charge, and none can ever be released either: an unwatched
+			// path reports no Remove. Unlike the ENOENT arm, this is decided by
+			// the entry's mode and not by timing, so skipping the charge cannot
+			// under-count (#7242 is that arm, and is NOT fixed here).
+			//
+			// os.Stat FOLLOWS symlinks; addWatch Lstats. A symlink pointing at
+			// a FIFO is watched — internalWatch passes listDir=true, which
+			// skips addWatch's readlink branch (:371), so the Lstat reports
+			// ModeSymlink and unix.Open runs — and it must still be charged. So
+			// the mode is confirmed against the path itself before anything is
+			// skipped. That second syscall is paid only on a path Stat already
+			// says is a pipe or a socket, which is the rare case.
+			if unwatchableEntryMode(fi.Mode()) {
+				if li, lerr := os.Lstat(ev.Name); lerr == nil && unwatchableEntryMode(li.Mode()) {
+					charge = false
+				}
+			}
 		}
-		w.chargeEventOpen(ev.Name, createdDir)
+		if charge {
+			w.chargeEventOpen(ev.Name, createdDir)
+		}
 	}
 	if ev.Op.Has(fsnotify.Remove) || ev.Op.Has(fsnotify.Rename) {
 		w.releaseEventClose(ev.Name)
