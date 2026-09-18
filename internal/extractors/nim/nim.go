@@ -391,7 +391,41 @@ func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	var bodyLines []string
 	// The first line after '=' may be on the same line or the next.
 	// We want lines that are more indented than the declaration.
-	minBodyIndent := baseIndentLen + 2 // Nim typically uses 2-space indent
+	// #7185: the body continues at any column STRICTLY GREATER than the
+	// declaration's own column, so the threshold is baseIndentLen+1 — not +2.
+	//
+	// It was +2, which left a DEAD BAND at exactly baseIndentLen+1: such a line
+	// satisfied neither `indent >= minBodyIndent` nor `indent <= baseIndentLen`,
+	// so the loop silently skipped it and kept scanning. The emitted body then had
+	// a HOLE — the base+1 line gone while deeper lines below it were still
+	// collected — which moved EndLine and dropped CALLS edges.
+	//
+	// +1 IS NIM'S RULE, NOT A STYLE GUESS, AND NOT F#'s. PR #7184 chose +1 for the
+	// fsharp copy of this helper from the F# 4.1 offside rule; that argument is
+	// about F# and does not transfer. Nim manual, Lexical Analysis -> Indentation:
+	//
+	//	"Nim's standard grammar describes an indentation sensitive language. This
+	//	 means that all the control structures are recognized by indentation.
+	//	 Indentation consists only of spaces; tabulators are not allowed."
+	//
+	// and the grammar pseudo-terminals that same section defines:
+	//
+	//	IND{>}	"denotes an indentation that consists of MORE SPACES than the
+	//		 entry at the top of the stack"
+	//	IND{=}	"an indentation that has the SAME number of spaces"
+	//
+	// An indented statement list is introduced by IND{>} — strictly more spaces
+	// than the enclosing entry — while a SIBLING is IND{=}, i.e. exactly the
+	// enclosing column. The manual names no minimum step, so "more spaces" is
+	// satisfied by one. base+1 is therefore body, and only base-or-less can be a
+	// sibling — which is exactly the `indent <= baseIndentLen` terminator below.
+	// With +1 the two conditions are complementary and no band can exist.
+	//
+	// DERIVED-NOT-EXECUTED: no Nim toolchain exists on the build machine, so this
+	// is read off the manual rather than compiled. FALSIFIER: a Nim program in
+	// which a statement indented exactly one space deeper than its enclosing
+	// declaration is rejected, or parses as that declaration's SIBLING.
+	minBodyIndent := baseIndentLen + 1
 
 	for i, line := range lines {
 		if i == 0 && strings.TrimSpace(line) != "" {
