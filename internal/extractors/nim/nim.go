@@ -233,7 +233,36 @@ func extractNim(src, filePath string) []types.EntityRecord {
 	}
 
 	// 2. Type declarations — objects, enums, tuples.
-	typeSeen := make(map[string]bool)
+	//
+	// #7231: THERE IS NO NAME-KEYED DEDUP HERE ANY MORE. It used to be
+	// `typeSeen[name]`, first-match-wins, which silently discarded 415 of 6987
+	// declarations over a 4431-file Nim population (nim-lang/Nim, nimbus-eth2,
+	// pixie, nitter, jester). 221 of the 255 duplicated (file,name) groups —
+	// 86.7% — are declarations inside DIFFERENT routine bodies (proc/template/
+	// macro/block/static), i.e. genuinely distinct coexisting types in disjoint
+	// scopes rather than competing descriptions of one type; only 17 are
+	// `when`-branch conditional compilation, and only 1 of those 17 differs in
+	// Subtype. So first-wins was a straight recall loss for the bulk of the
+	// population, not a tie-break.
+	//
+	// #7231 was directed as "key the dedup on name + StartLine". That key is
+	// INJECTIVE OVER typeRE's MATCHES and therefore can never suppress one:
+	// typeRE is `(?m)^…`-anchored, so every match starts at a line start, and
+	// FindAllStringSubmatchIndex returns successive NON-OVERLAPPING matches
+	// left to right, so match k+1 begins at a line strictly after match k's.
+	// No two matches can share a start line, so no two can share the key. The
+	// compound-key form was built and measured against this one over the same
+	// population: byte-identical components.txt / contains.txt / extends.txt.
+	// Keeping the map would be a branch no input can reach — the same thing
+	// #7197 removed from this file twice. It is stated here instead.
+	//
+	// The proc loop above keeps ITS dedup (`indent + ":" + name`, :181) because
+	// procRE's key is NOT injective: two overloads at the same indent collide
+	// by design.
+	//
+	// containsFirstDecl is the one thing that still needs per-name state — see
+	// its declaration inside the loop's CONTAINS block.
+	containsFirstDecl := make(map[string]bool)
 	// typeRE has exactly 3 capture groups (indent, name, kind alternation); the
 	// `(?:type[ \t]+)?` prefix, the generics and the pragma block are all
 	// non-capturing. FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints per
@@ -247,10 +276,6 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		indent := src[m[2]:m[3]] // #7190: the DECLARATION's own indent
 		name := strings.TrimSuffix(src[m[4]:m[5]], "*")
 		kind := src[m[6]:m[7]]
-		if typeSeen[name] {
-			continue
-		}
-		typeSeen[name] = true
 
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 
@@ -287,28 +312,68 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		if ext := baseOfEdge(src, m[1], kind, name, startLine); ext != nil {
 			rels = append(rels, *ext)
 		}
-		methodSeen := make(map[string]bool)
-		// procRE has 3 capture groups, so len(pm) is invariantly 8 — the same
-		// derivation as the proc loop above, measured with its own panic probe
-		// under #7197 rather than transferred. The `pm[6] >= 0` test below is a
-		// different question and is NOT dead: see the proc loop's note.
-		for _, pm := range procRE.FindAllStringSubmatchIndex(src, -1) {
-			procName := strings.TrimSuffix(src[pm[4]:pm[5]], "*")
-			if methodSeen[procName] {
-				continue
-			}
-			// Check if any parameter references this type name.
-			params := ""
-			if pm[6] >= 0 && pm[7] >= 0 {
-				params = src[pm[6]:pm[7]]
-			}
-			if containsTypeName(params, name) {
-				methodSeen[procName] = true
-				ref := extractor.BuildOperationStructuralRef("nim", filePath, procName)
-				rels = append(rels, types.RelationshipRecord{
-					ToID: ref,
-					Kind: "CONTAINS",
-				})
+		// #7231: CONTAINS IS EMITTED ONLY FROM THE FIRST DECLARATION OF A NAME
+		// IN THIS FILE. Not from the first declaration overall, and not from
+		// one chosen per (name, subtype) — per NAME, because the name is the
+		// whole of what the scan below keys on.
+		//
+		// The scan is not scoped to this declaration and cannot be. In Nim a
+		// "method" is a free-standing proc taking the type as its FIRST
+		// PARAMETER, declared OUTSIDE the type body, so the scan is the inner
+		// whole-file `procRE.FindAllStringSubmatchIndex(src, -1)` below and the
+		// only thing it matches on is `name`. Measured over all 9370
+		// (type-declaration, matching-proc) pairs in the population: pairs with
+		// the proc INSIDE the declaration's span = 0, outside = 9370. Scoping
+		// the scan to the span — the fix #7231 originally prescribed — would
+		// take CONTAINS from 8597 to 0. (Attribution by ENCLOSING ROUTINE scope
+		// is a real and different question; it needs routine-body spans this
+		// loop does not compute, and is its own issue.)
+		//
+		// Because the scan sees only `name`, and the ToID is
+		// BuildOperationStructuralRef("nim", filePath, procName) which carries
+		// no line, EVERY declaration of a name produces a BYTE-IDENTICAL
+		// CONTAINS set. Dropping the name dedup above therefore added 773
+		// CONTAINS edges over the population of which 773 were pure duplicates
+		// — zero new recall, 100% noise. Emitting from the first declaration
+		// only reproduces the pre-#7231 edge set EXACTLY (8597, byte for byte)
+		// while the 415 recovered entities still ship. Locally-scoped duplicate
+		// declarations carry no CONTAINS rather than false ones.
+		//
+		// "First" means LOWEST BYTE OFFSET, and is read off the iteration order
+		// of typeRE's FindAllStringSubmatchIndex — successive non-overlapping
+		// matches, left to right — never off map iteration. containsFirstDecl
+		// is read and written only along that ordered walk.
+		//
+		// The guard is keyed on `name`, so it fires ONLY for a name this file
+		// declares more than once. A name declared once is untouched and keeps
+		// its edges; that direction is the one a too-broad guard breaks without
+		// moving the duplicate count, and is pinned separately in
+		// first_decl_contains_7231_test.go.
+		if !containsFirstDecl[name] {
+			containsFirstDecl[name] = true
+			methodSeen := make(map[string]bool)
+			// procRE has 3 capture groups, so len(pm) is invariantly 8 — the same
+			// derivation as the proc loop above, measured with its own panic probe
+			// under #7197 rather than transferred. The `pm[6] >= 0` test below is a
+			// different question and is NOT dead: see the proc loop's note.
+			for _, pm := range procRE.FindAllStringSubmatchIndex(src, -1) {
+				procName := strings.TrimSuffix(src[pm[4]:pm[5]], "*")
+				if methodSeen[procName] {
+					continue
+				}
+				// Check if any parameter references this type name.
+				params := ""
+				if pm[6] >= 0 && pm[7] >= 0 {
+					params = src[pm[6]:pm[7]]
+				}
+				if containsTypeName(params, name) {
+					methodSeen[procName] = true
+					ref := extractor.BuildOperationStructuralRef("nim", filePath, procName)
+					rels = append(rels, types.RelationshipRecord{
+						ToID: ref,
+						Kind: "CONTAINS",
+					})
+				}
 			}
 		}
 
