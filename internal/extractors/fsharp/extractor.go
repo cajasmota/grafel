@@ -1194,10 +1194,13 @@ func insideBraces(scrubbed string, off int) bool {
 //
 // #7187: the scan IS nesting-aware, via maskNestedTypeBodies below. A clause
 // that sits inside a NESTED type declaration's own block belongs to that nested
-// type, never to the outer one. The nested type is matched by the file-level
-// typeRE pass in its own right and collects the clause there, so masking it out
-// of the outer body moves the edge rather than deleting it — see the note on
-// maskNestedTypeBodies for why the two predicates are deliberately the same.
+// type, never to the outer one. The nested type is USUALLY matched by the
+// file-level typeRE pass in its own right and collects the clause there, so
+// masking it out of the outer body moves the edge rather than deleting it. The
+// one measured exception is a nested type whose NAME collides with an earlier
+// type: `typeSeen` drops it, and the clause then lands nowhere at all. See
+// maskNestedTypeBodies for the full accounting of where the two predicates
+// diverge — they share a regex, not a composed predicate.
 //
 // One known vector still limits this scan, noted for the record and
 // deliberately NOT fixed here:
@@ -1278,23 +1281,42 @@ func collectHierarchyEdges(body string, typeStartLine int, signatureFile bool) [
 //     yet when this runs; consuming them means a second pass and cross-entity
 //     coupling in a function whose contract is "given one body, return its
 //     edges".
+//
 //   - `typeSeen` in that loop dedups by NAME, so a nested type whose name was
 //     already taken has no record and no span at all. A span-subtraction fix
 //     would silently leave that clause on the outer type.
-//   - The excision predicate and the re-attribution predicate must be the SAME
-//     predicate, or the edge is dropped rather than moved. Using typeRE — the
-//     very regex the file-level pass uses to decide what becomes a type — makes
-//     them identical by construction: exactly the headers that get an owner of
-//     their own are the ones removed from the outer body. A span-based fix
-//     couples the two through a third artefact and can diverge from it.
 //
-// The block terminator is `indent <= headerIndent`, byte-for-byte the condition
-// extractIndentBody uses to close a body (#7176's `baseIndentLen+1` partition,
-// F# 4.1 spec §15.1.4 / §15.1.8). Stating it once here and once there is
-// duplication, but it means the masked region equals the nested type's own body
-// EXACTLY: nothing that would land in the nested owner's body is left in the
-// outer's, and nothing outside it is removed — a clause back at the outer's
-// member column AFTER the nested block stays with the outer type.
+//   - The excision predicate and the re-attribution predicate should be as close
+//     to the SAME predicate as possible, because wherever they diverge the edge
+//     is dropped rather than moved. Sharing typeRE — the very regex the
+//     file-level pass uses to decide what becomes a type — is the closest
+//     available coupling; a span-based fix couples them through a third
+//     artefact instead and can diverge from it independently.
+//
+//     The REGEX is shared. The COMPOSED predicates are NOT identical, and
+//     saying so plainly matters more than the tidiness of the claim:
+//
+//     (a) `typeSeen` in the file-level pass dedups by NAME and sits between
+//     excision and re-attribution. A nested type whose name collides with
+//     an earlier one is masked out of the outer body and then produces no
+//     entity, so its clause lands nowhere. Pre-change it landed on the
+//     OUTER type; this is a real, new recall loss, accepted deliberately
+//     and pinned by
+//     TestFSharp_NestedType7187_NameCollisionDropsTheEdge.
+//     (b) Excision reads the SCRUBBED body while re-attribution reads raw
+//     `src`, so a header the scrub alters is in principle another
+//     divergence. Probed on PR #7188 (fixture P10,
+//     `    (* c *)type P10Nested() =`): neither predicate matched, so
+//     nothing was excised without an owner. That half is UNEXERCISED, not
+//     refuted.
+//
+// The block extent is not a re-statement of extractIndentBody's rule; it is
+// that function's own answer, called with the same arguments the file-level
+// pass will use (#7176's `baseIndentLen+1` partition, F# 4.1 spec §15.1.4 /
+// §15.1.8). So the masked region equals the nested type's own body EXACTLY:
+// nothing that would land in the nested owner's body is left in the outer's,
+// and nothing outside it is removed — a clause back at the outer's member
+// column AFTER the nested block stays with the outer type.
 //
 // The input is the SCRUBBED body, so a `type X =` inside a comment or a string
 // literal is already blank and cannot mask anything.
@@ -1327,29 +1349,25 @@ func maskNestedTypeBodies(scrubbed string) string {
 		}
 		headerIndent := len(scrubbed[m[2]:m[3]])
 
-		// Walk to the end of the nested block. `end` is an index into scrubbed.
-		end := len(scrubbed)
-		pos := m[0]
-		if nl := strings.IndexByte(scrubbed[pos:], '\n'); nl >= 0 {
-			pos += nl + 1
-		} else {
-			pos = len(scrubbed)
-		}
-		for pos < len(scrubbed) {
-			lineEnd := len(scrubbed)
-			if nl := strings.IndexByte(scrubbed[pos:], '\n'); nl >= 0 {
-				lineEnd = pos + nl
-			}
-			line := scrubbed[pos:lineEnd]
-			if strings.TrimSpace(line) != "" && countIndent(line) <= headerIndent {
-				end = pos
-				break
-			}
-			if lineEnd == len(scrubbed) {
-				break
-			}
-			pos = lineEnd + 1
-		}
+		// The nested block is extractIndentBody's own answer, not a re-statement
+		// of its rule: call it, from the END of the matched header (m[1]) and
+		// with the header's own indent, exactly as the file-level type pass
+		// does. Its output is a CONTIGUOUS prefix of scrubbed[m[1]:] — every
+		// non-blank line is either >= headerIndent+1 (appended) or <=
+		// headerIndent (terminates), with no third case since #7176 closed the
+		// dead band, and blanks are always appended — so its LENGTH is the
+		// block's extent in bytes.
+		//
+		// Starting at m[1] rather than at the newline after m[0] is what makes
+		// a MULTI-LINE header work: typeRE's `\s+`, `(?:<[^>]*>)?` and
+		// `(?:\([^)]*\))?` all cross newlines, so a wrapped parameter list puts
+		// the header's CONTINUATION on the next line. Walking from m[0]'s
+		// newline treated that continuation as the first body line and
+		// terminated on it whenever it sat at or shallower than the `type`
+		// column, leaving the nested clause in the outer body — #7187 surviving
+		// verbatim. Reported on PR #7188 (fixture P4a) and pinned by
+		// TestFSharp_NestedType7187_MultiLineNestedHeader.
+		end := m[1] + len(extractIndentBody(scrubbed, m[1], headerIndent))
 		blank(m[0], end)
 		maskedTo = end
 	}

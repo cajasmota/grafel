@@ -12,11 +12,21 @@ import (
 //
 // The defect is a SPURIOUS edge, not a missing one: on the reproducer measured
 // on 248e89025 (and unchanged on 4d88f6372) the nested type's own edge was
-// present and correct while the outer type ALSO gained it. So both halves have
-// to be graded separately — a fix that suppresses the clause inside the nested
-// span entirely would turn a wrong edge into a missing one and would still look
-// like progress under any count assertion. Every test below therefore pairs a
-// MUST-HAVE row on the nested owner with a FORBIDDEN row on the outer owner.
+// present and correct while the outer type ALSO gained it. A fix that
+// suppressed the clause inside the nested span entirely would turn a wrong edge
+// into a missing one and would still look like progress under any count
+// assertion, so the MUST-HAVE direction is what has to be graded.
+//
+// WHICH ROWS ACTUALLY GRADE, stated honestly because it is easy to miscount
+// (reviewed on PR #7188). Where a type declares a clause of its own, its row is
+// `eqStrs(got, []string{own})`, and the paired "does not contain T" row is
+// DOMINATED BY IT on every input, not merely on the mutants scored: a forbidden
+// row fires iff T is in got, and T != own, so got != [own] and the eqStrs row
+// fires too. Those forbidden rows are DIAGNOSTICS — they name the leaked target
+// in the failure message — and they are not a second graded axis. The
+// forbidden-direction rows that genuinely carry weight are the `len(got) != 0`
+// rows on an owner that declares NOTHING (ShallowHost, WrapHost, DeepHost,
+// CollideHost), because those owners have no eqStrs row to dominate them.
 //
 // The forbidden target name is UNIQUE in each fixture (#7144 / #7152: F# dedup
 // keys are name-keyed, so a name shared with another entity merges silently and
@@ -172,5 +182,162 @@ func TestFSharp_NestedType7187_SiblingAfterNestedResumes(t *testing.T) {
 	}
 	if got := fsHierTargets(t, ents, "ResumeNested", "EXTENDS"); !eqStrs(got, []string{"ResumeNestBase"}) {
 		t.Errorf("resume: ResumeNested EXTENDS = %v, want [ResumeNestBase]", got)
+	}
+}
+
+// TestFSharp_NestedType7187_MultiLineNestedHeader covers a nested declaration
+// whose HEADER spans lines. typeRE's `\s+`, `(?:<[^>]*>)?` and
+// `(?:\([^)]*\))?` all cross newlines, so the header's continuation line is not
+// the first body line — and if the masker starts walking at the newline after
+// the match START rather than at its END, that continuation is mistaken for a
+// body line and terminates the block early whenever it is indented at or
+// shallower than the `type` column. The nested clause then stays in the outer
+// body and #7187 survives verbatim. Reported on PR #7188 (fixture P4a).
+//
+// Axis VARIED: the continuation line's indent relative to the nested `type`
+// column — 2 (shallower, the leaking case) and 8 (deeper, the control).
+// Axes HELD CONSTANT: the nested `type` column (4), the clause's indent (8),
+// the clause keyword (`inherit`), the outer type's own lack of inheritance,
+// the file path, and the wrapped construct (a parenthesised parameter list).
+//
+// DERIVED-NOT-EXECUTED: a continuation indented shallower than its own `type`
+// keyword is very likely an offside violation in real F#, so this row grades
+// the masker's agreement with extractIndentBody rather than a shape a compiler
+// would accept. That agreement is the property the doc comment claims.
+func TestFSharp_NestedType7187_MultiLineNestedHeader(t *testing.T) {
+	const shallowCont = "module M\n" + // 1
+		"\n" + // 2
+		"type WrapBase() =\n" + // 3
+		"    class end\n" + // 4
+		"\n" + // 5
+		"type WrapHost() =\n" + // 6
+		"    type WrapNested(\n" + // 7   header opens here, column 4
+		"  x: int) =\n" + // 8   continuation at column 2 — shallower
+		"        inherit WrapBase()\n" // 9
+
+	ents := runFSharp(t, shallowCont, "src/Wrap.fs")
+	if got := fsHierTargets(t, ents, "WrapNested", "EXTENDS"); !eqStrs(got, []string{"WrapBase"}) {
+		t.Errorf("shallow continuation: WrapNested EXTENDS = %v, want [WrapBase] — the nested type's OWN edge must survive", got)
+	}
+	if got := fsHierTargets(t, ents, "WrapHost", "EXTENDS"); len(got) != 0 {
+		t.Errorf("shallow continuation: WrapHost EXTENDS = %v, want none — the multi-line nested header must be masked from the END of the matched header, not from the newline after its start", got)
+	}
+
+	// Control: the same shape with the continuation indented DEEPER than the
+	// nested `type` column. This one was already clean before the fix to the
+	// scan start, so it grades the absence of a regression, not the fix.
+	const deepCont = "module M\n" + // 1
+		"\n" + // 2
+		"type DeepBase() =\n" + // 3
+		"    class end\n" + // 4
+		"\n" + // 5
+		"type DeepHost() =\n" + // 6
+		"    type DeepNested(\n" + // 7
+		"        x: int) =\n" + // 8   column 8 — deeper
+		"        inherit DeepBase()\n" // 9
+
+	ents = runFSharp(t, deepCont, "src/Deep.fs")
+	if got := fsHierTargets(t, ents, "DeepNested", "EXTENDS"); !eqStrs(got, []string{"DeepBase"}) {
+		t.Errorf("deep continuation control: DeepNested EXTENDS = %v, want [DeepBase]", got)
+	}
+	if got := fsHierTargets(t, ents, "DeepHost", "EXTENDS"); len(got) != 0 {
+		t.Errorf("deep continuation control: DeepHost EXTENDS = %v, want none", got)
+	}
+
+	// THREE-line header. This arm exists because a two-line header alone leaves
+	// a hole: a masker that starts at the newline after the match START but then
+	// delegates to extractIndentBody still passes the two-line case, since
+	// extractIndentBody appends its FIRST line unconditionally when it is
+	// non-blank (the same-line-body case) and so absorbs one shallow
+	// continuation. It takes a SECOND shallow continuation for that variant to
+	// terminate early and leak. Scored as mutant M4 on PR #7188, which was ALIVE
+	// at 0 --- FAIL until this arm existed.
+	const twoShallowConts = "module M\n" + // 1
+		"\n" + // 2
+		"type ThreeBase() =\n" + // 3
+		"    class end\n" + // 4
+		"\n" + // 5
+		"type ThreeHost() =\n" + // 6
+		"    type ThreeNested(\n" + // 7   header opens, column 4
+		"  x: int,\n" + // 8   continuation 1, column 2
+		"  y: int) =\n" + // 9   continuation 2, column 2
+		"        inherit ThreeBase()\n" // 10
+
+	ents = runFSharp(t, twoShallowConts, "src/Three.fs")
+	if got := fsHierTargets(t, ents, "ThreeNested", "EXTENDS"); !eqStrs(got, []string{"ThreeBase"}) {
+		t.Errorf("three-line header: ThreeNested EXTENDS = %v, want [ThreeBase]", got)
+	}
+	if got := fsHierTargets(t, ents, "ThreeHost", "EXTENDS"); len(got) != 0 {
+		t.Errorf("three-line header: ThreeHost EXTENDS = %v, want none — two shallow continuation lines must not terminate the masked block", got)
+	}
+}
+
+// TestFSharp_NestedType7187_NameCollisionDropsTheEdge pins a RECALL LOSS this
+// change introduces, so that it is graded rather than merely disclosed.
+//
+// The masking predicate is typeRE over the outer BODY; the re-attribution
+// predicate is typeRE over `src` AND the file-level `typeSeen` name filter. The
+// regex is shared, the COMPOSED predicate is not, and typeSeen sits between
+// them: a nested type whose name collides with an earlier type produces no
+// entity, so its clause is excised from the outer type and has nowhere to land.
+//
+// BEFORE this change the clause landed on the OUTER type (wrong owner, edge
+// present). AFTER it, no entity in the file carries the edge. That is a
+// wrong-edge → missing-edge conversion — narrow, but new, and the same failure
+// mode mutant M3 is rejected for. It is pinned here as the accepted trade
+// rather than left unobserved: attributing an edge to a type that does not
+// declare it is the error #6326 was built to avoid, and unwinding typeSeen is a
+// change to entity identity across the whole extractor, not to this scan.
+//
+// Axis VARIED: whether the nested type's name collides with an earlier
+// top-level type.
+// Axes HELD CONSTANT: the nesting shape, indents, clause keyword, base name,
+// and the file path — the non-colliding arm is the same fixture with the nested
+// type renamed.
+func TestFSharp_NestedType7187_NameCollisionDropsTheEdge(t *testing.T) {
+	const collide = "module M\n" + // 1
+		"\n" + // 2
+		"type CollideBase() =\n" + // 3
+		"    class end\n" + // 4
+		"\n" + // 5
+		"type Twin() =\n" + // 6   top-level, claims the name first
+		"    class end\n" + // 7
+		"\n" + // 8
+		"type CollideHost() =\n" + // 9
+		"    type Twin() =\n" + // 10  same name — typeSeen drops this entity
+		"        inherit CollideBase()\n" // 11
+
+	ents := runFSharp(t, collide, "src/Collide.fs")
+
+	// The outer type must NOT absorb it — this is what fails pre-fix.
+	if got := fsHierTargets(t, ents, "CollideHost", "EXTENDS"); len(got) != 0 {
+		t.Errorf("collision: CollideHost EXTENDS = %v, want none — the nested clause must not be attributed to the outer type", got)
+	}
+	// And the accepted consequence: NOTHING carries it. Stated as an assertion
+	// so a later change that restores the edge has to come here and say so.
+	if got := fsHierTargets(t, ents, "Twin", "EXTENDS"); len(got) != 0 {
+		t.Errorf("collision: Twin EXTENDS = %v, want none — the surviving Twin entity is the TOP-LEVEL one, which declares no inheritance; if this ever becomes [CollideBase] the nested type is being merged into the top-level one, which is a different defect", got)
+	}
+
+	// Control: rename the nested type and the edge lands where it belongs, so
+	// the loss above is attributable to the NAME COLLISION and nothing else.
+	const distinct = "module M\n" +
+		"\n" +
+		"type CollideBase() =\n" +
+		"    class end\n" +
+		"\n" +
+		"type Twin() =\n" +
+		"    class end\n" +
+		"\n" +
+		"type CollideHost() =\n" +
+		"    type Triplet() =\n" +
+		"        inherit CollideBase()\n"
+
+	ents = runFSharp(t, distinct, "src/Collide.fs")
+	if got := fsHierTargets(t, ents, "Triplet", "EXTENDS"); !eqStrs(got, []string{"CollideBase"}) {
+		t.Errorf("distinct-name control: Triplet EXTENDS = %v, want [CollideBase] — only the name collision may cost the edge", got)
+	}
+	if got := fsHierTargets(t, ents, "CollideHost", "EXTENDS"); len(got) != 0 {
+		t.Errorf("distinct-name control: CollideHost EXTENDS = %v, want none", got)
 	}
 }
