@@ -426,8 +426,89 @@ var (
 	// a kind signal. A future author widening the head does not inherit the
 	// classifier as a dependency; reintroducing one means changing
 	// classifyTypeSubtype's signature and both of its call sites.
+	// #7227 — the anchor was `^([ \t]*)type`, so a declaration preceded ON THE
+	// SAME LINE by an attribute section never matched and NO entity was minted:
+	// `[<Struct>] type StructRecord = { SX: int }` produced nothing at all. Same
+	// silent-total-miss family as #7135 above, different prefix.
+	//
+	// The prefix admitted is `(?:\[<[^\n]*?>\][ \t]*)*`. Four properties, of
+	// which THREE are graded and one is readability only:
+	//
+	//  1. `*` (zero or more SECTIONS) is READABILITY and is NOT graded: it says
+	//     "a run of attribute sections", which is what F# writes —
+	//     `[<Measure>] [<Measure>] type m` is attested (dotnet/fsharp
+	//     tests/FSharp.Compiler.ComponentTests/Conformance/BasicGrammarElements/
+	//     CustomAttributes/Basic/E_AttributeApplication02.fs:6). But `*` -> `?`
+	//     is ALIVE at 0 `--- FAIL` and is believed EQUIVALENT, because the
+	//     content class `[^\n]` admits `>]`: one non-greedy section expands over
+	//     `Measure>] [<Measure` and closes on the LAST `>]`, so a single
+	//     optional section already covers a run of them. Do NOT record `*` as
+	//     covered by the two-section fixture; it is not. The equivalence is not
+	//     only an argument: `*` -> `?` was brute-forced against the shipped
+	//     pattern over 4 token alphabets — {`[<`,`>]`,`A`,` `,`type`,`Foo`,`=`,
+	//     `\n`}, {`[<`,`>]`,`<`,`>`,` `,`type`,`Foo`,`=`},
+	//     {`[<`,`>]`,`\t`,`\n`,`type`,`Foo`,`=`,`private`} and
+	//     {`[<`,`>]`,`"`,`]`,`//`,` `,`type`,`Foo`,`=`} — to depth 9, 8, 9 and 8
+	//     tokens respectively, ~470 million strings, comparing FULL submatch
+	//     index sets: 0 divergences. The same enumeration retires one more
+	//     ALIVE mutant as equivalent, an extra `[ \t]*` appended after the
+	//     prefix group (`(?:…)*[ \t]*type`), which cannot diverge because the
+	//     leading `([ \t]*)` capture is greedy: 0 divergences over the same
+	//     ~470M strings.
+	//  2. NON-greedy `*?`, not `[^>]*` and not greedy `.*`. `[^>]*` truncates at
+	//     the first `>`, which a generic attribute argument carries: `[<A<int>>]
+	//     type C = class end` (dotnet/fsharp tests/FSharp.Compiler.ComponentTests/
+	//     Attributes/GenericAttributeAbbreviations.fs:94) would not match.
+	//     Greedy fails the other way, but ONLY on a particular shape. Go's
+	//     regexp is leftmost-FIRST, so greedy takes the LONGEST expansion under
+	//     which the whole pattern still matches and shrinks if it must: on
+	//     `[<M>] type Sec = float // [<M>] type Sec` — a comment REPEATING the
+	//     declaration — greedy's long match dies for want of a trailing `=` and
+	//     the engine falls back to the correct one, so that shape does not
+	//     discriminate (measured: the greedy mutant is ALIVE against it). The
+	//     shape that does is a comment carrying a DIFFERENT declaration:
+	//     `[<Measure>] type Sec = float // [<Foo>] type Bogus = int`, where
+	//     greedy captures `Bogus` and non-greedy captures `Sec`. That is the
+	//     fixture that kills the greedy mutant, paired with a forbidden row on
+	//     `Bogus`. `>]` being a two-byte sequence is also why a lone `]` in an
+	//     attribute-argument string does not close a section early
+	//     (`[<Emit("[0, $0]")>]`), and why `>>]` from a nested generic closes
+	//     correctly: the content `A<int>` is followed by exactly `>]`.
+	//  3. `[ \t]*` after each section, NOT `\s*`. The two differ only where an
+	//     attribute sits on its OWN line: under `\s*` the leftmost match starts
+	//     at the ATTRIBUTE line, moving the entity's StartLine and the indent
+	//     this pass hands to extractIndentBody. Pinned at the shipped behaviour
+	//     — the span starts at the `type` line — by
+	//     TestFSharpTypeAttrPrefix_SpanStartsAtTheTypeLine. Nothing else in the
+	//     package observes it; without that test the `\s*` mutant is ALIVE.
+	//  4. `[^\n]`, not `.` with `(?s)` off — `.` already excludes `\n` in Go, so
+	//     this is explicit rather than different; it states that an attribute
+	//     section may NOT span a newline, which is what keeps a wrapped
+	//     `[<Struct\n>] type T =` from matching. That is a deliberate
+	//     under-match: such a wrap is legal F# and is not supported here.
+	//
+	// The prefix composes with the `access` allowlist that follows it
+	// (`[<Struct>] type private Hidden = { H: int }`), and it does NOT interact
+	// with classifyTypeSubtype: that function has taken only the BODY since
+	// #7218, and the body of an attribute-carrying declaration is whatever
+	// follows the `=`, exactly as before. `[<Struct>] type SPoint = { … }` is
+	// therefore classified "record" from its body form, not "struct" from its
+	// attribute — the attribute is a representation modifier, not a body form.
+	//
+	// KNOWN OVER-MATCH, disclosed and not fixed: an attribute argument STRING
+	// containing the literal two-byte sequence `>]` closes the section early
+	// (`[<Emit(">] type X = ")>] let y = 1` mints a type `X`). Deciding it needs
+	// a lexer, not a regexp — this pass reads raw `src`, not the scrubbed text.
+	// It is not hypothetical-only: it is simply absent from the population. Over
+	// 1,836,045 lines in 8,556 F# files (7 shallow clones, see
+	// type_attribute_prefix_7227_test.go for the list), the widened pattern
+	// newly matches 91 lines and NONE of them, nor any other line in the corpus,
+	// is a line the old pattern missed for a reason other than the attribute
+	// prefix; on all 91 the captured name equals a bracket-balanced human parse.
+	// Introduced false positives: 0. Cost of a real fix is a string-aware scan
+	// of the prefix; recorded here so the judgement can be revisited.
 	typeRE = regexp.MustCompile(
-		`(?m)^([ \t]*)type(?:\s+(?:public|private|internal)\b)*` +
+		`(?m)^([ \t]*)(?:\[<[^\n]*?>\][ \t]*)*type(?:\s+(?:public|private|internal)\b)*` +
 			`\s+([A-Z][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=`,
 	)
 

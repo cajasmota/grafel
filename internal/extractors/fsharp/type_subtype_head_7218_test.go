@@ -526,13 +526,29 @@ func TestFSharpTypeSubtype_NotClaimed(t *testing.T) {
 		t.Errorf("attribute-only struct form: subtype=%q, want the unchanged %q "+
 			"(attributes are not read; #7218 did not claim this)", got, "record")
 	}
-	// (b) An attribute on the SAME LINE as the declaration defeats typeRE
-	// outright — the pattern is `(?m)^[ \t]*type`, so nothing is minted at all
-	// and the classifier is never reached. A separate gap from #7218.
+	// (b) An attribute on the SAME LINE as the declaration used to defeat typeRE
+	// outright — the pattern was `(?m)^[ \t]*type`, so nothing was minted at all
+	// and the classifier was never reached. That was a separate gap from #7218
+	// and is FIXED by #7227, which put an optional attribute-section prefix on
+	// typeRE; the entity is now minted and the classifier does reach it, reading
+	// the body as always. The recall, forbidden and count-floor grading for the
+	// prefix lives in type_attribute_prefix_7227_test.go — this row is not that
+	// grading, it is the trip-wire #7218 left here, updated to the behaviour
+	// #7227 shipped.
+	//
+	// What is STILL not claimed here is the fixture's own legality: the F#
+	// reference presents the `[<Struct>]` attribute and the explicit
+	// `struct … end` form as ALTERNATIVES, and with no F# compiler on this
+	// machine that question is unsettled. The row therefore asserts only what
+	// grafel DOES with this text — the classifier reads the body, so the body's
+	// `struct` keyword decides — and claims nothing about whether fsc accepts
+	// it. #7227's own fixtures deliberately avoid this shape and use only
+	// dotnet/fsharp-attested ones.
 	ents = runFSharp(t, "module M\n\n[<Struct>] type Vec3 =\n    struct\n        val x: float\n    end\n", "B.fs")
-	if got := fsSubtypeOf(ents, "Vec3"); got != "<absent>" {
-		t.Errorf("same-line attribute: subtype=%q, want no entity at all — if this "+
-			"now mints, typeRE changed and this note is stale", got)
+	if got := fsSubtypeOf(ents, "Vec3"); got != "struct" {
+		t.Errorf("same-line attribute: subtype=%q, want %q (#7227 made typeRE "+
+			"admit the attribute prefix; the body still decides the subtype)",
+			got, "struct")
 	}
 	// (c) The `and` continuation form (`type A = … and B = …`) is not scanned by
 	// typeRE at all, so B has no subtype to get wrong.
