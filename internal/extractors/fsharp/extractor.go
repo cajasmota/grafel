@@ -608,10 +608,18 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// STATED SCOPE LIMIT — #7193. stripStringsAndComments RUNS AWAY on a
 	// character literal holding a quote (`'"'`): there is no general
 	// char-literal state. The OTHER runaway this comment used to name, a
-	// verbatim string with a trailing backslash (`@"C:\"`), is FIXED — #7199
-	// gave the scrubber a verbatim mode in which `\` is an ordinary character
-	// and `""` is the quote escape, so the `case '"'` arm's
-	// "Check for verbatim string" comment now describes a check that exists.
+	// verbatim string with a trailing backslash (`@"C:\"`), is fixed for the
+	// three openers the F# lexer admits — `@"`, `$@"` and `@$"` — by #7199's
+	// verbatim mode, in which `\` is an ordinary character and a doubled quote
+	// is the escape, so the `case '"'` arm's "Check for verbatim string"
+	// comment now describes a check that exists.
+	//
+	// NOT fixed for an `@` before a TRIPLE quote: that input reaches the
+	// triple-quote branch, which runs first, and the scrubber's reading of it
+	// disagrees with the lexer's. Recorded, not fixed, by
+	// TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC. So
+	// "the verbatim half is fixed" is a claim about those three openers, not
+	// about every construct that begins with an `@`.
 	//
 	// READ THIS BEFORE FIXING #7193 — the package ALREADY has a recorded
 	// decision that a GENERAL char-literal scrub is WRONG, and it is easy to
@@ -1637,6 +1645,92 @@ func scrubKeepingQuote(src string) string {
 // The byte LENGTH is unchanged either way — `out` is allocated at len(src) and
 // every write is an in-place assignment to an existing index — so all the byte
 // offsets the callers carry across the scrub boundary stay valid.
+// verbatimOpenerStart reports the index at which the VERBATIM-string opener
+// ending at the quote src[q] begins, or -1 if src[q] does not open a verbatim
+// string.
+//
+// THE THREE OPENERS ARE THE LEXER'S, NOT A GUESS. dotnet/fsharp
+// `src/Compiler/lex.fsl`, all inside `rule token`, carries exactly these string
+// openers:
+//
+//	586  | '"'                      // ordinary   — `\` escapes
+//	599  | '$' '"' '"' '"'          // interpolated triple
+//	611  | ('$'+) '"' '"' '"'       // extended interpolated triple
+//	626  | '$' '"'                  // interpolated, NOT verbatim — `\` escapes
+//	640  | '"' '"' '"'              // triple-quoted
+//	655  | '@' '"'                  // VERBATIM
+//	670  | ("$@" | "@$") '"'        // interpolated VERBATIM, either order
+//
+// So `@"`, `$@"` and `@$"` admit a verbatim body and a plain `$"` does not.
+// That is why a `$` is accepted here only WITH an `@` beside it: widening this
+// to any `$` would silently take the C-style escape away from `$"a\"b"`.
+//
+// THE `xs@"abc"` QUESTION IS SETTLED BY THE SAME FILE, and it matters because
+// `@` is also F#'s list-append operator (`xs @ ["a"]`), so `xs@"abc"` looks
+// ambiguous between a verbatim string and an append against a string literal.
+// It is not ambiguous to the lexer:
+//
+//   - the append rule is `967 | ignored_op_char* ('@'|'^') op_char*`, and
+//     `op_char` (line 238) does NOT include `"`, so at the `@` that rule
+//     matches ONE byte;
+//   - rule 655 matches TWO;
+//   - fslex resolves by LONGEST match, file order only breaking ties. Proven
+//     from this same file rather than assumed: `586 | '"'` precedes
+//     `640 | '"' '"' '"'`, so under first-match-wins the triple-quote rule
+//     would be unreachable dead code and F# would have no triple-quoted
+//     strings.
+//
+// Longest match therefore makes `@"` win: `xs@"abc"` is `xs` applied to a
+// verbatim string. NOT EXECUTED — there is no F# toolchain on this machine, so
+// this is read off the reference implementation's lexer, not observed from a
+// compile. Because it is unexecuted, the CALLS-edge consequence of it is
+// declined at the call site above even though the mode is applied.
+//
+// Not handled, and so not claimed: `$$@"` (extended interpolation) blanks only
+// one `$`, and `@"""` never reaches here at all — the triple-quote check runs
+// first, which DISAGREES with the lexer, since no rule matches `@` followed by
+// three quotes (verified: zero such rules in lex.fsl) and so longest match at
+// the `@` would give `@"`. Recorded by
+// TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC.
+func verbatimOpenerStart(src string, q int) int {
+	if q == 0 {
+		return -1
+	}
+	switch src[q-1] {
+	case '@':
+		if q >= 2 && src[q-2] == '$' {
+			return q - 2 // $@"
+		}
+		return q - 1 // @"
+	case '$':
+		if q >= 2 && src[q-2] == '@' {
+			return q - 2 // @$"
+		}
+	}
+	return -1
+}
+
+// abutsIdentifier reports whether b is a byte an F# identifier or a closing
+// bracket can end with — i.e. whether a `@"` immediately after it could instead
+// be read as the list-append operator applied to a string literal. Used ONLY to
+// decide whether the opener's prefix bytes are blanked, never whether a
+// verbatim string is opened. Non-ASCII is included because F# identifiers admit
+// Unicode letters.
+func abutsIdentifier(b byte) bool {
+	switch {
+	case b >= '0' && b <= '9',
+		b >= 'a' && b <= 'z',
+		b >= 'A' && b <= 'Z',
+		b >= 0x80:
+		return true
+	}
+	switch b {
+	case '_', '\'', '`', '.', ')', ']', '}':
+		return true
+	}
+	return false
+}
+
 func stripStringsAndComments(src string) string {
 	out := make([]byte, len(src))
 	i := 0
@@ -1698,31 +1792,51 @@ func stripStringsAndComments(src string) string {
 				inTriple = true
 				continue
 			}
-			// Check for verbatim string @"..." — the `@` immediately before the
-			// quote is what opens it. The lookbehind matches the F# lexer,
-			// which munches `@"` maximally: `xs@"abc"` — no space around what
-			// would otherwise be the list-append operator — lexes as a verbatim
-			// string rather than an append, so agreeing with it here needs no
-			// extra condition. DERIVED, NOT EXECUTED: there is no F# toolchain
-			// on this machine, so that reading comes from the lexical spec and
-			// nothing compiled it.
+			// Check for verbatim string @"..." — see verbatimOpenerStart for
+			// which prefixes open one and why those three.
 			//
-			// The `@` is blanked TOO — it is part of the literal's opening
-			// delimiter, so suppression should cover it. Before the verbatim
-			// mode existed it stayed visible, and that accident was doing
-			// defensive work: a leaked body behind a surviving `@`
-			// could not match the `^\s*`-anchored patterns (moduleRE, the
-			// inheritance clauses), so a scrub that stopped suppressing a
-			// verbatim body was INVISIBLE to every anchored consumer. Blanking
-			// it makes the verbatim path defended for the same reason the
-			// ordinary one is, rather than by a delimiter left lying in the
-			// output — and it is what makes this commit's forbidden row able to
-			// observe a permissive regression on the verbatim path at all.
-			// Length is preserved: index i-1 already exists and is rewritten in
-			// place.
-			if i > 0 && src[i-1] == '@' {
-				out[i-1] = ' '
+			// TWO DECISIONS, DELIBERATELY SEPARATE (#7199). Entering verbatim
+			// MODE is unconditional on adjacency; blanking the `@`/`$` prefix
+			// BYTES is not. Keeping them apart is what lets the runaway fix be
+			// faithful to the lexer without betting a FABRICATED EDGE on that
+			// faithfulness:
+			//
+			//   - MODE: `@"` opens a verbatim string wherever it appears, so
+			//     the runaway is fixed in every adjacency position.
+			//   - PREFIX BYTES: blanked only when the opener does not abut an
+			//     identifier or a closing bracket. Where it does — `xs@"abc"`,
+			//     the one shape where `@` could instead be read as the
+			//     list-append operator — the `@` is left VISIBLE, exactly as it
+			//     was before this mode existed.
+			//
+			// Why the prefix is blanked at all: a leaked body behind a
+			// surviving `@` cannot match the `^\s*`-anchored patterns
+			// (moduleRE, the inheritance clauses), so a scrub that stopped
+			// suppressing a verbatim body was INVISIBLE to every anchored
+			// consumer, and the forbidden row that watches for it was vacuous.
+			// Blanking defends the verbatim path for the same reason the
+			// ordinary path is defended, instead of by a delimiter left lying
+			// in the output.
+			//
+			// Why NOT where it abuts an identifier: blanking the `@` is what
+			// makes scrubKeepingQuote present ` "` instead of `@"`, which makes
+			// spaceAppRE read `helper@"C:\tmp"` as a space application and mint
+			// a CALLS edge to `helper`. Per the lexer that edge is CORRECT (see
+			// verbatimOpenerStart), but a wrong edge reads as valid to every
+			// consumer while a missing one is detectable, so on the one
+			// contested shape this declines to mint rather than betting. The
+			// cost is one edge on a shape with no measured incidence; the
+			// benefit is that no unexecuted lexing claim can fabricate one.
+			//
+			// Length is preserved throughout: every write is an in-place
+			// assignment to an index that already exists.
+			if start := verbatimOpenerStart(src, i); start >= 0 {
 				out[i] = ' '
+				if start == 0 || !abutsIdentifier(src[start-1]) {
+					for j := start; j < i; j++ {
+						out[j] = ' '
+					}
+				}
 				i++
 				inVerbatim = true
 				continue

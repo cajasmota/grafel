@@ -726,11 +726,15 @@ func TestLocalModule7151_CRLFSourceMintsBothForms(t *testing.T) {
 //	let p = @"C:\"     // verbatim string, trailing backslash — FIXED by #7199
 //	let q = '"'        // character literal holding a quote — STILL OPEN, #7193
 //
-// The verbatim half is fixed: the scrubber now has a verbatim mode in which `\`
-// is an ordinary character and the quote escape is `""`, and the first subtest
-// below has been FLIPPED to want [Target] accordingly. The char-literal half
-// remains: there is still no general char-literal state, so `'"'` opens a
-// string that never closes.
+// The verbatim half is fixed FOR THE THREE OPENERS THE F# LEXER ADMITS — `@"`,
+// `$@"` and `@$"` — by a verbatim mode in which `\` is an ordinary character
+// and a doubled quote is the escape; the first subtest below has been FLIPPED
+// to want [Target] accordingly. It is NOT fixed for an `@` before a TRIPLE
+// quote, which reaches the triple-quote branch instead and is recorded as a
+// disagreement with the lexer by
+// TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC. The
+// char-literal half remains untouched: there is still no general char-literal
+// state, so `'"'` opens a string that never closes.
 //
 // READ THIS BEFORE FIXING #7193. The package already has a RECORDED DECISION
 // that a GENERAL char-literal scrub is wrong, and it is easy to walk straight
@@ -739,9 +743,9 @@ func TestLocalModule7151_CRLFSourceMintsBothForms(t *testing.T) {
 // `c' '}'` — a primed identifier next to a char literal, ordinary F# — as the
 // span `' '`. TestFSharp_PrimedIdentifierBeforeCharLiteralBrace in
 // hierarchy_test.go pins that counter-example. A naive `'.'` state added to
-// stripStringsAndComments turns THAT test red at the same moment it turns
-// subtests 1 and 2 below green. A #7193 fix has to satisfy both. Everything
-// after either construct scrubs to blank, so a REAL `module Target =` below
+// stripStringsAndComments turns THAT test red at the same moment it turns the
+// remaining recording subtest below green. A #7193 fix has to satisfy both. Everything
+// after the char-literal construct scrubs to blank, so a REAL `module Target =` below
 // one is silently dropped and #7151's fix does not apply for the rest of that
 // file.
 //

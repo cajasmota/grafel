@@ -126,44 +126,74 @@ module Paths =
 	}
 }
 
-// TestFSharp7199_StringBodyIsNotExtracted is the FORBIDDEN row, and it is the
-// one that catches the PERMISSIVE failure: "stop treating `\"` as a string
-// opener at all" makes every must-have row above pass while destroying the
-// helper's purpose. It is NOT dominated by a must-have sibling — no row above
-// puts an inheritance clause or a module declaration INSIDE a literal, so this
-// row fails alone under that mutant (measured; see the PR body).
+// TestFSharp7199_StringBodyIsNotExtracted is the FORBIDDEN row: it catches the
+// PERMISSIVE failure "stop suppressing what a string literal contains", which
+// every must-have row above passes while the helper's whole purpose is
+// destroyed. No must-have row IN THIS FILE puts an inheritance clause or a
+// module declaration inside a literal, and this row does fail on its own when
+// run in isolation under such a mutant.
 //
-// Both literal forms are covered: the ordinary `"…"` and the verbatim `@"…"`
-// the new mode handles.
+// WHAT IS NOT CLAIMED, because it was measured and is false: that this row is
+// the only thing in the PACKAGE that would catch such a mutant. It is not.
+// indent_band_7176_test.go:338 already carries
+// `member _.Show () = "inherit GhostB()"` and asserts EXTENDS == [RealBase],
+// and TestFSharp_BraceInStringDoesNotSuppressClause covers a neighbouring
+// shape; both fail alongside this row under the ordinary-arm mutant. The value
+// this row adds is the VERBATIM arm, which those rows do not exercise at all:
+// leaking the verbatim body leaks `Phantom`/`PhantomBase` here, and no
+// PRE-EXISTING row in the package notices that mutant — only rows added by
+// #7199 do.
+//
+// Both literal forms are covered, and each is graded by its own mutant — the
+// ordinary `"…"` by the ordinary-arm mutant, the verbatim `@"…"` by the
+// verbatim-body mutant.
 func TestFSharp7199_StringBodyIsNotExtracted(t *testing.T) {
-	// Two details of this fixture are load-bearing, and both were established
-	// by measurement rather than assumed.
+	// THREE details of this fixture are load-bearing, and all three were
+	// established by measurement — after an earlier version of this row turned
+	// out to be VACUOUS in two of its four assertions.
 	//
-	// (1) The literal bodies START A LINE (legal F#: a `=`'s right-hand side
-	// may sit indented on the next line). moduleRE and the inheritance clauses
-	// are `^\s*`-anchored, so a literal written mid-line — `let a = "module
-	// Ghost ="` — cannot be extracted even when the scrub stops suppressing,
-	// and a row built that way is vacuous in both directions.
+	// (1) The keyword must start a line IN THE SOURCE, not merely in the scrub.
+	// moduleRE and the inheritance clauses are `^\s*`-anchored AND they run
+	// over `src`; the scrub is only a GATE that removes matches
+	// (extractor.go:643 checks `moduleScrubbed[name] != name`). So
+	// `    "module Ghost ="` — a quote before the keyword — never matches in
+	// the first place, and an assertion built on it can never fail however
+	// permissive the scrub becomes. That is what the first version of this row
+	// did, and no mutant could have told me: a vacuous forbidden row is
+	// indistinguishable from a satisfied one.
 	//
-	// (2) The MODULE literals close on the FOLLOWING line. moduleRE will not
-	// match `module Ghost ="` — a trailing quote on the declaration line blocks
-	// it — so with the closer on the same line that assertion is vacuous too.
-	// Measured: `let a =\n     module Ghost ="` mints nothing, the same source
-	// without the trailing quote mints [Ghost].
+	// (2) Hence the literals are MULTI-LINE (legal F#: an ordinary or verbatim
+	// string may span lines), putting the keyword at a line start in `src`
+	// where the anchored patterns reach it. The `module` keywords sit at
+	// column 0; the `inherit` clauses are INDENTED, because a column-0 line
+	// ends the enclosing type's indent band and would put the clause outside
+	// `Doc`'s body — which is how the second version of this fixture made the
+	// `inherit` half vacuous while fixing the `module` half. Both indentations
+	// are deliberate.
+	//
+	// (3) The two halves are graded by DIFFERENT mutants, so neither is
+	// redundant: suppressing the ordinary arm leaks `Ghost`/`GhostBase` and
+	// leaves the verbatim arm intact; leaking the verbatim body leaks
+	// `Phantom`/`PhantomBase` and leaves the ordinary arm intact. Both
+	// verdicts are measured in the PR body.
 	src := `namespace App
 
-let a =
-    "module Ghost =
-    "
-let b =
-    @"module Phantom =
-    "
+let a = "
+module Ghost =
+    let x = 1
+"
+let b = @"
+module Phantom =
+    let x = 1
+"
 
 type Doc() =
-    member _.Note =
-        "inherit GhostBase()"
-    member _.Path =
-        @"inherit PhantomBase()"
+    member _.Note = "
+    inherit GhostBase()
+    "
+    member _.Path = @"
+    inherit PhantomBase()
+    "
     member _.Noop () = ()
 `
 	ents := runFSharp(t, src, "src/App.fs")
@@ -175,5 +205,65 @@ type Doc() =
 	}
 	if got := fsRelsOfKind(t, ents, "Doc", "EXTENDS"); len(got) != 0 {
 		t.Errorf("Doc EXTENDS = %v, want none — an `inherit` inside a string literal must not become an edge", fsToIDs(got))
+	}
+}
+
+// TestFSharp7199_IdentifierAbuttingVerbatimString is the ARTEFACT-level row for
+// the contested adjacency shape, and it asserts both halves of the decision
+// taken at the opener in extractor.go.
+//
+// `helper@"C:\"` is a verbatim string per the F# lexer (longest match gives
+// `@"`, since `"` is not an op_char and so the list-append rule matches only
+// the single `@` — see verbatimOpenerStart for the rule citations). So:
+//
+//   - THE RUNAWAY IS FIXED here like anywhere else: the `module` below it is
+//     extracted. This is what a token-boundary condition on the opener would
+//     have cost — that form would read `helper@"C:\"` as an ordinary string,
+//     eat the closing quote and blank the rest of the file.
+//   - NO CALLS EDGE to `helper` is minted. Blanking the `@` is what would make
+//     spaceAppRE read this as a space application; the lexer says that edge is
+//     correct, but the reading is DERIVED FROM SOURCE AND NOT EXECUTED, and a
+//     wrong edge reads as valid to every consumer while a missing one is
+//     detectable. So the edge is declined on this one shape and the fix does
+//     not depend on it.
+//
+// If the lexing is ever confirmed by execution, the second assertion is the one
+// to flip — deliberately, with the confirmation named.
+func TestFSharp7199_IdentifierAbuttingVerbatimString(t *testing.T) {
+	src := `namespace App
+
+module Caller =
+    let go () =
+        helper@"C:\" tail
+        readOther "plain"
+
+module Paths =
+    let sep = 1
+`
+	ents := runFSharp(t, src, "src/App.fs")
+
+	// The runaway is fixed: a declaration below the literal is seen.
+	if mod := fs7199Module(ents, "Paths"); mod == nil {
+		t.Errorf("no `Paths` entity below `helper@\"C:\\\"` — the scrub ran away on an identifier-abutting " +
+			"verbatim opener, which is the cost a token-boundary condition would carry")
+	}
+
+	// And no edge is fabricated for the contested shape.
+	var callsFromGo []string
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Operation" && ents[i].Name == "go" {
+			callsFromGo = fsToIDs(ents[i].Relationships)
+		}
+	}
+	if len(callsFromGo) == 0 {
+		t.Fatalf("no CALLS edges from `go` at all — the fixture no longer reaches the call scanner, " +
+			"so the assertion below would be vacuous")
+	}
+	for _, to := range callsFromGo {
+		if to == "helper" {
+			t.Errorf("a CALLS edge to `helper` was minted from `helper@\"C:\\\" tail` (edges = %v). Per the "+
+				"lexer that edge is correct, but it rests on an UNEXECUTED reading, so this shape "+
+				"deliberately declines it — see the opener comment in extractor.go", callsFromGo)
+		}
 	}
 }
