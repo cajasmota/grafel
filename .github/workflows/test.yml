@@ -49,7 +49,15 @@ name: test
 #   workflow_dispatch (race=true by default).
 #   → batch the platform checks before shipping a milestone.
 # Opt-in: add label `ci:full` to force the full 3-platform -race matrix
-#   (including macOS) on a specific PR — unchanged by this commit.
+#   (including macOS) on a specific PR. Applying the label fires the
+#   `pull_request_target: types: [labeled]` run below; every push AFTER that
+#   keeps the third platform because `strategy.matrix.os` reads the label from
+#   the ordinary `pull_request` payload too (#7219 — it used not to, and the
+#   macOS test leg silently vanished on the first push after labelling).
+# Leg-presence gate: the `test-legs-present` job below fails when a platform
+#   that policy requires for the triggering event produced no leg at all — the
+#   general form of #7219, since a dropped leg is otherwise indistinguishable
+#   from a passing one in the check list.
 # Race detector: ON for tag runs and (by default) workflow_dispatch, and for
 #   `ci:full`-labelled PRs — see the "Race detector policy" comment on the
 #   Test step for exactly what each trigger delivers. There is deliberately NO
@@ -156,8 +164,36 @@ jobs:
       # fb4c6fd4b, it's the platform contributors here already verify
       # locally, and it's the most expensive of the three to bill
       # automatically on every PR (10x).
+      #
+      # Refs #7219 — the `ci:full` clause. `pull_request_target` above is
+      # `types: [labeled]`, so the elevated full-matrix run fires ONCE, when
+      # the label is applied, and never again. Every subsequent push arrives
+      # as a plain `pull_request`, which took the two-OS branch of this
+      # expression — so pushing to a `ci:full` PR silently dropped
+      # `test (macos-latest)` while the label stayed on, the check list stayed
+      # full, and every remaining leg stayed green. Measured on PR #7203: 18
+      # distinct check names on the labelled head, 17 on a later push, the
+      # difference being exactly `test (macos-latest)`.
+      # `compile (macos-latest)` (cross-platform-compile.yml, #6219) was
+      # present on BOTH heads, which is what made it invisible — a reader
+      # scanning for macOS coverage sees a green macOS row and stops.
+      #
+      # The fix is here, in the matrix, NOT in the `pull_request_target`
+      # trigger. `github.event.pull_request.labels` IS present in the ordinary
+      # `pull_request` webhook payload — the Test step below has always read
+      # it from this event to decide -race — so the label can gate the OS list
+      # on the UNPRIVILEGED trigger. Adding `synchronize` to
+      # `pull_request_target`'s `types:` would have worked too and was
+      # rejected: it would run the elevated, base-repo-token workflow (which
+      # checks out PR HEAD — see the SECURITY NOTE below) on every push to
+      # every fork PR. The `on:` block is deliberately byte-identical to
+      # before this commit.
+      #
+      # Cost: a `ci:full` PR now runs the full three-OS -race matrix on every
+      # push instead of once. That is what the label asks for; the previous
+      # behaviour was not a cheaper version of it, it was a wrong one.
       matrix:
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest","windows-latest"]') || fromJSON('["ubuntu-latest","macos-latest","windows-latest"]') }}
+        os: ${{ (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci:full')) && fromJSON('["ubuntu-latest","windows-latest"]') || fromJSON('["ubuntu-latest","macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       # SECURITY NOTE: pull_request_target runs with write permissions but defaults
@@ -398,6 +434,28 @@ jobs:
       # genuine deadlock — precisely what -race exists to surface — otherwise
       # runs to GitHub's 6-hour default on a 10x-billed macOS runner.
       # (refs #1797 / #937 / #2196)
+      #
+      # THE `ci:full` LABEL IS READ IN TWO PLACES, AND THEY MUST STAY IN STEP
+      # (#7219). The third condition below — `contains(github.event.pull_request
+      # .labels.*.name, 'ci:full')` — has NO `github.event_name` guard, so it
+      # matches on the ordinary, UNPRIVILEGED `pull_request` event as well as on
+      # `pull_request_target`. That is not an accident and it is load-bearing
+      # twice over:
+      #   1. It is the existing proof that `github.event.pull_request.labels` is
+      #      present in the plain `pull_request` payload. `strategy.matrix.os`
+      #      above relies on exactly that to keep macOS on a labelled PR after
+      #      the first push, WITHOUT extending `pull_request_target`.
+      #   2. It means a labelled PR was already running ubuntu + windows under
+      #      -race on every push while the macOS leg was silently gone — the
+      #      surviving legs looked MORE thorough, not less, which is part of why
+      #      #7219 went unnoticed for so long.
+      # So: platform selection (`strategy.matrix.os`) and race selection (here)
+      # are two independent readings of the same label. If you ever narrow one
+      # of them — e.g. by adding an `event_name == 'pull_request_target'` guard —
+      # narrow or re-justify the other in the same commit, or the two drift
+      # apart again in precisely the way this issue documents. The
+      # `test-legs-present` job below only guards the platform half; nothing
+      # guards the race half.
       - name: Test
         shell: bash
         run: |
@@ -410,6 +468,135 @@ jobs:
             echo "Running without -race"
             go test -count=1 -timeout 15m ./...
           fi
+
+      # Refs #7219. Evidence that THIS OS leg existed in this run, consumed by
+      # the `test-legs-present` job below. `if: always()` on purpose: the claim
+      # being recorded is "the leg RAN", not "the leg passed" — a red macOS
+      # suite is already loud, a macOS leg that was never scheduled is not.
+      # Written as an artifact rather than a job output because matrix legs
+      # share one output namespace (last writer wins), so outputs cannot tell
+      # you WHICH legs existed. Artifact names must be unique within a run in
+      # actions/upload-artifact@v4; `test-leg-<os>` is.
+      - name: Record that this OS leg ran (#7219)
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci-leg
+          echo "${{ matrix.os }}" > ".ci-leg/os"
+      - name: Upload OS-leg marker (#7219)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-leg-${{ matrix.os }}
+          path: .ci-leg/os
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Refs #7219. The leg-presence gate: fails when a platform that policy says
+  # must be tested for this event produced no test leg at all.
+  #
+  # WHY THIS EXISTS SEPARATELY FROM THE MATRIX FIX ABOVE. The matrix fix makes
+  # macOS run on every push to a `ci:full` PR. This job addresses the more
+  # general defect #7219 is actually about: *a dropped leg reads identically to
+  # a passing one*. Nothing in GitHub's UI distinguishes "windows-latest was
+  # never scheduled" from "windows-latest is fine" — both render as an absent
+  # red X. So the expectation is asserted here, explicitly, and it keeps
+  # working if someone edits `strategy.matrix.os` again.
+  #
+  # IT DOES NOT READ THE MATRIX EXPRESSION. That is deliberate and is the whole
+  # point: a guard derived from the thing it guards is a tautology and can
+  # never fail. The expected OS set is recomputed here from the event and the
+  # labels, in a different language (bash, not a GitHub expression), and
+  # compared against artifacts that only a leg that actually started can
+  # produce. Change `strategy.matrix.os` to drop a platform and this job goes
+  # red; change the policy on purpose and you must change it in both places.
+  #
+  # HOW ABSENCE IS DETECTED: each `test` leg uploads `test-leg-<os>` with
+  # `if: always()` (above), so the artifact exists iff that leg was scheduled
+  # and reached its final steps. This job downloads them and asserts one per
+  # expected OS. An alternative — querying the check-runs API for the head sha
+  # — was rejected: it needs `checks: read` (this workflow is `contents: read`),
+  # it races the very legs it is inspecting, and on a fork PR the token scope
+  # differs from a same-repo PR, i.e. the guard would be weakest exactly where
+  # the elevated-trigger story is most delicate. Artifacts need no token at all
+  # (upload-artifact uses ACTIONS_RUNTIME_TOKEN, not GITHUB_TOKEN), so this
+  # works identically for fork and same-repo PRs.
+  #
+  # FAIL-CLOSED: the download step is `continue-on-error: true` ONLY so that
+  # zero artifacts reaches the assert script as an empty directory and produces
+  # a legible message, instead of actions/download-artifact@v4's own
+  # "unable to find any artifacts" error. Zero artifacts still fails, in the
+  # script.
+  #
+  # THE `if:` DELIBERATELY DOES NOT CONSULT `needs.test.result`. The obvious
+  # spelling, `always() && needs.test.result != 'skipped'`, has a hole exactly
+  # in the shape this gate exists to catch: a `strategy.matrix.os` expression
+  # that evaluated to an EMPTY list expands to zero jobs, and GitHub reports
+  # that as `skipped` — so the gate would suppress itself in the one case where
+  # every leg vanished at once. Instead the condition states, from the event
+  # alone, whether legs were owed: they are owed for every trigger except a
+  # `pull_request_target` without `ci:full`, which is the only case where the
+  # `test` job's own `if:` is false. Every other outcome — success, failure,
+  # partial legs, an empty matrix — is asserted.
+  # ---------------------------------------------------------------------------
+  test-legs-present:
+    name: test legs present
+    needs: [test]
+    if: |
+      always() &&
+      !(github.event_name == 'pull_request_target' &&
+        !contains(github.event.pull_request.labels.*.name, 'ci:full'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download OS-leg markers
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          path: legs
+          pattern: test-leg-*
+
+      # The expected set mirrors the POLICY in this file's header, not the
+      # matrix expression:
+      #   - plain `pull_request` without `ci:full` → ubuntu + windows
+      #   - everything else (tag via workflow_call, workflow_dispatch,
+      #     `ci:full` on either PR trigger)          → + macos
+      # Extra legs are not an error; only missing ones are. This is an
+      # absence assertion and is scoped to absence.
+      - name: Assert every expected OS leg ran (#7219)
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_CI_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+        run: |
+          set -euo pipefail
+          expected=(ubuntu-latest windows-latest)
+          if [[ "$EVENT_NAME" != "pull_request" || "$HAS_CI_FULL" == "true" ]]; then
+            expected+=(macos-latest)
+          fi
+          echo "event=$EVENT_NAME ci:full=$HAS_CI_FULL"
+          echo "expected legs: ${expected[*]}"
+          echo "markers found:"
+          ls -1 legs 2>/dev/null || echo "  (none)"
+          missing=()
+          for os in "${expected[@]}"; do
+            marker="legs/test-leg-$os/os"
+            if [[ ! -s "$marker" ]] || [[ "$(cat "$marker")" != "$os" ]]; then
+              missing+=("$os")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            for os in "${missing[@]}"; do
+              echo "::error::no test leg ran for $os on this head, but this event requires one (#7219)"
+            done
+            echo "A platform that must be tested produced no test leg at all."
+            echo "This is the #7219 failure shape: a dropped leg is invisible in the"
+            echo "check list, so it is asserted here instead. Either strategy.matrix.os"
+            echo "no longer schedules it, or the leg never reached its marker step."
+            exit 1
+          fi
+          echo "all expected OS legs ran"
 
   # ---------------------------------------------------------------------------
   # Python unit tests for the quality ratchet (refs #6709).
@@ -441,11 +628,22 @@ jobs:
   #
   # WHY IT LIVES IN test.yml: this workflow has a plain `pull_request:` trigger
   # (see the `on:` block above), so this job runs on every PR open/sync/reopen.
-  # Do NOT move it to `pre-merge.yml` or `quality.yml` — BOTH are
-  # `workflow_dispatch:`-only, so a job wired there would never fire on a PR.
-  # As of this commit the workflows with a real `pull_request` trigger are:
-  # board-hygiene.yml, coverage-docs.yml, cross-platform-compile.yml, test.yml
-  # (this file) and windows-installers.yml.
+  # Do NOT move it to `pre-merge.yml`, which is `workflow_dispatch:`-only, so a
+  # job wired there would never fire on a PR.
+  #
+  # CORRECTION (#7219): this paragraph used to say `quality.yml` was
+  # `workflow_dispatch:`-only as well, and listed the workflows with a real
+  # `pull_request` trigger as board-hygiene.yml, coverage-docs.yml,
+  # cross-platform-compile.yml, test.yml and windows-installers.yml. Both
+  # claims were false at the time of writing this correction: quality.yml has
+  # `pull_request:` and `push: branches: [main]` in addition to its dispatch,
+  # and module-hygiene.yml and node-type-gate.yml also carry `pull_request:`.
+  # Re-derived from the `on:` blocks of all 16 workflows, the ones with a real
+  # `pull_request` trigger are: board-hygiene.yml, coverage-docs.yml
+  # (path-filtered), cross-platform-compile.yml, module-hygiene.yml,
+  # node-type-gate.yml, quality.yml, test.yml (this file) and
+  # windows-installers.yml. Treat any hand-maintained list here as stale until
+  # re-derived; that is the same rot this file warns about for `paths:` lists.
   #
   # SEPARATE JOB, ON PURPOSE: it deliberately does not sit under the `test`
   # job's matrix or its multi-branch `if:`. It is Go-free (no toolchain, no
