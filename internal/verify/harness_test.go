@@ -10,11 +10,13 @@ package verify
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,6 +56,65 @@ func repoRoot(t *testing.T) string {
 	}
 	// internal/verify/harness_test.go -> module root is two levels up.
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
+
+// outputBuffer collects a child process's stdout/stderr.
+//
+// #7211 — the harness reads this buffer on its FAILURE paths (the daemon
+// never came up, the Index RPC failed, the stats reply was unparseable),
+// and on every one of those paths the child is still running, so os/exec's
+// copier goroutine is still writing into it. Reading an exec.Cmd output
+// buffer before Wait returns is unsynchronised by construction — see the
+// os/exec docs on Cmd.Stdout. Under -race that turned the diagnostic into
+// "race detected during execution of test", destroying the message on
+// exactly the run where it mattered.
+// Both halves of the pair must hold the lock: guarding only String() still
+// leaves the copier's Write unsynchronised, which is the same race with a
+// mutex bolted on the wrong side.
+type outputBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func newOutputBuffer() *outputBuffer { return &outputBuffer{} }
+
+func (o *outputBuffer) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.buf.Write(p)
+}
+
+func (o *outputBuffer) String() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.buf.String()
+}
+
+// waitForDaemon polls until the daemon at socketPath is connectable or the
+// timeout expires. The failure diagnostic embeds the daemon's output SO FAR —
+// read while the child process is still alive and still writing, which is why
+// out is a *outputBuffer and not a bytes.Buffer. The concrete parameter type
+// is deliberate: it makes "wire a plain bytes.Buffer in" a compile error at
+// the call site rather than a silent reintroduction of the race.
+//
+// On Unix we can stat the socket file; on Windows named pipes are not
+// filesystem objects, so we always poll via DialPath.
+func waitForDaemon(socketPath string, out *outputBuffer, timeout time.Duration) (*client.Client, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if runtime.GOOS != "windows" {
+			if _, err := os.Stat(socketPath); err != nil {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+		}
+		c, err := client.DialPath(socketPath)
+		if err == nil {
+			return c, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("daemon never came up; socket=%s; output=%s", socketPath, out.String())
 }
 
 // TestHarness_FixturesCorpus builds grafel, runs `index --json-stats`
@@ -126,9 +187,9 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		// developer's real launchd/systemd state instead of doing it silently.
 		watchers.NoServiceMutationEnv+"=1",
 	)
-	var daemonOut bytes.Buffer
-	dcmd.Stdout = &daemonOut
-	dcmd.Stderr = &daemonOut
+	daemonOut := newOutputBuffer()
+	dcmd.Stdout = daemonOut
+	dcmd.Stderr = daemonOut
 	if err := dcmd.Start(); err != nil {
 		t.Fatalf("start daemon: %v", err)
 	}
@@ -143,27 +204,9 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		}
 	})
 
-	// Wait for the daemon to become connectable.
-	// On Unix we can stat the socket file; on Windows named pipes are not
-	// filesystem objects, so we always poll via DialPath.
-	deadline := time.Now().Add(10 * time.Second)
-	var dc *client.Client
-	for time.Now().Before(deadline) {
-		if runtime.GOOS != "windows" {
-			if _, err := os.Stat(layout.SocketPath); err != nil {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-		}
-		c, err := client.DialPath(layout.SocketPath)
-		if err == nil {
-			dc = c
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if dc == nil {
-		t.Fatalf("daemon never came up; socket=%s; output=%s", layout.SocketPath, daemonOut.String())
+	dc, err := waitForDaemon(layout.SocketPath, daemonOut, 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer dc.Close()
 
