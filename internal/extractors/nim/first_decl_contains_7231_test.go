@@ -11,32 +11,65 @@ import (
 // ---------------------------------------------------------------------------
 // #7231 — the type pass deduped by NAME ALONE, per file, first match wins.
 //
-// WHAT WAS LOST. Over a 4431-file Nim population (nim-lang/Nim, nimbus-eth2,
-// pixie, nitter, jester) that discarded 415 of 6987 type declarations. 221 of
-// the 255 duplicated (file,name) groups — 86.7% — are declarations sitting in
-// DIFFERENT routine bodies (proc/template/macro/block/static), i.e. genuinely
-// distinct coexisting types in disjoint scopes; 17 are `when`-branch
-// conditional compilation, of which exactly 1 differs in Subtype. So the
-// dedup was not resolving a tie between two descriptions of one type — for the
-// bulk of the population it was deleting a type.
+// READ THIS FIRST: THE RECORD COUNTS BELOW ARE NOT GRAPH RECALL. #7231 was
+// filed and initially fixed as a recall bug and it is not one.
+// `graph.EntityID(repo, kind, name, sourceFile)` (internal/graph/graph.go:259)
+// does not hash StartLine, so two records sharing Kind+Name+SourceFile derive
+// the same id, and EVERY consumer of what extractNim returns folds them:
+//
+//   - cmd/grafel/index.go:6303 — `if !seenEntity[id]`, first kept, rest dropped;
+//   - internal/extractors/incremental.go's convertExtractedRecords — the same
+//     derivation via entityRecordToGraphEntity (:2046); its own doc calls the
+//     collision "EXPECTED, not erroneous";
+//   - internal/daemon/extract/subproc.go:358 is a TRANSPORT, not a terminal
+//     consumer: its envelopes decode into extract.Coordinate's Result.Entities,
+//     which cmd/grafel/index.go:1824 assigns to pass1Records and hands to the
+//     same assembly loop as the first bullet.
+//
+// (internal/extractors/cross/consumes_api calls only its own client/endpoint
+// extractors and never reaches a language extractor, so it is not in the set.)
+//
+// So the extra records DO NOT REACH THE GRAPH, the type-entity count stays at
+// 6572, and this change is a NO-OP at the graph layer for entities. What it is
+// worth is the written-down and graded fold rule, the tests, and the removal of
+// an unreachable map. Whether entity identity should carry a line component is
+// a separate, higher-blast-radius question, filed on its own.
+//
+// WHAT THE EXTRACTOR USED TO DROP. UNPINNED MEASUREMENT, 2026-09-18, over a
+// 4431-file Nim population (nim-lang/Nim, nimbus-eth2, pixie, nitter, jester).
+// `archigraph-corpora` contains zero `.nim` files, so NOTHING IN THIS TREE
+// ASSERTS THESE FIGURES and they will drift: 415 of 6987 type RECORDS were
+// discarded. 221 of the 255 duplicated (file,name) groups — 86.7% — are
+// declarations sitting in DIFFERENT routine bodies (proc/template/macro/block/
+// static), i.e. genuinely distinct coexisting types in disjoint scopes; 17 are
+// `when`-branch conditional compilation, of which exactly 1 differs in Subtype.
+// The strongest figure this file actually PINS is a whole-file edge total on a
+// hand-written fixture; everything else above is prose.
 //
 // WHAT THE FIX IS, IN TWO HALVES THAT MUST BE GRADED SEPARATELY.
 //
-//  1. The name dedup is GONE, so every declaration becomes an entity
-//     (6572 → 6987 type entities over the population).
+//  1. The name dedup is GONE, so every declaration becomes a record.
 //
-//  2. CONTAINS is emitted only from the FIRST — lowest byte offset —
-//     declaration of a name in the file.
+//  2. Every edge the type loop owns — EXTENDS AND CONTAINS — is emitted only
+//     from the FIRST (lowest byte offset) declaration of a name in the file.
 //
-// Half 2 exists because half 1 alone is net-harmful. The CONTAINS scan is the
-// whole-file `procRE.FindAllStringSubmatchIndex(src, -1)` nested in the type
-// loop, and the only thing it keys on is the type NAME; the edge's ToID is
-// `BuildOperationStructuralRef("nim", filePath, procName)`, which carries no
-// line. So every declaration of a name yields a BYTE-IDENTICAL CONTAINS set.
-// Half 1 alone added 773 CONTAINS edges over the population, of which 773 —
-// all of them — were pure duplicates: zero new recall, 100% noise. With half 2
-// the population's CONTAINS set is reproduced byte for byte at 8597 while the
-// 415 entities ship.
+// HALF 2 IS THE ONLY PART THAT CHANGES THE GRAPH, AND ONLY VIA EXTENDS.
+// Neither assembly seam puts its RELATIONSHIP loop inside the entity fold:
+// index.go:6446 walks `r.Relationships` outside the `!seenEntity[id]` block and
+// incremental.go's carries an explicit comment saying it is "NOT inside the
+// else", both defaulting a blank FromID to the derived id. So a DROPPED
+// duplicate's edges are unioned onto the SURVIVOR. Ungated, two declarations of
+// one name with different bases make the single surviving node assert
+// `EXTENDS BaseA` AND `EXTENDS BaseB` — an edge no declaration states.
+//
+// CONTAINS escapes that only by accident, and the "773 duplicate edges"
+// justification #7231 was re-scoped on is therefore WRONG AT THE GRAPH LAYER: a
+// duplicate's CONTAINS shares FromID, ToID and Kind with the survivor's, so
+// index.go:6453's `seenRel[relID]` folds it and half 1 alone would have added
+// ZERO CONTAINS edges to the graph, not 773. The 773 are extractor-level. The
+// CONTAINS half of the gate is belt-and-braces (it does still skip a whole-file
+// rescan per duplicate); the EXTENDS half is the live fix, because EXTENDS
+// duplicates do NOT share a ToID and nothing downstream collapses them.
 //
 // NOT AN OPTION, AND MEASURED RATHER THAN ARGUED: scoping the member scan to
 // the declaration's own span. In Nim a "method" is a free-standing proc taking
@@ -45,16 +78,24 @@ import (
 // the proc inside the declaration's span = 0 and outside = 9370. That change
 // takes CONTAINS from 8597 to 0.
 //
-// THE DIRECTION THIS PACKAGE WAS STRUCTURALLY BLIND TO, and why the fixture is
-// shaped the way it is. The whole nim suite is GREEN both before and after this
-// change, so nothing here graded either half. The dangerous mutation is not the
-// guard failing to fire — a duplicate edge is visible in any count — it is the
-// guard firing TOO BROADLY: suppressing CONTAINS for a name the file declares
-// only ONCE. That loses real edges while the duplicate count stays at zero and
-// every aggregate in this package stays green. A fixture containing only
-// duplicated names cannot see it at all, because in such a fixture "first
+// THE DIRECTION THIS PACKAGE WAS STRUCTURALLY BLIND TO, and why the fixtures
+// are shaped the way they are. The whole nim suite is GREEN both before and
+// after this change, so nothing here graded either half. The dangerous mutation
+// is not the gate failing to fire — a duplicate edge is visible in any count —
+// it is the gate firing TOO BROADLY: suppressing an edge for a name the file
+// declares only ONCE. That loses real edges while the duplicate count stays at
+// zero and every aggregate in this package stays green. A fixture containing
+// only duplicated names cannot see it at all, because in such a fixture "first
 // declaration of this name" and "first declaration in this file" are the same
-// set. So `nimDupFixture` below declares, in one file:
+// set.
+//
+// BOTH EDGE KINDS GET THAT TREATMENT, separately. The first round of this work
+// gated CONTAINS only and shipped an ALIVE mutant: nothing in this package had
+// an `of Base` clause on a duplicated name in EITHER direction, so gating
+// `baseOfEdge` — or failing to — was invisible. `nimExtendsDupFixture` exists
+// for exactly that row and is not a variation on the CONTAINS one.
+//
+// So `nimDupFixture` below declares, in one file:
 //
 //	Anchor  — declared ONCE, BEFORE any duplicate   (has a method)
 //	Widget  — declared TWICE, in two proc bodies,
@@ -321,5 +362,119 @@ func TestFirstDecl7231_WhenBranchesBothSurvive(t *testing.T) {
 	}
 	if gotHi := nimContainsToIDs(hi); len(gotHi) != 0 {
 		t.Errorf("AtomicFlag@%d (second branch) CONTAINS = %v, want none", hi.StartLine, gotHi)
+	}
+}
+
+// nimExtendsDupFixture is the row the first round of #7231 shipped ALIVE: an
+// `of Base` clause on BOTH declarations of a duplicated name, alongside a
+// singly-declared type that also has one.
+//
+// This is the only fixture shape that can observe the gate on `baseOfEdge`.
+// Without it, gating EXTENDS and not gating it produce identical output for
+// every source in this package, so the mutation is undetectable — which is
+// exactly what happened.
+//
+// WHY THE UNGATED BEHAVIOUR IS A REAL GRAPH DEFECT AND NOT A COSMETIC ONE.
+// `Dual`'s two records fold to ONE node (graph.EntityID omits StartLine), but
+// the assembly seams run their relationship loop OUTSIDE that fold and default
+// a blank FromID to the derived id — so ungated, the surviving `Dual` node
+// asserts `EXTENDS BaseA` and `EXTENDS BaseB` at once. Those two edges have
+// different ToIDs, so `seenRel` cannot collapse them the way it silently
+// collapses duplicate CONTAINS. `Solo` is the control: a singly-declared type
+// whose EXTENDS must survive any gate keyed on the name.
+//
+// LEGALITY: `doc/grammar.txt` gives `objectDecl = 'object' pragma? ('of'
+// typeDesc)? COMMENT? objectPart`, so `ref object of Base` is the inheritance
+// form; the `type`-section-inside-a-routine-body derivation is the one
+// nimDupFixture already relies on.
+const nimExtendsDupFixture = `
+type Solo = ref object of SoloBase
+  x: int
+
+proc firstUser() =
+  type Dual = ref object of BaseA
+    a: int
+  discard
+
+proc secondUser() =
+  type Dual = ref object of BaseB
+    b: int
+  discard
+`
+
+// nimExtendsToIDs returns the ToIDs of one record's EXTENDS edges.
+func nimExtendsToIDs(e types.EntityRecord) []string {
+	var out []string
+	for _, r := range e.Relationships {
+		if r.Kind == "EXTENDS" {
+			out = append(out, r.ToID)
+		}
+	}
+	return out
+}
+
+// TestFirstDecl7231_ExtendsOnlyFromFirstDeclaration is the restrictive
+// direction of the EXTENDS gate: the second declaration of a duplicated name
+// contributes no inheritance edge, so the node the two records fold onto
+// asserts exactly the base its own surviving declaration writes.
+func TestFirstDecl7231_ExtendsOnlyFromFirstDeclaration(t *testing.T) {
+	ents := runNim(t, nimExtendsDupFixture, "dualbase.nim")
+
+	duals := nimComponents(ents, "Dual")
+	if len(duals) != 2 {
+		t.Fatalf("Dual records = %d, want 2", len(duals))
+	}
+	lo, hi := duals[0], duals[1]
+	if lo.StartLine > hi.StartLine {
+		lo, hi = hi, lo
+	}
+
+	loBases := nimExtendsToIDs(lo)
+	if len(loBases) != 1 || loBases[0] != "BaseA" {
+		t.Errorf("Dual@%d (first declaration) EXTENDS = %v, want exactly [BaseA]", lo.StartLine, loBases)
+	}
+	if hiBases := nimExtendsToIDs(hi); len(hiBases) != 0 {
+		t.Errorf("Dual@%d (second declaration) EXTENDS = %v, want none — both records fold onto one "+
+			"graph node whose relationship loop runs OUTSIDE the fold, so this edge is unioned onto "+
+			"the survivor and makes it claim a base no surviving declaration states", hi.StartLine, hiBases)
+	}
+}
+
+// TestFirstDecl7231_SingleDeclaredTypeKeepsItsExtends is the PERMISSIVE
+// direction for EXTENDS — the twin of the CONTAINS row above, scored
+// separately because the gate can be over-broad for one edge kind and not the
+// other: they are two different call sites.
+func TestFirstDecl7231_SingleDeclaredTypeKeepsItsExtends(t *testing.T) {
+	ents := runNim(t, nimExtendsDupFixture, "dualbase.nim")
+
+	solos := nimComponents(ents, "Solo")
+	if len(solos) != 1 {
+		t.Fatalf("Solo records = %d, want 1", len(solos))
+	}
+	bases := nimExtendsToIDs(solos[0])
+	if len(bases) != 1 || bases[0] != "SoloBase" {
+		t.Fatalf("Solo EXTENDS = %v, want exactly [SoloBase] — Solo is declared ONCE, so a gate keyed "+
+			"on the name can never suppress its inheritance edge", bases)
+	}
+}
+
+// TestFirstDecl7231_TotalExtendsUnchangedByDuplication is the EXTENDS twin of
+// the CONTAINS total: a whole-file count that fails in BOTH directions — an
+// ungated `baseOfEdge` makes it 3, an over-broad gate makes it 1.
+func TestFirstDecl7231_TotalExtendsUnchangedByDuplication(t *testing.T) {
+	ents := runNim(t, nimExtendsDupFixture, "dualbase.nim")
+
+	var all []string
+	for _, e := range ents {
+		if e.Kind != "SCOPE.Component" || e.Subtype == "import" {
+			continue
+		}
+		for _, id := range nimExtendsToIDs(e) {
+			all = append(all, fmt.Sprintf("%s@%d -> %s", e.Name, e.StartLine, id))
+		}
+	}
+	if len(all) != 2 {
+		t.Fatalf("EXTENDS edges in the file = %d, want 2 (Solo->SoloBase, Dual->BaseA); got:\n  %s",
+			len(all), strings.Join(all, "\n  "))
 	}
 }
