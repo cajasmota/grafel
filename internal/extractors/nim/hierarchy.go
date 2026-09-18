@@ -128,7 +128,8 @@ var nimObjectOfRE = regexp.MustCompile(
 //
 // There is deliberately no `owner == ""` guard, no `afterKind` bounds check and
 // no `bare == ""` skip. None is reachable: the sole call site is extractNim's
-// typeRE loop, whose `name` comes from group 1 (`[A-Z][a-zA-Z0-9_]*`, non-empty
+// typeRE loop, whose `name` comes from the NAME group (`[A-Z][a-zA-Z0-9_]*`,
+// group 2 since #7190 added the indent capture as group 1; non-empty
 // by construction) and whose `afterKind` is that same match's end index, which
 // is always within src; and nimObjectOfRE's final identifier component requires
 // at least one character, so `bare` cannot be empty either. Re-introducing all

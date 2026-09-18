@@ -225,12 +225,12 @@ func TestNimHierarchy_IndentedTypeBlockAndRootObjAndLocalBase(t *testing.T) {
     scale*: float
 `
 	ents := runNim(t, src, "shapes.nim")
-	// Shape's line is 1, not 2: typeRE's `type\s+` prefix matches across the
-	// newline, so the first member of an indented `type` block is stamped with
-	// the block keyword's line — for the ENTITY as well as for this edge. Pinned
-	// as a divergence by
-	// TestNimHierarchy_FirstMemberOfTypeBlockGetsBlockHeaderLine_KnownDivergence.
-	wantOneExtends(t, ents, "Shape", "RootObj", "1")
+	// #7190: Shape's line is 2 — its OWN declaration line. It used to be 1, the
+	// block keyword's line, because typeRE's `type\s+` prefix matched across the
+	// newline and anchored the match one line up; that narrowed to `type[ \t]+`
+	// and the first member is now stamped like every later one. Pinned by
+	// TestNimHierarchy_FirstMemberOfTypeBlockGetsItsOwnLine.
+	wantOneExtends(t, ents, "Shape", "RootObj", "2")
 	wantOneExtends(t, ents, "Circle", "Shape", "5")
 	wantOneExtends(t, ents, "Unit", "Circle", "8")
 }
@@ -479,20 +479,18 @@ type Fish = object of Animal
 	}
 }
 
-// TestNimHierarchy_FirstMemberOfTypeBlockGetsBlockHeaderLine_KnownDivergence —
-// varies ONLY the position of a type within an indented `type` block (first
-// member vs later member), holding the declaration shape constant.
+// TestNimHierarchy_FirstMemberOfTypeBlockGetsItsOwnLine — varies ONLY the
+// position of a type within an indented `type` block (first member vs later
+// member), holding the declaration shape constant.
 //
-// typeRE is `(?m)^[ \t]*(?:type\s+)?(Name)…` and `\s` matches a newline, so for
-// the block form the match STARTS at the `type` keyword on the previous line.
-// The first member's entity StartLine — and therefore its EXTENDS line — is the
-// block header's line, while every later member gets its own. That is wrong,
-// and it is pre-existing entity behaviour, not something the edge introduced.
-//
-// This asserts the current WRONG output on purpose. Whoever narrows typeRE's
-// `type\s+` to `type[ \t]+` (plus a separate block-member pattern) will be told
-// by this failing test that the hierarchy line stamping moves with it.
-func TestNimHierarchy_FirstMemberOfTypeBlockGetsBlockHeaderLine_KnownDivergence(t *testing.T) {
+// This WAS a known divergence: typeRE was `(?m)^[ \t]*(?:type\s+)?(Name)…` and
+// `\s` matches a newline, so for the block form the match STARTED at the `type`
+// keyword on the previous line and the first member's entity StartLine — and
+// therefore its EXTENDS line — was the block header's line, while every later
+// member got its own. #7190 narrowed that prefix to `type[ \t]+`, so both
+// members are now stamped with their own line and this test asserts the FIXED
+// output. The old divergence text predicted this exact narrowing.
+func TestNimHierarchy_FirstMemberOfTypeBlockGetsItsOwnLine(t *testing.T) {
 	src := "type\n  First = ref object of RootObj\n    a: int\n\n  Second = ref object of First\n    b: int\n"
 	ents := runNim(t, src, "blk.nim")
 
@@ -500,14 +498,12 @@ func TestNimHierarchy_FirstMemberOfTypeBlockGetsBlockHeaderLine_KnownDivergence(
 	if first == nil {
 		t.Fatal("no component First")
 	}
-	if first.StartLine != 1 {
-		t.Fatalf("KNOWN DIVERGENCE CHANGED: First.StartLine = %d, was 1 (the `type` keyword's line, not First's line 2). "+
-			"If you fixed typeRE, update this test and the line expectation in "+
-			"TestNimHierarchy_IndentedTypeBlockAndRootObjAndLocalBase.", first.StartLine)
+	if first.StartLine != 2 {
+		t.Fatalf("First.StartLine = %d, want 2 — its own declaration line, not the `type` keyword's line 1 (#7190)", first.StartLine)
 	}
 	rels := extendsOf(t, ents, "First")
-	if len(rels) != 1 || rels[0].Properties.Get("line") != "1" {
-		t.Fatalf("KNOWN DIVERGENCE CHANGED: First's EXTENDS line is no longer 1: %+v", rels)
+	if len(rels) != 1 || rels[0].Properties.Get("line") != "2" {
+		t.Fatalf("First's EXTENDS line must be 2, its own declaration line (#7190): %+v", rels)
 	}
 
 	// Positive control on the same axis: the SECOND member is not affected, so

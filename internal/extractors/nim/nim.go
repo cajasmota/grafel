@@ -55,8 +55,17 @@ var (
 	//   1. type block:  "  Name = object"  (indented under 'type')
 	//   2. inline type: "type Name = object" (same line)
 	// Handles optional export marker (*) and generic params ([T]).
+	//
+	// #7190: the `type` keyword prefix is `type[ \t]+`, NOT `type\s+`. `\s`
+	// matches a NEWLINE, so for form 1 the match used to START on the block
+	// keyword's line — which made the first member's StartLine the keyword's
+	// line and left group 1 (the indent) holding the KEYWORD's indentation
+	// instead of the declaration's. Both of #7190's symptoms came from that one
+	// wrong anchor. Group 1 is the DECLARATION's own indent and is what the
+	// call site passes to extractIndentBody as baseIndentLen; it was hard-coded
+	// 0 there, which is right only for a declaration at column 0.
 	typeRE = regexp.MustCompile(
-		`(?m)^[ \t]*(?:type\s+)?([A-Z][a-zA-Z0-9_]*\*?)\s*(?:\[[^\]]*\])?\s*=\s*(object|ref\s+object|enum|tuple|distinct\s+\w+)`,
+		`(?m)^([ \t]*)(?:type[ \t]+)?([A-Z][a-zA-Z0-9_]*\*?)\s*(?:\[[^\]]*\])?\s*=\s*(object|ref\s+object|enum|tuple|distinct\s+\w+)`,
 	)
 
 	// typeBlockStartRE marks the start of a "type" keyword block (unused but kept for documentation)
@@ -180,11 +189,12 @@ func extractNim(src, filePath string) []types.EntityRecord {
 	// 2. Type declarations — objects, enums, tuples.
 	typeSeen := make(map[string]bool)
 	for _, m := range typeRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 5 {
+		if len(m) < 8 {
 			continue
 		}
-		name := strings.TrimSuffix(src[m[2]:m[3]], "*")
-		kind := src[m[4]:m[5]]
+		indent := src[m[2]:m[3]] // #7190: the DECLARATION's own indent
+		name := strings.TrimSuffix(src[m[4]:m[5]], "*")
+		kind := src[m[6]:m[7]]
 		if typeSeen[name] {
 			continue
 		}
@@ -204,7 +214,13 @@ func extractNim(src, filePath string) []types.EntityRecord {
 			subtype = "distinct"
 		}
 
-		body := extractIndentBody(src, m[1], 0)
+		// #7190: the base is the declaration's OWN column. It was hard-coded 0,
+		// which is right only when the declaration sits at column 0 — the shape
+		// every pre-existing fixture happened to use. In an idiomatic `type`
+		// SECTION the members are indented, so at 0 every following sibling was
+		// "more indented than the declaration" and got absorbed into the first
+		// member's body.
+		body := extractIndentBody(src, m[1], len(indent))
 		endLine := startLine + strings.Count(body, "\n")
 
 		// Find methods declared for this type (methods take first param of this type).
