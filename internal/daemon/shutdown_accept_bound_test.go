@@ -19,8 +19,6 @@ package daemon_test
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -28,7 +26,6 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
-	"github.com/cajasmota/grafel/internal/daemon/transport"
 )
 
 // unconfirmedCloseListener wraps a real listener. Accept and Addr delegate, so
@@ -57,54 +54,20 @@ func (l *unconfirmedCloseListener) Close() error {
 // take afterwards.
 const acceptWatchdogSignal = "graceful shutdown: accept loop did not stop before the watchdog expired"
 
-// signalHandler is a slog.Handler that records whether a given message was
-// logged. It replaces the previous `exitCalled` assertion, which was a
-// scheduler race rather than a property of the code under test (#6373):
-//
-// Once the accept watchdog fires, watchdogCtx is already expired, so BOTH cases
-// of Run's final select — <-connDone and <-watchdogCtx.Done() — are ready as
-// soon as connWG.Wait() returns (this test holds no connections open, so that
-// is immediate). Go picks a ready case uniformly at random, so whether Run
-// force-exits or returns a clean nil is a coin flip decided by how fast the
-// runner schedules the connDone goroutine. Both outcomes are correct: shutdown
-// was BOUNDED either way, which is the property this test exists to pin. CI run
-// 32388710411 lost that flip and failed a working daemon.
+// Why this test asserts on a log signal rather than on exitCalled or on
+// elapsed wall-clock time (#6373): once the accept watchdog fires, watchdogCtx
+// is already expired, so BOTH cases of Run's final select — <-connDone and
+// <-watchdogCtx.Done() — are ready as soon as connWG.Wait() returns (this test
+// holds no connections open, so that is immediate). Go picks a ready case
+// uniformly at random, so whether Run force-exits or returns a clean nil is a
+// coin flip decided by how fast the runner schedules the connDone goroutine.
+// Both outcomes are correct: shutdown was BOUNDED either way, which is the
+// property this test exists to pin. CI run 32388710411 lost that flip and
+// failed a working daemon.
 //
 // The accept watchdog itself is not a race: the fixture's listener can never
 // release Accept, so acceptDone can never close and the watchdog case is the
 // only reachable one. Asserting on its signal is deterministic under any load.
-type signalHandler struct {
-	slog.Handler
-	want string
-	seen *atomic.Bool
-}
-
-func (h *signalHandler) Handle(ctx context.Context, rec slog.Record) error {
-	if rec.Message == h.want {
-		h.seen.Store(true)
-	}
-	return h.Handler.Handle(ctx, rec)
-}
-
-func (h *signalHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &signalHandler{Handler: h.Handler.WithAttrs(attrs), want: h.want, seen: h.seen}
-}
-
-func (h *signalHandler) WithGroup(name string) slog.Handler {
-	return &signalHandler{Handler: h.Handler.WithGroup(name), want: h.want, seen: h.seen}
-}
-
-// newSignalLogger returns a logger that discards its output and an *atomic.Bool
-// set the moment want is logged.
-func newSignalLogger(want string) (*slog.Logger, *atomic.Bool) {
-	seen := &atomic.Bool{}
-	h := &signalHandler{
-		Handler: slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		want:    want,
-		seen:    seen,
-	}
-	return slog.New(h), seen
-}
 
 // TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed is the RED/GREEN
 // test for hazard 2. With the bare `<-acceptDone` receive, Run never returns
@@ -121,20 +84,20 @@ func TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed(t *testing.T) {
 	restoreExit := daemon.SetShutdownExitFuncForTest(func(int) {})
 	t.Cleanup(restoreExit)
 
-	logger, acceptWatchdogFired := newSignalLogger(acceptWatchdogSignal)
+	logger, sigs := newSignalLogger(acceptWatchdogSignal, daemonReadySignal)
+	acceptWatchdogFired, ready := sigs[0], sigs[1]
 
 	var stub *unconfirmedCloseListener
-	restoreListen := daemon.SetListenFuncForTest(func(addr string) (net.Listener, error) {
-		real, err := transport.Listen(addr)
-		if err != nil {
-			return nil, err
-		}
+	// #7228: installReadyGap binds the socket and then holds Run inside its
+	// startup sequence, so the dial-based wait this test used to use would
+	// demonstrably return before the daemon existed. The listener stub is
+	// installed through the same seam.
+	installReadyGap(t, func(real net.Listener) net.Listener {
 		stub = &unconfirmedCloseListener{Listener: real, real: real}
 		// The daemon can never release this listener, so the test must.
 		t.Cleanup(func() { _ = real.Close() })
-		return stub, nil
+		return stub
 	})
-	t.Cleanup(restoreListen)
 
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
@@ -152,10 +115,22 @@ func TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed(t *testing.T) {
 		runDone <- daemon.Run(ctx, daemon.Config{Layout: layout, Rebuild: rb, Logger: logger})
 	}()
 
-	waitDaemonReady(t, layout.SocketPath, 10*time.Second)
+	// #7228: wait for the daemon to finish starting, not merely for its socket
+	// to accept a dial. Cancelling during startup shuts down a daemon that was
+	// never assembled, and this test's two guards below do NOT catch that — the
+	// stub listener can never release Accept whatever the timing, so both hold
+	// vacuously. Measured: with installReadyGap and the old dial-based wait,
+	// this test still passed.
+	ready.Wait(t, 30*time.Second)
 
 	start := time.Now()
 	cancel()
+	// The check that keeps the line above honest: reverting it to the
+	// dialability proxy makes this fail under installReadyGap.
+	if !ready.Fired() {
+		t.Fatalf("shutdown was triggered before the daemon logged %q — the unconfirmed-close "+
+			"path is being judged on a daemon that never finished starting (#7228)", daemonReadySignal)
+	}
 
 	select {
 	case <-runDone:
@@ -166,7 +141,7 @@ func TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed(t *testing.T) {
 		if stub.closes.Load() == 0 {
 			t.Fatal("Run never called listener.Close — the fixture never exercised the unconfirmed-close path")
 		}
-		if !acceptWatchdogFired.Load() {
+		if !acceptWatchdogFired.Fired() {
 			t.Fatal("Run returned without the accept-loop watchdog firing: the `<-acceptDone` step was " +
 				"not bounded by the shutdown watchdog, so it is not what made this shutdown finite")
 		}
@@ -203,14 +178,31 @@ func TestDaemon_ShutdownStillCleanWhenListenerCloseSucceeds(t *testing.T) {
 
 	rb := func(proto.RebuildArgs) ([]string, string, error) { return nil, "", nil }
 
+	logger, sigs := newSignalLogger(daemonReadySignal)
+	ready := sigs[0]
+	// #7228: this test is the fixture-validity anchor for the one above, so it
+	// must shut down a daemon in the SAME state — fully started. installReadyGap
+	// makes the socket-bound-but-not-ready window deterministic; without the
+	// ready anchor below, cancel() lands inside it and the two assertions here
+	// are made about a daemon that never assembled. Both are absence
+	// assertions, so that failure mode is silent: measured, this test still
+	// passed with installReadyGap and the old dial-based wait.
+	installReadyGap(t, nil)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan error, 1)
 	go func() {
-		runDone <- daemon.Run(ctx, daemon.Config{Layout: layout, Rebuild: rb})
+		runDone <- daemon.Run(ctx, daemon.Config{Layout: layout, Rebuild: rb, Logger: logger})
 	}()
 
-	waitDaemonReady(t, layout.SocketPath, 10*time.Second)
+	ready.Wait(t, 30*time.Second)
 	cancel()
+	// The check that keeps the line above honest: reverting it to the
+	// dialability proxy makes this fail under installReadyGap.
+	if !ready.Fired() {
+		t.Fatalf("shutdown was triggered before the daemon logged %q — a healthy shutdown of a "+
+			"half-started daemon is not the control this test claims to be (#7228)", daemonReadySignal)
+	}
 
 	select {
 	case runErr := <-runDone:

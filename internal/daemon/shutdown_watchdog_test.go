@@ -22,6 +22,7 @@ package daemon_test
 import (
 	"context"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,11 +71,27 @@ func TestDaemon_ShutdownWatchdogForceExitsOnStalledRebuild(t *testing.T) {
 	// goroutine (and the client goroutine driving it) are deliberately
 	// leaked for the test process's lifetime, matching the real scenario
 	// where a stalled rebuild is abandoned rather than cancelled.
+	//
+	// #7228: rebuildEntered is the anchor this test actually depends on. A
+	// successful dial does not mean the RPC reached the server — it does not
+	// even mean the daemon finished starting — and the handler itself is the
+	// only place the arrival of Service.Rebuild is observable.
 	blockForever := make(chan struct{})
+	rebuildEntered := make(chan struct{})
+	var rebuildRunning atomic.Bool
+	var enteredOnce sync.Once
 	rb := func(args proto.RebuildArgs) ([]string, string, error) {
+		rebuildRunning.Store(true)
+		enteredOnce.Do(func() { close(rebuildEntered) })
 		<-blockForever
 		return nil, "", nil
 	}
+
+	// #7228: hold Run inside startup with the socket already bound, so a wait
+	// that only proves dialability provably acts too early. This is what makes
+	// the anchor below gradeable rather than indistinguishable from the sleep
+	// it replaces.
+	installReadyGap(t, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan error, 1)
@@ -88,20 +105,29 @@ func TestDaemon_ShutdownWatchdogForceExitsOnStalledRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	rebuildStarted := make(chan struct{})
 	go func() {
-		close(rebuildStarted)
 		_, _ = c.Rebuild(proto.RebuildArgs{Group: "stall-group"})
 	}()
-	<-rebuildStarted
-	// Best-effort: give the RPC a moment to actually land server-side before
-	// triggering shutdown, so the watchdog genuinely races a stalled call in
-	// flight rather than one that hasn't arrived yet. The deadline assertion
-	// below is generous enough to tolerate scheduling slack either way.
-	time.Sleep(150 * time.Millisecond)
+	// #7228: wait for the RPC to reach its handler. This replaces a bare 150ms
+	// sleep, which was not merely imprecise but ungraded: measured on the
+	// pre-#7228 test, deleting the c.Rebuild call entirely left it GREEN. The
+	// watchdog fired anyway because the dialled-but-idle connection is enough
+	// to block connWG.Wait() — so the "stalled Rebuild" premise in this test's
+	// name was never exercised at all.
+	select {
+	case <-rebuildEntered:
+	case <-time.After(30 * time.Second):
+		t.Fatal("Service.Rebuild never reached its handler: shutdown would be triggered against a " +
+			"daemon with no stalled RPC in flight, which is not what this test claims to pin (#7228)")
+	}
 
 	start := time.Now()
 	cancel() // trigger shutdown while the Rebuild call is stuck
+	// The check that keeps the wait above honest: reverting it to the sleep (or
+	// to any dialability-based proxy) makes this fail under installReadyGap.
+	if !rebuildRunning.Load() {
+		t.Fatal("shutdown was triggered before Service.Rebuild was in flight (#7228)")
+	}
 
 	select {
 	case runErr := <-runDone:
