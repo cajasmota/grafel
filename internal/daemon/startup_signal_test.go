@@ -239,14 +239,24 @@ func TestWaitDaemonReady_ReturnsBeforeTheDaemonIsReady(t *testing.T) {
 //
 // Nothing in the package derives from the injected logger today — server.go
 // passes cfg.Logger around verbatim — so the carry-through is live code that no
-// test reaches (#7236). That makes the comment the only thing standing between
-// an ordinary future edit (`logger = cfg.Logger.With("pkg", "daemon")` inside
-// Run) and every anchor in this package silently never firing again: ready
-// would stay false forever and the shutdown tests would go vacuous in the
-// opposite direction, with no test noticing.
+// test reaches (#7236): `sigs: nil` in both methods is a mutant that survives
+// the whole suite at 4/4 PASS.
 //
-// This exercises the derived path directly, so `sigs: nil` in either method is
-// a failing change rather than an invisible one.
+// What it is NOT is silent in production. If someone later adds
+// `logger = cfg.Logger.With("pkg", "daemon")` inside Run, the signals stop
+// arriving and ready.Wait's t.Fatalf fires: measured by gutting the matching
+// loop, that is three tests red —
+// TestDaemon_ShutdownBoundedWhenListenerCloseIsNotConfirmed,
+// TestDaemon_ShutdownStillCleanWhenListenerCloseSucceeds and
+// TestWaitDaemonReady_ReturnsBeforeTheDaemonIsReady — each after burning its
+// full 30s timeout, all three reporting `daemon never logged "ready" within
+// 30s`. That message accuses the daemon of not starting. The daemon started
+// fine; the handler plumbing dropped the record. So the cost of leaving this
+// ungraded is not a missed regression, it is 90s of red pointing at the wrong
+// component.
+//
+// This exercises the derived path directly, so the same break surfaces
+// immediately, here, naming the thing that actually broke.
 func TestSignalHandler_DerivedLoggerStillRaisesTheSignal(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -302,9 +312,16 @@ func TestSignalHandler_DerivedLoggerStillRaisesTheSignal(t *testing.T) {
 // against a daemon that has not started. This makes the exact match load-bearing
 // rather than coincidental, so "make the matcher more forgiving" goes red.
 func TestSignalHandler_MessageMerelyContainingTheMarkerDoesNotFire(t *testing.T) {
-	// Each decoy contains the marker in a different position: the widening this
-	// forbids is a substring test, and a single decoy would only pin one of its
-	// edges.
+	// Each decoy contains the marker in a different position, and the rows are
+	// not interchangeable: measured against four candidate widenings, row 1 is
+	// the only one that fires under strings.HasPrefix and row 2 the only one
+	// that fires under strings.HasSuffix, so each uniquely pins one edge;
+	// rows 1-3 all fire under strings.Contains and under a \bready\b matcher.
+	// Row 4 is the weakest and is kept deliberately: it adds no kill that
+	// rows 1-3 do not already have, and it is the one row a word-boundary
+	// matcher would get right on its own. It is here to record the vocabulary
+	// fact — the marker embedded in a longer word ("al-ready") is not a match
+	// either — not to grade a widening of its own.
 	decoys := []string{
 		"ready to index",   // marker at the start
 		"engine not ready", // marker at the end
