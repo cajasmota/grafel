@@ -147,10 +147,17 @@ var (
 	//     comparison is blind to precisely the error this bullet claims to
 	//     prevent, so the row that grades it asserts the emitted SIGNATURE:
 	//     TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel.
-	//     The final `\s*$` is
-	//     left alone for the opposite reason: it is what absorbs the `\r` of
-	//     a CRLF file, and narrowing it to `[ \t]*$` would drop every module
-	//     in a CRLF source.
+	//     The final `\s*$` is left alone for the OPPOSITE reason: `\s`
+	//     includes `\r`, and in Go's `(?m)` mode `$` matches before the
+	//     `\n` only — so `\s*$` is what absorbs the `\r` of a CRLF source.
+	//     Narrowing it to `[ \t]*$` cannot consume the `\r` and would drop
+	//     EVERY module, of BOTH forms, in EVERY CRLF file. MEASURED, not
+	//     asserted, and note the blast radius is far larger than the
+	//     newline-crossing hazard above: that is one shape this file itself
+	//     calls not-legal-F#, this is every module in a whole class of real
+	//     files. Graded by TestLocalModule7151_CRLFSourceMintsBothForms —
+	//     before it existed the package had ZERO CRLF fixtures and this
+	//     half of the bullet was ungraded prose.
 	//   - It is anchored at end-of-line, so the MODULE ABBREVIATION
 	//     `module M = A.B.C` (§ 10 `module-abbrev`) still does not match —
 	//     unchanged from before, and not decided by accident here. Whether
@@ -163,16 +170,19 @@ var (
 	//
 	// Both forms keep Subtype "module". Exactly TWO consumers branch on that
 	// subtype in a way that carries behaviour, and both read it as "container
-	// scope, not a callable": resolve/imports.go:285 skips it when indexing
-	// call targets, and mcp/denoise.go:137 classifies it as a noise
-	// container. A local module is a container scope by the same reading.
-	// (extractor/file_carrier's clause 3 does NOT key on this subtype — it
-	// keys on `records[i].Name == path` at file_carrier.go:217; that file has
-	// zero non-comment occurrences of "module". An earlier revision of this
-	// comment claimed otherwise and was wrong.) The distinction between the
-	// two forms is carried in the SIGNATURE instead, which echoes the
-	// declaration head: "module Foo" vs "module Foo =". See
-	// local_module_7151_test.go for the full enumeration.
+	// scope, not a callable" — cited by SYMBOL rather than by line, because a
+	// line citation inside a comment is invalidated by editing the comment:
+	// resolve.BuildImportTable's pass-2 module reverse index skips it when
+	// indexing call targets, and mcp's classifyNoise labels it noiseContainer.
+	// A local module is a container scope by the same reading.
+	// (extractor's file-carrier clause 3 does NOT key on this subtype — it
+	// keys on `records[i].Name == path`, and that file has zero non-comment
+	// occurrences of "module" at all. An earlier revision of THIS comment
+	// claimed otherwise and was wrong.) The distinction between the two forms
+	// is carried in the SIGNATURE instead, which echoes the declaration head:
+	// "module Foo" vs "module Foo =". The full enumeration, with the grep or
+	// the read behind every row and line numbers anchored to the sha they
+	// were taken on, is in local_module_7151_test.go.
 	moduleRE = regexp.MustCompile(
 		`(?m)^([ \t]*)module(?:\s+(?:rec|public|private|internal)\b)*\s+([\w.]+)([ \t]*=)?\s*$`,
 	)
@@ -600,7 +610,19 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// (`@"C:\"`) and a character literal holding a quote (`'"'`). Its
 	// `case '"'` arm carries the comment "Check for verbatim string @\"...\""
 	// and performs no such check, so `\` is treated as a C-style escape and
-	// eats the closing quote; and there is no char-literal state at all.
+	// eats the closing quote; and there is no general char-literal state.
+	//
+	// READ THIS BEFORE FIXING #7193 — the package ALREADY has a recorded
+	// decision that a GENERAL char-literal scrub is WRONG, and it is easy to
+	// walk straight into it. charBraceRE (below, #6326) deliberately matches
+	// ONLY `'{'` and `'}'` because F# identifiers may end in an apostrophe,
+	// so a general `'.'` scrub misreads `c' '}'` — a primed identifier next
+	// to a char literal, ordinary F# — as the span `' '`. That reasoning and
+	// its counter-example are pinned by
+	// TestFSharp_PrimedIdentifierBeforeCharLiteralBrace in hierarchy_test.go.
+	// A naive `'.'` state added to stripStringsAndComments turns that test
+	// RED at the same time as it turns the two recording subtests below
+	// GREEN. Any #7193 fix must satisfy both.
 	// Everything after such a construct scrubs to blank, so a REAL local
 	// module below one is dropped and this fix does not apply for the rest of
 	// that file. This is PRE-EXISTING and NOT caused here — the local form

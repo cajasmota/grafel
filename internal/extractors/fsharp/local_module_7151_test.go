@@ -373,8 +373,17 @@ func TestLocalModule7151_MaskedLocalFormMintsNothing(t *testing.T) {
 			"namespace Outer\n\n(*\nmodule private Ghost =\n    let y = 2\n*)\n\nlet real = 1\n",
 		},
 		{
-			"nested block comment",
-			"namespace Outer\n\n(*\n(*\nmodule Ghost =\n*)\n*)\n\nlet real = 1\n",
+			// The declaration sits BETWEEN the inner and the outer closer,
+			// which is the only position in which this fixture varies the
+			// axis it is named for. With Ghost placed BEFORE the first `*)`
+			// (as this row was originally written) a NON-nesting scrubber
+			// blanks it identically to the plain block-comment row above, so
+			// the row was a duplicate: MEASURED — deleting the `depth++`
+			// branch from stripStringsAndComments left it GREEN. In this
+			// position the same deletion MINTS `Ghost` with signature
+			// "module Ghost =", so the row now grades the depth tracking.
+			"nested block comment, declaration between the two closers",
+			"namespace Outer\n\n(*\n(*\ninner\n*)\nmodule Ghost =\n*)\n\nlet real = 1\n",
 		},
 		{
 			"triple-quoted string",
@@ -462,9 +471,13 @@ func TestLocalModule7151_ModuleAbbreviationStillMintsNothing(t *testing.T) {
 
 // TestLocalModule7151_ModifierRelationHoldsForLocalForm keeps #7151's own
 // grading requirement: the two forms stay TIED, so a one-sided future fix
-// fails. It is the relation #7135's TestModuleModifiers_LocalModuleEqualsGap-
-// IsSeparate asserted while the count on both sides was 0; now that the count
-// is 1 the same relation grades the fix instead of the gap.
+// fails. #7135's TestModuleModifiers_LocalModuleEqualsGapIsSeparate asserts
+// the same relation, but only as `a != b`, so it passes at 0 == 0 and would
+// keep passing if the fix were reverted — it is NOT a grader of this fix and
+// the earlier claim that it now "grades the fix instead of the gap" was an
+// overstatement. What this test adds is the artefact: it compares Name,
+// Subtype, Signature AND StartLine across the modifier phrases, and it
+// Fatalf's if the base count is not exactly 1.
 func TestLocalModule7151_ModifierRelationHoldsForLocalForm(t *testing.T) {
 	base := runFSharp(t, "namespace N\n\nmodule Target =\n    let x = 1\n", "Rel.fs")
 	baseMods := fs7151Modules(base)
@@ -503,10 +516,30 @@ func TestLocalModule7151_ModifierRelationHoldsForLocalForm(t *testing.T) {
 // matches, or merely asserted that one module entity exists, would pass under
 // both patterns and grade nothing.
 //
-// Both halves below can fail alone: the must-have fails if the declaration
-// stops being extracted or loses its top-level signature; the forbidden fails
-// if ANY module record in the file carries a local `=` signature, which is
-// what a `\s*` pattern produces even while the count stays 1.
+// # WHICH HALF GRADES WHAT, MEASURED
+//
+// On the two single-declaration fixtures the forbidden loop is MUTUALLY
+// MASKING with the must-have and grades NOTHING incrementally: the predicate
+// fires only if some module record's Signature ends " =", the only module
+// record is Foo (the namespace record is filtered out by fs7151Modules), and
+// the must-have pins Foo.Signature to exactly "module Foo" — so forbidden is
+// a SUBSET of must-have for every possible extractor behaviour on those
+// inputs. Measured: with the `\s*=` mutant applied AND the forbidden loop
+// neutralised the suite is still DEAD at the same count, and the converse
+// holdout likewise. An earlier revision of this comment claimed the forbidden
+// half "can fail alone" on those fixtures; that claim was FALSE and is
+// retracted here.
+//
+// The third subtest is what EARNS it, and it needs a SECOND module record:
+// on "module Foo\nmodule Bar\n=\n" the stray `=` is below the LATER
+// declaration, so under `\s*=` it is BAR that is mis-signed "module Bar ="
+// while FOO still reads "module Foo". The must-have (scoped to Foo) PASSES
+// and the forbidden FAILS — alone, on Bar. That is the only arrangement of
+// these ingredients in which it can.
+//
+// (The arrangement "module Foo\n=\nmodule Bar\n" does NOT earn it: there
+// `\s*=` mis-signs FOO, so the must-have fails too and the two halves mask
+// each other again. Checked, because it was the first thing suggested.)
 //
 // The shape guarded against — a `module Foo` line followed by a line whose
 // first non-whitespace byte is `=` — is not itself legal F#, so the hazard is
@@ -543,8 +576,10 @@ func TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel(t *testing.T) {
 				t.Errorf("got Subtype %q, want \"module\"", foo.Subtype)
 			}
 
-			// FORBIDDEN, and it can fail alone: no record in this file may
-			// carry the LOCAL signature, however many records there are.
+			// FORBIDDEN. On THIS fixture it is dominated by the must-have
+			// above (see the header): it is kept as a diagnostic, not
+			// counted as coverage. The subtest below is the one that earns
+			// the independent failure.
 			for _, e := range mods {
 				if strings.HasSuffix(e.Signature, " =") {
 					t.Errorf("module %q got the LOCAL signature %q from a source whose `=` is on a "+
@@ -553,6 +588,133 @@ func TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLocalModule7151_StrayEqualsBelowLaterDeclIsForbiddenAlone is the half
+// that EARNS the forbidden direction for the `[ \t]*=` claim, which the
+// single-declaration fixtures above provably cannot (see their header).
+//
+// Two module records, and the stray `=` sits below the SECOND one:
+//
+//	namespace Outer     // 1
+//	                    // 2
+//	module Foo          // 3  -> TOP,  "module Foo"
+//	module Bar          // 4  -> TOP,  "module Bar"   (under `\s*=`: "module Bar =")
+//	=                   // 5
+//
+// `\s*` matches only whitespace, so it cannot reach from after `Foo` across
+// the intervening "module Bar" text — Foo is unaffected by the mutant.
+// MEASURED under the `\s*=` mutant: Foo stays "module Foo" (the must-have
+// below PASSES) while Bar becomes "module Bar =" (the forbidden below FAILS).
+// The forbidden therefore fails ALONE, which is what makes it coverage rather
+// than a diagnostic dominated by its sibling.
+func TestLocalModule7151_StrayEqualsBelowLaterDeclIsForbiddenAlone(t *testing.T) {
+	src := "namespace Outer\n\nmodule Foo\nmodule Bar\n=\n"
+	mods := fs7151Modules(runFSharp(t, src, "StrayEquals.fs"))
+
+	byName := map[string]types.EntityRecord{}
+	for _, e := range mods {
+		byName[e.Name] = e
+	}
+
+	// MUST-HAVE, scoped to Foo ONLY — deliberately, so that it survives the
+	// `\s*=` mutant and leaves the forbidden row below as the sole failure.
+	foo, ok := byName["Foo"]
+	if !ok {
+		t.Fatalf("`module Foo` produced no module entity: %v", fs7151ModNames(mods))
+	}
+	if foo.Signature != "module Foo" {
+		t.Errorf("`module Foo` got Signature %q, want \"module Foo\"", foo.Signature)
+	}
+
+	// FORBIDDEN, and this one fails ALONE: no record in this file may carry a
+	// LOCAL signature. Under `\s*=` it is BAR that does, not Foo.
+	for _, e := range mods {
+		if strings.HasSuffix(e.Signature, " =") {
+			t.Errorf("module %q got the LOCAL signature %q, but the only `=` in this source is on its "+
+				"OWN line BELOW the declaration; `[ \\t]*=` must not cross a newline", e.Name, e.Signature)
+		}
+	}
+}
+
+// TestLocalModule7151_CRLFSourceMintsBothForms grades the SECOND half of the
+// pattern bullet, which was ungraded prose until this row existed: the final
+// `\s*$` is left un-narrowed because `\s` includes `\r` and, in Go's `(?m)`
+// mode, `$` matches before the `\n` only. So `\s*$` is what absorbs the `\r`
+// of a CRLF source, and narrowing it to `[ \t]*$` cannot consume the `\r`.
+//
+// MEASURED with that narrowing applied: every row below drops to ZERO module
+// entities — BOTH forms, at any modifier and any qualification. That blast
+// radius is much larger than the one the sibling
+// TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel grades: this is every
+// module in every CRLF file, versus one shape this package itself calls not
+// legal F#.
+//
+// Before this test the fsharp package had ZERO CRLF coverage — no `\r\n`
+// escape and no literal CR byte in any of its *_test.go files, and the string
+// "CRLF" appeared nowhere in the package.
+//
+// CHOICE OF SPELLING, stated because there was no local precedent either way:
+// these fixtures use the ESCAPE `\r\n` inside an interpreted string literal,
+// NOT a literal CR byte in the file. A literal CR is invisible in review,
+// survives neither gofmt-adjacent tooling nor a careless editor reliably, and
+// would make the fixture's intent unreadable; the escape is explicit at the
+// call site.
+//
+// SCOPE: this row covers moduleRE only. namespaceRE carries the identical
+// `\s*$` exposure and is NOT covered here — that, the package-wide CRLF gap
+// and the remaining unaudited MustCompile patterns are #7198.
+func TestLocalModule7151_CRLFSourceMintsBothForms(t *testing.T) {
+	// MUST-HAVE: a CRLF source mints, with the `\r` absorbed rather than
+	// captured — asserted on Name and Signature, not on a count.
+	for _, tc := range []struct {
+		label   string
+		decl    string
+		name    string
+		wantSig string
+	}{
+		{"local form", "module Target =", "Target", "module Target ="},
+		{"top-level form", "module Target", "Target", "module Target"},
+		{"local, modifier + qualified name", "module private Ns.Target =", "Ns.Target", "module Ns.Target ="},
+		{"top-level, modifier + qualified name", "module private Ns.Target", "Ns.Target", "module Ns.Target"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			src := "namespace N\r\n\r\n" + tc.decl + "\r\n    let x = 1\r\n"
+			mods := fs7151Modules(runFSharp(t, src, "Crlf.fs"))
+			if len(mods) != 1 {
+				t.Fatalf("CRLF source with %q produced %d module entities, want 1: %v — narrowing the "+
+					"trailing `\\s*$` to `[ \\t]*$` drops every module in every CRLF file",
+					tc.decl, len(mods), fs7151ModNames(mods))
+			}
+			e := mods[0]
+			if e.Name != tc.name {
+				t.Errorf("CRLF %q got Name %q, want %q — the `\\r` must be absorbed by the anchor, not captured",
+					tc.decl, e.Name, tc.name)
+			}
+			if e.Signature != tc.wantSig {
+				t.Errorf("CRLF %q got Signature %q, want %q", tc.decl, e.Signature, tc.wantSig)
+			}
+			if e.StartLine != 3 {
+				t.Errorf("CRLF %q got StartLine %d, want 3", tc.decl, e.StartLine)
+			}
+			if strings.ContainsAny(e.Name+e.Signature, "\r") {
+				t.Errorf("CRLF %q leaked a CR byte into Name %q / Signature %q", tc.decl, e.Name, e.Signature)
+			}
+		})
+	}
+
+	// FORBIDDEN, and it can fail alone: the anchor absorbs the `\r` and
+	// NOTHING MORE. A module abbreviation in a CRLF file must still mint
+	// nothing, exactly as in an LF one. This fails alone under any widening
+	// that lets the anchor swallow the rest of the line, which would leave
+	// every must-have row above passing.
+	t.Run("forbidden: module abbreviation in CRLF still mints nothing", func(t *testing.T) {
+		src := "namespace N\r\n\r\nmodule M = A.B.C\r\n\r\nlet x = 1\r\n"
+		if got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Crlf.fs"))); len(got) != 0 {
+			t.Errorf("a module ABBREVIATION in a CRLF source produced %v, want none — the trailing "+
+				"anchor must absorb the `\\r` and nothing else (#7194 owns whether an alias should mint)", got)
+		}
+	})
 }
 
 // TestLocalModule7151_ScrubRunawayHidesLocalModule_7193 RECORDS TODAY'S
@@ -566,7 +728,17 @@ func TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel(t *testing.T) {
 //
 // Its `case '"'` arm carries the comment "Check for verbatim string @\"...\""
 // and performs NO such check, so `\` is treated as a C-style escape and eats
-// the closing quote; and there is no char-literal state at all. Everything
+// the closing quote; and there is no general char-literal state.
+//
+// READ THIS BEFORE FIXING #7193. The package already has a RECORDED DECISION
+// that a GENERAL char-literal scrub is wrong, and it is easy to walk straight
+// into it: charBraceRE (#6326) matches ONLY `'{'` and `'}'` because F#
+// identifiers may end in an apostrophe, so a general `'.'` scrub misreads
+// `c' '}'` — a primed identifier next to a char literal, ordinary F# — as the
+// span `' '`. TestFSharp_PrimedIdentifierBeforeCharLiteralBrace in
+// hierarchy_test.go pins that counter-example. A naive `'.'` state added to
+// stripStringsAndComments turns THAT test red at the same moment it turns
+// subtests 1 and 2 below green. A #7193 fix has to satisfy both. Everything
 // after either construct scrubs to blank, so a REAL `module Target =` below
 // one is silently dropped and #7151's fix does not apply for the rest of that
 // file.
@@ -589,7 +761,7 @@ func TestLocalModule7151_NewlineBeforeEqualsStaysTopLevel(t *testing.T) {
 func TestLocalModule7151_ScrubRunawayHidesLocalModule_7193(t *testing.T) {
 	const decl = "module Target =\n    let x = 1\n"
 
-	t.Run("verbatim string with trailing backslash (want 1, #7193 makes it 0)", func(t *testing.T) {
+	t.Run("verbatim string with trailing backslash: RECORDS 0, a #7193 fix makes it 1", func(t *testing.T) {
 		src := "namespace Outer\n\nlet p = @\"C:\\\"\n\n" + decl
 		got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Runaway.fs")))
 		if len(got) != 0 {
@@ -599,7 +771,7 @@ func TestLocalModule7151_ScrubRunawayHidesLocalModule_7193(t *testing.T) {
 		}
 	})
 
-	t.Run("char literal holding a quote (want 1, #7193 makes it 0)", func(t *testing.T) {
+	t.Run("char literal holding a quote: RECORDS 0, a #7193 fix makes it 1", func(t *testing.T) {
 		src := "namespace Outer\n\nlet q = '\"'\n\n" + decl
 		got := fs7151ModNames(fs7151Modules(runFSharp(t, src, "Runaway.fs")))
 		if len(got) != 0 {
