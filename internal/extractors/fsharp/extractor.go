@@ -387,23 +387,34 @@ var (
 	// 93,100-divergence measurement under `\s*`, and #7158, under which
 	// `\s+` -> `\s*` here is ALIVE at 0 `--- FAIL` (`typeState() =` would
 	// mint a type named `State`).
+	// #7153 — HAZARD. typeRE had a twin, typeKindRE, which captured the kind
+	// token after `=` (`{`, `interface`, `class`, `|`). It was deleted under
+	// #7153 because nothing ever referenced it and its doc comment ("helps
+	// classify subtype") asserted a production benefit no production code
+	// delivered. Subtype classification is done by classifyTypeSubtype below.
+	//
+	// The hazard is NOT retired by the deletion, and it is NOT confined to a
+	// hypothetical future pattern: classifyTypeSubtype is modifier-sensitive
+	// TODAY, and the allowlist immediately below is the only reason it is not.
+	// The classifier receives `decl = src[m[0]:m[1]]` — THIS match — so for
+	// `type private Foo = {` it is reached at all only because this pattern
+	// consumes `private`. Delete the allowlist group and the declaration stops
+	// matching, the classifier is never called, and the type is silently
+	// dropped; the substring tests inside the classifier do not rescue it.
+	// So anything that classifies the kind from this declaration head — a
+	// reintroduced regexp, or an edit to this pattern — owns
+	// `(?:\s+(?:public|private|internal)\b)*` as a correctness dependency.
+	//
+	// Note also that this match ENDS AT the `=`, so `decl` is the head only
+	// ("type Foo ="). classifyTypeSubtype's `= {` / `= |` tests therefore
+	// never fire on a well-formed declaration — record and DU are decided by
+	// its BODY arms — and its `struct` arm, which has no body companion, is
+	// unreachable for real `struct` types while firing on any type whose NAME
+	// contains "struct". That is #7218, not this pattern's business, but a
+	// future author widening the head needs to know the classifier reads it.
 	typeRE = regexp.MustCompile(
 		`(?m)^([ \t]*)type(?:\s+(?:public|private|internal)\b)*` +
 			`\s+([A-Z][a-zA-Z0-9_']*)\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=`,
-	)
-
-	// type kind after "=" — helps classify subtype.
-	//
-	// #7135: this is typeRE's TWIN and it was NOT widened with it, because it
-	// is UNREFERENCED — no call site exists anywhere under internal/ or cmd/,
-	// and subtype classification runs through classifyTypeSubtype on the
-	// matched declaration text instead. Widening it would be an unobservable
-	// edit that no test could grade. Recorded here so the divergence is
-	// deliberate and visible: anything that wires this up must carry the
-	// `(?:\s+(?:public|private|internal)\b)*` group over from typeRE, or it
-	// will reintroduce the silent miss for `type private Foo = {`.
-	typeKindRE = regexp.MustCompile(
-		`(?m)^([ \t]*)type\s+[A-Z][a-zA-Z0-9_']*\s*(?:<[^>]*>)?\s*(?:\([^)]*\))?\s*=\s*(\{|interface|class|\|)`,
 	)
 
 	// open statement: "open Foo" or "open Foo.Bar"
