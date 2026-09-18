@@ -283,7 +283,14 @@ func runServeCapturingLog(t *testing.T, splitMode string) string {
 
 // serveStartupComplete is run()'s post-engine-plane startup line, as rendered
 // by slog's TextHandler (server.go: logger.Info("ready", "socket", ..., "pid",
-// ...)). It is the only "ready" message the daemon logs.
+// ...)). It is the only message that RENDERS as `msg=ready`: server.go:504
+// also logs "engine: ready", which TextHandler renders quoted
+// (`msg="engine: ready"`) because of the space, so it cannot match. That
+// distinction rests on slog's quoting, and this fixture additionally leaves
+// the engine child's stdout/stderr unset so the child's log never reaches sb
+// at all (unlike helperEngineCommand in supervise_test.go, which wires them).
+// A future test that pipes the child's stderr into the same buffer would be
+// depending on the quoting alone.
 const serveStartupComplete = "msg=ready"
 
 // waitForLogMarker polls get() until marker appears or timeout elapses. It
@@ -347,6 +354,44 @@ func TestWaitForLogMarker_WaitsForALateMarker(t *testing.T) {
 	}
 	if elapsed < 150*time.Millisecond {
 		t.Errorf("returned found after %s, before the marker was written at %s — it cannot have observed it", elapsed, late)
+	}
+}
+
+// TestWaitForLogMarker_AnchorFollowsTheRSSMarker grades the ANCHOR, not the
+// helper's mechanics: it replays run()'s startup emission order through the
+// same slog TextHandler the e2e fixture uses and requires that the snapshot
+// serveStartupComplete stops on ALREADY CONTAINS the RSS marker. Reverting the
+// constant to the pre-#7222 proxy ("startup: socket-listen done"), or to any
+// earlier line, fails here — whereas the e2e test alone cannot tell the two
+// apart: on an idle machine "ready" is already in the buffer by the time the
+// old capture point was reached.
+//
+// LIMITATION: this MODELS run()'s emission order, it does not derive it. It
+// pins "the anchor is not earlier than the marker", not "run() still emits
+// them in that order". The latter residual is only covered by running the e2e
+// test against a tree whose scheduler is artificially delayed (the #7222
+// review probe); nothing committed covers it.
+func TestWaitForLogMarker_AnchorFollowsTheRSSMarker(t *testing.T) {
+	sb := &syncBuf{}
+	lg := slog.New(slog.NewTextHandler(sb, nil))
+	// run()'s order: socket bound, THEN the engine plane arms the budget,
+	// THEN "ready". (server.go: socket-listen done -> startEnginePlane ->
+	// logger.Info("ready", ...); engineplane.go logs the marker before it
+	// returns.)
+	lg.Info("startup: socket-listen done")
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		lg.Info("scheduler: RSS-budget admission control enabled", "budget_mb", 2048)
+		time.Sleep(50 * time.Millisecond)
+		lg.Info("ready", "socket", "/x", "pid", 1)
+	}()
+
+	got, ok := waitForLogMarker(sb.String, serveStartupComplete, 10*time.Second)
+	if !ok {
+		t.Fatalf("anchor %q never matched run()'s startup log:\n%s", serveStartupComplete, got)
+	}
+	if !strings.Contains(got, "RSS-budget admission control enabled") {
+		t.Errorf("anchor %q matched a snapshot that PREDATES the RSS marker — that is a proxy for startup, not a happens-after anchor:\n%s", serveStartupComplete, got)
 	}
 }
 
