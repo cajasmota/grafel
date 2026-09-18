@@ -274,7 +274,10 @@ class Svc {
 	j7094MustCall(t, rels, "Order.a", "Order.b")
 }
 
-// THE COST OF REFUSING, RECORDED AS A FIXTURE RATHER THAN AS PROSE.
+// THE COST OF REFUSING, RECORDED AS A FIXTURE RATHER THAN AS PROSE — AND THEN
+// RECOVERED. This test was `TestJava7094_ClassBodyShadowingCostsRecall`; it is
+// renamed rather than deleted, and the old name is written here so a grep for
+// it lands on this note.
 //
 // An earlier revision of collectLocalVarTypes' comment claimed Java forbids an
 // inner block from redeclaring a name already in scope, so "a compilable
@@ -282,15 +285,30 @@ class Svc {
 // only within the DIRECTLY ENCLOSING method, constructor or initializer block.
 // A local or anonymous CLASS BODY is a new class scope and may legally shadow.
 // Calls inside such a body are attributed to the ENCLOSING METHOD entity, so
-// the flat walk reaches across the class boundary and poisons the outer name.
+// the flat walk reached across the class boundary and poisoned the outer name.
 //
-// This test does not argue that the refusal is wrong — recall loss is the
-// honest direction, and the alternative is guessing which of two real types a
-// name has at a site. It exists so the cost is OBSERVED and moves when the
-// behaviour moves: a real block-scoped symbol table would stop at the class
-// boundary and `Order.a` would come back, at which point this test fails and
-// is updated to assert the recovery.
-func TestJava7094_ClassBodyShadowingCostsRecall(t *testing.T) {
+// WHAT THIS TEST USED TO ASSERT, and why the change is not a regression: it
+// asserted that `Order.a` and `Customer.b` were BOTH lost — a recall cost paid
+// so a wrong receiver could not be guessed. Its own comment named the fix and
+// predicted this moment verbatim:
+//
+//	"It exists so the cost is OBSERVED and moves when the behaviour moves: a
+//	 real block-scoped symbol table would stop at the class boundary and
+//	 `Order.a` would come back, at which point this test fails and is updated
+//	 to assert the recovery."
+//
+// #7109 built that boundary (for class scopes — see
+// issue7109_class_scope_test.go). So this row is REWRITTEN to assert the
+// recovery it anticipated, not removed: the refusal was never the goal, the
+// absence of a scope model was the reason for it. Both receivers come back,
+// because the inner declaration now lives in the inner class's own ledger and
+// no longer disagrees with the outer one.
+//
+// The recovery is BROADER than the prediction — `Customer.b` returns as well
+// as `Order.a`, because the inner scope gets a real ledger rather than just
+// being excluded from the outer one. That is direction 2 as #7109 specified it
+// ("that body gets its own ledger seeded from its own parameters and locals").
+func TestJava7094_ClassBodyShadowingRecallRecoveredBy7109(t *testing.T) {
 	// Anonymous class body shadowing the enclosing method's local.
 	anon := j7094Calls(t, `package com.x;
 class Order { void a() {} }
@@ -305,11 +323,14 @@ class Svc {
   }
 }
 `)
-	// THE COST: the outer `o.a()` loses its receiver. Asserted, not tolerated.
-	j7094MustCall(t, anon, "a", "b")
-	j7094MustNotCall(t, anon, "Order.a", "Customer.b", "Order.b", "Customer.a")
+	// WAS: j7094MustCall(t, anon, "a", "b") plus a MustNotCall on all four
+	// dotted forms — i.e. both receivers lost.
+	j7094MustCall(t, anon, "Order.a", "Customer.b")
+	// The CROSSED pairings stay forbidden: shadowing must not swap the types,
+	// only scope them.
+	j7094MustNotCall(t, anon, "Order.b", "Customer.a")
 
-	// Local (named) class body — same shape, same cost.
+	// Local (named) class body — same shape, same recovery.
 	local := j7094Calls(t, `package com.x;
 class Order { void a() {} }
 class Customer { void b() {} }
@@ -321,12 +342,14 @@ class Svc {
   }
 }
 `)
-	j7094MustCall(t, local, "a", "b")
-	j7094MustNotCall(t, local, "Order.a", "Customer.b")
+	j7094MustCall(t, local, "Order.a", "Customer.b")
+	j7094MustNotCall(t, local, "Order.b", "Customer.a")
 
-	// CONTROL — rename the inner variable and both receivers come back. This
-	// is what proves the loss above is caused by cross-class-boundary
-	// poisoning and not by anything else in the fixture.
+	// CONTROL — rename the inner variable. This bound both receivers BEFORE
+	// #7109 too, which is what made it the proof that the loss above was
+	// caused by cross-class-boundary poisoning and not by the fixture. It is
+	// kept because it is now the row that shows the boundary did not COST
+	// anything either: the no-collision case is unchanged.
 	control := j7094Calls(t, `package com.x;
 class Order { void a() {} }
 class Customer { void b() {} }
