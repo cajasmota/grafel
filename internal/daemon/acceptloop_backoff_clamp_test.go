@@ -84,20 +84,39 @@ import (
 // obvious version of the claim above is FALSE. `backoff = acceptBackoffMax / 2`
 // is ALIVE under this test: it caps at 500ms, the NEXT doubling lands on exactly
 // 1s, and the floor is satisfied by that one wait — announced sequence
-// [5ms 10ms 20ms 40ms 80ms 160ms 320ms 640ms 500ms 1s]. It is killed instead by
-// the RATIO pin next door, which sees the 640ms -> 500ms step. So the shrink
-// direction of the clamped-to VALUE is covered at this site jointly by the two
-// files and not by this one alone; that is stated here so the next reader does
-// not infer a coverage this file does not have.
+// [5ms 10ms 20ms 40ms 80ms 160ms 320ms 640ms 500ms 1s]. It is killed instead,
+// and solely, by the RATIO ASSERTION (not either floor) inside
+// TestAcceptLoopBackoffClampSkipExcludesOnlyCeilingPairs in
+// acceptloop_backoff_factor_test.go, which sees the 640ms -> 500ms step as
+// 0.781x. So the shrink direction of the clamped-to VALUE is covered at this
+// site jointly by the two files and not by this one alone.
+//
+// THAT CROSS-FILE DEPENDENCY IS NAMED ON PURPOSE, file and test and assertion.
+// It is load-bearing — the shrink direction is ALIVE in this file — and an
+// unnamed one is exactly what gets retuned away by someone who has no idea
+// another file leans on it. Anyone narrowing that test's ratio assertion, or
+// shortening its ten-error script, silently un-grades `max/2` here.
 //
 // Both floors are load-bearing in both directions of the guard, measured on the
 // guard itself rather than assumed: `if true || w == acceptBackoffMax` makes the
 // at-ceiling set everything and trips the second floor; `if false && ...` empties
-// it and trips the first. Each gives a distinct, attributable failure, so this
-// test cannot silently empty its own input set. The ten-error script is what
-// makes that measurable at all: the six-error probe next door never reaches the
-// ceiling, and a guard whose branch the fixture never takes is dead code in its
-// own fixture (exactly the hole #7172's review found).
+// it and trips the first. Each gives a distinct, attributable failure at a
+// DIFFERENT ASSERTION for a DIFFERENT REASON — the `every one of the N
+// announced backoffs sat at the ceiling` line reports the set SWALLOWED, the
+// `no announced backoff reached the ceiling` line reports it EMPTIED — so this
+// test cannot silently empty its own input set. (Named by their messages rather
+// than by line number on purpose: a line citation inside the comment block that
+// precedes the code it cites is invalidated by any edit to the comment itself.)
+//
+// AND THE FIXTURE ACTUALLY DRIVES BOTH BRANCHES, which is the difference
+// between a guard that is graded and one that merely looks graded. The shipped
+// ten-error sequence [5ms 10ms 20ms 40ms 80ms 160ms 320ms 640ms 1s 1s] puts
+// EIGHT waits below the ceiling and TWO at it, so `w == acceptBackoffMax` is
+// taken in both directions by the fixture itself. That is not free: the
+// six-error probe next door never reaches the ceiling at all, and a guard whose
+// branch its own fixture never takes is dead code that reads as covered —
+// exactly the hole #7172's review found. The input set also cannot be empty
+// upstream: announcedAcceptBackoffs t.Fatalf's unless len(waits) == n.
 //
 // THE TWO SITES ARE DISJOINT, measured in BOTH directions rather than argued
 // from the fact that they live in different files. If one test killed both
@@ -119,16 +138,22 @@ import (
 // duration (only the announced one is read).
 //
 // NOT GRADED HERE, on purpose: `>` -> `>=` on the clamp comparison. It is
-// EQUIVALENT, by the same algebra already recorded at the twin in supervise.go:
-// the two forms differ only in the single state `backoff == acceptBackoffMax`,
-// and there the branch body is an idempotent assignment of that very value — no
-// counter, no logging, no early return, so no successor state differs either.
-// Enumerated rather than only argued: `backoff` at this point is one of
-// acceptBackoffStart or a doubling of a previous value, i.e. it takes the values
-// {5ms, 10ms, ..., 640ms, 1s, 2s}; over that whole alphabet the two forms agree
-// on every one (they can differ only at exactly 1s, where both leave the value
-// at 1s), and the measured row confirms it at 0 `--- FAIL`. It is left untested
-// ON PURPOSE — a test pinning `>` here would be vacuous by construction.
+// EQUIVALENT FOR EVERY VALUE OF `backoff`, not merely for the ones this fixture
+// can reach — which makes the verdict cheaper to re-check than an enumeration
+// would. The two forms differ only in the single state
+// `backoff == acceptBackoffMax`, and there the branch body is an idempotent
+// write of the value already held. Nothing observes the difference: the `if` and
+// its body are ADJACENT with no read between the comparison and the assignment,
+// `backoff` is a plain local time.Duration with no pointer escaping, and there
+// is no counter, no logging and no early return, so the next statement
+// (`logger.Warn` then `time.Sleep`) sees the same post-state either way. The
+// equivalence therefore holds over the whole int64 domain, not just the
+// alphabet. The reachable alphabet — acceptBackoffStart or a doubling of a
+// previous value, i.e. {5ms, 10ms, ..., 640ms, 1s, 2s} — agrees on every
+// element, but that is belt-and-braces rather than load-bearing; the measured
+// row confirms it at 0 `--- FAIL`. The same equivalence is already recorded at
+// the twin in supervise.go. It is left untested ON PURPOSE — a test pinning `>`
+// here would be vacuous by construction.
 //
 // MEASURED (full ./internal/daemon/, -count=1, `go vet ./internal/daemon/` exit
 // 0 captured to its OWN file on every row; verdicts are ANCHORED `--- FAIL`
@@ -147,10 +172,13 @@ import (
 //	`acceptBackoffStart` = acceptBackoffMax             -> 4  DEAD: this test (upper floor) + the start pin + both ratio-pin tests
 //	`acceptBackoffStart` 5ms -> 7ms                     -> 1  DEAD: the start pin ALONE
 //
-// The hold-out is positively proved, not asserted: `go test -list` shows 490
-// tests with this file and 488 without it, neither of this file's two test names
-// appears in the 488, and the held-out run contains ZERO `=== RUN` lines for
-// them.
+// The hold-out is positively proved, not asserted, and the proof is the `-list`
+// diff ALONE: `go test -list` shows 490 tests with this file and 488 without it,
+// and the difference between the two sorted listings is EXACTLY this file's two
+// test names, neither of which appears in the 488. A `=== RUN` count is
+// deliberately NOT cited as evidence — `=== RUN` is emitted only under `-v`, so
+// on these non-verbose legs it is zero for every test in the package whether or
+// not it ran, and it cannot distinguish a held-out test from a run one.
 //
 // DECLARED CONFOUNDS, because a mutant that moves more than the role under test
 // must say so. The two constants are read by the ratio pin next door as well, so
