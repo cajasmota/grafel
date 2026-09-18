@@ -400,9 +400,6 @@ func importDisplayName(mod string) string {
 	return mod
 }
 
-// extractIndentBody returns the body text following a declaration line.
-// It collects lines that are more indented than baseIndent (the declaration's own indent level).
-// For top-level procs (indent=0), collects all lines that start with at least one space/tab.
 // #7212: the line on which byte offset `pos` sits, 1-based. Both call sites cut
 // the declaration's body at the regex match END (m[1]) and then measure its
 // length in newlines, so the line that length is added TO must be the line of
@@ -424,6 +421,9 @@ func spanEndLine(src string, afterPos int, body string) int {
 	return lineOf(src, afterPos) + strings.Count(body, "\n")
 }
 
+// extractIndentBody returns the body text following a declaration line.
+// It collects lines that are more indented than baseIndent (the declaration's own indent level).
+// For top-level procs (indent=0), collects all lines that start with at least one space/tab.
 func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	rest := src[afterPos:]
 	lines := strings.Split(rest, "\n")

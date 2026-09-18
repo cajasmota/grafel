@@ -238,14 +238,44 @@ func TestSpanOrigin7212_ProcBodyStillYieldsCalls(t *testing.T) {
 
 // --- the permissive direction: a span that is too WIDE ----------------------
 
-// span7212Overrun reports, for one fixture, every span that reaches past EOF
-// and every span that swallows a LATER declaration's own line. Both are the
-// widening failure mode: an origin fix applied twice, or applied and then
-// padded, produces spans that are too long, and the exact-value rows above
-// would catch it only where an exact value is asserted. Returned as values, so
-// the detector itself is graded (TestSpanOrigin7212_OverrunDetectorFires)
-// rather than assumed — an absence assertion passes identically whether it is
-// enforced or simply unreachable.
+// span7212DeclIndent is the column the declaration on `line` (1-based) starts
+// at, read from the FIXTURE SOURCE. Nesting is what makes an enclosing span
+// legitimate, and nesting in Nim is indentation — so the legitimacy signal is
+// taken from the source's own indentation rule, never from the spans being
+// judged. Returns -1 when the line does not exist.
+func span7212DeclIndent(src string, line int) int {
+	lines := strings.Split(src, "\n")
+	if line < 1 || line > len(lines) {
+		return -1
+	}
+	return len(lines[line-1]) - len(strings.TrimLeft(lines[line-1], " \t"))
+}
+
+// span7212Overrun reports, for one fixture, every span that reaches past EOF and
+// every span that reaches a LATER declaration's own line WITHOUT enclosing it.
+// Both are the widening failure mode: an origin fix applied twice, or applied
+// and then padded, produces spans that are too long.
+//
+// #7221 REVIEW, N1 — THE PREDICATE USED TO BE BLIND TO TOTAL ABSORPTION. It
+// read `i.StartLine < j.StartLine && j.StartLine <= i.EndLine && i.EndLine <
+// j.EndLine`, i.e. it fired only on a PARTIAL straddle. A span that swallowed a
+// later sibling ENTIRELY satisfied none of it, and past-EOF could not catch it
+// either (a span ending at the last line is not past EOF). Measured on real
+// output for twoLineClause: Alpha planted 2-5 gave 1 violation, Alpha planted
+// 2-6 — which fully swallows Beta 5-6 — gave 0. That is EXACTLY the #7190
+// shape: restoring `extractIndentBody(src, m[1], 0)` at the type site makes the
+// first member absorb the whole section, and this row would have stayed green.
+//
+// The `i.EndLine < j.EndLine` clause was there to spare legitimate ENCLOSURE
+// (`wrap` 1-5 properly containing `Alpha` 3-5, `outer` 1-6 containing `inner`
+// 2-5). But geometry alone cannot separate enclosure from absorption — both are
+// containment — and neither can Kind: `outer`/`inner` are both SCOPE.Operation
+// and legitimately nested. The signal that DOES separate them is the one Nim
+// itself uses: a genuine parent's declaration is at a STRICTLY SHALLOWER column
+// than its child's, while two siblings share a column. So containment is
+// permitted only when `indent(i) < indent(j)`, read from the source; a span
+// reaching a declaration at its own or a shallower column is a violation
+// however far past it runs. Partial and total absorption now both fire.
 func span7212Overrun(src string, ents []types.EntityRecord) []string {
 	ceiling := strings.Count(strings.TrimSuffix(src, "\n"), "\n") + 1
 	var out []string
@@ -262,19 +292,16 @@ func span7212Overrun(src string, ents []types.EntityRecord) []string {
 			if i == j || !spanned(ents[j]) {
 				continue
 			}
-			// Only a LATER declaration at the same or shallower nesting can be
-			// swallowed; a genuinely nested declaration (proc containing a
-			// type) is legitimately inside its parent, so require that j is not
-			// contained in i's *declaration*, i.e. compare only siblings — two
-			// entities neither of which starts before the other ends unless one
-			// truly encloses the other. Enclosure is legitimate exactly when
-			// i also ends at or after j's end.
-			if ents[i].StartLine < ents[j].StartLine && ents[j].StartLine <= ents[i].EndLine &&
-				ents[i].EndLine < ents[j].EndLine {
-				out = append(out, fmt.Sprintf("%s/%s span %d-%d straddles %s/%s (%d-%d)",
-					ents[i].Kind, ents[i].Name, ents[i].StartLine, ents[i].EndLine,
-					ents[j].Kind, ents[j].Name, ents[j].StartLine, ents[j].EndLine))
+			if ents[i].StartLine >= ents[j].StartLine || ents[j].StartLine > ents[i].EndLine {
+				continue // i does not reach j's declaration line at all
 			}
+			ii, ji := span7212DeclIndent(src, ents[i].StartLine), span7212DeclIndent(src, ents[j].StartLine)
+			if ii >= 0 && ji >= 0 && ii < ji {
+				continue // genuine nesting: j is declared deeper than i
+			}
+			out = append(out, fmt.Sprintf("%s/%s span %d-%d absorbs %s/%s (%d-%d) declared at column %d",
+				ents[i].Kind, ents[i].Name, ents[i].StartLine, ents[i].EndLine,
+				ents[j].Kind, ents[j].Name, ents[j].StartLine, ents[j].EndLine, ji))
 		}
 	}
 	return out
@@ -310,24 +337,54 @@ func TestSpanOrigin7212_OverrunDetectorFires(t *testing.T) {
 		t.Errorf("planted straddling span: got %d violations %v, want 1", len(got), got)
 	}
 
-	// (c) the boundary must NOT fire: a span ending exactly on the line before
-	// the next declaration, and a span ending exactly at EOF, are both correct.
-	if got := span7212Overrun(span7212TwoLineClause, ents); len(got) != 0 {
-		t.Errorf("boundary spans: got %v, want none", got)
+	// (b2) FULL-SWALLOW arm — the #7221/N1 blind spot, now graded. Alpha pushed
+	// to 2-6 contains Beta (5-6) ENTIRELY and ends exactly at EOF, so neither
+	// the past-EOF arm nor the old partial-straddle predicate could see it.
+	// Both declarations sit at column 2, so it is absorption, not nesting.
+	planted3 := append([]types.EntityRecord(nil), ents...)
+	for i := range planted3 {
+		if planted3[i].Name == "Alpha" {
+			planted3[i].EndLine = 6
+		}
+	}
+	if got := span7212Overrun(span7212TwoLineClause, planted3); len(got) != 1 {
+		t.Errorf("planted FULL-SWALLOW span: got %d violations %v, want 1", len(got), got)
+	}
+
+	// (c) the boundary must NOT fire, on inputs DISTINCT from the baseline
+	// above (#7221/N2: the old arm (c) re-ran the baseline call verbatim and
+	// added no coverage). procWrapParams holds two column-0 procs whose spans
+	// are adjacent — 1-3 then 4-5 — with the second ending exactly at EOF: the
+	// two boundary cases, at a fixture the baseline never touched.
+	adj := band7185Run(t, span7212ProcWrapParams, spanPath7212)
+	span7212Want(t, adj, "add", "SCOPE.Operation", 1, 3)
+	span7212Want(t, adj, "other", "SCOPE.Operation", 4, 5)
+	if got := span7212Overrun(span7212ProcWrapParams, adj); len(got) != 0 {
+		t.Errorf("adjacent + ends-at-EOF spans: got %v, want none", got)
 	}
 
 	// (d) legitimate ENCLOSURE must not fire: `wrap` (1-5) contains `Alpha`
 	// (3-5) and ends with it. A detector that reported this would make the
-	// forbidden row fail for the wrong reason and mask real widening.
+	// forbidden row fail for the wrong reason and mask real widening. Since
+	// #7221/N1 this is spared because `wrap` is declared at column 0 and
+	// `Alpha` at column 4 — genuine nesting — and NOT because one span contains
+	// the other, which is the condition that used to silence absorption too.
+	// procThreeLine is the same-Kind case: `outer` (column 0) encloses `inner`
+	// (column 2), and two SCOPE.Operations nesting must be spared as well.
 	nested := band7185Run(t, span7212NestedNoNL, spanPath7212)
 	if got := span7212Overrun(span7212NestedNoNL, nested); len(got) != 0 {
-		t.Errorf("legitimate enclosure: got %v, want none", got)
+		t.Errorf("legitimate enclosure (cross-kind): got %v, want none", got)
+	}
+	procs := band7185Run(t, span7212ProcThreeLine, spanPath7212)
+	if got := span7212Overrun(span7212ProcThreeLine, procs); len(got) != 0 {
+		t.Errorf("legitimate enclosure (same kind, outer/inner): got %v, want none", got)
 	}
 }
 
 // FORBIDDEN ROW: across every #7212 fixture, no span may reach past EOF and no
-// span may straddle a later declaration. Graded through the SAME helper the
-// control above plants violations in.
+// span may reach a later declaration that is NOT nested inside it — partially
+// or entirely. Graded through the SAME helper the control above plants
+// violations in, including the full-swallow arm added for #7221/N1.
 func TestSpanOrigin7212_NoSpanOverruns(t *testing.T) {
 	corpus := span7212Corpus()
 	if len(corpus) < 6 {
