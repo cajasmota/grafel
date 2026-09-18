@@ -436,29 +436,53 @@ var (
 	//
 	//  1. `*` (zero or more SECTIONS) is READABILITY and is NOT graded: it says
 	//     "a run of attribute sections", which is what F# writes —
-	//     `[<Measure>] [<Measure>] type m` is attested (dotnet/fsharp
-	//     tests/FSharp.Compiler.ComponentTests/Conformance/BasicGrammarElements/
-	//     CustomAttributes/Basic/E_AttributeApplication02.fs:6). But `*` -> `?`
+	//     `[<NoEquality>][<NoComparison>]` above `type internal Tainted<'T> …`
+	//     in dotnet/fsharp's own shipping source,
+	//     src/Compiler/TypedTree/tainted.fs:91-92, which compiles. (An earlier
+	//     revision cited `[<Measure>] [<Measure>] type m` here; that line is an
+	//     `E_` NEGATIVE test pinned to FS0429 "AllowMultiple=false", so it
+	//     attests only that two sections PARSE.) But `*` -> `?`
 	//     is ALIVE at 0 `--- FAIL` and is believed EQUIVALENT, because the
 	//     content class `[^\n]` admits `>]`: one non-greedy section expands over
 	//     `Measure>] [<Measure` and closes on the LAST `>]`, so a single
 	//     optional section already covers a run of them. Do NOT record `*` as
-	//     covered by the two-section fixture; it is not. The equivalence is not
-	//     only an argument: `*` -> `?` was brute-forced against the shipped
-	//     pattern over 4 token alphabets — {`[<`,`>]`,`A`,` `,`type`,`Foo`,`=`,
-	//     `\n`}, {`[<`,`>]`,`<`,`>`,` `,`type`,`Foo`,`=`},
-	//     {`[<`,`>]`,`\t`,`\n`,`type`,`Foo`,`=`,`private`} and
-	//     {`[<`,`>]`,`"`,`]`,`//`,` `,`type`,`Foo`,`=`} — to depth 9, 8, 9 and 8
-	//     tokens respectively, ~470 million strings, comparing FULL submatch
-	//     index sets: 0 divergences. The same enumeration retires one more
-	//     ALIVE mutant as equivalent, an extra `[ \t]*` appended after the
-	//     prefix group (`(?:…)*[ \t]*type`), which cannot diverge because the
-	//     leading `([ \t]*)` capture is greedy: 0 divergences over the same
-	//     ~470M strings.
-	//  2. NON-greedy `*?`, not `[^>]*` and not greedy `.*`. `[^>]*` truncates at
-	//     the first `>`, which a generic attribute argument carries: `[<A<int>>]
-	//     type C = class end` (dotnet/fsharp tests/FSharp.Compiler.ComponentTests/
-	//     Attributes/GenericAttributeAbbreviations.fs:94) would not match.
+	//     covered by the two-section fixture; it is not.
+	//
+	//     THE EQUIVALENCE RESTS ON THE ARGUMENT, NOT ON THE ENUMERATION. Any
+	//     k-section match is re-derivable as a SINGLE section whose content is
+	//     `C1>]S1[<C2…[<Ck`, because `[^\n]` admits both `>` and `]`. The
+	//     candidate landing points are exactly the `>]` positions on the line,
+	//     and under Go's leftmost-first semantics `*` and `?` visit them in the
+	//     same text order — so the accepted language AND the submatch sets
+	//     coincide. For the second equivalent mutant (an extra `[ \t]*`
+	//     appended after the group): the leading `([ \t]*)` capture is greedy
+	//     and never shrinks, so the appended class always matches empty.
+	//
+	//     A brute-force enumeration corroborates both — 4 token alphabets,
+	//     ~470M strings to depth <=9 tokens, comparing FULL submatch index
+	//     sets, 0 divergences. Do NOT read that as proof, and do not cite the
+	//     string count as if it were. The SAME enumeration reports 0
+	//     divergences for the GREEDY mutant on its alphabet #1 at depth 9
+	//     (134,217,728 strings) — and greedy provably diverges one token
+	//     deeper, on `[<A>] type Foo = >] type A =`, where the shipped pattern
+	//     captures `Foo` and greedy captures `A`. Exhaustion to depth d says
+	//     nothing about depth d+1.
+	//  2. NON-greedy `*?`, not `[^>]*` and not greedy `.*`. `[^>]*` truncates
+	//     at the first `>`, which an attribute ARGUMENT routinely carries:
+	//     `[<Emit("$0 as LrcPtr<IntUnion>")>] type Wrapped = …` does not match
+	//     under it at all (measured). That witness compiles — 401 nested-`>`
+	//     sections occur in library corpus code, this one at
+	//     fable-compiler/Fable tests/Rust/tests/src/UnionTests.fs:189.
+	//     The tighter `>>]` shape, where the inner `>` ABUTS the close, is a
+	//     different matter: its only witness anywhere in the corpus is
+	//     `[<A<int>>] type C = class end` at dotnet/fsharp
+	//     tests/FSharp.Compiler.ComponentTests/Attributes/
+	//     GenericAttributeAbbreviations.fs:94, which sits inside an `Fsx`
+	//     string under `|> compile |> shouldFail` — the test's own comment says
+	//     the syntax "is rejected by the parser". So `>>]` is pinned as
+	//     robustness against source fsc rejects, NOT as legal F#. "Attested"
+	//     anywhere in this comment means the text occurs in the named file and
+	//     nothing more.
 	//     Greedy fails the other way, but ONLY on a particular shape. Go's
 	//     regexp is leftmost-FIRST, so greedy takes the LONGEST expansion under
 	//     which the whole pattern still matches and shrinks if it must: on
@@ -481,6 +505,31 @@ var (
 	//     — the span starts at the `type` line — by
 	//     TestFSharpTypeAttrPrefix_SpanStartsAtTheTypeLine. Nothing else in the
 	//     package observes it; without that test the `\s*` mutant is ALIVE.
+	//     The OTHER direction of the same seam — `[ \t]*` -> `[ \t]+`, i.e.
+	//     REQUIRING a separator — was ALIVE at 0 `--- FAIL` against the whole
+	//     package until three rows were added for the tight form
+	//     (`[<Struct>]type Vec = { X: int }`). It is legal: F# 4.1 spec §3
+	//     "Lexical Analysis" requires whitespace only where two adjacent
+	//     tokens would otherwise lex as one, §3.6 makes `>]` a symbolic
+	//     keyword, and §3.4's identifier/keyword character class contains
+	//     neither `>` nor `]`, so `>]` cannot extend into `type`. Attested in
+	//     the population before a declaration keyword at
+	//     fsprojects/FSharpPlus src/FSharpPlus/Data/Kleisli.fs:43
+	//     (`[<RequireQualifiedAccess>]module Kleisli = …`) and 1,001 times
+	//     before an identifier (parameter attributes); before `type`
+	//     specifically the incidence is ZERO, so the rows pin a correct
+	//     permissiveness rather than an observed usage.
+	//
+	//     THE GENERAL LESSON, worth more than the row: when a change adds a
+	//     new group to a pattern, the author grades the GROUP — its content,
+	//     its repetition, its delimiters — and leaves the SEAM between the new
+	//     group and the pre-existing pattern ungraded. Depth on the group
+	//     reads as thoroughness and is exactly what hides the seam. This is
+	//     the third instance of that shape in this extractor family (see also
+	//     namespaceRE's leading keyword boundary, and the nim pragma work
+	//     where the whitespace BEFORE the pragma was ungraded and turned out
+	//     to be 13.5% of the recovered population). Anyone adding a further
+	//     group here: score the joins, not only the group.
 	//  4. `[^\n]`, not `.` with `(?s)` off — `.` already excludes `\n` in Go, so
 	//     this is explicit rather than different; it states that an attribute
 	//     section may NOT span a newline, which is what keeps a wrapped

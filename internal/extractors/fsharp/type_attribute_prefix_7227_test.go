@@ -50,6 +50,14 @@ import (
 //	    91  of those 393 that the WIDENED pattern newly mints
 //	         (the other 302 are `[<Measure>] type kg`-style: no `=`, or a
 //	          lower-case name, which typeRE's `[A-Z]` rejects either way)
+//	        — and the 91 are CLUSTERED, not 91 independent cases: 60 open with
+//	          `[<Measure>]` and 19 with `[<Struct>]`, and there are only 55
+//	          DISTINCT line texts among them (Fable copies one line across its
+//	          per-target suites). Read it as a few shapes, repeated.
+//	    91  RECALL, the complement of the false-positive count: of the 91
+//	         lines an independent bracket-balanced parse calls a same-line type
+//	         declaration with an upper-case name and an `=`, the widened
+//	         pattern matches 91. MISSED: 0.
 //	     1  line carrying TWO attribute sections   `[<Measure>] [<Measure>] type m`
 //	     1  line carrying a NESTED `>`             `[<A<int>>] type C = class end`
 //
@@ -57,10 +65,19 @@ import (
 // is (a) derived from the language reference and (b) attested VERBATIM in
 // dotnet/fsharp's own compiler test suite, which by construction compiles:
 //
+// READ THE VERB. "Attested" below means ONLY that the line occurs verbatim as
+// source text in the named file. It does NOT mean the compiler accepts it, and
+// two of the shapes are in tests that REQUIRE a diagnostic. Each row says which
+// it is. An earlier revision of this file, of extractor.go and of the PR body
+// claimed all of them were "attested in dotnet/fsharp's own compiler test
+// suite, which by construction compiles" — that was FALSE for two of them, and
+// the danger is concrete: a future author reads it, treats `[<A<int>>]` as live
+// F#, and builds a widening on source fsc rejects.
+//
 //   - same-line attribute at all: F# 4.1 spec §13.1 "Custom Attributes" and
 //     §8 "Type Definitions" (`type-defn := attributes? type-name …`) — the
 //     grammar separates `attributes` from `type-name` by whitespace, and F#
-//     whitespace is not required to be a newline. 393 corpus lines.
+//     whitespace is not required to be a newline. 393 corpus lines. COMPILES.
 //   - `[<Struct>]` on a RECORD body: MS Learn "Structures" — "you can also use
 //     the Struct attribute on a record or discriminated union". Attested:
 //     tests/FSharp.Compiler.ComponentTests/CompilerOptions/Fsc/reflectionfree.fs:216
@@ -76,13 +93,27 @@ import (
 //     attributes separated by `;` (spec §13.1). Attested at
 //     tests/FSharp.Compiler.ComponentTests/Conformance/Spreads/RecordSpreads.fsx:49
 //     `[<CLIMutable; NoComparison>] type Src = { A : int; B : int }`.
-//   - two adjacent attribute SECTIONS: attested at
-//     tests/FSharp.Compiler.ComponentTests/Conformance/BasicGrammarElements/
-//     CustomAttributes/Basic/E_AttributeApplication02.fs:6
-//     `[<Measure>] [<Measure>] type m`.
-//   - a nested `>` from a generic attribute argument: attested at
-//     tests/FSharp.Compiler.ComponentTests/Attributes/GenericAttributeAbbreviations.fs:94
-//     `[<A<int>>] type C = class end`.
+//   - two adjacent attribute SECTIONS: COMPILES — dotnet/fsharp's own shipping
+//     source, src/Compiler/TypedTree/tainted.fs:91-92,
+//     `[<NoEquality>][<NoComparison>]` on the line above
+//     `type internal Tainted<'T> (…) =`. (The `[<Measure>] [<Measure>] type m`
+//     line at Conformance/BasicGrammarElements/CustomAttributes/Basic/
+//     E_AttributeApplication02.fs:6 is real source text but an `E_` NEGATIVE
+//     test, pinned by Basic.fs to FS0429 "AllowMultiple=false" — a SEMANTIC
+//     rejection, so it attests that two sections PARSE and nothing more. It is
+//     also not one of the 91: lower-case `m`, no `=`.)
+//   - a nested `>` from an attribute ARGUMENT: COMPILES — 401 such sections in
+//     library corpus code; the fixture is fable-compiler/Fable
+//     tests/Rust/tests/src/UnionTests.fs:189
+//     `[<Emit("$0 as LrcPtr<IntUnion>")>]`.
+//   - `>>]`, the inner `>` abutting the close: DOES NOT COMPILE. The line
+//     `[<A<int>>] type C = class end` occurs verbatim at
+//     tests/FSharp.Compiler.ComponentTests/Attributes/
+//     GenericAttributeAbbreviations.fs:94, inside an `Fsx` string under
+//     `|> compile |> shouldFail`, whose own comment reads "the direct
+//     `[<A<int>>]` syntax is rejected by the parser". It is the ONLY nested-`>`
+//     witness anywhere in the corpus that abuts the close, and it is pinned as
+//     a robustness property, never as legal F#.
 //   - an attribute whose ARGUMENT is a string containing `]`: attribute
 //     arguments are expressions (spec §13.1); the shape is attested on members
 //     in Fable, e.g. tests/Python/TestArithmetic.fs:1522
@@ -195,13 +226,56 @@ func TestFSharpTypeAttrPrefix_SameLineAttribute(t *testing.T) {
 			want:     "discriminated_union",
 		},
 		{
+			// The witness is dotnet/fsharp's OWN SHIPPING SOURCE,
+			// src/Compiler/TypedTree/tainted.fs:91-92:
+			//     [<NoEquality>][<NoComparison>]
+			//     type internal Tainted<'T> (context: TaintedContext, value: 'T) =
+			// — two adjacent sections, tight seam between them, immediately
+			// before a `type` declaration, in code that compiles. Only the
+			// same-line-ness is this fixture's own.
+			//
+			// It deliberately replaces an earlier `[<Measure>] [<Measure>]`
+			// fixture. That line does exist verbatim in dotnet/fsharp, but in
+			// an `E_`-prefixed NEGATIVE test pinned to FS0429 ("AllowMultiple
+			// =false"), i.e. the compiler is REQUIRED to reject it. The
+			// rejection is a semantic AllowMultiple check on `Measure`, not a
+			// syntax rule, so it does attest that two adjacent sections PARSE
+			// — but a fixture should not rest on a line the compiler errors on.
 			name:     "same_line_two_adjacent_sections",
-			src:      "module M\n\n[<Measure>] [<Measure>] type Metre = float\n",
-			typeName: "Metre",
-			want:     "alias",
+			src:      "module M\n\n[<NoEquality>] [<NoComparison>] type Tainted = { T: int }\n",
+			typeName: "Tainted",
+			want:     "record",
 		},
 		{
-			name:     "same_line_generic_attribute_argument_nested_gt",
+			// The LEGAL nested-`>` witness, and the one that carries the
+			// weight: a `>` inside an attribute ARGUMENT. 401 such sections
+			// occur in library (non-negative-test) corpus code. This exact
+			// shape is fable-compiler/Fable
+			// tests/Rust/tests/src/UnionTests.fs:189
+			// `[<Emit("$0 as LrcPtr<IntUnion>")>]`. The naive `[^>]*` prefix
+			// from the issue does NOT match it (measured: no match at all),
+			// so this row alone kills that mutant.
+			name:     "same_line_nested_gt_in_an_attribute_argument",
+			src:      "module M\n\n[<Emit(\"$0 as LrcPtr<IntUnion>\")>] type Wrapped = { W: int }\n",
+			typeName: "Wrapped",
+			want:     "record",
+		},
+		{
+			// `>>]` — the inner `>` ABUTTING the section close. NOT attested as
+			// compiling F#: the line exists verbatim in dotnet/fsharp at
+			// tests/FSharp.Compiler.ComponentTests/Attributes/
+			// GenericAttributeAbbreviations.fs:94, but inside a `Fsx` string
+			// under `|> compile |> shouldFail`, with the test's own comment
+			// "the direct `[<A<int>>]` syntax is rejected by the parser". The
+			// legal spelling goes through an abbreviation
+			// (`type AInt = A<int>` then `[<AInt>]`), which carries no nested
+			// `>` at all.
+			//
+			// The row is kept as a ROBUSTNESS property of the prefix — the
+			// scanner should not mis-parse source it may meet in the wild,
+			// including source fsc rejects — and explicitly NOT as a claim that
+			// this is legal F#. Nothing downstream may read it as one.
+			name:     "same_line_gtgt_abutting_the_section_close_not_legal_fsharp",
 			src:      "module M\n\n[<A<int>>] type C = class end\n",
 			typeName: "C",
 			want:     "class",
@@ -210,6 +284,63 @@ func TestFSharpTypeAttrPrefix_SameLineAttribute(t *testing.T) {
 			name:     "same_line_attribute_argument_string_holding_a_bracket",
 			src:      "module M\n\n[<Emit(\"[x for x in [0, $0]][-1]\")>] type Emitted = { E: int }\n",
 			typeName: "Emitted",
+			want:     "record",
+		},
+		{
+			// CM-16. The SEAM between the attribute section and `type` is
+			// `[ \t]*` — zero or more. Tightening it to `[ \t]+` was ALIVE at
+			// 0 `--- FAIL` against every other row in this file: the content
+			// and the repetition of the new group were graded, the seam
+			// between it and the pre-existing pattern was not. These three
+			// rows close that.
+			//
+			// LEGALITY. F# 4.1 spec §3 "Lexical Analysis": whitespace
+			// separates tokens and is required only where two adjacent tokens
+			// would otherwise lex as one. §3.6 lists `[<` and `>]` as
+			// SYMBOLIC KEYWORDS, and §3.4 gives the identifier/keyword
+			// character class, which contains no `>` and no `]`; so `>]`
+			// cannot extend into `type` and no separator is needed.
+			//
+			// ATTESTATION, and its limit stated honestly. Over the 8,556-file
+			// / 1,836,045-line population: the tight seam `>]` + identifier
+			// occurs 1,001 times (parameter attributes, e.g.
+			// `([<Optional>]_mthd: Default1)` in dotnet/fsharp); the tight
+			// seam `>]` + a DECLARATION KEYWORD occurs once, in a real library
+			// rather than a compiler test —
+			// fsprojects/FSharpPlus src/FSharpPlus/Data/Kleisli.fs:43
+			// `[<RequireQualifiedAccess>]module Kleisli = …`, which is the
+			// exact analogue of this row one keyword over. Before `type`
+			// specifically the incidence is ZERO. So the shape is legal and
+			// the seam is written by F# authors, but nobody in this population
+			// wrote it before `type`: these rows pin a correct permissiveness,
+			// not an observed usage.
+			name:     "tight_seam_no_space_between_attribute_and_type",
+			src:      "module M\n\n[<Struct>]type Vec = { X: int }\n",
+			typeName: "Vec",
+			want:     "record",
+		},
+		{
+			// Only the SECOND separator is tight, so the seam is graded on a
+			// repetition and not merely on a single section.
+			name:     "tight_seam_on_the_last_of_two_sections",
+			src:      "module M\n\n[<NoEquality>] [<NoComparison>]type Vec3 = { X: int }\n",
+			typeName: "Vec3",
+			want:     "record",
+		},
+		{
+			// And the complement: the first separator tight, the second loose.
+			// MEASURED CAVEAT — this row does NOT grade the between-sections
+			// seam, and must not be recorded as doing so. Tightening the seam
+			// to `[ \t]+` leaves it GREEN, because the same property that
+			// makes `*` -> `?` equivalent rescues it: the content class
+			// `[^\n]` admits `>]`, so one non-greedy section swallows
+			// `Measure>][<Measure` and the surviving seam before `type` has
+			// its space. The two seams mask each other. CM-16 is killed by the
+			// two rows above and by the count floor, not by this one; this row
+			// is kept because it pins the shape and costs a line.
+			name:     "tight_seam_between_two_sections",
+			src:      "module M\n\n[<NoEquality>][<NoComparison>] type Vec4 = { X: int }\n",
+			typeName: "Vec4",
 			want:     "record",
 		},
 		{
@@ -266,9 +397,16 @@ func TestFSharpTypeAttrPrefix_Forbidden(t *testing.T) {
 			because: "the prefix must be followed by the `type` keyword",
 		},
 		{
+			// The absent name is `Alias`, NOT `TypeAlias`. The extractor takes
+			// the name VERBATIM from the source (`name := src[m[4]:m[5]]`), and
+			// `TypeAlias` does not occur in this fixture, so no mutation of
+			// typeRE could ever mint it and the row could not fail — vacuous by
+			// construction. `Alias` is what a real mutant produces: relaxing
+			// the mandatory `\s+` before the name to `\s*` mints `Alias` from
+			// `typeAlias` (measured on the shipped pattern with that one edit).
 			name:    "attribute_then_an_identifier_that_merely_starts_with_type",
 			src:     "module M\n\n[<Struct>] typeAlias = 1\n",
-			absent:  "TypeAlias",
+			absent:  "Alias",
 			because: "`type` must be a keyword, not a prefix of an identifier",
 		},
 		{
@@ -284,6 +422,12 @@ func TestFSharpTypeAttrPrefix_Forbidden(t *testing.T) {
 			because: "the section must close with `>]` before `type`",
 		},
 		{
+			// DISCLOSED AS UNGRADED: no mutant in this change's table can mint
+			// `Later`. The fixture holds no second `>]`, so a newline-crossing
+			// content class has nothing to cross TO. The row states the
+			// same-line intent for a reader; it is not coverage. Killing it
+			// would need a fixture with a second attribute section on the later
+			// line, which is a different shape from the one this row names.
 			name:    "attribute_then_a_non_type_line_then_a_type_on_the_next_line",
 			src:     "module M\n\n[<Struct>] let x = 1\n  Later = { L: int }\n",
 			absent:  "Later",
@@ -357,16 +501,19 @@ func TestFSharpTypeAttrPrefix_CountFloor(t *testing.T) {
 		"type Plain = { P: int }",
 		"[<Struct>] type StructRecord = { SX: int; SY: int }",
 		"[<CLIMutable; NoComparison>] type Src = { A : int; B : int }",
-		"[<Measure>] [<Measure>] type Metre = float",
+		"[<NoEquality>] [<NoComparison>] type Tainted = { T: int }",
+		"[<Emit(\"$0 as LrcPtr<IntUnion>\")>] type Wrapped = { W: int }",
 		"[<A<int>>] type C = class end",
 		"[<Struct>] type private Hidden = { H: int }",
+		"[<Struct>]type Tight = { T: int }",
 		"",
 		"module Inner =",
 		"    [<Struct>] type SColor = | SRed | SCustom of item: int",
 		"",
 	}, "\n")
 	want := []string{
-		"Plain", "StructRecord", "Src", "Metre", "C", "Hidden", "SColor",
+		"Plain", "StructRecord", "Src", "Tainted", "Wrapped", "C", "Hidden",
+		"Tight", "SColor",
 	}
 	ents := runFSharp(t, src, "Types.fs")
 	got := fsAttrTypeNames(ents)
