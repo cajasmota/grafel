@@ -976,6 +976,18 @@ func chargeDirRecording(dir string, cost fdCostModel, record map[string]struct{}
 		if e.IsDir() {
 			continue
 		}
+		// A FIFO or a socket already sitting in the directory costs nothing
+		// either: watchDirectoryFiles calls the same internalWatch -> addWatch
+		// that returns ("", nil) for those two modes (backend_kqueue.go:594,
+		// :363-368). Counting one here charges a descriptor that was never
+		// opened AND overstates dirEntries, which would make reconcileDir
+		// believe the directory is fully covered. DirEntry.Type() is the
+		// unresolved d_type, so a symlink reports ModeSymlink and stays
+		// charged — the same discrimination handleEvent makes (#7245). Reached
+		// only when perEntry() > 0: the early return above handles the rest.
+		if unwatchableEntryMode(e.Type()) {
+			continue
+		}
 		entries++
 		n += cost.perEntry()
 		if record != nil {
@@ -1584,10 +1596,41 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	// -----------------------------------------------------------------------
 	createdDir := false
 	if ev.Op.Has(fsnotify.Create) {
-		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
-			createdDir = true
+		charge := true
+		if fi, err := os.Stat(ev.Name); err == nil {
+			createdDir = fi.IsDir()
+			// #7245, the ONE arm of the divergence above that is not a race.
+			// addWatch returns ("", nil) — success with NO watch — for a FIFO
+			// or a socket (backend_kqueue.go:363-368), so no descriptor exists
+			// to charge. Unlike the ENOENT arm, this is decided by the entry's
+			// mode and not by timing, so the decision cannot be raced (#7242 is
+			// that arm, and is NOT fixed here).
+			//
+			// The charge is not merely skipped, it is skipped SYMMETRICALLY:
+			// skipEventOpen records the path as already-released so that a
+			// Remove report for it releases nothing. On kqueue no such report
+			// can arrive — the path is unwatched — but the backend that answers
+			// this question is not the only one that can deliver the Remove,
+			// and an unpaired release is the #6268 under-count.
+			//
+			// os.Stat FOLLOWS symlinks; addWatch Lstats. A symlink pointing at
+			// a FIFO is watched — internalWatch passes listDir=true, which
+			// skips addWatch's readlink branch (:371), so the Lstat reports
+			// ModeSymlink and unix.Open runs — and it must still be charged. So
+			// the mode is confirmed against the path itself before anything is
+			// skipped. That second syscall is paid only on a path Stat already
+			// says is a pipe or a socket, which is the rare case.
+			if unwatchableEntryMode(fi.Mode()) {
+				if li, lerr := os.Lstat(ev.Name); lerr == nil && unwatchableEntryMode(li.Mode()) {
+					charge = false
+				}
+			}
 		}
-		w.chargeEventOpen(ev.Name, createdDir)
+		if charge {
+			w.chargeEventOpen(ev.Name, createdDir)
+		} else {
+			w.skipEventOpen(ev.Name)
+		}
 	}
 	if ev.Op.Has(fsnotify.Remove) || ev.Op.Has(fsnotify.Rename) {
 		w.releaseEventClose(ev.Name)
@@ -1729,6 +1772,49 @@ func (w *Watcher) chargeEventOpen(path string, isDir bool) {
 	// fdb.mu across an acquisition of w.mu.
 	w.fdb.charge(n)
 	w.mu.Unlock()
+}
+
+// skipEventOpen is chargeEventOpen's counterpart for a path fsnotify reported
+// Create for but opened NO descriptor for — a FIFO or a socket, per
+// unwatchableEntryMode (#7245).
+//
+// It exists so the skip is symmetric. Not charging is only half of it: whether
+// a Remove is later REPORTED for the path is a property of the backend, and it
+// is a different property from whether a descriptor was opened. On kqueue the
+// two agree — the path is unwatched, so no Remove arrives, and this function
+// could be an empty statement. They do not have to agree in general: a backend
+// that watches the directory rather than the entry reports the entry's removal
+// by name, with no idea what grafel did or did not charge for it, and
+// releaseEventClose would then hand back a descriptor that was never charged.
+// That is the #6268 under-count, reached from the direction #7245 opens.
+//
+// The mechanism is the one already used for a report that must not release:
+// the released-entry marker. Recording it here says the ledger considers this
+// path already settled, which is exactly true — it was never charged.
+// chargeEventOpen clears the marker the moment a real descriptor for the path
+// IS charged, so a FIFO replaced by a regular file is charged and released
+// normally.
+//
+// The marker is cleared before the early return for exactly the reason
+// chargeEventOpen clears one before ITS `n <= 0` (#6293): a released-dir marker
+// must not outlive the descriptor it stands for, and on a per-watch backend
+// nothing else ever clears one — it is write-only state until the cap resets
+// it. This function is the ONLY place that can do it for a path whose marker
+// was recorded when it was a watched directory and which comes back as a FIFO
+// or a socket, because that path never reaches chargeEventOpen at all. Routing
+// it here without the clear re-opened #6293 for that shape;
+// TestOnAPerWatchModelAFifoAlsoClearsTheMarker is the row that says so.
+//
+// Recording, where it applies, subsumes the clear: recordReleasedDirLocked
+// writes the same key forgetReleasedDirLocked would delete.
+func (w *Watcher) skipEventOpen(path string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.fdb.model().perEntry() <= 0 || w.repoForLocked(path) == "" {
+		w.forgetReleasedDirLocked(path)
+		return
+	}
+	w.recordReleasedDirLocked(path)
 }
 
 // releaseEventClose returns the descriptor fsnotify closed when it saw a

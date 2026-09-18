@@ -290,7 +290,13 @@ func (w *Watcher) scanDir(dir string, cost fdCostModel) scanOutcome {
 		// subdirectory itself is handled — perDir when grafel subscribes it, or
 		// by prune when grafel skips it — never as an entry of the parent, and
 		// Add()ing one would subscribe a subtree this sweep has no mandate over.
-		if !e.IsDir() {
+		// FIFOs and sockets are excluded for the same reason (#7245): fsnotify
+		// opens no descriptor for either, so neither is counted in
+		// dirEntries — and a sweep that listed them would read a deficit that
+		// does not exist and Add() them, which succeeds while establishing no
+		// watch and charges a descriptor nothing can release. Reached only when
+		// perEntry() > 0: reconcileOnce returns above on a per-watch backend.
+		if !e.IsDir() && !unwatchableEntryMode(e.Type()) {
 			entries = append(entries, filepath.Join(dir, e.Name()))
 		}
 	}
