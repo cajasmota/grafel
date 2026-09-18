@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"net/rpc"
@@ -224,8 +225,48 @@ const (
 )
 
 // retryInRe reads the announced backoff out of the logfmt line acceptLoop emits
-// immediately before sleeping it.
-var retryInRe = regexp.MustCompile(`retry_in=([0-9a-zA-Z.]+)`)
+// immediately before sleeping it. It captures the WHOLE whitespace-delimited
+// token, never a character class of "plausible duration bytes" — see
+// acceptloop_retry_in_parse_test.go for why (#7183): a class that stops early
+// truncates a token into a DIFFERENT value, and a class the token cannot start
+// on drops the announcement entirely. time.ParseDuration is the sole arbiter of
+// what is a duration.
+var retryInRe = regexp.MustCompile(`retry_in=(\S+)`)
+
+// nonPositiveRetryInError reports an announcement that IS a duration but is
+// zero or negative. It carries the value the parser read, sign intact, so a
+// test can assert the parsed artefact rather than an error string.
+type nonPositiveRetryInError struct {
+	Token  string
+	Parsed time.Duration
+}
+
+func (e *nonPositiveRetryInError) Error() string {
+	return fmt.Sprintf("announced retry_in %q parsed to %v, which is not a positive wait", e.Token, e.Parsed)
+}
+
+// parseAnnouncedRetryIns turns a log stream into the sequence of announced
+// waits. It is the SINGLE place any announced retry_in becomes a
+// time.Duration; every consumer in this package goes through it.
+func parseAnnouncedRetryIns(logs string) ([]time.Duration, error) {
+	matches := retryInRe.FindAllStringSubmatch(logs, -1)
+	out := make([]time.Duration, 0, len(matches))
+	for _, m := range matches {
+		d, err := time.ParseDuration(m[1])
+		if err != nil {
+			return nil, fmt.Errorf("could not parse announced retry_in %q: %w", m[1], err)
+		}
+		// A backoff of zero or less is a bug being announced. Rejecting it here
+		// is a LOWER sanity bound that no pin in this package asserts, so it
+		// does not rest on the clamp these tests exist to grade: were the clamp
+		// mutated away, this check would still hold.
+		if d <= 0 {
+			return nil, &nonPositiveRetryInError{Token: m[1], Parsed: d}
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
 
 // announcedAcceptBackoffs runs acceptLoop against a listener that returns n
 // transient errors and then behaves as closed, and returns the sequence of
@@ -256,14 +297,9 @@ func announcedAcceptBackoffs(t *testing.T, n int) []time.Duration {
 	wg.Wait()
 
 	logs := sink.String()
-	matches := retryInRe.FindAllStringSubmatch(logs, -1)
-	waits := make([]time.Duration, 0, len(matches))
-	for _, m := range matches {
-		d, err := time.ParseDuration(m[1])
-		if err != nil {
-			t.Fatalf("could not parse announced retry_in %q: %v; logs:\n%s", m[1], err, logs)
-		}
-		waits = append(waits, d)
+	waits, err := parseAnnouncedRetryIns(logs)
+	if err != nil {
+		t.Fatalf("%v; logs:\n%s", err, logs)
 	}
 
 	// Positive control: every scripted transient error was seen and announced,
