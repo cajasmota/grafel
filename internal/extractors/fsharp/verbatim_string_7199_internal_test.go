@@ -262,45 +262,57 @@ type openerCase7199 struct {
 	// `@`/`$` bytes become spaces. For ORDINARY cells the prefix is an operator,
 	// i.e. real code, and must survive untouched — asserted as such below.
 	prefixBlanked bool
+	// fileStart drops the `let p = ` lead so `before` sits at OFFSET 0.
+	//
+	// THIS IS ITS OWN AXIS, and leaving it uncrossed hid a live hole. The
+	// offset-0 probes elsewhere cover a bare `@"`, `$@"` and `@$"` at offset 0;
+	// this table covers operator prefixes at ordinary positions. Neither
+	// covers the CONJUNCTION — an operator prefix AT offset 0 — and that
+	// conjunction is the only thing that exercises the walk's lower bound:
+	// with `runStart > 1` instead of `> 0` the walk never examines src[0], so
+	// a file BEGINNING `=@"` is read as verbatim when the lexer says operator
+	// plus ordinary string, and the file blanks to EOF. That mutant was ALIVE
+	// against the entire package until these cells existed.
+	fileStart bool
 }
 
 func openerCases7199() []openerCase7199 {
 	return []openerCase7199{
 		// ---- VERBATIM, not abutting an identifier: prefix blanked ----
-		{"space before @", "", `@`, true, true},
-		{"open paren before @", "(", `@`, true, true},
-		{"comma before @", "(1,", `@`, true, true},
-		{"open bracket before @", "[", `@`, true, true},
-		{"interpolated verbatim $@", "", `$@`, true, true},
-		{"interpolated verbatim @$", "", `@$`, true, true},
+		{"space before @", "", `@`, true, true, false},
+		{"open paren before @", "(", `@`, true, true, false},
+		{"comma before @", "(1,", `@`, true, true, false},
+		{"open bracket before @", "[", `@`, true, true, false},
+		{"interpolated verbatim $@", "", `$@`, true, true, false},
+		{"interpolated verbatim @$", "", `@$`, true, true, false},
 		// ---- VERBATIM, abutting an identifier: prefix left visible ----
 		// Per rule 655 these ARE verbatim strings, so the runaway is fixed; only
 		// the blanking is withheld, so no CALLS edge rests on that reading.
-		{"identifier before @", "helper", `@`, true, false},
-		{"close bracket before @", "[1]", `@`, true, false},
-		{"close paren before @", "f()", `@`, true, false},
-		{"digit before @", "x1", `@`, true, false},
-		{"primed identifier before @", "c'", `@`, true, false},
+		{"identifier before @", "helper", `@`, true, false, false},
+		{"close bracket before @", "[1]", `@`, true, false, false},
+		{"close paren before @", "f()", `@`, true, false, false},
+		{"digit before @", "x1", `@`, true, false, false},
+		{"primed identifier before @", "c'", `@`, true, false, false},
 		// An identifier before the TWO-byte openers still opens one: rule 670
 		// matches three bytes and beats the two-byte operator munch.
-		{"identifier before $@", "x", `$@`, true, false},
+		{"identifier before $@", "x", `$@`, true, false, false},
 		// ---- VERBATIM via rule 976: `=` then a TWO-byte opener ----
 		// `| '=' ("$@" | "@$") '"'` consumes the `=` and rewinds, so the opener
 		// is re-lexed as verbatim. The `=` is an op_char, so these two cells are
 		// the exception that stops the guard being a flat byte list.
-		{"equals before $@ (rule 976)", "x=", `$@`, true, true},
-		{"equals before @$ (rule 976)", "x=", `@$`, true, true},
+		{"equals before $@ (rule 976)", "x=", `$@`, true, true, false},
+		{"equals before @$ (rule 976)", "x=", `@$`, true, true, false},
 		// ---- ORDINARY: a longer operator munch reaches the quote ----
 		// `ignored_op_char*` is `.$?` and every operator rule ends in `op_char*`,
 		// which includes `@`; so the token starting at or before the preceding
 		// operator byte swallows the `@` and rule 586 opens an ordinary string.
 		// There is NO `'=' '@' '"'` rule, which is why `x=@` is here while
 		// `x=$@` is above.
-		{"double dollar before @", "", `$$@`, false, false},
-		{"dot before @", "x ", `.@`, false, false},
-		{"question before @", "x ", `?@`, false, false},
-		{"dollar-at-dollar", "x ", `$@$`, false, false},
-		{"doubled at", "", `@@`, false, false},
+		{"double dollar before @", "", `$$@`, false, false, false},
+		{"dot before @", "x ", `.@`, false, false, false},
+		{"question before @", "x ", `?@`, false, false, false},
+		{"dollar-at-dollar", "x ", `$@$`, false, false, false},
+		{"doubled at", "", `@@`, false, false, false},
 		// NOTE THE REALISTIC SPELLING OF THIS CELL: `let p=@"C:\"`, with no space
 		// around the `=`, is an operator `=@` plus an ORDINARY string, so #7199
 		// does NOT fix it and the file still blanks to EOF. That is not a
@@ -310,19 +322,19 @@ func openerCases7199() []openerCase7199 {
 		// `=$@"`/`=@$"` precisely because this class does not lex the way a reader
 		// expects. Matching the compiler beats out-guessing it, as with `(*)`.
 		// `let p = @"C:\"` — with the space — is verbatim and IS fixed.
-		{"equals before @ (no 976 rule)", "x=", `@`, false, false},
-		{"compare op before @", "x<>", `@`, false, false},
-		{"plus before @", "x+", `@`, false, false},
-		{"amp before @", "x&", `@`, false, false},
-		{"bar before @", "x|", `@`, false, false},
-		{"bang before @", "x!", `@`, false, false},
-		{"star before @", "x*", `@`, false, false},
+		{"equals before @ (no 976 rule)", "x=", `@`, false, false, false},
+		{"compare op before @", "x<>", `@`, false, false, false},
+		{"plus before @", "x+", `@`, false, false, false},
+		{"amp before @", "x&", `@`, false, false, false},
+		{"bar before @", "x|", `@`, false, false, false},
+		{"bang before @", "x!", `@`, false, false, false},
+		{"star before @", "x*", `@`, false, false, false},
 		// The `<@` / `<@@` QUOTATION rules (802/804) tie with the operator munch
 		// on length, and the tie does not need breaking: both readings consume the
 		// `@`, so both leave rule 586 at the quote and the verdict is ORDINARY
 		// either way.
-		{"quotation open before @", "x<", `@`, false, false},
-		{"typed quotation before @", "x<@", `@`, false, false},
+		{"quotation open before @", "x<", `@`, false, false, false},
+		{"typed quotation before @", "x<@", `@`, false, false, false},
 		// ---- ORDINARY: the `=` does not START the run (review round 4) ----
 		// Rule 976 can only fire where the lexer starts a token at the `=`. When
 		// the `=` is itself inside an operator run, the leftward munch swallows
@@ -331,24 +343,24 @@ func openerCases7199() []openerCase7199 {
 		// Every cell here ran away to EOF while the exception was keyed on the `=`
 		// BYTE rather than on the `=` starting a token, and the direction was
 		// COMPLETELY UNGRADED: the correct scoping left the suite at 0 --- FAIL.
-		{"double equals before $@", "x==", `$@`, false, false},
-		{"less-equals before $@", "x<=", `$@`, false, false},
-		{"greater-equals before $@", "x>=", `$@`, false, false},
-		{"plus-equals before $@", "x+=", `$@`, false, false},
-		{"minus-equals before $@", "x-=", `$@`, false, false},
-		{"star-equals before $@", "x*=", `$@`, false, false},
-		{"bar-equals before $@", "x|=", `$@`, false, false},
-		{"amp-equals before $@", "x&=", `$@`, false, false},
-		{"bang-equals before $@", "x!=", `$@`, false, false},
-		{"percent-equals before $@", "x%=", `$@`, false, false},
-		{"slash-equals before $@", "x/=", `$@`, false, false},
-		{"tilde-equals before $@", "x~=", `$@`, false, false},
-		{"dot-equals before $@", ".=", `$@`, false, false},
-		{"dollar-equals before $@", "$=", `$@`, false, false},
-		{"question-equals before $@", "?=", `$@`, false, false},
-		{"compare-equals before $@", "x<>=", `$@`, false, false},
-		{"double equals before @$", "x==", `@$`, false, false},
-		{"less-equals before @$", "x<=", `@$`, false, false},
+		{"double equals before $@", "x==", `$@`, false, false, false},
+		{"less-equals before $@", "x<=", `$@`, false, false, false},
+		{"greater-equals before $@", "x>=", `$@`, false, false, false},
+		{"plus-equals before $@", "x+=", `$@`, false, false, false},
+		{"minus-equals before $@", "x-=", `$@`, false, false, false},
+		{"star-equals before $@", "x*=", `$@`, false, false, false},
+		{"bar-equals before $@", "x|=", `$@`, false, false, false},
+		{"amp-equals before $@", "x&=", `$@`, false, false, false},
+		{"bang-equals before $@", "x!=", `$@`, false, false, false},
+		{"percent-equals before $@", "x%=", `$@`, false, false, false},
+		{"slash-equals before $@", "x/=", `$@`, false, false, false},
+		{"tilde-equals before $@", "x~=", `$@`, false, false, false},
+		{"dot-equals before $@", ".=", `$@`, false, false, false},
+		{"dollar-equals before $@", "$=", `$@`, false, false, false},
+		{"question-equals before $@", "?=", `$@`, false, false, false},
+		{"compare-equals before $@", "x<>=", `$@`, false, false, false},
+		{"double equals before @$", "x==", `@$`, false, false, false},
+		{"less-equals before @$", "x<=", `@$`, false, false, false},
 		// ---- VERBATIM via the COLON family (review round 4, finding 2) ----
 		// `:` is the ONLY op_char that is neither an ignored_op_char nor any
 		// rule's core, so no operator rule can start at it — only the fixed
@@ -356,9 +368,28 @@ func openerCases7199() []openerCase7199 {
 		// after such a token and the opener does start a token. Round 3 read
 		// these as ordinary, which was an under-fix (not a regression: it matched
 		// pre-#7199), and the left-walk gets them right for free.
-		{"assign-colon before @", "r:=", `@`, true, true},
-		{"cons before @", "x::", `@`, true, true},
-		{"colon-greater before @", "x:>", `@`, true, true},
+		{"assign-colon before @", "r:=", `@`, true, true, false},
+		{"cons before @", "x::", `@`, true, true, false},
+		{"colon-greater before @", "x:>", `@`, true, true, false},
+		// ---- OFFSET 0 x OPERATOR PREFIX (the uncrossed conjunction) ----
+		// Each axis was already covered alone: a bare opener at offset 0, and
+		// operator prefixes at ordinary positions. Only the conjunction
+		// reaches the walk's lower bound, which was ALIVE at 0 until these
+		// cells existed.
+		//
+		// THREE of the six flip under `runStart > 1` — `=@`, `$$@` and `:=@` —
+		// and the other three (`@`, `$@`, `=$@`) do NOT, because the walk has
+		// nothing to its left to examine in those. Counted by measurement, not
+		// by eye: an earlier version of this comment claimed "four of five",
+		// which was wrong on both numbers. The three that do not flip stay as
+		// the controls that stop the flipping three being read as "offset 0 is
+		// special".
+		{"file starts with @", "", `@`, true, true, true},
+		{"file starts with $@", "", `$@`, true, true, true},
+		{"file starts with =@ (operator at offset 0)", "=", `@`, false, false, true},
+		{"file starts with $$@ (operator at offset 0)", "", `$$@`, false, false, true},
+		{"file starts with =$@ (rule 976 at offset 0)", "=", `$@`, true, true, true},
+		{"file starts with :=@ (colon at offset 0)", ":=", `@`, true, true, true},
 	}
 }
 
@@ -406,7 +437,11 @@ func TestScrub7199_OpCharsAreEitherIgnoredOrCoreOrColon(t *testing.T) {
 
 func TestScrub7199_OpenerFormsAndAdjacency(t *testing.T) {
 	for _, tc := range openerCases7199() {
-		prefix := "let p = " + tc.before + tc.opener
+		lead := "let p = "
+		if tc.fileStart {
+			lead = "" // the prefix begins at offset 0
+		}
+		prefix := lead + tc.before + tc.opener
 		// Body 1: a trailing backslash. Verbatim reads it as an ordinary
 		// character and the tail survives; an ordinary string escapes the closer
 		// and runs away.
