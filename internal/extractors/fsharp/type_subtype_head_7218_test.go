@@ -1,0 +1,373 @@
+package fsharp_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/types"
+)
+
+// #7218 — classifyTypeSubtype decided an F# type's subtype partly from `decl`,
+// the declaration HEAD. typeRE's match ENDS AT the `=`, so `decl` is only ever
+// "type Foo =" and never the body. The head is the wrong place to look for
+// anything F# writes after the `=`, and that one fact produced three defects
+// at once, each of which masks the others:
+//
+//	direction                     shape                              was        want
+//	1 unreachable arm             type Point3D = struct … end        "type"     "struct"
+//	2 over-fires on identifier    type Mystruct = int                "struct"   "alias"
+//	3 over-fires on punctuation   type Shape (* = {a} *) = | A | B   "record"   "discriminated_union"
+//
+// A fourth row of the same family lives on the BODY side and is fixed here
+// because the fix would otherwise widen it: the `interface` / `class` arms
+// tested `strings.HasPrefix(bodyTrimmed, kw)`, a PREFIX and not a TOKEN, so a
+// lower-case abbreviation target whose name merely begins with the keyword was
+// classified by it (`type Alias2 = classic` -> "class", measured). Adding a
+// `struct` body arm without a token boundary would have minted the same defect
+// a third time (`type Alias1 = structural` -> "struct"), so the boundary is
+// part of the fix, not scope creep. It also aligns the classifier with
+// isAliasBody, which has always compared strings.Fields(b)[0] for EQUALITY
+// against the same keyword set.
+//
+// FIXTURE LEGALITY. There is no F# toolchain on this machine, so every fixture
+// below is derived from the language reference and named here:
+//
+//   - `type Point3D = struct / val x: float / end` is the explicit structure
+//     syntax of the F# reference "Structures" ("type type-name = struct
+//     type-definition-elements end"); the three-`val` Point3D example is the
+//     reference's own.
+//   - `type Mystruct = int` is a type abbreviation (reference "Type
+//     Abbreviations"); the identifier's initial upper-case letter is required
+//     by typeRE, not by F#.
+//   - The block comment `(* … *)` is legal wherever whitespace is legal
+//     (reference "Comments"), so it is legal between the type name and the `=`.
+//   - The two fixtures the ISSUE cited for direction 3 are NOT legal F# and are
+//     deliberately NOT used: `type Foo<'T when 'T = {x:int}> =` is not a
+//     constraint (every form in the reference's "Constraints" table is spelled
+//     `'T : …`; there is no `=` constraint), and `type Foo(x = {a}) =` is not a
+//     primary-constructor parameter (those are patterns; `=` is not a pattern
+//     operator). The mechanism they describe is real — the block-comment
+//     fixture below reproduces it on legal source — but their exact text would
+//     have pinned the extractor against source no F# compiler accepts.
+
+// fsSubtypeOf returns the Subtype of the named type-declaration
+// SCOPE.Component, or a distinguishable sentinel when nothing was minted. It
+// is deliberately NOT a membership test against fsTypeSubtypes: a set that
+// lists "struct" proves nothing about whether "struct" is ever produced, which
+// is how direction 1 stayed invisible.
+func fsSubtypeOf(ents []types.EntityRecord, name string) string {
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Component" && ents[i].Name == name {
+			return ents[i].Subtype
+		}
+	}
+	return "<absent>"
+}
+
+// fsSubtypeRowFailure is the row predicate itself, extracted so it can be
+// graded independently of any extractor run: it returns the failure text for a
+// row, or "" when the row holds. TestFSharpTypeSubtype_RowPredicateFires plants
+// a violation directly into an entity slice and asserts this returns non-empty
+// — an absence assertion passes identically whether it is enforced or simply
+// unreachable, and no mutant of the extractor can tell those two apart.
+func fsSubtypeRowFailure(ents []types.EntityRecord, name, want string) string {
+	got := fsSubtypeOf(ents, name)
+	if got == want {
+		return ""
+	}
+	return "type " + name + " subtype=" + got + ", want " + want
+}
+
+// fsSubtypeCase is one row. `want` is asserted positively; `forbidden`, when
+// non-empty, is the value shipped BEFORE #7218 and is asserted separately, so
+// a future regression to it fails with the row's own name rather than only as
+// a diff against `want`.
+//
+// The `forbidden` assertion is deliberately recorded as an EQUIVALENT mutant:
+// deleting it is ALIVE at 0 `--- FAIL`, and unkillable by construction, because
+// every row has forbidden != want and `got == want` already implies
+// `got != forbidden`. It is kept for its failure text, which names the
+// pre-#7218 verdict, and not as independent coverage — no reviewer should
+// score it as such.
+type fsSubtypeCase struct {
+	name      string
+	src       string
+	typeName  string
+	want      string
+	forbidden string
+}
+
+func runFSSubtypeCases(t *testing.T, cases []fsSubtypeCase) {
+	t.Helper()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ents := runFSharp(t, tc.src, "Types.fs")
+			if msg := fsSubtypeRowFailure(ents, tc.typeName, tc.want); msg != "" {
+				t.Errorf("%s\nsource:\n%s", msg, tc.src)
+			}
+			if tc.forbidden != "" {
+				if got := fsSubtypeOf(ents, tc.typeName); got == tc.forbidden {
+					t.Errorf("type %s classified %q — the pre-#7218 verdict, decided by the "+
+						"declaration HEAD rather than the body\nsource:\n%s",
+						tc.typeName, tc.forbidden, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestFSharpTypeSubtype_StructIsReachable — DIRECTION 1, positive.
+// The `struct` arm had no body companion (`interface` and `class` both had
+// one), so it could only ever be reached through the head, where the keyword
+// can never appear. This asserts the VALUE is produced.
+func TestFSharpTypeSubtype_StructIsReachable(t *testing.T) {
+	runFSSubtypeCases(t, []fsSubtypeCase{
+		{
+			// Explicit structure syntax, body on its own lines.
+			name: "struct body on following lines",
+			src: "module M\n\n" +
+				"type Point3D =\n" +
+				"    struct\n" +
+				"        val x: float\n" +
+				"        val y: float\n" +
+				"        val z: float\n" +
+				"    end\n",
+			typeName: "Point3D", want: "struct", forbidden: "type",
+		},
+		{
+			// Same construct with `struct` on the declaration line. This varies
+			// ONLY the line break after `=`; the members, the indentation of the
+			// members and the type name are held constant against the row above.
+			name: "struct keyword on the declaration line",
+			src: "module M\n\n" +
+				"type Point2D = struct\n" +
+				"        val x: float\n" +
+				"        val y: float\n" +
+				"    end\n",
+			typeName: "Point2D", want: "struct", forbidden: "type",
+		},
+		{
+			// [<Struct>] on its OWN line, plus the explicit struct…end body. The
+			// attribute is not what is being relied on (see the not-claimed note
+			// in TestFSharpTypeSubtype_NotClaimed); this row varies the presence
+			// of a preceding attribute line and holds the body constant.
+			name: "preceding attribute line does not disturb the body arm",
+			src: "module M\n\n" +
+				"[<Struct>]\n" +
+				"type Vec2 =\n" +
+				"    struct\n" +
+				"        val x: float\n" +
+				"        val y: float\n" +
+				"    end\n",
+			typeName: "Vec2", want: "struct", forbidden: "type",
+		},
+	})
+}
+
+// TestFSharpTypeSubtype_IdentifierIsNotAKeyword — DIRECTION 2, forbidden.
+// `strings.Contains(decl, kw)` put the type's own IDENTIFIER in scope, so every
+// abbreviation whose name contained a kind keyword was classified by it. Recall
+// assertions cannot see this: each of these types WAS minted, with a subtype
+// that is a member of fsTypeSubtypes. Only a forbidden row catches it.
+//
+// Positive control: TestFSharpTypeSubtype_StructIsReachable above produces
+// "struct" legitimately, and the class/interface controls in
+// TestFSharpTypeSubtype_ControlsUnchanged produce "class" and "interface", so
+// each forbidden value here is demonstrably observable by this census.
+func TestFSharpTypeSubtype_IdentifierIsNotAKeyword(t *testing.T) {
+	runFSSubtypeCases(t, []fsSubtypeCase{
+		{
+			name:     "name containing struct",
+			src:      "module M\n\ntype Mystruct = int\n",
+			typeName: "Mystruct", want: "alias", forbidden: "struct",
+		},
+		{
+			name:     "name containing class",
+			src:      "module M\n\ntype Myclassy = int\n",
+			typeName: "Myclassy", want: "alias", forbidden: "class",
+		},
+		{
+			name:     "name containing interface",
+			src:      "module M\n\ntype Ainterfaced = int\n",
+			typeName: "Ainterfaced", want: "alias", forbidden: "interface",
+		},
+		{
+			// The keyword in the name must not win over a REAL body either —
+			// this holds the name shape constant against the row above and
+			// varies the body from an abbreviation to a record.
+			name:     "name containing struct, record body",
+			src:      "module M\n\ntype Mystruct2 = {\n    Name: string\n}\n",
+			typeName: "Mystruct2", want: "record", forbidden: "struct",
+		},
+	})
+}
+
+// TestFSharpTypeSubtype_HeadPunctuationIsNotTheBody — DIRECTION 3, forbidden.
+// `strings.Contains(decl, "= {")` fired on any `= {` sitting before the final
+// `=`. A block comment is the shape that puts one there in LEGAL F#; the arm
+// then decided the subtype from commented-out text, overruling the real body.
+//
+// Positive control: the record rows in TestFSharpTypeSubtype_ControlsUnchanged
+// produce "record" from a real record body, so "record" is observable here.
+func TestFSharpTypeSubtype_HeadPunctuationIsNotTheBody(t *testing.T) {
+	runFSSubtypeCases(t, []fsSubtypeCase{
+		{
+			name: "commented-out record in the head, DU body",
+			src: "module M\n\n" +
+				"type Shape (* was = { Kind: string } *) =\n" +
+				"    | Circle of float\n" +
+				"    | Square of float\n",
+			typeName: "Shape", want: "discriminated_union", forbidden: "record",
+		},
+		{
+			// Same head, different body: holds the comment constant and varies
+			// the body, so the row grades the body arm rather than the comment.
+			name: "commented-out record in the head, class body",
+			src: "module M\n\n" +
+				"type Widget (* was = { Size: int } *) =\n" +
+				"    class\n" +
+				"        member this.X = 1\n" +
+				"    end\n",
+			typeName: "Widget", want: "class", forbidden: "record",
+		},
+	})
+}
+
+// TestFSharpTypeSubtype_BodyKeywordIsATokenNotAPrefix — the fourth row.
+// The body arms were prefix tests, so an abbreviation target that merely BEGINS
+// with a kind keyword was classified by it. `type Alias2 = classic` -> "class"
+// was measured on the pre-fix binary; `type Alias1 = structural` -> "struct"
+// is what a prefix-only `struct` body arm would have newly minted.
+//
+// Positive control: the `struct` / `class` / `interface` rows elsewhere in this
+// file produce those three values from real bodies.
+func TestFSharpTypeSubtype_BodyKeywordIsATokenNotAPrefix(t *testing.T) {
+	runFSSubtypeCases(t, []fsSubtypeCase{
+		{
+			name:     "abbreviation target beginning with struct",
+			src:      "module M\n\ntype Alias1 = structural\n",
+			typeName: "Alias1", want: "alias", forbidden: "struct",
+		},
+		{
+			name:     "abbreviation target beginning with class",
+			src:      "module M\n\ntype Alias2 = classic\n",
+			typeName: "Alias2", want: "alias", forbidden: "class",
+		},
+		{
+			name:     "abbreviation target beginning with interface",
+			src:      "module M\n\ntype Alias3 = interfaces\n",
+			typeName: "Alias3", want: "alias", forbidden: "interface",
+		},
+		// The F# identifier CONTINUATION alphabet is letter / digit / `_` /
+		// `'` (reference, lexical rules for `ident`). It is enumerated here
+		// rather than sampled: the letter case above is the one a hand-picked
+		// fixture reaches, and each of the other three is separately deletable
+		// from the boundary check.
+		{
+			name:     "abbreviation target: keyword then a digit",
+			src:      "module M\n\ntype Alias4 = struct2\n",
+			typeName: "Alias4", want: "alias", forbidden: "struct",
+		},
+		{
+			name:     "abbreviation target: keyword then an underscore",
+			src:      "module M\n\ntype Alias5 = class_t\n",
+			typeName: "Alias5", want: "alias", forbidden: "class",
+		},
+		{
+			name:     "abbreviation target: keyword then a prime",
+			src:      "module M\n\ntype Alias6 = interface'\n",
+			typeName: "Alias6", want: "alias", forbidden: "interface",
+		},
+	})
+}
+
+// TestFSharpTypeSubtype_ControlsUnchanged pins what the fix must NOT move. The
+// private-record row is the modifier-tolerance control: typeRE's
+// `(?:\s+(?:public|private|internal)\b)*` allowlist is the only reason a
+// modified declaration reaches the classifier at all (#7135), and reading the
+// body instead of the head must not quietly depend on it differently.
+func TestFSharpTypeSubtype_ControlsUnchanged(t *testing.T) {
+	runFSSubtypeCases(t, []fsSubtypeCase{
+		{"record", "module M\n\ntype Person = {\n    Name: string\n    Age: int\n}\n", "Person", "record", ""},
+		{"record with private modifier", "module M\n\ntype private Secret = {\n    Token: string\n}\n", "Secret", "record", ""},
+		{"record on the declaration line", "module M\n\ntype Rc = { A: int }\n", "Rc", "record", ""},
+		{"discriminated union", "module M\n\ntype Colour =\n    | Red\n    | Green\n", "Colour", "discriminated_union", ""},
+		{"discriminated union on the declaration line", "module M\n\ntype Col = | R | G\n", "Col", "discriminated_union", ""},
+		{"interface", "module M\n\ntype IService =\n    interface\n        abstract member Process: string -> string\n    end\n", "IService", "interface", ""},
+		{"class", "module M\n\ntype Runner =\n    class\n        member this.Go () = 1\n    end\n", "Runner", "class", ""},
+		{"alias", "module M\n\ntype Id = int\n", "Id", "alias", ""},
+		// The record and DU arms are PREFIX tests, and nothing else in this
+		// package distinguishes a prefix from a substring for them: relaxing
+		// either to strings.Contains survived the whole package suite until
+		// these two rows existed. A record literal and a `match` are the
+		// ordinary ways a `{` and a `|` appear inside a body that is not a
+		// record or a DU.
+		{"class body containing a record literal", "module M\n\ntype Defaults =\n    class\n        member this.Config = { Retries = 3 }\n    end\n", "Defaults", "class", "record"},
+		{"class body containing a match expression", "module M\n\ntype Guard =\n    class\n        member this.Check x =\n            match x with\n            | 0 -> true\n            | _ -> false\n    end\n", "Guard", "class", "discriminated_union"},
+		{"catch-all type", "module M\n\ntype Holder =\n    member this.A = 1\n    member this.B = 2\n", "Holder", "type", ""},
+	})
+}
+
+// TestFSharpTypeSubtype_RowPredicateFires is the positive control for the row
+// predicate itself. Every forbidden row above is an absence assertion, and an
+// absence assertion passes identically whether it is enforced or simply
+// unreachable — if fsSubtypeOf silently returned "" for every input, or if
+// runFSSubtypeCases dropped its comparison, every row would still be green. So
+// a violation is planted directly into an entity slice and the predicate must
+// report it.
+func TestFSharpTypeSubtype_RowPredicateFires(t *testing.T) {
+	planted := []types.EntityRecord{
+		{Kind: "SCOPE.Component", Name: "Mystruct", Subtype: "struct"},
+	}
+	msg := fsSubtypeRowFailure(planted, "Mystruct", "alias")
+	if msg == "" {
+		t.Fatal("planted violation (Mystruct classified \"struct\") was not reported: " +
+			"the forbidden rows in this file assert nothing")
+	}
+	if !strings.Contains(msg, "struct") || !strings.Contains(msg, "alias") {
+		t.Errorf("failure text %q names neither the observed nor the wanted subtype", msg)
+	}
+	// Inverted control: the same predicate must stay silent on a conforming
+	// slice, so the row above is a discrimination and not a constant failure.
+	if msg := fsSubtypeRowFailure([]types.EntityRecord{
+		{Kind: "SCOPE.Component", Name: "Mystruct", Subtype: "alias"},
+	}, "Mystruct", "alias"); msg != "" {
+		t.Errorf("predicate reported %q on a conforming slice", msg)
+	}
+	// And it must not be satisfied by an entity of another Kind wearing the
+	// name, which is how a census can go vacuously green.
+	if msg := fsSubtypeRowFailure([]types.EntityRecord{
+		{Kind: "SCOPE.Module", Name: "Mystruct", Subtype: "alias"},
+	}, "Mystruct", "alias"); msg == "" {
+		t.Error("predicate accepted a non-Component entity as the subject")
+	}
+}
+
+// TestFSharpTypeSubtype_NotClaimed records what this change does NOT fix, so a
+// later reader does not mistake the rows above for coverage of the whole space.
+// Each is asserted at its CURRENT behaviour, without claiming that behaviour is
+// correct; the test fails if any of them silently changes.
+func TestFSharpTypeSubtype_NotClaimed(t *testing.T) {
+	// (a) Attributes are never read. `[<Struct>] type Vec = { X: float }` — the
+	// attribute-only struct form of the F# reference, with the struct/end
+	// omitted — is indistinguishable from a record to this classifier.
+	ents := runFSharp(t, "module M\n\n[<Struct>]\ntype Vec =\n    { X: float }\n", "A.fs")
+	if got := fsSubtypeOf(ents, "Vec"); got != "record" {
+		t.Errorf("attribute-only struct form: subtype=%q, want the unchanged %q "+
+			"(attributes are not read; #7218 did not claim this)", got, "record")
+	}
+	// (b) An attribute on the SAME LINE as the declaration defeats typeRE
+	// outright — the pattern is `(?m)^[ \t]*type`, so nothing is minted at all
+	// and the classifier is never reached. A separate gap from #7218.
+	ents = runFSharp(t, "module M\n\n[<Struct>] type Vec3 =\n    struct\n        val x: float\n    end\n", "B.fs")
+	if got := fsSubtypeOf(ents, "Vec3"); got != "<absent>" {
+		t.Errorf("same-line attribute: subtype=%q, want no entity at all — if this "+
+			"now mints, typeRE changed and this note is stale", got)
+	}
+	// (c) The `and` continuation form (`type A = … and B = …`) is not scanned by
+	// typeRE at all, so B has no subtype to get wrong.
+	ents = runFSharp(t, "module M\n\ntype A = { X: int }\nand B = { Y: int }\n", "C.fs")
+	if got := fsSubtypeOf(ents, "B"); got != "<absent>" {
+		t.Errorf("`and` continuation: subtype=%q, want no entity at all", got)
+	}
+}

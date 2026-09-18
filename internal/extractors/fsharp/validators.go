@@ -342,7 +342,7 @@ func collectRecordTypeNames(src string) map[string]bool {
 		}
 		name := src[m[4]:m[5]]
 		body := extractIndentBody(src, m[1], len(src[m[2]:m[3]]))
-		if classifyTypeSubtype(src[m[0]:m[1]], body) == "record" {
+		if classifyTypeSubtype(body) == "record" {
 			out[name] = true
 		}
 	}
