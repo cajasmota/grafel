@@ -172,10 +172,18 @@ func extractNim(src, filePath string) []types.EntityRecord {
 	// `(\([^)]*\))?` params); the generic-params, return-type and pragma groups
 	// are all non-capturing. FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints
 	// per match invariantly — the optional params group contributes a `-1,-1`
-	// pair when absent rather than being omitted, which is why the m[6] >= 0
-	// test below is the real check — so indexing m[2]..m[7] needs no arity
-	// guard. #7197 removed the unreachable `if len(m) < 7`. Adding a fourth
-	// group changes this invariant, not the guard.
+	// pair when absent rather than being omitted — so reading m[2]..m[7] needs
+	// no arity guard. #7197 removed the unreachable `if len(m) < 7`. Adding a
+	// fourth group changes this invariant, not the guard.
+	//
+	// The `m[6] >= 0 && m[7] >= 0` test below is NOT the same kind of thing and
+	// must not be removed with it: the params group is OPTIONAL, so on a
+	// parenless routine (`proc main =`) it is exactly the `-1,-1` pair, and an
+	// unconditional src[m[6]:m[7]] panics with a slice-bounds error. #7197 found
+	// that guard ungraded — no fixture in this package contained a parenless
+	// routine, so deleting it left the suite green — and added
+	// params_group_7197_test.go, which makes its removal RED. The copy of this
+	// guard in the type loop's proc re-scan is graded there separately.
 	for _, m := range procRE.FindAllStringSubmatchIndex(src, -1) {
 		indent := src[m[2]:m[3]]
 		name := strings.TrimSuffix(src[m[4]:m[5]], "*") // strip export marker
@@ -230,9 +238,11 @@ func extractNim(src, filePath string) []types.EntityRecord {
 	// `(?:type[ \t]+)?` prefix, the generics and the pragma block are all
 	// non-capturing. FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints per
 	// match invariantly — a non-participating group contributes a `-1,-1` pair
-	// rather than being omitted — so indexing m[2]..m[7] below needs no arity
+	// rather than being omitted — so reading m[2]..m[7] below needs no arity
 	// guard. #7197 removed the unreachable `if len(m) < 8`. Adding a fourth
-	// group changes this invariant, not the guard.
+	// group changes this invariant, not the guard. All three groups here are
+	// mandatory, so none of them can be the `-1,-1` pair — unlike procRE's
+	// optional params group, whose participation test is load-bearing.
 	for _, m := range typeRE.FindAllStringSubmatchIndex(src, -1) {
 		indent := src[m[2]:m[3]] // #7190: the DECLARATION's own indent
 		name := strings.TrimSuffix(src[m[4]:m[5]], "*")
@@ -278,10 +288,11 @@ func extractNim(src, filePath string) []types.EntityRecord {
 			rels = append(rels, *ext)
 		}
 		methodSeen := make(map[string]bool)
+		// procRE has 3 capture groups, so len(pm) is invariantly 8 — the same
+		// derivation as the proc loop above, measured with its own panic probe
+		// under #7197 rather than transferred. The `pm[6] >= 0` test below is a
+		// different question and is NOT dead: see the proc loop's note.
 		for _, pm := range procRE.FindAllStringSubmatchIndex(src, -1) {
-			if len(pm) < 7 {
-				continue
-			}
 			procName := strings.TrimSuffix(src[pm[4]:pm[5]], "*")
 			if methodSeen[procName] {
 				continue
@@ -585,11 +596,21 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 	}
 	seen := make(map[string]bool)
 	out := make([]types.RelationshipRecord, 0, len(matches))
+	// callRE has 1 capture group, so len(m) is invariantly 4 — #7197 removed the
+	// unreachable `if len(m) < 4` here by the same derivation as the loops above.
 	for _, m := range matches {
-		if len(m) < 4 {
-			continue
-		}
-		// m[2] and m[3] are the start and end indices of the first capturing group (the identifier)
+		// m[2] and m[3] are the start and end indices of the first capturing group
+		// (the identifier).
+		//
+		// #7197 measured this guard and DELIBERATELY LEFT IT. Unlike the arity
+		// guards, it is a participation test, and participation tests can be
+		// load-bearing — nim.go has two that are. This one is not: callRE's only
+		// group is on the pattern's required path, inside no `?`, `*` or
+		// alternation branch, so it always participates and m[2] is never -1
+		// (measured: every probed input returns m[2] >= 0). It is therefore
+		// unreachable rather than load-bearing, but removing it is a claim about
+		// a MANDATORY group staying mandatory, which is a different and more
+		// fragile claim than 2*(1+n), so it stays.
 		if m[2] < 0 || m[3] < 0 {
 			continue
 		}

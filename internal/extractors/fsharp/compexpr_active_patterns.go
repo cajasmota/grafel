@@ -387,9 +387,11 @@ func extractActivePatterns(src, filePath string, imports []string) []types.Entit
 	// fsLetModifiers and the `(?:\|_)?` tail are non-capturing.
 	// FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints per match invariantly
 	// — a non-participating group contributes a `-1,-1` pair rather than being
-	// omitted — so indexing m[2]..m[7] below needs no arity guard. #7197 removed
+	// omitted — so reading m[4]..m[7] below needs no arity guard. #7197 removed
 	// the unreachable `if len(m) < 8`. Adding a fourth group changes this
-	// invariant, not the guard.
+	// invariant, not the guard. All three groups are mandatory, so none of them
+	// can be the `-1,-1` pair here; the compound `len(m) < 4 || m[2] < 0` guards
+	// further down this file are a different question and were left alone.
 	for _, m := range activePatternRE.FindAllStringSubmatchIndex(src, -1) {
 		clip := src[m[4]:m[5]]   // e.g. "Even|Odd" or "Positive|_"
 		params := src[m[6]:m[7]] // tokens between `|)` and `=`
