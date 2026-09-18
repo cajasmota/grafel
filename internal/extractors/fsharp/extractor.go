@@ -1058,6 +1058,13 @@ func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	// contexts are closed." On-or-before closes; strictly greater continues —
 	// which is exactly the `indent <= baseIndentLen` terminator below.
 	//
+	// §15.1.8 also names where a SIBLING sits, which is the sharpest form of the
+	// rule for this loop: "When a token other than `and` appears directly ON THE
+	// OFFSIDE LINE of Let context, and the next surrounding context is a
+	// SeqBlock, the $in token is inserted." Directly on the offside line means at
+	// exactly `base`, not `base+1` — and `and` is the single token the spec
+	// exempts. So `base+1` cannot be a sibling; it is body.
+	//
 	// DERIVED-NOT-EXECUTED: no F# toolchain exists on the build machine, so this
 	// is read off the specification rather than compiled.
 	minBodyIndent := baseIndentLen + 1
@@ -1185,8 +1192,22 @@ func insideBraces(scrubbed string, off int) bool {
 // gate keys on `.fsi` specifically, not on "not `.fs`": a `.fsx` script is
 // standalone and keeps its edges.
 //
-// One known upstream vector still limits this scan, noted for the record and
-// deliberately NOT fixed here (it needs its own issue and its own tests):
+// Two known vectors still limit this scan, noted for the record and deliberately
+// NOT fixed here:
+//
+//   - This scan has NO NOTION OF NESTING. It regex-scans the whole body for any
+//     `inherit` / `interface ... with`, so a nested sibling declaration's clause
+//     is attributed to the OUTER type. A `type Beta` indented inside `type
+//     Alpha`'s body puts Beta's `inherit Base ()` in Alpha's body text, and
+//     Alpha gets a spurious EXTENDS Base. Tracked as #7187.
+//
+//     An earlier version of this note blamed extractIndentBody's dead band
+//     (#7176) for this. That was the wrong MECHANISM and the bullet was briefly
+//     deleted as fixed-by-#7176; it is not. Measured on the fixture in #7187,
+//     the mis-attribution is byte-identical before and after #7176 — the nested
+//     clause was already inside the outer body under the old +2 threshold. The
+//     SYMPTOM the old note described is real and still live; only its stated
+//     cause was wrong.
 //
 //   - typeRE does not admit the self-identifier form `type X() as this =`, so
 //     those types produce no entity at all — and hence no hierarchy edge. That

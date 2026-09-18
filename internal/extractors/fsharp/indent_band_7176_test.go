@@ -343,3 +343,130 @@ func TestFSharp_IndentBand7176_WideningMintsNothingFromCommentsOrStrings(t *test
 		t.Errorf("widening: Derived EXTENDS = %v, want exactly [RealBase] — GhostA is a comment and GhostB a string literal", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Call sites 4 and 5 of 5 — compexpr_active_patterns.go:517 (collectCEBuilderTypes)
+// and validators.go:344 (collectRecordTypeNames), both on b31fe2c67. The issue
+// body named only three; these two also call extractIndentBody, and an earlier
+// revision of this PR wrote them off as "covered transitively by the package
+// suite". That claim was false: M2 measures the 162 pre-existing tests as blind
+// to this boundary, so transitive coverage here is coverage by nothing.
+//
+// Each of these two passes threads its result through a DIFFERENT consumer than
+// the type pass does, so the artefact asserted below is the one that only that
+// pass can produce.
+// ---------------------------------------------------------------------------
+
+func TestFSharp_IndentBand7176_CEBuilderPass(t *testing.T) {
+	// Axis VARIED: the builder members' indent (1, 2, 0).
+	// Axis HELD CONSTANT: the builder type's column (0), the member names, the
+	// binding `let optional = OptBuilder()`, and the consuming `optional { }`.
+	//
+	// collectCEBuilderTypes (:517) is the ONLY producer of ceMemberNames, which
+	// is what re-types a protocol member to the `ce_member` subtype in the
+	// member pass. So Bind/Return's Subtype is this call site's own artefact —
+	// OptBuilder's own `computation_builder` subtype comes from the type pass's
+	// separate detectCEBuilder call and is asserted here only as a companion.
+	src := func(pad string) string {
+		return "module M\n" + // 1
+			"\n" + // 2
+			"type OptBuilder() =\n" + // 3   base indent 0
+			pad + "member _.Bind (x, f) = Option.bind f x\n" + // 4
+			pad + "member _.Return x = Some x\n" + // 5
+			"\n" + // 6
+			"let optional = OptBuilder()\n" // 7
+	}
+
+	ents := runFSharp(t, src(" "), "src/CE.fs") // base+1 <-- the dead band
+	for _, name := range []string{"Bind", "Return"} {
+		rec := fsFind(ents, name, "SCOPE.Operation")
+		if rec == nil {
+			t.Fatalf("band+1: no SCOPE.Operation named %q", name)
+		}
+		if rec.Subtype != "ce_member" {
+			t.Errorf("band+1: %s Subtype = %q, want %q (collectCEBuilderTypes saw an empty body, so ceMemberNames was empty)", name, rec.Subtype, "ce_member")
+		}
+		if rec.Properties["ce_member"] != "true" {
+			t.Errorf("band+1: %s ce_member property = %q, want \"true\"", name, rec.Properties["ce_member"])
+		}
+	}
+	if rec := fsFind(ents, "OptBuilder", "SCOPE.Component"); rec == nil {
+		t.Fatal("band+1: no SCOPE.Component named OptBuilder")
+	} else if rec.Subtype != "computation_builder" {
+		t.Errorf("band+1: OptBuilder Subtype = %q, want %q", rec.Subtype, "computation_builder")
+	}
+
+	// Control, the deeper neighbour.
+	ents = runFSharp(t, src("  "), "src/CE.fs")
+	if rec := fsFind(ents, "Bind", "SCOPE.Operation"); rec == nil || rec.Subtype != "ce_member" {
+		t.Errorf("ctrl base+2: Bind Subtype = %v, want ce_member", rec)
+	}
+
+	// Control, the shallower neighbour: members at the type's own column are
+	// outside its body, so the type is NOT a builder and nothing is re-typed.
+	ents = runFSharp(t, src(""), "src/CE.fs")
+	for _, name := range []string{"Bind", "Return"} {
+		rec := fsFind(ents, name, "SCOPE.Operation")
+		if rec == nil {
+			t.Fatalf("ctrl base+0: no SCOPE.Operation named %q", name)
+		}
+		if rec.Subtype == "ce_member" {
+			t.Errorf("ctrl base+0: %s Subtype = %q, must NOT be ce_member — a member at column 0 is offside of the type body", name, rec.Subtype)
+		}
+	}
+	if rec := fsFind(ents, "OptBuilder", "SCOPE.Component"); rec == nil {
+		t.Fatal("ctrl base+0: no SCOPE.Component named OptBuilder")
+	} else if rec.Subtype == "computation_builder" {
+		t.Error("ctrl base+0: OptBuilder must NOT be a computation_builder — its body ended at column 0")
+	}
+}
+
+func TestFSharp_IndentBand7176_RecordTypeNamesPass(t *testing.T) {
+	// Axis VARIED: the record brace line's indent (1, 2, 0).
+	// Axis HELD CONSTANT: Addr's column (0), the field names, and the consuming
+	// record Person (whose own fields stay at their original columns).
+	//
+	// collectRecordTypeNames (:344) is the ONLY producer of the recordTypes set
+	// that lets a field whose type is another in-file RECORD mint the
+	// nested-model VALIDATES edge. So `Person VALIDATES -> Addr` is this call
+	// site's own artefact — Addr's own `record` subtype comes from the type
+	// pass's separate classifyTypeSubtype call and is a companion assertion.
+	src := func(pad string) string {
+		return "module M\n" + // 1
+			"\n" + // 2
+			"type Addr =\n" + // 3   base indent 0
+			pad + "{ City : string }\n" + // 4
+			"\n" + // 5
+			"type Person =\n" + // 6
+			"    { Name : string\n" + // 7
+			"      Home : Addr }\n" // 8
+	}
+
+	ents := runFSharp(t, src(" "), "src/Rec.fs") // base+1 <-- the dead band
+	if !fsHasTarget(fsToIDs(fsRelsOfKind(t, ents, "Person", "VALIDATES")), "Addr") {
+		t.Errorf("band+1: Person VALIDATES = %v, want it to contain Addr (collectRecordTypeNames saw an empty body, so Addr was not a record)", fsToIDs(fsRelsOfKind(t, ents, "Person", "VALIDATES")))
+	}
+	if rec := fsFind(ents, "Addr", "SCOPE.Component"); rec == nil {
+		t.Fatal("band+1: no SCOPE.Component named Addr")
+	} else if rec.Subtype != "record" {
+		t.Errorf("band+1: Addr Subtype = %q, want %q", rec.Subtype, "record")
+	}
+
+	// Control, the deeper neighbour.
+	ents = runFSharp(t, src("  "), "src/Rec.fs")
+	if !fsHasTarget(fsToIDs(fsRelsOfKind(t, ents, "Person", "VALIDATES")), "Addr") {
+		t.Error("ctrl base+2: Person VALIDATES must contain Addr")
+	}
+
+	// Control, the shallower neighbour: a brace line at column 0 is outside
+	// Addr's body, so Addr is not a record and the nested edge must not exist.
+	ents = runFSharp(t, src(""), "src/Rec.fs")
+	if fsHasTarget(fsToIDs(fsRelsOfKind(t, ents, "Person", "VALIDATES")), "Addr") {
+		t.Error("ctrl base+0: Person VALIDATES must NOT contain Addr — Addr's body ended at column 0")
+	}
+	if rec := fsFind(ents, "Addr", "SCOPE.Component"); rec == nil {
+		t.Fatal("ctrl base+0: no SCOPE.Component named Addr")
+	} else if rec.Subtype == "record" {
+		t.Error("ctrl base+0: Addr must NOT be a record — its body ended at column 0")
+	}
+}
