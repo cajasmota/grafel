@@ -84,9 +84,11 @@ const testWatchdog = 300 * time.Millisecond
 // gracefulWatchdog is the bound used by the one test that asserts the
 // force-exit path does NOT fire. It is deliberately an order of magnitude
 // larger than testWatchdog: an absence assertion under a 300ms bound would go
-// red on a slow leg (the measured graceful tail is ~25ms on Unix, but
-// listener.Close() on a Windows named pipe is the #6044 hazard and has no such
-// budget), and a flaky control is worse than none. Nothing the test claims
+// red on a slow leg (an observation, not a property — nothing checks it: this
+// test's graceful tail measured ~25ms on one macOS machine and ~4.8ms on
+// another, both at a 300ms bound; and listener.Close() on a Windows named pipe
+// is the #6044 hazard, which has no such budget), and a flaky control is worse
+// than none. Nothing the test claims
 // depends on the number — "a closed connection does not hold connWG" is a
 // statement about whether the tail terminates, not about how fast — and the
 // positive control for it is only harder to satisfy at a longer bound: a
@@ -216,9 +218,35 @@ func TestDaemon_ShutdownWatchdogForceExitsOnStalledRebuild(t *testing.T) {
 	if err := c.Close(); err != nil {
 		t.Fatalf("close client before shutdown: %v", err)
 	}
+	closedAt := time.Now()
 
 	start := time.Now()
 	f.cancel() // trigger shutdown while the Rebuild call is stuck
+	// #7233: the ORDER of those two statements is the whole mechanism, so it is
+	// observed rather than asserted in prose. c.Close() reads as cleanup, and
+	// cleanup conventionally drifts toward the end of a test or into a defer;
+	// moving it after the cancel above leaves every assertion in this file green
+	// while the test silently reverts to measuring "a connection was open" —
+	// measured as CM-25 on 0dae909b0, which was ALIVE before this check existed.
+	// Note what this does NOT do — like the rebuildRunning tripwire below, it
+	// observes this test's own construction, not the daemon: it can only fire
+	// under a mutation of the two statements above it. It is a tripwire on this
+	// file, not an assertion about shutdown behaviour.
+	//
+	// The comparison is deliberately non-strict (fail only if shutdown began
+	// strictly BEFORE the close completed). Two adjacent time.Now() calls can
+	// read equal on a coarse monotonic clock and a strict Before would then
+	// flake; under the permutation this guards against there is a cancel plus a
+	// completed Close() between the two readings — measured at 47us when CM-25
+	// was scored — so the gap is never degenerate in the direction that
+	// matters. Converting the close to a `defer` — the other obvious tidy —
+	// leaves closedAt unused and does not compile (measured: `vet: undefined:
+	// closedAt`), which is why that permutation needs no row of its own.
+	if start.Before(closedAt) {
+		t.Fatalf("shutdown began at %s but the client connection was not closed until %s: the close "+
+			"must precede cancel, or the stalled handler is not the only thing holding connWG and "+
+			"this test is back to observing that some connection was open (#7233)", start, closedAt)
+	}
 	// The check that keeps the #7228 wait above honest: reverting it to the
 	// sleep (or to any dialability-based proxy) makes this fail under
 	// installReadyGap. Note what it does NOT do — it observes the test's own
