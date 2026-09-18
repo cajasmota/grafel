@@ -2267,6 +2267,19 @@ func buildFieldSignature(node ts.Node, src []byte, name string) string {
 	// grade the other branch, at both dimension counts and with an annotation
 	// present but not at position 0.
 	//
+	// The normalisation is POSITION-0 ONLY, and that is a scope boundary rather
+	// than a general rule about the suffix. Only the first character of the
+	// dimensions text is examined, so an annotation sitting LATER in the same
+	// text with no space in front of it keeps none: `int x[]@NN[];` emits
+	// `int x[]@NN[]`, while `int x@NN[];` emits `int x @NN[]`. One construct
+	// therefore renders three ways — leading-without-space gains a space,
+	// inner-without-space does not, inner-with-space keeps its own. Inner
+	// positions are NOT untouched territory, and saying they are unnormalised
+	// would be false: an inner whitespace RUN is already collapsed upstream by
+	// collapseJavaSpaces (`int x @NN[]   @NN   [];` emits `int x @NN[] @NN []`,
+	// measured on review). It is specifically the inner ZERO-space case that is
+	// left alone. Filed as #7180 and deliberately NOT fixed here.
+	//
 	// The predicate reads position 0 rather than searching for `@`, and the
 	// first character of `dims` is exactly `@` or `[` — enumerated over 13
 	// javac-clean shapes on review, `@Sz(msg="[weird]")` included, where the
