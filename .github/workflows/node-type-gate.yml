@@ -50,6 +50,43 @@ name: node-type gate
 # grammar the package receives really has that node. Check with a CST dump. The
 # baseline is for literals somebody has decided not to fix yet, each with a
 # written justification — not for silencing a new one.
+#
+# ── SECOND JOB: workflow-event-gate (Closes #7250) ───────────────────────────
+# A SEPARATE job in this file, not a step in the one above. The `SCOPE` section
+# above forbids adding a step that can fail for a reason not on its list, and
+# that restriction is kept: the node-type-gate job's steps, exit codes and
+# failure list are untouched. The two jobs fail independently and report as
+# separate checks.
+#
+# WHY IT LIVES HERE. It is the same defect, one domain over. Up there, a string
+# literal in a node-type position is compared against the set of node kinds a
+# grammar has, and a literal outside that set is a SILENT NO-OP. Down there, a
+# string literal in an `if:` guard is compared against `github.event_name`, and
+# a literal naming an event the workflow does not subscribe to is a SILENT
+# NO-OP in exactly the same way — the job simply never runs, and nothing says
+# so. `acceptance.yml`'s `pr-linux` job has been unreachable since its
+# `pull_request` trigger was removed; three stale-CI defects (#7244, #7247,
+# #7250) were each found by a human who happened to read an `on:` block.
+#
+# WHY NOT ITS OWN WORKFLOW, AND WHY NOT INSIDE acceptance.yml. A gate that sits
+# in the workflow it guards is inert whenever that workflow is disabled — which
+# is precisely how 939a0b348 neutered one here. This file is ALWAYS ON
+# (pull_request + push to main + dispatch), so the gate runs on every change
+# regardless of what acceptance.yml is or is not doing. It is not its own
+# workflow because the repo does not need a sixteenth one for a sub-second
+# python check with no build step.
+#
+# ITS FAILURE LIST, exhaustive. `workflow-event-gate` exit 1 means one of:
+#   1. an `if:` guard compares `github.event_name` to an event its workflow's
+#      effective event set does not contain, with no allow-list row;
+#   2. an allow-list row matches nothing while its workflow is still present —
+#      the job it covered was renamed, fixed or deleted and the row must go;
+#   3. the scan read fewer workflows or parsed fewer guards than its floors,
+#      i.e. it is not looking at the tree and its verdict means nothing.
+# Exit 2 means the gate could not run (the workflow directory is missing or a
+# file could not be read). Its positive-controls step can fail on its own
+# terms. Same rule as above: do not add a step to that job that can fail for a
+# reason not on this list without extending the list.
 
 on:
   # ALWAYS ON. A path filter would be wrong twice over: a grammar bump changes
@@ -108,3 +145,36 @@ jobs:
 
       - name: node-type gate (whole tree)
         run: go run ./tools/node-type-gate -report
+
+  # ── Closes #7250. See the SECOND JOB section in the header. ────────────────
+  workflow-event-gate:
+    name: workflow-event gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # stdlib-only python, no pip install, no setup-python — the runner image's
+      # preinstalled python3 is the entire dependency set, the same contract
+      # test.yml's `python ratchet tests` leg already runs under.
+      - name: python3 version
+        run: python3 --version
+
+      # The controls run FIRST and are not optional. This gate is a
+      # scan-and-assert-absence tool, and that shape has five independent ways
+      # to be a silent no-op: it reads nothing, it reads the wrong files, it
+      # parses nothing out of them, it detects nothing, or it detects and fails
+      # to fail. A count floor catches only the first. Each of the five is
+      # driven by a control, the permissive direction is driven separately, and
+      # every control asserts the EXIT CODE rather than the message text.
+      #
+      # Two controls are about the real tree rather than a synthetic one:
+      # `pr-linux` is a LIVE positive that the gate must still detect with the
+      # allow-list off, and the allow-list row covering it must still match. The
+      # allow-list is the only thing between this gate and a red main, so what
+      # is underneath it is asserted directly.
+      - name: Positive controls
+        run: python3 -m unittest -v scripts.ci.test_workflow_event_gate
+
+      - name: workflow-event gate (all workflows)
+        run: python3 scripts/ci/workflow_event_gate.py

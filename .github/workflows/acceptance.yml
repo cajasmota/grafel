@@ -25,15 +25,30 @@ name: acceptance
 #      config, no install.json, prefix gone.
 #
 # ── #5227 trigger / cost strategy ────────────────────────────────────────────
-# The repo is public (Actions minutes are free) but we keep PR feedback fast and
-# stay cheap if it ever goes private:
+# THIS WORKFLOW DOES NOT RUN ON PULL REQUESTS AT ALL. Read this before the
+# `on:` block, before the `pr-linux` job, and before believing any other
+# sentence in this file about PRs (Refs #7250):
+#
+#   * There is NO `pull_request` trigger here, and there is NO `paths:` filter
+#     anywhere in this file. Neither has existed since the trigger was removed
+#     to conserve free-tier minutes. A PR opened against this repo schedules
+#     ZERO jobs from acceptance.yml — not the full matrix, and not the cheap
+#     Linux-only one.
+#   * The `pr-linux` job below — the one whose banner says "PR signal",
+#     "cheap", "Linux-only", "paths-gated" — is DORMANT, not live. Its guard is
+#     `if: github.event_name == 'pull_request'`, and this workflow can never
+#     deliver that event, so the job cannot run under ANY trigger it has,
+#     workflow_dispatch included. It is kept, unrun, only because the choice
+#     between deleting it and restoring the trigger is an open owner decision
+#     tracked with #7248 / #7250. It is not coverage. Do not cite it as PR
+#     coverage, and do not assume a change to it has been tested by anything.
+#     `scripts/ci/workflow_event_gate.py` holds a ticket-bearing allow-list row
+#     for it; that row fails the gate the moment the job is renamed or removed,
+#     so this note cannot outlive the job it describes.
 #   * FULL matrix (ubuntu + windows + macos) runs ONLY after the `release`
 #     workflow finishes publishing assets (workflow_run) and on manual
-#     workflow_dispatch. NEVER on pull_request — see the `matrix` job's `if`
-#     guard and the `on:` triggers below.
-#   * PRs get a CHEAP Linux-only job (`pr-linux`) that builds + runs selftest,
-#     and only when install/release/daemon/cmd code actually changed (paths
-#     filter). No Windows/macOS is ever scheduled by a PR.
+#     workflow_dispatch. See the `acceptance` job's `if` guard and the `on:`
+#     triggers below.
 #   * `concurrency` cancels superseded runs; the Go build+module cache is reused.
 #
 # ── macOS headless caveat ────────────────────────────────────────────────────
@@ -55,13 +70,21 @@ on:
     workflows: ["release"]
     types: [completed]
   workflow_dispatch:
-  # `pull_request` trigger (formerly here, path-gated to install/release/daemon/
-  # cmd surface) removed: gated to releases + manual dispatch to conserve
-  # free-tier minutes. The `pr-linux` job below is now dormant (its `if:
-  # github.event_name == 'pull_request'` guard never matches) until re-enabled
-  # via workflow_dispatch or a future re-add of this trigger. The full
-  # cross-OS matrix already only runs post-release (workflow_run) or on
-  # workflow_dispatch — unaffected by this change.
+  # NO `pull_request` TRIGGER, AND NO `paths:` FILTER — deliberately, and the
+  # two together are the whole story of the `pr-linux` job (Refs #7250).
+  # A `pull_request` trigger was formerly here, path-gated to the
+  # install/release/daemon/cmd surface. Both it and the `paths:` filter were
+  # removed to conserve free-tier minutes; acceptance is now releases + manual
+  # dispatch only. Consequence: the `pr-linux` job below is DORMANT — its
+  # `if: github.event_name == 'pull_request'` guard matches under NO trigger
+  # this workflow has. Note it is NOT reachable by dispatching this workflow
+  # either: a workflow_dispatch run sets `github.event_name` to
+  # 'workflow_dispatch', not 'pull_request', so that guard is false there too.
+  # The ONLY thing that can revive `pr-linux` is re-adding a `pull_request`
+  # trigger here (and, if the cost reasoning still holds, a `paths:` filter
+  # with it) — an open owner decision tracked with #7248 / #7250.
+  # The full cross-OS matrix runs post-release (workflow_run) or on
+  # workflow_dispatch — unaffected by any of this.
 
 permissions:
   contents: read
@@ -76,10 +99,25 @@ env:
   GO_VERSION: '1.26'
 
 jobs:
-  # ── PR signal: Linux-only, cheap, paths-gated ──────────────────────────────
-  # Build + acceptance ladder on ubuntu only. Never Windows/macOS on a PR.
+  # ── DORMANT — THIS JOB NEVER RUNS (Refs #7250) ─────────────────────────────
+  # It was once the PR signal: a cheap, Linux-only, paths-gated build +
+  # acceptance ladder. It is none of those things now, because it is not
+  # anything now. Every word of that description is historical:
+  #   * "PR signal"    — this workflow has no `pull_request` trigger, so the
+  #                      guard below matches under no trigger it has.
+  #   * "paths-gated"  — there is no `paths:` filter anywhere in this file.
+  #   * "cheap"        — it costs nothing, because it never starts.
+  # Whether to delete it or restore the `pull_request` trigger is an open owner
+  # decision tracked with #7248 / #7250; it is left in place so that decision
+  # stays open, NOT because it provides coverage. Nothing below this line has
+  # run since the trigger was removed. If you are editing these steps, they are
+  # untested by CI — the only way to exercise them today is to restore the
+  # trigger, or to run `go build` + `grafel selftest` by hand.
+  # `scripts/ci/workflow_event_gate.py` flags this guard and suppresses it via
+  # one ticket-bearing allow-list row, so the dormancy is machine-checked in
+  # both directions rather than resting on this comment.
   pr-linux:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request'  # never matches — see banner above
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -93,7 +131,8 @@ jobs:
       # -tags osusergo matches the release build (pure-Go os/user). No dashboard
       # SPA build here — selftest does not need the embedded UI (it polls the
       # dashboard *listener*, which serves a placeholder when unbuilt), so we
-      # skip the npm build to keep the PR job fast.
+      # skip the npm build to keep this job fast (it was the PR job; see the
+      # DORMANT banner above — it no longer runs at all).
       - name: Build grafel
         run: go build -trimpath -tags osusergo -o /tmp/grafel ./cmd/grafel
 
@@ -104,9 +143,10 @@ jobs:
         run: /tmp/grafel selftest
 
   # ── Full cross-OS acceptance matrix: post-release + manual dispatch ONLY ────
-  # GUARD: this job can never run on pull_request (see `if`), so no PR ever
-  # schedules Windows or macOS minutes. The release path runs only on a
-  # SUCCESSFUL `release` workflow_run for a tag push.
+  # GUARD: the `if` below admits only workflow_dispatch and a successful
+  # `release` workflow_run for a tag push, so no PR ever schedules Windows or
+  # macOS minutes. That guard is belt-and-braces, not the primary reason: this
+  # workflow has no `pull_request` trigger at all, so no PR reaches this file.
   acceptance:
     if: >-
       github.event_name == 'workflow_dispatch' ||
