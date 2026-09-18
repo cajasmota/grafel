@@ -162,27 +162,33 @@ const prag7213DistinctTuple = "type\n" + // 1
 
 // --- forbidden shapes -------------------------------------------------------
 
-// prag7213BareBraces — braces that are NOT a pragma. Nim's pragma delimiters
-// are the two-character TOKENS `{.` and `.}`; all four spellings below are
-// lexical errors in Nim, and all four are needed because each grades a
-// different property of the pair: `Bogus` has neither dot, `Half` only the
-// opening one, `Odd` only the closing one, and `Spaced` has both dots but
-// separated from their braces — `{ .` is `{` followed by a dot, not the `{.`
-// token, so it opens a set literal (#7230 review, P1: without this member the
-// row did not grade the token's ADJACENCY and a `\{[ \t]*\.` widening
-// survived). `Real` is the POSITIVE CONTROL inside the same fixture: the run
-// is not vacuous, it produces exactly one entity.
+// prag7213BareBraces — braces that do NOT OPEN a pragma. Nim's lexer has a
+// single opening token, `tkCurlyDotLe` = `{.`, so all three spellings below are
+// lexical errors, and each grades a different property of it: `Bogus` has no
+// dot at all, `Odd` has a dot at the wrong end, and `Spaced` has the dot
+// detached from the brace — `{ .` is `{` followed by a dot, which opens a set
+// literal (#7230 review, P1: without this member the row did not grade the
+// token's ADJACENCY and a `\{[ \t]*\.` widening survived).
+//
+// A FOURTH MEMBER, `Half {.packed} = object`, WAS HERE AND WAS WRONG. It
+// asserted that a pragma closed with a plain `}` is not a pragma. It is one:
+// compiler/parser.nim's parsePragma accepts `tkCurlyDotRi` OR `tkCurlyRi`, and
+// 7 sites in the measured population use it. The claim was false, the row
+// pinned a real recall gap as if it were a rule, and it is now an ADMITTED case
+// in prag7213CloseAndSpacing instead. The asymmetry is the point: the OPENING
+// delimiter is one token and admits nothing, the CLOSING one is two tokens.
+//
+// `Real` is the POSITIVE CONTROL inside the same fixture: the run is not
+// vacuous, it produces exactly one entity.
 const prag7213BareBraces = "type\n" + // 1
 	"  Bogus {packed} = object\n" + // 2
 	"    a*: int\n" + // 3
-	"  Half {.packed} = object\n" + // 4
-	"    h*: int\n" + // 5
-	"  Odd {packed.} = object\n" + // 6
-	"    o*: int\n" + // 7
-	"  Spaced { .packed. } = object\n" + // 8
-	"    s*: int\n" + // 9
-	"  Real* = object\n" + // 10
-	"    b*: int\n" // 11
+	"  Odd {packed.} = object\n" + // 4
+	"    o*: int\n" + // 5
+	"  Spaced { .packed. } = object\n" + // 6
+	"    s*: int\n" + // 7
+	"  Real* = object\n" + // 8
+	"    b*: int\n" // 9
 
 // prag7213UnterminatedPragma — the ABSORPTION shape. `Bad` opens a pragma and
 // never closes it on its own line. If the pragma body is allowed to match a
@@ -288,6 +294,49 @@ const prag7213NewlineBeforeEquals = "type\n" + // 1
 	"  Beta* = enum\n" + // 5
 	"    b\n" // 6
 
+// prag7213CloseAndSpacing — the two axes #7230's review round left ungraded:
+// the WHITESPACE before the pragma (review CM-15) and the CLOSING delimiter.
+// Every member is a line taken from the measured population, not invented:
+//
+//	line 2  `TIdent*{.acyclic.}`      Nim/tests/lexer/tident.nim — NO space
+//	                                  between the export marker and the pragma.
+//	                                  113 of the 839 recovered sites, 13.5%.
+//	line 4  `{.exportc: "ExtObject"}` Nim/tests/ccgbugs/tcgbug.nim — closed with
+//	                                  a PLAIN `}`. 7 sites.
+//	line 6  `MyPtr*[T]{.importcpp…}`  Nim/tests/cpp/tcovariancerules.nim — no
+//	                                  space after the GENERIC list either, which
+//	                                  is the cell where the two axes cross.
+//	line 8  `TAnimal{.inheritable.}=` Nim/tests/typerel/tcommontype.nim — no
+//	                                  space anywhere: no export marker, none
+//	                                  before the pragma, none around the `=`.
+//	line 10 `TDog=object`             Nim/tests/typerel/tcommontype.nim — the
+//	                                  PRAGMA-FREE arm of the same separator.
+//
+// CM-15 made the separator `[ \t]+` instead of `[ \t]*` and the whole package
+// stayed green, so a pragma written directly against the name minted nothing
+// and nothing noticed. Lines 2, 6 and 8 are what notices.
+//
+// That separator is UNCONDITIONAL — it sits outside the optional pragma group —
+// so it serves pragma-free declarations too, and CM-15 broke those as well.
+// Line 10 grades that arm without needing a verdict on `Gamma*= object`, the
+// shape the review flagged as unsettleable: `*=` is a run of operator
+// characters and `identVis = symbol OPR?` accepts it as the visibility marker,
+// which would leave no `=` for `typeDef`'s `('=' optInd typeDefValue)?` — so it
+// is probably not a type definition at all. It has 0 sites in the population,
+// no row asserts anything about it, and `TDog=object` (2 sites, same file)
+// covers the arm instead. 6 pragma-free no-space-before-`=` sites in all.
+const prag7213CloseAndSpacing = "type\n" + // 1
+	"  TIdent*{.acyclic.} = object\n" + // 2
+	"    name*: string\n" + // 3
+	"  MyObject {.exportc: \"ExtObject\"} = object\n" + // 4
+	"    x*: int\n" + // 5
+	"  MyPtr*[T]{.importcpp: \"'0 *\".} = object\n" + // 6
+	"    p*: T\n" + // 7
+	"  TAnimal{.inheritable.}=object\n" + // 8
+	"    a*: int\n" + // 9
+	"  TDog=object\n" + // 10
+	"    d*: bool\n" // 11
+
 func prag7213Corpus() map[string]string {
 	return map[string]string{
 		"7213/packed":               prag7213Packed,
@@ -304,6 +353,7 @@ func prag7213Corpus() map[string]string {
 		"7213/pragmaNoKindClause":   prag7213PragmaNoKindClause,
 		"7213/braceInPragmaBody":    prag7213BraceInPragmaBody,
 		"7213/newlineBeforeEquals":  prag7213NewlineBeforeEquals,
+		"7213/closeAndSpacing":      prag7213CloseAndSpacing,
 	}
 }
 
@@ -405,6 +455,19 @@ func TestPragmaMember7213_DistinctAndTupleKinds(t *testing.T) {
 
 // --- the forbidden rows, each with its positive control ---------------------
 
+// MUST-HAVE: a pragma written with no whitespace before it, and a pragma closed
+// with a plain `}`. Both are ordinary Nim and both are corpus-attested; neither
+// was graded before #7230's CM-15.
+func TestPragmaMember7213_NoSpaceBeforePragmaAndPlainCloseBrace(t *testing.T) {
+	ents := prag7213WantComponents(t, prag7213CloseAndSpacing, "TIdent", "MyObject", "MyPtr", "TAnimal", "TDog")
+	prag7213Want(t, ents, "TIdent", "object", 2, 3)
+	prag7213Want(t, ents, "MyObject", "object", 4, 5)
+	prag7213Want(t, ents, "MyPtr", "object", 6, 7)
+	prag7213Want(t, ents, "TAnimal", "object", 8, 9)
+	// The pragma-FREE arm of the same unconditional separator.
+	prag7213Want(t, ents, "TDog", "object", 10, 11)
+}
+
 // FORBIDDEN: braces that are not Nim pragma delimiters. Kills a widening to
 // `\{[^}\n]*\}` (line 2) and one to `\{\.[^}\n]*\}` (line 4).
 func TestPragmaMember7213_ForbiddenBareBraces(t *testing.T) {
@@ -412,7 +475,7 @@ func TestPragmaMember7213_ForbiddenBareBraces(t *testing.T) {
 	// POSITIVE CONTROL: the surviving member proves the fixture reaches the
 	// extractor and yields records, so the two absences above are enforced
 	// rather than merely unreachable.
-	prag7213Want(t, ents, "Real", "object", 10, 11)
+	prag7213Want(t, ents, "Real", "object", 8, 9)
 }
 
 // FORBIDDEN: the pragma body may not cross a line, because an unterminated `{.`
@@ -510,8 +573,8 @@ func TestPragmaMember7213_SetComparatorFires(t *testing.T) {
 // pragma-carrying members again, moves this number.
 func TestPragmaMember7213_CorpusRecallFloor(t *testing.T) {
 	corpus := prag7213Corpus()
-	if len(corpus) < 14 {
-		t.Fatalf("corpus floor: %d fixtures, want >= 14 — a shrunken corpus makes these rows vacuous", len(corpus))
+	if len(corpus) < 15 {
+		t.Fatalf("corpus floor: %d fixtures, want >= 15 — a shrunken corpus makes these rows vacuous", len(corpus))
 	}
 	total, withPragma := 0, 0
 	for name, src := range corpus {
@@ -529,18 +592,18 @@ func TestPragmaMember7213_CorpusRecallFloor(t *testing.T) {
 			t.Errorf("%s: no components at all — cannot grade", name)
 		}
 	}
-	// 20 components across the 14 fixtures — 2+2+1+2+1+2+2+1+1+1+1+1+1+2,
+	// 25 components across the 15 fixtures — 2+2+1+2+1+2+2+1+1+1+1+1+1+2+5,
 	// counted off the fixture sources in prag7213Corpus's literal order — of
-	// which 16 carry a pragma on their own declaration line. The four that do
-	// not are Beta (packed), Leaf (genericsThenPragma), Real (bareBraces) and
-	// Beta (newlineBeforeEquals). Derived by reading the fixtures, not from
-	// output. This is an EQUALITY, not a floor: a regression that drops a
+	// which 20 carry a pragma on their own declaration line. The five that do
+	// not are Beta (packed), Leaf (genericsThenPragma), Real (bareBraces),
+	// Beta (newlineBeforeEquals) and TDog (closeAndSpacing). Derived by reading
+	// the fixtures, not from output. This is an EQUALITY, not a floor: a regression that drops a
 	// pragma-carrying member and one that mints an extra entity both move it.
-	if total != 20 {
-		t.Errorf("corpus emitted %d components, want 20", total)
+	if total != 25 {
+		t.Errorf("corpus emitted %d components, want 25", total)
 	}
-	if withPragma != 16 {
-		t.Errorf("corpus emitted %d pragma-carrying components, want 16", withPragma)
+	if withPragma != 20 {
+		t.Errorf("corpus emitted %d pragma-carrying components, want 20", withPragma)
 	}
 	t.Logf("#7213 corpus: %d components across %d fixtures, %d carrying a pragma", total, len(corpus), withPragma)
 }
