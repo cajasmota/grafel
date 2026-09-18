@@ -267,3 +267,41 @@ module Paths =
 		}
 	}
 }
+
+// TestFSharp7199_OperatorSuffixOpenerDoesNotRunAway is the ARTEFACT-level row
+// for the regression this PR's review caught, and it is here because the
+// helper-level rows alone under-state the damage: a runaway costs an ENTITY at
+// the local-module gate, not merely a scrub that looks wrong.
+//
+// `$$@"`, `.@"`, `?@"`, `$@$"`, `@@"` and `x=@"` are all an OPERATOR followed by
+// an ORDINARY string per lex.fsl — the trailing `op_char*` of every symbolic
+// operator rule swallows the `@`, so the lexer never starts rule 655 there and
+// rule 586 opens an ordinary string, where `\` escapes. Treating them as
+// verbatim ate the closing quote and blanked every remaining byte of the file,
+// which is #7199's own defect in the permissive direction, on shapes the
+// pre-#7199 code read CORRECTLY.
+//
+// Each subtest puts a real `module` below such a literal and asserts the
+// declaration is still minted. The literal bodies all contain `\"` so that a
+// verbatim misreading really does run away rather than merely mis-suppress.
+func TestFSharp7199_OperatorSuffixOpenerDoesNotRunAway(t *testing.T) {
+	for _, lit := range []string{
+		`$$@"a\"b"`,
+		`x .@"a\"b"`,
+		`x ?@"a\"b"`,
+		`x $@$"a\"b"`,
+		`@@"a\"b"`,
+		`x=@"a\"b"`,
+		`x<>@"a\"b"`,
+		`x+@"a\"b"`,
+	} {
+		src := "namespace App\n\nlet p = " + lit + "\n\nmodule Paths =\n    let sep = 1\n"
+		ents := runFSharp(t, src, "src/App.fs")
+		if mod := fs7199Module(ents, "Paths"); mod == nil {
+			t.Errorf("no `Paths` entity below `%s` — the scrub ran away on an operator-suffix opener. "+
+				"Per lex.fsl that is an operator plus an ORDINARY string, where `\\` escapes and the "+
+				"literal closes; reading it as verbatim reintroduces #7199 on a shape the pre-#7199 "+
+				"code handled correctly", lit)
+		}
+	}
+}

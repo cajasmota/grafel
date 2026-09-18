@@ -33,12 +33,20 @@ import (
 // where it should. Only a literal holding a doubled quote AND a later `\`
 // separates them: under the mutant the tail is scanned as an ORDINARY string,
 // where `\` eats the closing quote and the file runs away. Measured — that
-// mutant is ALIVE at 0 without the BOTH cells and DEAD with them. The unterminated column asserts the runaway that a missing
-// terminator MUST still produce: an unterminated verbatim string blanks to EOF
-// exactly as the pre-existing `"unterminated"` row of
-// TestScrubPreservesLengthAndNewlines does for the ordinary form. That is the
-// compiler's reading too (fsc rejects the file), so the three unterminated
-// cells are must-haves, not tolerated damage.
+// mutant is ALIVE at 0 without the BOTH cells and DEAD with them.
+//
+// The unterminated column asserts the runaway that a missing terminator MUST
+// still produce: an unterminated verbatim string blanks to EOF exactly as the
+// pre-existing `"unterminated"` row of TestScrubPreservesLengthAndNewlines does
+// for the ordinary form. That is the compiler's reading too (fsc rejects the
+// file), so the four unterminated cells are must-haves, not tolerated damage.
+//
+// NOTED, not reworked (review round 3): across the mutants scored, no
+// unterminated cell is ever a failing row — the artefact-level
+// TestFSharp7199_UnterminatedVerbatimStringStillSuppresses is what fires. So
+// the four-way escape split WITHIN the unterminated column may grade nothing
+// beyond what one cell would. Four occupied cells is still true and is all
+// that is claimed for it.
 //
 // CROSSED SEPARATELY, in TestScrub7199_OpenerFormsAndAdjacency: the OPENER FORM
 // (the three the lexer admits) against the ADJACENCY of the byte before the
@@ -48,9 +56,20 @@ import (
 // escape content decides where the literal ENDS, adjacency decides which
 // delimiter bytes are SUPPRESSED.
 //
-// NOT crossed, and so not claimed: `$$@"` (extended interpolation — only one
-// `$` is blanked); the `@`-before-a-triple-quote form, where the triple-quote
-// check runs FIRST and DISAGREES with the lexer, recorded and explained by
+// WAS "NOT CLAIMED", NOW SCORED. This list used to open with `$$@"`,
+// described as "extended interpolation — only one `$` is blanked". That was
+// wrong twice: rule 611 needs THREE quotes so extended interpolation does not
+// apply, and the code was not merely blanking it partially — it was entering
+// verbatim mode and blanking the REST OF THE FILE. Naming it here as an
+// accepted gap is precisely what kept it out of the mutant table, so no mutant
+// could surface it. It is now a row in
+// TestScrub7199_InterpolatedNonVerbatimIsUNCHANGED and a cell of
+// TestScrub7199_OpenerFormsAndAdjacency. Disclosure is not coverage: a shape
+// named in a "not claimed" list is a reason to score it.
+//
+// STILL not crossed, and so not claimed: the `@`-before-a-triple-quote form,
+// where the triple-quote check runs FIRST and DISAGREES with the lexer —
+// recorded and explained by
 // TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC; and a
 // verbatim string inside a block comment (the comment arm consumes it before
 // the quote arm is reached).
@@ -203,88 +222,177 @@ func TestScrub7199_VerbatimBodyIsStillBlanked(t *testing.T) {
 	}
 }
 
-// # THE ADJACENCY AXIS (review finding 1/3)
+// # THE OPENER / ADJACENCY AXIS (review findings 1 and 3, round 3)
 //
 // Every cell of scrubCases7199 has a SPACE before the `@`, so that table holds
-// adjacency constant and grades none of it. Two mutants proved the gap: blanking
-// one byte FURTHER back than the opener (eating the `(` of `(@"abc")`) was ALIVE
-// against the whole package, and so was the question of whether an identifier
-// abutting the opener changes anything.
+// this axis constant and grades none of it. Three separate defects lived here,
+// each ALIVE at 0 against the whole package before this table existed:
 //
-// The table below crosses OPENER FORM × ADJACENCY and asserts three separate
-// things per row, so neither half can regress silently:
+//  1. over-blanking one byte PAST the opener, eating the `(` of `(@"abc")`;
+//  2. accepting a bare `$` as an opener, taking the C-style escape away from
+//     `$"a\"b"`;
+//  3. worst, and found by review: entering verbatim mode on OPERATOR-SUFFIX
+//     openers (`$$@"`, `.@"`, `?@"`, `$@$"`, `@@"`, `x=@"`, `x<>@"`, `x+@"`,
+//     `x&@"`, `x|@"`, `x!@"`, `x*@"`). The lexer opens an ORDINARY string
+//     there, so treating it as verbatim ate the closing quote and blanked the
+//     rest of the file — #7199's own defect, reintroduced permissively.
 //
-//   - tailVisible — the runaway is fixed (or, for `$"`, never existed);
-//   - the byte BEFORE the opener always survives — suppression never reaches
-//     outside the literal, which is the `insideBraces` harm the ordinary-path
-//     row already pins for `("abc")` and nothing pinned for `@"`;
-//   - prefixBlanked — whether the `@`/`$` prefix bytes are blanked, which is a
-//     DELIBERATE function of adjacency and not incidental. See the call site in
-//     extractor.go: where the opener abuts an identifier the prefix stays
-//     visible on purpose, so no CALLS edge can be fabricated out of an
-//     unexecuted lexing claim.
-func TestScrub7199_OpenerFormsAndAdjacency(t *testing.T) {
-	cases := []struct {
-		label string
-		// before is the text between `let p = ` and the opener; it sets the
-		// adjacency being tested.
-		before string
-		opener string
-		// prefixBlanked says whether the opener's `@`/`$` bytes become spaces.
-		prefixBlanked bool
-	}{
-		// NOT abutting an identifier — prefix blanked.
-		{"space before @", "", `@`, true},
-		{"open paren before @", "(", `@`, true},
-		{"comma before @", "(1,", `@`, true},
-		{"open bracket before @", "[", `@`, true},
-		{"equals before @", "x=", `@`, true},
-		{"interpolated verbatim $@", "", `$@`, true},
-		{"interpolated verbatim @$", "", `@$`, true},
-		// ABUTTING an identifier or a closing bracket — prefix left visible.
-		// Per the F# lexer these ARE verbatim strings (see
-		// verbatimOpenerStart), so the runaway is still fixed; only the
-		// blanking of the prefix is withheld.
-		{"identifier before @", "helper", `@`, false},
-		{"close bracket before @", "[1]", `@`, false},
-		{"close paren before @", "f()", `@`, false},
-		{"digit before @", "x1", `@`, false},
-		{"primed identifier before @", "c'", `@`, false},
+// EACH CELL IS ASSERTED WITH TWO BODIES, which is what makes it a verdict about
+// the READING rather than a single-sided smoke test. The two bodies fail in
+// opposite directions, so no cell can pass by accident:
+//
+//	`C:\`    verbatim -> `\` is ordinary, the literal closes, tail SURVIVES
+//	         ordinary -> `\` escapes the closer, runaway, tail SWALLOWED
+//	`a\"b`   verbatim -> closes early at the inner quote, runaway, SWALLOWED
+//	         ordinary -> `\"` is an escape, the literal closes, tail SURVIVES
+//
+// So `wantVerbatim` is checked twice per cell, once from each side, and a cell
+// that is silently reclassified fails both ways instead of neither.
+type openerCase7199 struct {
+	label string
+	// before is the text between `let p = ` and the opener; it sets the
+	// adjacency being tested.
+	before string
+	opener string
+	// wantVerbatim is the F# LEXER's reading of this cell — see
+	// verbatimOpenerStart for the rule citations, including why rule 976 makes
+	// `x=$@"` verbatim while `x=@"` is not.
+	wantVerbatim bool
+	// prefixBlanked applies only to verbatim cells: whether the opener's
+	// `@`/`$` bytes become spaces. For ORDINARY cells the prefix is an operator,
+	// i.e. real code, and must survive untouched — asserted as such below.
+	prefixBlanked bool
+}
+
+func openerCases7199() []openerCase7199 {
+	return []openerCase7199{
+		// ---- VERBATIM, not abutting an identifier: prefix blanked ----
+		{"space before @", "", `@`, true, true},
+		{"open paren before @", "(", `@`, true, true},
+		{"comma before @", "(1,", `@`, true, true},
+		{"open bracket before @", "[", `@`, true, true},
+		{"interpolated verbatim $@", "", `$@`, true, true},
+		{"interpolated verbatim @$", "", `@$`, true, true},
+		// ---- VERBATIM, abutting an identifier: prefix left visible ----
+		// Per rule 655 these ARE verbatim strings, so the runaway is fixed; only
+		// the blanking is withheld, so no CALLS edge rests on that reading.
+		{"identifier before @", "helper", `@`, true, false},
+		{"close bracket before @", "[1]", `@`, true, false},
+		{"close paren before @", "f()", `@`, true, false},
+		{"digit before @", "x1", `@`, true, false},
+		{"primed identifier before @", "c'", `@`, true, false},
+		// An identifier before the TWO-byte openers still opens one: rule 670
+		// matches three bytes and beats the two-byte operator munch.
+		{"identifier before $@", "x", `$@`, true, false},
+		// ---- VERBATIM via rule 976: `=` then a TWO-byte opener ----
+		// `| '=' ("$@" | "@$") '"'` consumes the `=` and rewinds, so the opener
+		// is re-lexed as verbatim. The `=` is an op_char, so these two cells are
+		// the exception that stops the guard being a flat byte list.
+		{"equals before $@ (rule 976)", "x=", `$@`, true, true},
+		{"equals before @$ (rule 976)", "x=", `@$`, true, true},
+		// ---- ORDINARY: a longer operator munch reaches the quote ----
+		// `ignored_op_char*` is `.$?` and every operator rule ends in `op_char*`,
+		// which includes `@`; so the token starting at or before the preceding
+		// operator byte swallows the `@` and rule 586 opens an ordinary string.
+		// There is NO `'=' '@' '"'` rule, which is why `x=@` is here while
+		// `x=$@` is above.
+		{"double dollar before @", "", `$$@`, false, false},
+		{"dot before @", "x ", `.@`, false, false},
+		{"question before @", "x ", `?@`, false, false},
+		{"dollar-at-dollar", "x ", `$@$`, false, false},
+		{"doubled at", "", `@@`, false, false},
+		// NOTE THE REALISTIC SPELLING OF THIS CELL: `let p=@"C:\"`, with no space
+		// around the `=`, is an operator `=@` plus an ORDINARY string, so #7199
+		// does NOT fix it and the file still blanks to EOF. That is not a
+		// regression — pre-#7199 every `@"C:\"` ran away, so this shape is
+		// UNCHANGED — and it is not a defect either: fsc rejects the file, and
+		// rule 976 was added upstream (dotnet/fsharp#16696) for `=$"` and
+		// `=$@"`/`=@$"` precisely because this class does not lex the way a reader
+		// expects. Matching the compiler beats out-guessing it, as with `(*)`.
+		// `let p = @"C:\"` — with the space — is verbatim and IS fixed.
+		{"equals before @ (no 976 rule)", "x=", `@`, false, false},
+		{"compare op before @", "x<>", `@`, false, false},
+		{"plus before @", "x+", `@`, false, false},
+		{"amp before @", "x&", `@`, false, false},
+		{"bar before @", "x|", `@`, false, false},
+		{"bang before @", "x!", `@`, false, false},
+		{"star before @", "x*", `@`, false, false},
 	}
-	for _, tc := range cases {
-		// A trailing backslash inside the literal, so a row that fails to
-		// enter verbatim mode runs away and `tail` disappears.
-		src := "let p = " + tc.before + tc.opener + "\"C:\\\"\nlet after = 1\n"
-		got := stripStringsAndComments(src)
+}
 
-		if len(got) != len(src) {
-			t.Errorf("%s: len(scrub) = %d, want %d", tc.label, len(got), len(src))
-			continue
-		}
-		if !strings.Contains(got, "let after = 1") {
-			t.Errorf("%s: code after the literal was swallowed — %q", tc.label, got)
+func TestScrub7199_OpenerFormsAndAdjacency(t *testing.T) {
+	for _, tc := range openerCases7199() {
+		prefix := "let p = " + tc.before + tc.opener
+		// Body 1: a trailing backslash. Verbatim reads it as an ordinary
+		// character and the tail survives; an ordinary string escapes the closer
+		// and runs away.
+		srcBackslash := prefix + "\"C:\\\"\nlet after = 1\n"
+		// Body 2: an escaped quote. The verdicts are exactly inverted.
+		srcEscape := prefix + "\"a\\\"b\"\nlet after = 1\n"
+
+		for _, probe := range []struct {
+			name        string
+			src         string
+			wantTailFor bool // the wantVerbatim value for which the tail survives
+		}{
+			{"trailing backslash", srcBackslash, true},
+			{"escaped quote", srcEscape, false},
+		} {
+			got := stripStringsAndComments(probe.src)
+			if len(got) != len(probe.src) {
+				t.Errorf("%s / %s: len(scrub) = %d, want %d", tc.label, probe.name, len(got), len(probe.src))
+				continue
+			}
+			if strings.Count(got, "\n") != strings.Count(probe.src, "\n") {
+				t.Errorf("%s / %s: newline count changed", tc.label, probe.name)
+			}
+			tailSurvived := strings.Contains(got, "let after = 1")
+			wantTail := tc.wantVerbatim == probe.wantTailFor
+			if tailSurvived != wantTail {
+				verdict := "ORDINARY"
+				if tc.wantVerbatim {
+					verdict = "VERBATIM"
+				}
+				t.Errorf("%s / %s: tail survived = %v, want %v — this cell must be read as %s per the F# lexer "+
+					"(see verbatimOpenerStart); scrub = %q",
+					tc.label, probe.name, tailSurvived, wantTail, verdict, got)
+			}
 		}
 
-		openerAt := strings.Index(src, tc.opener+"\"")
+		// The remaining assertions are about WHICH BYTES move, measured on the
+		// backslash body.
+		got := stripStringsAndComments(srcBackslash)
+		openerAt := strings.Index(srcBackslash, tc.opener+"\"")
 		if openerAt < 0 {
 			t.Fatalf("%s: fixture does not contain its own opener %q", tc.label, tc.opener)
 		}
-		// The byte before the opener must survive in EVERY row — this is the
-		// assertion that over-blanking past the delimiter has to fail.
-		if openerAt > 0 && got[openerAt-1] != src[openerAt-1] {
-			t.Errorf("%s: suppression reached OUTSIDE the literal: byte %d was %q and is now %q — scrub %q",
-				tc.label, openerAt-1, src[openerAt-1], got[openerAt-1], got)
+
+		// Suppression must never reach OUTSIDE the literal.
+		//
+		// PARTIALLY VACUOUS BY CONSTRUCTION, stated so a rewrite does not shed
+		// the live cells and keep the dead ones: in the three cells whose
+		// preceding byte is a SPACE (`space before @`, `$@`, `@$`), over-blanking
+		// writes a space over a space and this assertion CANNOT fail. It is live
+		// in the other cells, where the preceding byte is `(`, `,`, `[`, an
+		// identifier byte, or an operator — and that is what kills the
+		// over-blank mutant.
+		if openerAt > 0 && got[openerAt-1] != srcBackslash[openerAt-1] {
+			t.Errorf("%s: suppression reached OUTSIDE the literal: byte %d was %q, now %q — scrub %q",
+				tc.label, openerAt-1, srcBackslash[openerAt-1], got[openerAt-1], got)
 		}
-		// And the prefix itself, in whichever direction this row claims.
-		prefix := got[openerAt : openerAt+len(tc.opener)]
-		blanked := strings.TrimSpace(prefix) == ""
-		if blanked != tc.prefixBlanked {
-			t.Errorf("%s: opener prefix %q scrubbed to %q (blanked=%v), want blanked=%v — the adjacency rule at the call site changed",
-				tc.label, tc.opener, prefix, blanked, tc.prefixBlanked)
-		}
-		// The body is suppressed either way.
-		if strings.Contains(got, "C:") {
-			t.Errorf("%s: the literal body leaked — %q", tc.label, got)
+
+		openerBytes := got[openerAt : openerAt+len(tc.opener)]
+		if tc.wantVerbatim {
+			blanked := strings.TrimSpace(openerBytes) == ""
+			if blanked != tc.prefixBlanked {
+				t.Errorf("%s: opener %q scrubbed to %q (blanked=%v), want blanked=%v — the adjacency rule at the call site changed",
+					tc.label, tc.opener, openerBytes, blanked, tc.prefixBlanked)
+			}
+		} else if openerBytes != tc.opener {
+			// An ORDINARY cell's prefix is an OPERATOR — real code. Blanking it
+			// would delete a token the call scanners read.
+			t.Errorf("%s: the operator %q was scrubbed to %q, but it is code, not part of a literal — scrub %q",
+				tc.label, tc.opener, openerBytes, got)
 		}
 	}
 }
@@ -313,6 +421,35 @@ func TestScrub7199_InterpolatedNonVerbatimIsUNCHANGED(t *testing.T) {
 	if !strings.Contains(got, "$") {
 		t.Errorf("the `$` of a non-verbatim interpolated string was blanked as if it were a verbatim opener — %q", got)
 	}
+
+	// `$$@"` IS NOT EXTENDED INTERPOLATION, and it is not a verbatim opener
+	// either. An earlier revision of this file listed it under "not claimed" as
+	// "extended interpolation, only one `$` blanked" — wrong twice over, and
+	// naming it as an accepted gap is what stopped it being scored while the
+	// code was in fact entering verbatim mode on it and blanking the rest of
+	// the file.
+	//
+	// Rule 611 (`('$'+) '"' '"' '"'`) requires THREE quotes, so it does not
+	// apply here at all. What applies is the operator rule
+	// `967 | ignored_op_char* ('@'|'^') op_char*` with
+	// `ignored_op_char = '.' | '$' | '?'`: it munches `$$@` as one
+	// INFIX_AT_HAT_OP, leaving rule 586 to open an ORDINARY string at the quote
+	// — where `\` escapes.
+	t.Run("$$@ is an operator plus an ORDINARY string, not a verbatim opener", func(t *testing.T) {
+		src := "let s = $$@\"a\\\"b\"\nlet after = 1\n"
+		got := stripStringsAndComments(src)
+
+		if !strings.Contains(got, "let after = 1") {
+			t.Errorf("the rest of the file was swallowed — `$$@\"a\\\"b\"` was read as a verbatim string, so the "+
+				"escaped quote closed it early and the reopened quote ran to EOF. This is #7199's own defect: %q", got)
+		}
+		if strings.Contains(got, "b") {
+			t.Errorf("the literal body leaked — `\\\"` must still escape here: %q", got)
+		}
+		if !strings.Contains(got, "$$@") {
+			t.Errorf("the `$$@` operator was blanked, but it is code rather than part of a literal: %q", got)
+		}
+	})
 }
 
 // TestScrub7199_SuppressedBytesAreSpaces pins the representation every caller

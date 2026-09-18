@@ -1645,92 +1645,6 @@ func scrubKeepingQuote(src string) string {
 // The byte LENGTH is unchanged either way — `out` is allocated at len(src) and
 // every write is an in-place assignment to an existing index — so all the byte
 // offsets the callers carry across the scrub boundary stay valid.
-// verbatimOpenerStart reports the index at which the VERBATIM-string opener
-// ending at the quote src[q] begins, or -1 if src[q] does not open a verbatim
-// string.
-//
-// THE THREE OPENERS ARE THE LEXER'S, NOT A GUESS. dotnet/fsharp
-// `src/Compiler/lex.fsl`, all inside `rule token`, carries exactly these string
-// openers:
-//
-//	586  | '"'                      // ordinary   — `\` escapes
-//	599  | '$' '"' '"' '"'          // interpolated triple
-//	611  | ('$'+) '"' '"' '"'       // extended interpolated triple
-//	626  | '$' '"'                  // interpolated, NOT verbatim — `\` escapes
-//	640  | '"' '"' '"'              // triple-quoted
-//	655  | '@' '"'                  // VERBATIM
-//	670  | ("$@" | "@$") '"'        // interpolated VERBATIM, either order
-//
-// So `@"`, `$@"` and `@$"` admit a verbatim body and a plain `$"` does not.
-// That is why a `$` is accepted here only WITH an `@` beside it: widening this
-// to any `$` would silently take the C-style escape away from `$"a\"b"`.
-//
-// THE `xs@"abc"` QUESTION IS SETTLED BY THE SAME FILE, and it matters because
-// `@` is also F#'s list-append operator (`xs @ ["a"]`), so `xs@"abc"` looks
-// ambiguous between a verbatim string and an append against a string literal.
-// It is not ambiguous to the lexer:
-//
-//   - the append rule is `967 | ignored_op_char* ('@'|'^') op_char*`, and
-//     `op_char` (line 238) does NOT include `"`, so at the `@` that rule
-//     matches ONE byte;
-//   - rule 655 matches TWO;
-//   - fslex resolves by LONGEST match, file order only breaking ties. Proven
-//     from this same file rather than assumed: `586 | '"'` precedes
-//     `640 | '"' '"' '"'`, so under first-match-wins the triple-quote rule
-//     would be unreachable dead code and F# would have no triple-quoted
-//     strings.
-//
-// Longest match therefore makes `@"` win: `xs@"abc"` is `xs` applied to a
-// verbatim string. NOT EXECUTED — there is no F# toolchain on this machine, so
-// this is read off the reference implementation's lexer, not observed from a
-// compile. Because it is unexecuted, the CALLS-edge consequence of it is
-// declined at the call site above even though the mode is applied.
-//
-// Not handled, and so not claimed: `$$@"` (extended interpolation) blanks only
-// one `$`, and `@"""` never reaches here at all — the triple-quote check runs
-// first, which DISAGREES with the lexer, since no rule matches `@` followed by
-// three quotes (verified: zero such rules in lex.fsl) and so longest match at
-// the `@` would give `@"`. Recorded by
-// TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC.
-func verbatimOpenerStart(src string, q int) int {
-	if q == 0 {
-		return -1
-	}
-	switch src[q-1] {
-	case '@':
-		if q >= 2 && src[q-2] == '$' {
-			return q - 2 // $@"
-		}
-		return q - 1 // @"
-	case '$':
-		if q >= 2 && src[q-2] == '@' {
-			return q - 2 // @$"
-		}
-	}
-	return -1
-}
-
-// abutsIdentifier reports whether b is a byte an F# identifier or a closing
-// bracket can end with — i.e. whether a `@"` immediately after it could instead
-// be read as the list-append operator applied to a string literal. Used ONLY to
-// decide whether the opener's prefix bytes are blanked, never whether a
-// verbatim string is opened. Non-ASCII is included because F# identifiers admit
-// Unicode letters.
-func abutsIdentifier(b byte) bool {
-	switch {
-	case b >= '0' && b <= '9',
-		b >= 'a' && b <= 'z',
-		b >= 'A' && b <= 'Z',
-		b >= 0x80:
-		return true
-	}
-	switch b {
-	case '_', '\'', '`', '.', ')', ']', '}':
-		return true
-	}
-	return false
-}
-
 func stripStringsAndComments(src string) string {
 	out := make([]byte, len(src))
 	i := 0
@@ -1792,44 +1706,51 @@ func stripStringsAndComments(src string) string {
 				inTriple = true
 				continue
 			}
-			// Check for verbatim string @"..." — see verbatimOpenerStart for
-			// which prefixes open one and why those three.
+			// Check for verbatim string @"..." — see verbatimOpenerStart for which
+			// prefixes open one, and for why a preceding operator byte disqualifies
+			// the opener entirely.
 			//
-			// TWO DECISIONS, DELIBERATELY SEPARATE (#7199). Entering verbatim
-			// MODE is unconditional on adjacency; blanking the `@`/`$` prefix
-			// BYTES is not. Keeping them apart is what lets the runaway fix be
-			// faithful to the lexer without betting a FABRICATED EDGE on that
-			// faithfulness:
+			// TWO DECISIONS, DELIBERATELY SEPARATE (#7199). Whether a verbatim
+			// string is OPENED is decided by the lexer's rules alone; whether the
+			// opener's `@`/`$` prefix BYTES are blanked is decided by adjacency.
+			// Keeping them apart is what lets the runaway fix follow the lexer
+			// without betting a FABRICATED EDGE on an unexecuted reading of it:
 			//
-			//   - MODE: `@"` opens a verbatim string wherever it appears, so
-			//     the runaway is fixed in every adjacency position.
-			//   - PREFIX BYTES: blanked only when the opener does not abut an
-			//     identifier or a closing bracket. Where it does — `xs@"abc"`,
-			//     the one shape where `@` could instead be read as the
-			//     list-append operator — the `@` is left VISIBLE, exactly as it
-			//     was before this mode existed.
+			//   - OPENING: `@"`, `$@"` and `@$"` open a verbatim string in any
+			//     position where the lexer would actually start a token there. NOT
+			//     "unconditional on adjacency" — that earlier framing was wrong in
+			//     the permissive direction and reintroduced this issue's own defect
+			//     on operator-suffix shapes like `$$@"` and `x=@"`, where a longer
+			//     operator munch reaches the quote and the lexer opens an ORDINARY
+			//     string. verbatimOpenerStart carries the rule citations and the
+			//     measurements.
+			//   - BLANKING: done only where the opener does not abut an identifier
+			//     or a closing bracket. Where it does — `xs@"abc"`, the shape a
+			//     reader is most likely to read as the list-append operator — the
+			//     `@` is left VISIBLE, as it was before this mode existed.
 			//
-			// Why the prefix is blanked at all: a leaked body behind a
-			// surviving `@` cannot match the `^\s*`-anchored patterns
-			// (moduleRE, the inheritance clauses), so a scrub that stopped
-			// suppressing a verbatim body was INVISIBLE to every anchored
-			// consumer, and the forbidden row that watches for it was vacuous.
-			// Blanking defends the verbatim path for the same reason the
-			// ordinary path is defended, instead of by a delimiter left lying
-			// in the output.
+			// Why the prefix is blanked at all: a leaked body behind a surviving `@`
+			// cannot match the `^\s*`-anchored patterns (moduleRE, the inheritance
+			// clauses), so a scrub that stopped suppressing a verbatim body was
+			// INVISIBLE to every anchored consumer and the forbidden row watching
+			// for it was vacuous. Blanking defends the verbatim path for the same
+			// reason the ordinary path is defended, instead of by a delimiter left
+			// lying in the output.
 			//
-			// Why NOT where it abuts an identifier: blanking the `@` is what
-			// makes scrubKeepingQuote present ` "` instead of `@"`, which makes
-			// spaceAppRE read `helper@"C:\tmp"` as a space application and mint
-			// a CALLS edge to `helper`. Per the lexer that edge is CORRECT (see
-			// verbatimOpenerStart), but a wrong edge reads as valid to every
-			// consumer while a missing one is detectable, so on the one
-			// contested shape this declines to mint rather than betting. The
-			// cost is one edge on a shape with no measured incidence; the
-			// benefit is that no unexecuted lexing claim can fabricate one.
+			// Why NOT where it abuts an identifier: blanking the `@` is what makes
+			// scrubKeepingQuote present ` "` instead of `@"`, which makes spaceAppRE
+			// read `helper@"C:\tmp"` as a space application and mint a CALLS edge to
+			// `helper`. Per the lexer that edge is CORRECT, but the reading is
+			// unexecuted and a wrong edge reads as valid to every consumer while a
+			// missing one is detectable, so this one shape declines to mint rather
+			// than betting. SCOPED CLAIM, not a general one: the test is spelled as
+			// adjacency, so it covers the ZERO-SPACE spelling only. `xs @$"abc"`
+			// does mint an `xs` edge — correctly, since rule 670's three-byte match
+			// beats the two-byte operator munch there, so it is a GAINED TRUE edge
+			// rather than a fabricated one.
 			//
-			// Length is preserved throughout: every write is an in-place
-			// assignment to an index that already exists.
+			// Length is preserved throughout: every write is an in-place assignment
+			// to an index that already exists.
 			if start := verbatimOpenerStart(src, i); start >= 0 {
 				out[i] = ' '
 				if start == 0 || !abutsIdentifier(src[start-1]) {
@@ -1915,4 +1836,130 @@ func stripStringsAndComments(src string) string {
 		}
 	}
 	return string(out)
+}
+
+// verbatimOpenerStart reports the index at which the VERBATIM-string opener
+// ending at the quote src[q] begins, or -1 if src[q] does not open a verbatim
+// string.
+//
+// THE OPENERS AND THE GUARD ARE BOTH THE LEXER'S, NOT A GUESS. dotnet/fsharp
+// `src/Compiler/lex.fsl`, all inside `rule token` (line 336), carries exactly
+// these double-quote-opening rules -- there are no others:
+//
+//	586  | '"'                      // ordinary   -- `\` escapes
+//	599  | '$' '"' '"' '"'          // interpolated triple
+//	611  | ('$'+) '"' '"' '"'       // extended interpolated triple
+//	626  | '$' '"'                  // interpolated, NOT verbatim -- `\` escapes
+//	640  | '"' '"' '"'              // triple-quoted
+//	655  | '@' '"'                  // VERBATIM
+//	670  | ("$@" | "@$") '"'        // interpolated VERBATIM, either order
+//
+// So `@"`, `$@"` and `@$"` admit a verbatim body and a plain `$"` does not.
+//
+// THE GUARD -- why a preceding operator byte DISQUALIFIES the opener. Rule 655
+// or 670 can only fire if the lexer actually STARTS a token at the opener, and
+// every symbolic-operator rule has the shape
+//
+//	| ignored_op_char* <core> op_char*
+//
+// with `ignored_op_char = '.' | '$' | '?'` (line 240) and `op_char` (line 238)
+// INCLUDING `@`. So when the byte before the opener is any op_char, a token
+// starting at or before it munches through our `@` via that trailing
+// `op_char*`, it is the longer match, and the only rule left to fire at the
+// quote is 586 -- an ORDINARY string, where `\` escapes. Measured, on the
+// commit that lacked this guard: `$$@"a\"b"`, `.@"a\"b"`, `?@"a\"b"`,
+// `$@$"a\"b"`, `@@"a\"b"`, `x=@"a\"b"`, `x<>@"a\"b"`, `x+@"a\"b"`,
+// `x&@"..."`, `x|@"..."`, `x!@"..."` and `x*@"..."` all entered verbatim mode
+// and BLANKED THE REST OF THE FILE -- #7199's own defect, reintroduced
+// permissively on shapes the pre-#7199 code read correctly.
+//
+// THE ONE EXCEPTION, also the lexer's: rule 976
+// `| '=' ("$@" | "@$") '"'` consumes just the `=` and rewinds so the opener is
+// re-lexed, which makes `x=$@"..."` and `x=@$"..."` verbatim after all. There
+// is NO `'=' '@' '"'` rule (verified: zero in the file), so the ONE-byte `@`
+// opener gets no such exception and `x=@"..."` really is operator + ordinary
+// string. That asymmetry is why the guard tests the two-byte forms separately
+// rather than taking a flat list of bytes.
+//
+// THE `xs@"abc"` CASE is admitted, and that is the same longest-match rule read
+// the other way: the append rule is `967 | ignored_op_char* ('@'|'^') op_char*`
+// and `op_char` does not include `"`, so at the `@` it matches ONE byte while
+// 655 matches TWO. Longest match therefore makes `@"` win and `xs@"abc"` is
+// `xs` applied to a verbatim string, not a list append. That fslex resolves by
+// longest match is proven from this same file rather than assumed: `586 | '"'`
+// precedes `640 | '"' '"' '"'`, so under first-match-wins the triple-quote
+// rule would be unreachable dead code and F# would have no triple-quoted
+// strings.
+//
+// NOT EXECUTED -- there is no F# toolchain on this machine, so all of the above
+// is read off the reference implementation's lexer rather than observed from a
+// compile. Because it is unexecuted, the CALLS-edge consequence is declined at
+// the call site for the one shape where a human reader would most likely see an
+// append.
+//
+// Still not handled, and now measured rather than assumed: an `@` before a
+// TRIPLE quote never reaches here, because the triple-quote check runs first --
+// which DISAGREES with the lexer, since no rule matches `@` plus three quotes.
+// Recorded by TestScrub7199_AtTripleQuoteIsReadAsTripleQuote_DISAGREES_WITH_FSC.
+func verbatimOpenerStart(src string, q int) int {
+	if q == 0 {
+		return -1
+	}
+	start := -1
+	twoByte := false // the `$@` / `@$` forms, which rule 976 exempts after a `=`
+	switch src[q-1] {
+	case '@':
+		if q >= 2 && src[q-2] == '$' {
+			start, twoByte = q-2, true // $@"
+		} else {
+			start = q - 1 // @"
+		}
+	case '$':
+		if q >= 2 && src[q-2] == '@' {
+			start, twoByte = q-2, true // @$"
+		}
+	}
+	if start <= 0 {
+		return start // -1 for "not an opener", 0 for an opener at offset 0
+	}
+	prev := src[start-1]
+	if twoByte && prev == '=' {
+		return start // rule 976
+	}
+	if isOpChar(prev) {
+		return -1 // a longer INFIX_AT_HAT_OP-style munch reaches the quote
+	}
+	return start
+}
+
+// isOpChar reports whether b is one of lex.fsl's `op_char` (line 238). Kept as
+// the literal set from that line, in that order, so it can be diffed against
+// the source it came from.
+func isOpChar(b byte) bool {
+	switch b {
+	case '!', '$', '%', '&', '*', '+', '-', '.', '/', '<', '=', '>', '?', '@', '^', '|', '~', ':':
+		return true
+	}
+	return false
+}
+
+// abutsIdentifier reports whether b is a byte an F# identifier or a closing
+// bracket can end with -- i.e. whether a `@"` immediately after it is the shape
+// where a reader could instead see the list-append operator applied to a string
+// literal. Used ONLY to decide whether the opener's prefix bytes are blanked,
+// never whether a verbatim string is opened. Non-ASCII is included because F#
+// identifiers admit Unicode letters.
+func abutsIdentifier(b byte) bool {
+	switch {
+	case b >= '0' && b <= '9',
+		b >= 'a' && b <= 'z',
+		b >= 'A' && b <= 'Z',
+		b >= 0x80:
+		return true
+	}
+	switch b {
+	case '_', '\'', '`', '.', ')', ']', '}':
+		return true
+	}
+	return false
 }
