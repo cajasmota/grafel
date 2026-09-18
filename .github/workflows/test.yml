@@ -434,6 +434,28 @@ jobs:
       # genuine deadlock — precisely what -race exists to surface — otherwise
       # runs to GitHub's 6-hour default on a 10x-billed macOS runner.
       # (refs #1797 / #937 / #2196)
+      #
+      # THE `ci:full` LABEL IS READ IN TWO PLACES, AND THEY MUST STAY IN STEP
+      # (#7219). The third condition below — `contains(github.event.pull_request
+      # .labels.*.name, 'ci:full')` — has NO `github.event_name` guard, so it
+      # matches on the ordinary, UNPRIVILEGED `pull_request` event as well as on
+      # `pull_request_target`. That is not an accident and it is load-bearing
+      # twice over:
+      #   1. It is the existing proof that `github.event.pull_request.labels` is
+      #      present in the plain `pull_request` payload. `strategy.matrix.os`
+      #      above relies on exactly that to keep macOS on a labelled PR after
+      #      the first push, WITHOUT extending `pull_request_target`.
+      #   2. It means a labelled PR was already running ubuntu + windows under
+      #      -race on every push while the macOS leg was silently gone — the
+      #      surviving legs looked MORE thorough, not less, which is part of why
+      #      #7219 went unnoticed for so long.
+      # So: platform selection (`strategy.matrix.os`) and race selection (here)
+      # are two independent readings of the same label. If you ever narrow one
+      # of them — e.g. by adding an `event_name == 'pull_request_target'` guard —
+      # narrow or re-justify the other in the same commit, or the two drift
+      # apart again in precisely the way this issue documents. The
+      # `test-legs-present` job below only guards the platform half; nothing
+      # guards the race half.
       - name: Test
         shell: bash
         run: |
