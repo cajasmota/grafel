@@ -798,10 +798,60 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// ungated). Recorded, not fixed, by
 	// TestLocalModule7151_ScrubRunawayHidesLocalModule_7193.
 	var moduleScrubbed string
+	// ARITY (the derivation the sibling loops in this file refer back to):
+	// moduleRE has exactly 3 capture groups (indent, name, the `=` local-form
+	// marker); its modifier alternation is non-capturing. FindAllStringSubmatchIndex
+	// returns 2*(1+n) = 8 ints per match invariantly — a non-participating group
+	// contributes a `-1,-1` pair rather than being omitted — so reading m[4], m[5]
+	// and m[6] below needs no arity guard. #7197 removed the unreachable
+	// `if len(m) < 8`. An author adding a fourth group changes this invariant,
+	// not the guard.
+	//
+	// The same derivation retired the arity guards on this file's namespaceRE,
+	// letRE, memberRE and typeRE loops (2 groups each, len(m) == 6), the
+	// memberRE re-scan inside the typeRE loop, and the typeRE loop in
+	// compexpr_active_patterns.go — each measured with its own panic probe under
+	// #7197 rather than by transferring this verdict.
+	//
+	// DELIBERATELY LEFT, exhaustively, so this list can be read as complete
+	// (every other `len(...)` guard in these two files, with the reason):
+	//
+	//	compexpr_active_patterns.go, detectCEBuilder (memberRE) and
+	//	  collectBuilderBindings (ceBuilderBindRE), both `len(m) < 3`; and THIS
+	//	  file's collectOpenStatements (openRE), `len(m) < 2`. These call
+	//	  FindAllStringSubmatch, NOT ...Index. That API returns 1+n strings, not
+	//	  2*(1+n) ints, so the bound is arrived at by a DIFFERENT derivation and
+	//	  this comment does not settle them. Dead by that derivation (memberRE
+	//	  and ceBuilderBindRE: 2 groups, len 3; openRE: 1 group, len 2 — all
+	//	  measured), but unmeasured as guards here.
+	//
+	//	  openRE's is the one entry where the DISTINCTION IS LOAD-BEARING, so do
+	//	  not collapse it back into the arithmetic bullet below. Under 2*(1+n) a
+	//	  `< 2` bound is dead for ANY pattern, because the length is at least 2
+	//	  whatever the group count. Under the real 1+n it is dead ONLY because
+	//	  openRE has exactly one group. Make that group non-capturing, or fold it
+	//	  into a wider one, and the length becomes 1, the guard FIRES, and
+	//	  collectOpenStatements silently returns no imports for every F# file.
+	//	  A reader who takes "dead by the same arithmetic" at face value would
+	//	  conclude it was still unreachable — which is why the reason is recorded
+	//	  here and not just the verdict.
+	//	compexpr_active_patterns.go, the compound `len(m) < 4 || m[2] < 0`
+	//	  guards: the arity half is dead by this derivation, but the `m[2] < 0`
+	//	  half is a participation test and the two halves must be graded
+	//	  separately before either is touched.
+	//	this file, the `len(m) < 4` guard in the typeRE-locs loop: ...Index, so
+	//	  dead by the same 2*(1+n) arithmetic as everything above (typeRE has 2
+	//	  groups, len 6). Out of #7197's scope and simply not measured.
+	//
+	// If you are reading this because you found a surviving arity guard nearby,
+	// it should be named above. If it is not, the list has gone stale — fix the
+	// list, do not infer that the guard is reachable.
+	//
+	// Note what this derivation does NOT cover: a guard testing whether an
+	// OPTIONAL group participated (`m[k] >= 0`) is about the `-1,-1` pair, not
+	// about len(m), and can be load-bearing. `isLocal` immediately below is one
+	// such test; it drives behaviour, so both its branches are observable.
 	for _, m := range moduleRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 8 {
-			continue
-		}
 		name := src[m[4]:m[5]]
 		isLocal := m[6] >= 0
 		if isLocal {
@@ -837,10 +887,10 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		})
 	}
 
+	// namespaceRE has 2 capture groups, so len(m) is invariantly 6 — see the
+	// derivation at the moduleRE loop above. #7197 removed the unreachable
+	// `if len(m) < 6`.
 	for _, m := range namespaceRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 6 {
-			continue
-		}
 		name := src[m[4]:m[5]]
 		key := "namespace:" + name
 		if seen[key] {
@@ -873,10 +923,10 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	// re-stating its modifier allowlist here.
 	apClaimed := activePatternLetOffsets(src)
 	letSeen := make(map[string]bool)
+	// letRE has 2 capture groups, so len(m) is invariantly 6 — see the
+	// derivation at the moduleRE loop above. #7197 removed the unreachable
+	// `if len(m) < 6`.
 	for _, m := range letRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 6 {
-			continue
-		}
 		if apClaimed[m[0]] {
 			continue
 		}
@@ -920,10 +970,10 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 
 	// 3. member definitions → SCOPE.Operation
 	memberSeen := make(map[string]bool)
+	// memberRE has 2 capture groups, so len(m) is invariantly 6 — see the
+	// derivation at the moduleRE loop above. #7197 removed the unreachable
+	// `if len(m) < 6`.
 	for _, m := range memberRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 6 {
-			continue
-		}
 		indent := src[m[2]:m[3]]
 		name := src[m[4]:m[5]]
 		// Skip if same name already from let bindings (avoid double-counting)
@@ -981,10 +1031,10 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 
 	// 4. type declarations → SCOPE.Component
 	typeSeen := make(map[string]bool)
+	// typeRE has 2 capture groups, so len(m) is invariantly 6 — see the
+	// derivation at the moduleRE loop above. #7197 removed the unreachable
+	// `if len(m) < 6`.
 	for _, m := range typeRE.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 6 {
-			continue
-		}
 		name := src[m[4]:m[5]]
 		if typeSeen[name] {
 			continue
@@ -1003,10 +1053,11 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		memberRef := make(map[string]bool)
 		// Check members declared at higher indentation after this type
 		typeIndentLen := len(src[m[2]:m[3]])
+		// memberRE has 2 capture groups, so len(pm) is invariantly 6 — see the
+		// derivation at the moduleRE loop above. #7197 removed the unreachable
+		// `if len(pm) < 6`, measured with its own panic probe rather than
+		// transferred from the memberRE loop it re-scans.
 		for _, pm := range memberRE.FindAllStringSubmatchIndex(src, -1) {
-			if len(pm) < 6 {
-				continue
-			}
 			pmIndentLen := len(src[pm[2]:pm[3]])
 			if pmIndentLen <= typeIndentLen {
 				continue
