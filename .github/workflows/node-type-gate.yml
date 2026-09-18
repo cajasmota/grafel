@@ -79,14 +79,27 @@ name: node-type gate
 # ITS FAILURE LIST, exhaustive. `workflow-event-gate` exit 1 means one of:
 #   1. an `if:` guard compares `github.event_name` to an event its workflow's
 #      effective event set does not contain, with no allow-list row;
-#   2. an allow-list row matches nothing while its workflow is still present —
-#      the job it covered was renamed, fixed or deleted and the row must go;
-#   3. the scan read fewer workflows or parsed fewer guards than its floors,
+#   2. an ALLOWED row matches nothing while its workflow is still present — the
+#      job it covered was renamed, fixed or deleted and the row must go;
+#   3. a workflow's guards are unresolvable — it subscribes to `workflow_call`
+#      with no local caller, so its `github.event_name` values come from a
+#      caller this repo cannot see — and no UNRESOLVABLE_ALLOWED row covers it;
+#   4. an UNRESOLVABLE_ALLOWED row matches nothing while its workflow is still
+#      present and resolvable;
+#   5. the scanned filename set or a per-file guard count does not match
+#      SCAN_MANIFEST (the job runs with `--manifest`): a workflow was added,
+#      removed or renamed, or a guard the parser used to see has gone;
+#   6. the scan read fewer workflows or parsed fewer guards than its floors,
 #      i.e. it is not looking at the tree and its verdict means nothing.
-# Exit 2 means the gate could not run (the workflow directory is missing or a
-# file could not be read). Its positive-controls step can fail on its own
-# terms. Same rule as above: do not add a step to that job that can fail for a
-# reason not on this list without extending the list.
+# Exit 2 means the gate could not run: the workflow directory is missing, a
+# file could not be read, or a file has a `jobs:` block out of which no job
+# could be parsed. Its positive-controls step can fail on its own terms.
+#
+# Causes 3-5 were added a round after this job shipped and this list was NOT
+# extended with them, which is the same prose-behind-behaviour rot #7250 is
+# about. Same rule as the job above, and it is not decorative: do not add a
+# step to that job, or a failure path to the gate, that can fail for a reason
+# not on this list without extending the list in the SAME commit.
 
 on:
   # ALWAYS ON. A path filter would be wrong twice over: a grammar bump changes

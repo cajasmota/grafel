@@ -50,6 +50,53 @@ def no_floors(directory: str, *extra: str) -> subprocess.CompletedProcess:
     return run_gate(directory, "--min-workflows", "1", "--min-guards", "1", *extra)
 
 
+# UNRESOLVABLE_ALLOWED is EMPTY in the checked-in gate, on purpose: nothing in
+# this repo is unresolvable, so the exemption channel is closed rather than
+# merely documented. That is also why no mutant on it can be reached from the
+# checked-in tree — the disclosed-as-uncovered shape is where to score, not
+# where to stop. This driver runs the REAL main() with the dict populated, so
+# both arms (suppression, stale-row) are exercised as shipped rather than
+# re-implemented in the test.
+_DRIVER = """
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("weg", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules["weg"] = mod
+spec.loader.exec_module(mod)
+mod.UNRESOLVABLE_ALLOWED.clear()
+mod.UNRESOLVABLE_ALLOWED.update(json.loads(sys.argv[2]))
+sys.argv = ["workflow_event_gate.py"] + sys.argv[3:]
+sys.exit(mod.main())
+"""
+
+
+def run_gate_with_unresolvable_rows(
+    directory: str, rows: dict, *extra: str
+) -> subprocess.CompletedProcess:
+    import json
+
+    driver = os.path.join(directory, "_driver.py")
+    with open(driver, "w", encoding="utf-8") as fh:
+        fh.write(_DRIVER)
+    return subprocess.run(
+        [
+            sys.executable,
+            driver,
+            GATE,
+            json.dumps(rows),
+            "--dir",
+            directory,
+            "--min-workflows",
+            "1",
+            "--min-guards",
+            "1",
+            *extra,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
 class Scratch:
     def __init__(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -712,6 +759,244 @@ class GateTest(unittest.TestCase):
         self.addCleanup(sys.modules.pop, "weg", None)
         spec.loader.exec_module(mod)
         return mod
+
+
+    # ── UNRESOLVABLE_ALLOWED: both arms, on an empty-by-design dict ──────────
+
+    def test_unresolvable_allow_list_row_suppresses(self) -> None:
+        """The suppression arm of the second allow-list.
+
+        The checked-in dict is empty, so no mutant reachable from this tree can
+        grade it — which is exactly why it is driven here with a row injected
+        into the REAL module. Without this, neutering the suppression path left
+        all 29 controls green.
+        """
+        self.s.write(
+            "orphan.yml",
+            """
+            on:
+              workflow_call:
+            jobs:
+              j:
+                if: github.event_name == 'push'
+                runs-on: ubuntu-latest
+                steps:
+                  - run: true
+            """,
+        )
+        bare = no_floors(self.s.dir)
+        self.assertEqual(bare.returncode, 1, "premise: unresolvable must be red")
+
+        r = run_gate_with_unresolvable_rows(
+            self.s.dir, {"orphan.yml": "#9999 justification"}
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ALLOWED (unresolvable) orphan.yml", r.stdout)
+        self.assertIn("#9999", r.stdout)
+
+    def test_unresolvable_allow_list_row_goes_stale(self) -> None:
+        """The staleness arm — the twin that a DEAD verdict on ALLOWED's loop
+        says nothing about.
+
+        A row naming a workflow that is present and perfectly resolvable must
+        fail, the same way a stale ALLOWED row does.
+        """
+        self.s.write(
+            "fine.yml",
+            """
+            on:
+              workflow_dispatch:
+            jobs:
+              j:
+                if: github.event_name == 'workflow_dispatch'
+                runs-on: ubuntu-latest
+                steps:
+                  - run: true
+            """,
+        )
+        clean = no_floors(self.s.dir)
+        self.assertEqual(clean.returncode, 0, "premise: this tree is green")
+
+        r = run_gate_with_unresolvable_rows(
+            self.s.dir, {"fine.yml": "#9999 justification"}
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("STALE UNRESOLVABLE ALLOW-LIST ROW", r.stderr)
+
+    def test_allow_list_row_for_an_absent_file_is_stale_under_manifest(self) -> None:
+        """A row naming a file outside the pinned set is stale, not a NOTE.
+
+        Without --manifest the scanned set is whatever the directory holds, so
+        the row is un-judgeable. With it the set is pinned, so "not there" is a
+        fact and the row must not sit in a green run forever.
+        """
+        r = run_gate_with_unresolvable_rows(
+            self.s.dir, {"nonexistent.yml": "#9999"}, "--manifest"
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("STALE UNRESOLVABLE ALLOW-LIST ROW", r.stderr)
+
+    # ── both operand orders, and the quoted-scalar escape ────────────────────
+
+    def test_reversed_operand_order_is_detected(self) -> None:
+        """`'x' == github.event_name` is legal and was previously invisible.
+
+        Invisible in the one way the manifest cannot backstop: a guard that is
+        never COUNTED produces no drift, so the run stayed green with nothing
+        to notice.
+        """
+        self.s.write(
+            "reversed.yml",
+            """
+            on:
+              workflow_dispatch:
+            jobs:
+              j:
+                if: 'pull_request' == github.event_name
+                runs-on: ubuntu-latest
+                steps:
+                  - run: true
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("reversed.yml", r.stderr)
+        self.assertIn("'pull_request'", r.stderr)
+        self.assertIn("1 github.event_name comparison(s)", r.stdout)
+
+    def test_reversed_operand_order_permissive_direction(self) -> None:
+        """A reversed guard naming a subscribed event must NOT fire.
+
+        Without this, treating every reversed comparison as a violation would
+        satisfy the control above.
+        """
+        self.s.write(
+            "reversed-ok.yml",
+            """
+            on:
+              workflow_dispatch:
+            jobs:
+              j:
+                if: 'workflow_dispatch' == github.event_name
+                runs-on: ubuntu-latest
+                steps:
+                  - run: true
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("1 github.event_name comparison(s)", r.stdout)
+
+    def test_quoted_scalar_with_escaped_quotes_is_read(self) -> None:
+        """`if: '${{ github.event_name == ''x'' }}'` is one legal YAML scalar."""
+        self.s.write(
+            "escaped.yml",
+            """
+            on:
+              workflow_dispatch:
+            jobs:
+              j:
+                if: '${{ github.event_name == ''pull_request'' }}'
+                runs-on: ubuntu-latest
+                steps:
+                  - run: true
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("escaped.yml", r.stderr)
+        self.assertIn("1 github.event_name comparison(s)", r.stdout)
+
+    def test_no_double_counting_of_a_normal_guard(self) -> None:
+        """Two regexes over one expression must not both claim the same guard.
+
+        A silently doubled count would drift SCAN_MANIFEST and make the pin
+        meaningless, so this is graded rather than assumed.
+        """
+        self.s.write(
+            "once.yml",
+            """
+            on:
+              workflow_dispatch:
+            jobs:
+              j:
+                if: github.event_name == 'workflow_dispatch'
+                runs-on: ubuntu-latest
+                steps:
+                  - run: true
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("1 github.event_name comparison(s)", r.stdout)
+
+    # ── --print-manifest actually prints ─────────────────────────────────────
+
+    def test_print_manifest_emits_the_tree_manifest(self) -> None:
+        """It is the tool both the docstring and the MISMATCH message point at.
+
+        A no-op --print-manifest breaks the actionable-message promise: the run
+        tells you to re-derive with a flag that silently prints nothing.
+        """
+        r = run_gate(REAL_WORKFLOWS, "--print-manifest")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('"acceptance.yml": 11,', r.stdout)
+        self.assertIn('"test.yml": 6,', r.stdout)
+        self.assertIn('"windows-cgo-experiment.yml": 6,', r.stdout)
+        printed = [ln for ln in r.stdout.splitlines() if ln.strip().startswith('"')]
+        self.assertEqual(len(printed), 16)
+
+    # ── the host JOB must be reachable, not merely the workflow ──────────────
+
+    def _host_job_block(self) -> str:
+        host = os.path.join(REPO, ".github", "workflows", "node-type-gate.yml")
+        with open(host, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+        start = next(
+            i for i, ln in enumerate(lines) if ln.rstrip() == "  workflow-event-gate:"
+        )
+        end = len(lines)
+        for i in range(start + 1, len(lines)):
+            ln = lines[i]
+            if ln.strip() and not ln.startswith("    ") and not ln.startswith("  #"):
+                end = i
+                break
+        return "\n".join(lines[start:end])
+
+    def test_host_job_cannot_be_skipped_as_success(self) -> None:
+        """A skipped job reports SUCCESS. So does a continue-on-error step.
+
+        The earlier version of this control asserted only the WORKFLOW's
+        triggers, which left `if: false` on the job and `continue-on-error:
+        true` on the step both ALIVE — the 939a0b348 lesson reappearing inside
+        the fix for it. Job-level reachability is asserted here on the job's own
+        text block.
+        """
+        block = self._host_job_block()
+        self.assertIn("runs-on: ubuntu-latest", block, "premise: job block found")
+        self.assertIn("workflow_event_gate.py --manifest", block)
+        for forbidden in ("if:", "continue-on-error", "needs:"):
+            self.assertNotIn(
+                forbidden,
+                block,
+                f"`{forbidden}` in the workflow-event-gate job: it can then be "
+                f"skipped or excused, and a skipped job reports success",
+            )
+
+    def test_host_job_block_extraction_is_not_vacuous(self) -> None:
+        """The control above is worthless if the block is empty or the whole file.
+
+        Both failure modes pass `assertNotIn` trivially, so the extraction is
+        pinned: it must be a real, bounded slice that excludes the sibling job
+        (which legitimately has none of the forbidden keys either, but is not
+        what we are asserting about).
+        """
+        block = self._host_job_block()
+        self.assertTrue(block.startswith("  workflow-event-gate:"))
+        self.assertNotIn("node-type-gate:", block)
+        self.assertNotIn("go run ./tools/node-type-gate", block)
+        self.assertGreater(len(block.splitlines()), 8)
+        self.assertLess(len(block.splitlines()), 60)
 
 
 if __name__ == "__main__":
