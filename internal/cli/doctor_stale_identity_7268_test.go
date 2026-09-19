@@ -25,23 +25,47 @@ package cli
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/process"
 )
 
-// staleFor builds the staleProcess a scan would produce for exe/ppid, deriving
-// IsTmp/IsOrphan exactly as scanGrafelProcs does so the rows below cannot
-// disagree with the scanner about what they represent.
-func staleFor(pid, ppid int, exe string) staleProcess {
-	return staleProcess{
-		PID:      pid,
-		PPID:     ppid,
-		Exe:      exe,
-		IsOrphan: ppid == 1,
-		IsTmp:    strings.HasPrefix(exe, "/tmp/") || exe == "/tmp",
+// staleFor builds the staleProcess a scan would produce for exe/ppid by running
+// the REAL scanGrafelProcs over a one-row synthetic process table.
+//
+// IT MUST NOT DERIVE ANYTHING ITSELF. It used to, with a byte-identical
+// hand-copy of scanGrafelProcs' own lines:
+//
+//	IsOrphan: ppid == 1,
+//	IsTmp:    strings.HasPrefix(exe, "/tmp/") || exe == "/tmp",
+//
+// which made every /tmp-shaped row below grade THIS FILE'S copy of the rule
+// instead of production's. The "/tmpfoo is not under /tmp" row and its
+// `why: "prefix boundary: /tmp/ or exactly /tmp, not /tmp*"` therefore asserted
+// a property nothing observed: widening production to
+// strings.HasPrefix(exe, "/tmp") — which puts /tmpfoo/grafel, /tmpdir/grafel
+// and /tmp-agent/grafel back on the SIGTERM list — left the whole package
+// green. Routing through scanGrafelProcs is what makes the boundary row bite.
+//
+// scanGrafelProcs is handed myPID = -1 so no row is ever skipped as self; the
+// seam is restored immediately rather than via t.Cleanup because the
+// cross-product test calls this helper hundreds of times in one test.
+func staleFor(t *testing.T, pid, ppid int, exe string) staleProcess {
+	t.Helper()
+	prev := findProcs
+	findProcs = func(string) ([]process.Info, error) {
+		return []process.Info{{PID: pid, PPID: ppid, Name: filepath.Base(exe), Exe: exe}}, nil
 	}
+	got, err := scanGrafelProcs(-1)
+	findProcs = prev
+	if err != nil {
+		t.Fatalf("scanGrafelProcs: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("scanGrafelProcs returned %d rows for one input, want 1", len(got))
+	}
+	return got[0]
 }
 
 func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
@@ -149,6 +173,11 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 			wantStale: false,
 			why:       "p.Exe == selfExe",
 		},
+		// The /tmp* family. These now run through scanGrafelProcs' real
+		// derivation (see staleFor), so they grade the production prefix test
+		// rather than a copy of it. Each is a canonical grafel basename with
+		// PPID=1, so criterion 1 fires for all of them the moment the prefix
+		// test is widened from "/tmp/" to "/tmp".
 		{
 			name:      "/tmpfoo is not under /tmp",
 			exe:       "/tmpfoo/grafel",
@@ -156,11 +185,25 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 			wantStale: false,
 			why:       "prefix boundary: /tmp/ or exactly /tmp, not /tmp*",
 		},
+		{
+			name:      "/tmpdir is not under /tmp",
+			exe:       "/tmpdir/grafel",
+			ppid:      1,
+			wantStale: false,
+			why:       "prefix boundary — a sibling directory whose name merely starts with tmp",
+		},
+		{
+			name:      "/tmp-agent is not under /tmp",
+			exe:       "/tmp-agent/grafel",
+			ppid:      1,
+			wantStale: false,
+			why:       "prefix boundary — a separator, not a hyphen, ends the /tmp component",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := staleFor(7268, tc.ppid, tc.exe)
+			p := staleFor(t, 7268, tc.ppid, tc.exe)
 			got := isStaleProc(p, selfExe)
 			if got != tc.wantStale {
 				verb := "SELECTED FOR SIGTERM"
@@ -183,13 +226,13 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 func TestIsStaleProc_SelfIsNeverStale_7268(t *testing.T) {
 	const selfExe = "/opt/grafel/daemon/bin/grafel"
 
-	if isStaleProc(staleFor(1, 100, selfExe), selfExe) {
+	if isStaleProc(staleFor(t, 1, 100, selfExe), selfExe) {
 		t.Errorf("isStaleProc selected self (%q) for SIGTERM", selfExe)
 	}
 	// Control: the identical path at a different install root IS selected, so
 	// the row above cannot pass merely because nothing matches this shape.
 	other := "/opt/grafel/daemon/bin.old/grafel"
-	if !isStaleProc(staleFor(2, 100, other), selfExe) {
+	if !isStaleProc(staleFor(t, 2, 100, other), selfExe) {
 		t.Errorf("isStaleProc did not select %q — criterion 2 is not firing at all, "+
 			"so the self-exclusion above proves nothing", other)
 	}
@@ -222,7 +265,7 @@ func TestIsStaleProc_SelectionImpliesCanonicalBasename_7268(t *testing.T) {
 				if daemon.IsCanonicalBinaryPath(exe) {
 					t.Fatalf("fixture error: %q was meant to be a NON-grafel binary", exe)
 				}
-				if isStaleProc(staleFor(1, ppid, exe), selfExe) {
+				if isStaleProc(staleFor(t, 1, ppid, exe), selfExe) {
 					t.Errorf("isStaleProc selected %q (ppid=%d) for SIGTERM — basename %q is not a grafel binary",
 						exe, ppid, filepath.Base(exe))
 				}

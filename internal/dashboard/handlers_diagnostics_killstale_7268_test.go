@@ -45,7 +45,21 @@ func TestIsStaleDiagnosticsProc_IdentityGate_7268(t *testing.T) {
 		{"self", selfExe, 100, false},
 		// The CLI twin rejects /tmpfoo; this predicate used to accept it via
 		// exe[:4] == "/tmp". Held here so the two cannot drift apart again.
+		// Unlike the CLI, isStaleDiagnosticsProc derives isTmp INSIDE the
+		// function under test, so this row grades the production prefix test
+		// directly — widening it to strings.HasPrefix(exe, "/tmp") fails here
+		// (measured). The CLI twin needed a call-site row for the same
+		// coverage because its derivation lives in scanGrafelProcs.
 		{"/tmpfoo orphan is not a /tmp orphan", "/tmpfoo/grafel", 1, false},
+		{"/tmpdir orphan is not a /tmp orphan", "/tmpdir/grafel", 1, false},
+		{"/tmp-agent orphan is not a /tmp orphan", "/tmp-agent/grafel", 1, false},
+		// NOT COVERAGE OF THE `exe == "/tmp"` ARM, and not claimed to be:
+		// filepath.Base("/tmp") is "tmp", which is not in canonicalBasenames,
+		// so the identity gate rejects this before isTmp is consulted.
+		// Deleting that half of the OR leaves the package green (measured).
+		// The arm is unreachable from this predicate, exactly as isTmpPath's
+		// second arm is unreachable from findCanonicalDaemon (#7211).
+		{"exactly /tmp is a directory, not our binary", "/tmp", 1, false},
 	}
 
 	for _, tc := range cases {
