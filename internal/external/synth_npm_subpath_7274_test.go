@@ -1,9 +1,11 @@
 package external
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -209,6 +211,124 @@ func TestJSFileRoots_7274(t *testing.T) {
 			if got[i] != tc.want[i] {
 				t.Fatalf("jsFileRoots(%q) = %v, want %v", tc.path, got, tc.want)
 			}
+		}
+	}
+}
+
+// #7274 — the OVER-masking direction of the internal-root guard, which the
+// first round left ungraded (a mutant widening jsFileRoots' wrapper-dir list
+// to every directory survived the whole package suite).
+//
+// jsFileRoots only promotes the SECOND path segment to an internal root when
+// the first is a recognised source-root wrapper (src/lib/app/packages/apps).
+// If it promoted the second segment unconditionally, a repo vendoring its
+// dependencies — "vendor/react/index.js", "third_party/lodash/util.js" —
+// would register `react` / `lodash` as repo-owned roots. An
+// `import "react/jsx-runtime"` would then be masked as internal, never get an
+// ext: prefix, and land right back in ImportFormatOther: the exact #7274
+// symptom, reintroduced by the guard that exists to prevent over-firing.
+//
+// Asserted through the production path (Synthesize), not jsFileRoots alone,
+// so the wiring is graded too.
+func TestSynthesize_VendoredDirDoesNotBecomeInternalRoot_7274(t *testing.T) {
+	cases := []struct {
+		name       string
+		vendorFile string
+		spec       string
+		wantToID   string
+	}{
+		{"vendor", "vendor/react/index.js", "react/jsx-runtime", "ext:react"},
+		{"third_party", "third_party/lodash/util.js", "lodash/fp", "ext:lodash"},
+		{"node_modules", "node_modules/better-auth/dist/index.js", "better-auth/node", "ext:better-auth"},
+		{"scoped-vendored", "vendor/base-ui/react/toast.js", "@base-ui/react/toast", "ext:@base-ui/react"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "aaaaaaaaaaaaaaaa", Name: "app", Kind: "SCOPE.Component", SourceFile: "src/app.ts", Language: "typescript"},
+					// The vendored copy is itself an indexed JS/TS source — this
+					// is what feeds jsFileRoots and can poison the root set.
+					{ID: "bbbbbbbbbbbbbbbb", Name: "vendored", Kind: "SCOPE.Component", SourceFile: tc.vendorFile, Language: "javascript"},
+				},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: tc.spec, Kind: "IMPORTS"},
+				},
+			}
+			Synthesize(doc)
+			if got := doc.Relationships[0].ToID; got != tc.wantToID {
+				t.Fatalf("vendored source %q poisoned the internal-root set: import %q resolved to %q, want %q "+
+					"(a masked import gets no ext: prefix and is counted as an extraction bug — the #7274 symptom)",
+					tc.vendorFile, tc.spec, got, tc.wantToID)
+			}
+		})
+	}
+
+	// Positive control: the guard is NOT inert. A source file directly under a
+	// recognised wrapper DOES own its second segment, so the same import shape
+	// is correctly withheld from classification.
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "app", Kind: "SCOPE.Component", SourceFile: "src/app.ts", Language: "typescript"},
+			{ID: "bbbbbbbbbbbbbbbb", Name: "owned", Kind: "SCOPE.Component", SourceFile: "src/components/Button.tsx", Language: "typescript"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "components/Button", Kind: "IMPORTS"},
+		},
+	}
+	Synthesize(doc)
+	if got := doc.Relationships[0].ToID; got != "components/Button" {
+		t.Fatalf("control: repo-owned %q was rewritten to %q — the wrapper list is inert, so the forbidden rows above grade nothing", "components/Button", got)
+	}
+}
+
+// #7274 — jsFileRoots must NOT promote the second segment under a directory
+// that is not a source-root wrapper. Unit-level twin of the production-path
+// rows above; kills a widening that the cross-product table cannot see.
+func TestJSFileRoots_NonWrapperDirsDoNotPromote_7274(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want []string
+	}{
+		{"vendor/react/index.js", []string{"vendor"}},
+		{"third_party/lodash/util.js", []string{"third_party"}},
+		{"node_modules/better-auth/dist/index.js", []string{"node_modules"}},
+		{"dist/react/index.js", []string{"dist"}},
+		{"test/fixtures/x.ts", []string{"test"}},
+	} {
+		got := jsFileRoots(tc.path)
+		if len(got) != len(tc.want) || got[0] != tc.want[0] {
+			t.Fatalf("jsFileRoots(%q) = %v, want %v — a non-wrapper directory must not promote its child to an internal root", tc.path, got, tc.want)
+		}
+	}
+}
+
+// #7274 — the wrapper list is a DECISION, not an accident. Pinned exactly,
+// the way canonical name sets are pinned elsewhere in this tree.
+//
+// Consequence of each direction, so a future editor can weigh a change:
+//   - ADDING a directory makes every child of it a repo-owned root, so real
+//     npm imports of that name stop being classified as external and are
+//     counted as extraction bugs (the #7274 symptom). Only add a directory
+//     that genuinely holds FIRST-PARTY source.
+//   - REMOVING one re-opens the over-firing hole the guard exists to close:
+//     an unresolved "components/Button" alias import in a repo whose sources
+//     live under that directory gets masked as ext:components.
+//
+// Update this pin and the rationale together, never the map alone.
+func TestJSSourceWrapperDirs_PinnedContents_7274(t *testing.T) {
+	want := []string{"app", "apps", "lib", "packages", "src"}
+	got := make([]string, 0, len(jsSourceWrapperDirs))
+	for d := range jsSourceWrapperDirs {
+		got = append(got, d)
+	}
+	sort.Strings(got)
+	if len(got) != len(want) {
+		t.Fatalf("jsSourceWrapperDirs = %v, want exactly %v — see this test's doc comment for what each direction costs", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("jsSourceWrapperDirs = %v, want exactly %v — see this test's doc comment for what each direction costs", got, want)
 		}
 	}
 }

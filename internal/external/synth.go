@@ -2788,13 +2788,33 @@ func jsFileRoots(path string) []string {
 		return nil
 	}
 	roots := []string{segs[0]}
-	switch segs[0] {
-	case "src", "lib", "app", "packages", "apps":
+	// Promote the SECOND segment only under a recognised source-root
+	// wrapper. Doing it unconditionally would register every vendored
+	// dependency directory ("vendor/react/…", "third_party/lodash/…") as a
+	// repo-owned root, so a real `import "react/jsx-runtime"` would be
+	// masked as internal and counted as an extraction bug — the exact
+	// #7274 symptom this guard exists to avoid causing. The set is pinned
+	// by TestJSSourceWrapperDirs_PinnedContents_7274; read its doc comment
+	// before editing.
+	if jsSourceWrapperDirs[segs[0]] {
 		if len(segs) >= 3 && segs[1] != "" {
 			roots = append(roots, segs[1])
 		}
 	}
 	return roots
+}
+
+// jsSourceWrapperDirs is the set of directory names that hold FIRST-PARTY
+// JS/TS source rather than being a package root themselves, so their child
+// directory is the name a same-repo import would use. Deliberately small:
+// each entry costs the ability to classify an npm package of that child's
+// name as external. See TestJSSourceWrapperDirs_PinnedContents_7274.
+var jsSourceWrapperDirs = map[string]bool{
+	"src":      true,
+	"lib":      true,
+	"app":      true,
+	"packages": true,
+	"apps":     true,
 }
 
 // pythonFileRoot returns the top-level package root for a Python source
