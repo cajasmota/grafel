@@ -22,43 +22,65 @@ package dashboard
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"runtime"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/process"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
-// absFixtureDash7268 makes a unix-style absolute test path absolute for the
-// RUNNING platform. Without it every fixture is rejected on windows by the
-// identity gate's absoluteness half, and each row would pass there for a
-// reason unrelated to the guard it names.
-func absFixtureDash7268(path string) string {
-	if runtime.GOOS != "windows" {
-		return path
-	}
-	vol := filepath.VolumeName(os.TempDir())
-	if vol == "" {
-		vol = "C:"
-	}
-	return vol + path
-}
-
 // withProcsDash7268 installs a synthetic process table for one test.
+//
+// It ASSERTS THE NEEDLE, for the reason internal/cli's twin does: a stub that
+// ignores its argument leaves the search term — which DEFINES the candidate
+// population every guard downstream then filters — graded by nothing, and
+// findProcs("") makes process.FindByName match every process on the host, the
+// widest possible input to a SIGTERM path (#7268 round-4).
 func withProcsDash7268(t *testing.T, procs []process.Info) {
 	t.Helper()
 	prev := findProcs
-	findProcs = func(string) ([]process.Info, error) { return procs, nil }
+	findProcs = func(needle string) ([]process.Info, error) {
+		if needle != "grafel" {
+			t.Errorf("handleDiagnosticsKillStale searched for %q, want \"grafel\" — an empty "+
+				"or wrong needle changes which processes are candidates for SIGTERM", needle)
+		}
+		return procs, nil
+	}
 	t.Cleanup(func() { findProcs = prev })
+}
+
+// withNoKills points the kill seam at a recorder and returns the recorded PIDs.
+//
+// Installed by EVERY test here, dry-run ones included. The tables invent PIDs
+// (41001+) that on a real host belong to somebody else, and before this seam
+// existed the only thing between them and SIGTERM was `dry_run=true` in the URL
+// plus the handler's own ungraded one-line parse of it. A regression in that
+// one line would have had the SUITE signal real processes.
+func withNoKills(t *testing.T) *[]int {
+	t.Helper()
+	var killed []int
+	prev := killProc
+	killProc = func(pid int) error {
+		killed = append(killed, pid)
+		return nil
+	}
+	t.Cleanup(func() { killProc = prev })
+	return &killed
 }
 
 func killStaleDryRun(t *testing.T) KillStaleReply {
 	t.Helper()
+	return callKillStale(t, "?dry_run=true")
+}
+
+func callKillStale(t *testing.T, query string) KillStaleReply {
+	t.Helper()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/diagnostics/kill-stale?dry_run=true", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/diagnostics/kill-stale"+query, nil)
 	(&Server{}).handleDiagnosticsKillStale(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
@@ -66,9 +88,6 @@ func killStaleDryRun(t *testing.T) KillStaleReply {
 	var reply KillStaleReply
 	if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil {
 		t.Fatalf("decode reply: %v; body: %s", err, rec.Body.String())
-	}
-	if !reply.DryRun {
-		t.Fatalf("reply.DryRun = false — the handler would have SIGTERMed the synthetic PIDs")
 	}
 	return reply
 }
@@ -82,13 +101,23 @@ func TestHandleDiagnosticsKillStale_SelectsOnlyOurBinary_7268(t *testing.T) {
 		staleDirPID  = 41005 // genuine daemon under a "daemon" dir — MUST be selected
 	)
 
-	stranger := absFixtureDash7268("/Users/jane smith/Library/grafel-daemon-helper/bin/helper")
-	esbuild := absFixtureDash7268("/Users/jane/src/grafel/node_modules/@esbuild/darwin-arm64/bin/esbuild")
-	bystander := absFixtureDash7268("/usr/local/bin/grafel")
+	stranger := testsupport.AbsFixture("/Users/jane smith/Library/grafel-daemon-helper/bin/helper")
+	esbuild := testsupport.AbsFixture("/Users/jane/src/grafel/node_modules/@esbuild/darwin-arm64/bin/esbuild")
+	bystander := testsupport.AbsFixture("/usr/local/bin/grafel")
 	staleTmp := "/tmp/agent-worktree-1/grafel" // criterion 1 is a literal /tmp prefix test
-	staleDir := absFixtureDash7268("/opt/grafel/daemon/bin/grafel")
+	staleDir := testsupport.AbsFixture("/opt/grafel/daemon/bin/grafel")
+
+	// B2: the self exclusion, graded by nothing before this row — every PID in
+	// this table was synthetic and none could equal os.Getpid(), so
+	// `if p.PID == myPID` → `&& false` passed the package. Criterion 1
+	// (PPID==1 && isTmp) never consults selfExe, so a /tmp-installed daemon
+	// with PPID==1 serving this endpoint would SIGTERM ITSELF if this
+	// regressed. The row carries a canonical basename under a "daemon"
+	// directory, so it WOULD be selected were the PID check not there.
+	selfPID := os.Getpid()
 
 	table := []process.Info{
+		{PID: selfPID, PPID: 1, Name: "grafel", Exe: staleDir},
 		{PID: strangerPID, PPID: 1, Name: "helper", Exe: stranger},
 		{PID: esbuildPID, PPID: 1, Name: "esbuild", Exe: esbuild},
 		{PID: bystanderPID, PPID: 400, Name: "grafel", Exe: bystander},
@@ -105,8 +134,12 @@ func TestHandleDiagnosticsKillStale_SelectsOnlyOurBinary_7268(t *testing.T) {
 		want[staleTmpPID] = true
 	}
 	withProcsDash7268(t, table)
+	killed := withNoKills(t)
 
 	reply := killStaleDryRun(t)
+	if !reply.DryRun {
+		t.Fatalf("reply.DryRun = false for ?dry_run=true")
+	}
 
 	got := map[int]string{}
 	for _, kp := range reply.Killed {
@@ -129,6 +162,7 @@ func TestHandleDiagnosticsKillStale_SelectsOnlyOurBinary_7268(t *testing.T) {
 		{strangerPID, "#7268 headline: a stranger's helper that merely LIVES under a grafel-named directory"},
 		{esbuildPID, "#1719: an esbuild binary inside a project named grafel"},
 		{bystanderPID, "a healthy second grafel process — not stale by either criterion"},
+		{selfPID, "the running process is excluded by PID — selecting it means the endpoint SIGTERMs its own daemon"},
 	} {
 		if exe, ok := got[bad.pid]; ok {
 			t.Errorf("pid=%d (%s) was selected for SIGTERM — %s", bad.pid, exe, bad.why)
@@ -139,11 +173,16 @@ func TestHandleDiagnosticsKillStale_SelectsOnlyOurBinary_7268(t *testing.T) {
 		t.Errorf("reply.Killed has %d entries, want exactly %d; got %v",
 			len(reply.Killed), len(want), reply.Killed)
 	}
-	// dry_run must not claim a kill happened.
+	// dry_run must not claim a kill happened — and, since the killProc seam
+	// exists, must not have ATTEMPTED one either. The second assertion is the
+	// one that makes dry-run a checked property rather than an assumption.
 	for _, kp := range reply.Killed {
 		if kp.Killed {
 			t.Errorf("pid=%d reported Killed=true under dry_run=true", kp.PID)
 		}
+	}
+	if len(*killed) != 0 {
+		t.Errorf("dry_run=true signalled PIDs %v", *killed)
 	}
 }
 
@@ -152,12 +191,95 @@ func TestHandleDiagnosticsKillStale_SelectsOnlyOurBinary_7268(t *testing.T) {
 // unconditionally cannot hide behind an empty process table.
 func TestHandleDiagnosticsKillStale_ForeignOnlyTableSelectsNothing_7268(t *testing.T) {
 	withProcsDash7268(t, []process.Info{
-		{PID: 42001, PPID: 1, Name: "helper", Exe: absFixtureDash7268("/Users/jane smith/Library/grafel-daemon-helper/bin/helper")},
+		{PID: 42001, PPID: 1, Name: "helper", Exe: testsupport.AbsFixture("/Users/jane smith/Library/grafel-daemon-helper/bin/helper")},
 		{PID: 42002, PPID: 1, Name: "fixture-server", Exe: "/tmp/grafel-fixtures/bin/fixture-server"},
 	})
 
+	killed := withNoKills(t)
 	reply := killStaleDryRun(t)
 	if len(reply.Killed) != 0 {
 		t.Errorf("a table of foreign processes only produced kill candidates: %v", reply.Killed)
+	}
+	if len(*killed) != 0 {
+		t.Errorf("nothing was selected yet PIDs %v were signalled", *killed)
+	}
+}
+
+// TestHandleDiagnosticsKillStale_LiveBranchAndDryRunParse_7268 grades the
+// SIGTERM branch and the dry_run parse that gates it (#7268 round-4, F5).
+//
+// Both were unreachable before the killProc seam: the only safe way to drive
+// the handler was dry_run=true, which skips the branch, and
+// `dryRun := r.URL.Query().Get("dry_run") == "true"` — the single line deciding
+// whether a real SIGTERM goes out — was asserted by nothing. Nothing is
+// signalled here; killProc is a recorder.
+func TestHandleDiagnosticsKillStale_LiveBranchAndDryRunParse_7268(t *testing.T) {
+	const staleDirPID = 43001
+	stale := testsupport.AbsFixture("/opt/grafel/daemon/bin/grafel")
+	install := func(t *testing.T) *[]int {
+		withProcsDash7268(t, []process.Info{
+			{PID: staleDirPID, PPID: 400, Name: "grafel", Exe: stale},
+			{PID: os.Getpid(), PPID: 1, Name: "grafel", Exe: stale},
+		})
+		return withNoKills(t)
+	}
+
+	// Every spelling that is NOT exactly "true" means a LIVE run. These pin the
+	// parse in the dangerous direction: if any of them were read as a dry run
+	// the endpoint would silently stop killing, and if the comparison were
+	// dropped entirely every dry-run caller would start killing.
+	for _, q := range []string{"", "?dry_run=false", "?dry_run=TRUE", "?dry_run=1", "?other=true"} {
+		t.Run("live"+q, func(t *testing.T) {
+			killed := install(t)
+			reply := callKillStale(t, q)
+			if reply.DryRun {
+				t.Fatalf("query %q reported DryRun=true; only the exact string \"true\" is a dry run", q)
+			}
+			if len(*killed) != 1 || (*killed)[0] != staleDirPID {
+				t.Fatalf("query %q signalled %v, want exactly [%d] — self must never be signalled",
+					q, *killed, staleDirPID)
+			}
+			if len(reply.Killed) != 1 || !reply.Killed[0].Killed {
+				t.Errorf("query %q: reply does not report the kill: %+v", q, reply.Killed)
+			}
+		})
+	}
+
+	t.Run("dry_run=true kills nothing", func(t *testing.T) {
+		killed := install(t)
+		reply := callKillStale(t, "?dry_run=true")
+		if !reply.DryRun {
+			t.Fatalf("?dry_run=true reported DryRun=false")
+		}
+		if len(*killed) != 0 {
+			t.Fatalf("?dry_run=true signalled %v", *killed)
+		}
+		if len(reply.Killed) != 1 || reply.Killed[0].Killed {
+			t.Errorf("dry run must still LIST the candidate, unkilled: %+v", reply.Killed)
+		}
+	})
+}
+
+// TestHandleDiagnosticsKillStale_ReportsKillFailure_7268 pins the error arm: a
+// failing kill is surfaced in KillErr and never reported as Killed.
+func TestHandleDiagnosticsKillStale_ReportsKillFailure_7268(t *testing.T) {
+	const staleDirPID = 44001
+	withProcsDash7268(t, []process.Info{
+		{PID: staleDirPID, PPID: 400, Name: "grafel",
+			Exe: testsupport.AbsFixture("/opt/grafel/daemon/bin/grafel")},
+	})
+	prev := killProc
+	killProc = func(int) error { return errors.New("operation not permitted") }
+	t.Cleanup(func() { killProc = prev })
+
+	reply := callKillStale(t, "")
+	if len(reply.Killed) != 1 {
+		t.Fatalf("want one candidate, got %+v", reply.Killed)
+	}
+	if reply.Killed[0].Killed {
+		t.Errorf("a failing kill reported Killed=true: %+v", reply.Killed[0])
+	}
+	if reply.Killed[0].KillErr != "operation not permitted" {
+		t.Errorf("KillErr = %q, want the kill error surfaced", reply.Killed[0].KillErr)
 	}
 }

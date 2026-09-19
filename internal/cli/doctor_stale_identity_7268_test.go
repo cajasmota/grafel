@@ -25,10 +25,12 @@ package cli
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/process"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // staleFor builds the staleProcess a scan would produce for exe/ppid by running
@@ -54,7 +56,13 @@ import (
 func staleFor(t *testing.T, pid, ppid int, exe string) staleProcess {
 	t.Helper()
 	prev := findProcs
-	findProcs = func(string) ([]process.Info, error) {
+	findProcs = func(needle string) ([]process.Info, error) {
+		// Assert the needle: a stub that ignores its argument leaves the search
+		// term defining the candidate population graded by nothing, and
+		// findProcs("") matches every process on the host (#7268 round-4).
+		if needle != "grafel" {
+			t.Errorf("scanGrafelProcs searched for %q, want \"grafel\"", needle)
+		}
 		return []process.Info{{PID: pid, PPID: ppid, Name: filepath.Base(exe), Exe: exe}}, nil
 	}
 	got, err := scanGrafelProcs(-1)
@@ -69,7 +77,14 @@ func staleFor(t *testing.T, pid, ppid int, exe string) staleProcess {
 }
 
 func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
-	const selfExe = "/usr/local/bin/grafel"
+	// PLATFORM. daemon.IsCanonicalBinaryPath opens with filepath.IsAbs, whose
+	// answer is GOOS-dependent: "/usr/local/bin/grafel" is absolute on unix and
+	// NOT absolute on windows, which has no volume in it. A table of bare unix
+	// literals therefore grades nothing on windows — every forbidden row passes
+	// for the unrelated reason that every path looked relative, and every
+	// REQUIRED row inverts and goes red. Fixtures go through
+	// testsupport.AbsFixture unless the row opts out below.
+	selfExe := testsupport.AbsFixture("/usr/local/bin/grafel")
 
 	cases := []struct {
 		name      string
@@ -77,6 +92,19 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		ppid      int
 		wantStale bool
 		why       string
+		// asWritten keeps exe byte-for-byte instead of routing it through
+		// testsupport.AbsFixture. Two kinds of row need it, for opposite
+		// reasons:
+		//
+		//   /tmp-PREFIX rows — scanGrafelProcs asks
+		//     strings.HasPrefix(exe, "/tmp/"), a byte comparison against a
+		//     literal. Gluing a volume on moves the fixture OFF the boundary
+		//     and turns a boundary row into an unrelated row that still
+		//     passes. Such a row cannot be made portable and is ungradable on
+		//     windows; saying so is the honest option.
+		//   deliberately NON-ABSOLUTE rows — their whole point is that
+		//     identity is not established for a relative path.
+		asWritten bool
 	}{
 		// ── planted violations: NOT ours, must never be selected ──────────
 		{
@@ -109,6 +137,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 			// equally identity-free: this row is SIGTERM-eligible without the
 			// gate even though "daemon" never appears in the path.
 			exe:       "/tmp/grafel-fixtures/bin/fixture-server",
+			asWritten: true, // /tmp prefix — see asWritten
 			ppid:      1,
 			wantStale: false,
 			why:       "criterion 1 planted violation",
@@ -116,6 +145,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "relative exec path is never selected",
 			exe:       "grafel-daemon/grafel",
+			asWritten: true, // deliberately relative — see asWritten
 			ppid:      1,
 			wantStale: false,
 			why:       "a non-absolute path cannot be compared against /tmp or resolved to an identity",
@@ -123,6 +153,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "bare command name (Exe empty, Name fallback) is never selected",
 			exe:       "grafel",
+			asWritten: true, // deliberately relative — see asWritten
 			ppid:      1,
 			wantStale: false,
 			why:       "#7211: a bare basename silently skips every path predicate",
@@ -132,6 +163,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "genuine orphaned daemon from a /tmp worktree",
 			exe:       "/tmp/agent-worktree-1/grafel",
+			asWritten: true, // /tmp prefix — see asWritten
 			ppid:      1,
 			wantStale: true,
 			why:       "criterion 1 positive control — the #857 population",
@@ -162,6 +194,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "canonical basename under /tmp but NOT an orphan",
 			exe:       "/tmp/agent-worktree-1/grafel",
+			asWritten: true, // /tmp prefix — see asWritten
 			ppid:      4242,
 			wantStale: false,
 			why:       "criterion 1 requires PPID=1; a live parent still owns it",
@@ -181,6 +214,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "/tmpfoo is not under /tmp",
 			exe:       "/tmpfoo/grafel",
+			asWritten: true, // /tmp prefix — see asWritten
 			ppid:      1,
 			wantStale: false,
 			why:       "prefix boundary: /tmp/ or exactly /tmp, not /tmp*",
@@ -188,6 +222,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "/tmpdir is not under /tmp",
 			exe:       "/tmpdir/grafel",
+			asWritten: true, // /tmp prefix — see asWritten
 			ppid:      1,
 			wantStale: false,
 			why:       "prefix boundary — a sibling directory whose name merely starts with tmp",
@@ -195,6 +230,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "/tmp-agent is not under /tmp",
 			exe:       "/tmp-agent/grafel",
+			asWritten: true, // /tmp prefix — see asWritten
 			ppid:      1,
 			wantStale: false,
 			why:       "prefix boundary — a separator, not a hyphen, ends the /tmp component",
@@ -203,7 +239,20 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := staleFor(t, 7268, tc.ppid, tc.exe)
+			exe := tc.exe
+			if !tc.asWritten {
+				exe = testsupport.AbsFixture(exe)
+				// Diagnostic for the windows leg: an unrouted or unroutable
+				// fixture would otherwise fail as a confusing want/got
+				// mismatch. filepath.IsAbs is the exact predicate the gate
+				// applies first, so this names the cause.
+				if !filepath.IsAbs(exe) {
+					t.Fatalf("fixture %q is not absolute on %s — the row is not graded here; "+
+						"either route it through testsupport.AbsFixture or mark it asWritten",
+						exe, runtime.GOOS)
+				}
+			}
+			p := staleFor(t, 7268, tc.ppid, exe)
 			got := isStaleProc(p, selfExe)
 			if got != tc.wantStale {
 				verb := "SELECTED FOR SIGTERM"
@@ -211,7 +260,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 					verb = "NOT selected"
 				}
 				t.Errorf("isStaleProc(exe=%q, ppid=%d) = %v, want %v — %s was %s",
-					tc.exe, tc.ppid, got, tc.wantStale, tc.exe, verb)
+					exe, tc.ppid, got, tc.wantStale, exe, verb)
 			}
 		})
 	}
@@ -224,14 +273,14 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 // "daemon" component, so criterion 2 is already false there for other reasons
 // and the comparison is ungraded.
 func TestIsStaleProc_SelfIsNeverStale_7268(t *testing.T) {
-	const selfExe = "/opt/grafel/daemon/bin/grafel"
+	selfExe := testsupport.AbsFixture("/opt/grafel/daemon/bin/grafel")
 
 	if isStaleProc(staleFor(t, 1, 100, selfExe), selfExe) {
 		t.Errorf("isStaleProc selected self (%q) for SIGTERM", selfExe)
 	}
 	// Control: the identical path at a different install root IS selected, so
 	// the row above cannot pass merely because nothing matches this shape.
-	other := "/opt/grafel/daemon/bin.old/grafel"
+	other := testsupport.AbsFixture("/opt/grafel/daemon/bin.old/grafel")
 	if !isStaleProc(staleFor(t, 2, 100, other), selfExe) {
 		t.Errorf("isStaleProc did not select %q — criterion 2 is not firing at all, "+
 			"so the self-exclusion above proves nothing", other)
@@ -245,15 +294,23 @@ func TestIsStaleProc_SelfIsNeverStale_7268(t *testing.T) {
 // hand-picking rows, so a future criterion added to isStaleProc without the
 // gate fails here even if nobody thinks to add a row above.
 func TestIsStaleProc_SelectionImpliesCanonicalBasename_7268(t *testing.T) {
-	const selfExe = "/usr/local/bin/grafel"
+	selfExe := testsupport.AbsFixture("/usr/local/bin/grafel")
 
+	// Absolutised so the BASENAME half of the gate is what rejects each row on
+	// every platform. Left bare, a windows run rejects all of them at
+	// filepath.IsAbs and the cross product grades nothing there.
 	dirs := []string{
-		"/Users/jane smith/Library/grafel-daemon-helper/bin",
+		testsupport.AbsFixture("/Users/jane smith/Library/grafel-daemon-helper/bin"),
+		testsupport.AbsFixture("/opt/grafel/daemon"),
+		testsupport.AbsFixture("/usr/local/grafel/DAEMON/bin"),
+		testsupport.AbsFixture("/home/jane/grafel"),
+		// /tmp-prefix dirs stay literal for the reason given at asWritten
+		// above: a volume prefix would move them off the /tmp boundary. They
+		// are consequently rejected at filepath.IsAbs on windows rather than
+		// at the basename, which is a real limitation of these two rows and
+		// not of the four above.
 		"/tmp/grafel-daemon/bin",
 		"/tmp",
-		"/opt/grafel/daemon",
-		"/usr/local/grafel/DAEMON/bin",
-		"/home/jane/grafel",
 	}
 	bases := []string{"helper", "esbuild", "daemon", "daemonize", "grafel-daemon-old", "node", "grafeld"}
 	ppids := []int{1, 100, 4242}

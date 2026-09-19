@@ -14,35 +14,53 @@ package dashboard
 // asserted against the dashboard's own predicate, not inherited from the CLI
 // test.
 
-import "testing"
+import (
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"github.com/cajasmota/grafel/internal/testsupport"
+)
 
 func TestIsStaleDiagnosticsProc_IdentityGate_7268(t *testing.T) {
-	const selfExe = "/usr/local/bin/grafel"
+	// PLATFORM. daemon.IsCanonicalBinaryPath opens with filepath.IsAbs, whose
+	// answer is GOOS-dependent: "/usr/local/bin/grafel" is absolute on unix and
+	// NOT absolute on windows, which has no volume in it. Left bare, this table
+	// grades nothing on windows — the forbidden rows pass because every path
+	// looked relative, and the three `want: true` rows invert and go red. Rows
+	// go through testsupport.AbsFixture unless asWritten says otherwise.
+	selfExe := testsupport.AbsFixture("/usr/local/bin/grafel")
 
 	cases := []struct {
 		name string
 		exe  string
 		ppid int
 		want bool
+		// asWritten keeps exe byte-for-byte. Needed by /tmp-PREFIX rows, where
+		// the production test is strings.HasPrefix(exe, "/tmp/") — a byte
+		// comparison, so a volume prefix moves the fixture off the boundary —
+		// and by rows whose point is that they are NOT absolute. Such rows are
+		// ungradable on windows; that is stated rather than papered over.
+		asWritten bool
 	}{
 		// permissive direction — planted violations, must NOT be selected
 		{"HEADLINE foreign helper under a grafel-daemon dir",
-			"/Users/jane smith/Library/grafel-daemon-helper/bin/helper", 501, false},
-		{"foreign binary named daemon-helper", "/Users/jane/grafel/bin/daemon-helper", 501, false},
-		{"foreign orphan under /tmp (criterion 1)", "/tmp/grafel-fixtures/bin/fixture-server", 1, false},
-		{"foreign esbuild under a grafel project", "/Users/jane/grafel/node_modules/.bin/esbuild", 1, false},
-		{"relative path", "grafel-daemon/grafel", 1, false},
-		{"bare command name", "grafel", 1, false},
+			"/Users/jane smith/Library/grafel-daemon-helper/bin/helper", 501, false, false},
+		{"foreign binary named daemon-helper", "/Users/jane/grafel/bin/daemon-helper", 501, false, false},
+		{"foreign orphan under /tmp (criterion 1)", "/tmp/grafel-fixtures/bin/fixture-server", 1, false, true},
+		{"foreign esbuild under a grafel project", "/Users/jane/grafel/node_modules/.bin/esbuild", 1, false, false},
+		{"relative path", "grafel-daemon/grafel", 1, false, true},
+		{"bare command name", "grafel", 1, false, true},
 
 		// conservative direction — genuine stale daemons must STILL be selected
-		{"genuine orphaned /tmp daemon", "/tmp/agent-worktree-1/grafel", 1, true},
-		{"genuine daemon under a directory named daemon", "/opt/grafel/daemon/bin/grafel", 100, true},
-		{"case variations", "/opt/Grafel/Daemon/bin/GRAFEL", 100, true},
+		{"genuine orphaned /tmp daemon", "/tmp/agent-worktree-1/grafel", 1, true, true},
+		{"genuine daemon under a directory named daemon", "/opt/grafel/daemon/bin/grafel", 100, true, false},
+		{"case variations", "/opt/Grafel/Daemon/bin/GRAFEL", 100, true, false},
 
 		// boundaries
-		{"plain second grafel process", "/usr/local/bin/grafel", 100, false},
-		{"canonical under /tmp with a live parent", "/tmp/agent-worktree-1/grafel", 4242, false},
-		{"self", selfExe, 100, false},
+		{"plain second grafel process", "/usr/local/bin/grafel", 100, false, false},
+		{"canonical under /tmp with a live parent", "/tmp/agent-worktree-1/grafel", 4242, false, true},
+		{"self", selfExe, 100, false, true}, // already absolutised
 		// The CLI twin rejects /tmpfoo; this predicate used to accept it via
 		// exe[:4] == "/tmp". Held here so the two cannot drift apart again.
 		// Unlike the CLI, isStaleDiagnosticsProc derives isTmp INSIDE the
@@ -50,22 +68,32 @@ func TestIsStaleDiagnosticsProc_IdentityGate_7268(t *testing.T) {
 		// directly — widening it to strings.HasPrefix(exe, "/tmp") fails here
 		// (measured). The CLI twin needed a call-site row for the same
 		// coverage because its derivation lives in scanGrafelProcs.
-		{"/tmpfoo orphan is not a /tmp orphan", "/tmpfoo/grafel", 1, false},
-		{"/tmpdir orphan is not a /tmp orphan", "/tmpdir/grafel", 1, false},
-		{"/tmp-agent orphan is not a /tmp orphan", "/tmp-agent/grafel", 1, false},
+		{"/tmpfoo orphan is not a /tmp orphan", "/tmpfoo/grafel", 1, false, true},
+		{"/tmpdir orphan is not a /tmp orphan", "/tmpdir/grafel", 1, false, true},
+		{"/tmp-agent orphan is not a /tmp orphan", "/tmp-agent/grafel", 1, false, true},
 		// NOT COVERAGE OF THE `exe == "/tmp"` ARM, and not claimed to be:
 		// filepath.Base("/tmp") is "tmp", which is not in canonicalBasenames,
 		// so the identity gate rejects this before isTmp is consulted.
 		// Deleting that half of the OR leaves the package green (measured).
 		// The arm is unreachable from this predicate, exactly as isTmpPath's
 		// second arm is unreachable from findCanonicalDaemon (#7211).
-		{"exactly /tmp is a directory, not our binary", "/tmp", 1, false},
+		{"exactly /tmp is a directory, not our binary", "/tmp", 1, false, true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isStaleDiagnosticsProc(tc.exe, tc.ppid, selfExe); got != tc.want {
-				t.Errorf("isStaleDiagnosticsProc(%q, ppid=%d) = %v, want %v", tc.exe, tc.ppid, got, tc.want)
+			exe := tc.exe
+			if !tc.asWritten {
+				exe = testsupport.AbsFixture(exe)
+				// Diagnostic for the windows leg; see the CLI twin.
+				if !filepath.IsAbs(exe) {
+					t.Fatalf("fixture %q is not absolute on %s — the row is not graded here; "+
+						"either route it through testsupport.AbsFixture or mark it asWritten",
+						exe, runtime.GOOS)
+				}
+			}
+			if got := isStaleDiagnosticsProc(exe, tc.ppid, selfExe); got != tc.want {
+				t.Errorf("isStaleDiagnosticsProc(%q, ppid=%d) = %v, want %v", exe, tc.ppid, got, tc.want)
 			}
 		})
 	}
@@ -75,16 +103,22 @@ func TestIsStaleDiagnosticsProc_IdentityGate_7268(t *testing.T) {
 // the directory shapes that satisfy process.FindByName("grafel") with
 // non-grafel basenames, and requires none of them to be SIGTERM-eligible.
 func TestIsStaleDiagnosticsProc_NeverSelectsForeignBinary_7268(t *testing.T) {
-	const selfExe = "/usr/local/bin/grafel"
+	selfExe := testsupport.AbsFixture("/usr/local/bin/grafel")
 
+	// Absolutised so the BASENAME half of the gate is what rejects each row on
+	// every platform; left bare, a windows run rejects all of them at
+	// filepath.IsAbs and the cross product grades nothing there.
 	dirs := []string{
-		"/Users/jane smith/Library/grafel-daemon-helper/bin",
+		testsupport.AbsFixture("/Users/jane smith/Library/grafel-daemon-helper/bin"),
+		testsupport.AbsFixture("/opt/grafel/daemon"),
+		testsupport.AbsFixture("/usr/local/grafel/DAEMON/bin"),
+		testsupport.AbsFixture("/home/jane/grafel"),
+		// /tmp-prefix dirs stay literal (a volume prefix moves them off the
+		// /tmp boundary), so on windows these three are rejected at
+		// filepath.IsAbs rather than at the basename.
 		"/tmp/grafel-daemon/bin",
 		"/tmp",
 		"/tmpfoo/grafel",
-		"/opt/grafel/daemon",
-		"/usr/local/grafel/DAEMON/bin",
-		"/home/jane/grafel",
 	}
 	bases := []string{"helper", "esbuild", "daemon", "daemonize", "grafel-daemon-old", "node", "grafeld"}
 

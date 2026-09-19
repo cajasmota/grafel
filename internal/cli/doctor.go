@@ -398,7 +398,7 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 		}
 		fmt.Fprintf(w, "  pid=%-6d ppid=%-6d %s%s%s\n", p.PID, p.PPID, p.Exe, orphanNote, tmpNote)
 		if kill {
-			if kerr := process.Kill(p.PID); kerr != nil {
+			if kerr := killProc(p.PID); kerr != nil {
 				fmt.Fprintf(w, "    kill: %v\n", kerr)
 			} else {
 				fmt.Fprintf(w, "    killed pid %d\n", p.PID)
@@ -491,6 +491,19 @@ func isStaleProc(p staleProcess, selfExe string) bool {
 // the test machine. Never reassigned in production code.
 var findProcs = process.FindByName
 
+// killProc is process.Kill, indirected for the same reason findProcs is: so the
+// kill BRANCH of runDoctorStaleDaemons can be graded.
+//
+// Until this existed, no test could reach the SIGTERM path at all — the only
+// safe way to drive the function was kill=false, which skips it — so `killing`
+// vs `would kill`, the error reporting and the "killed pid N" line were all
+// ungraded, and the kill=false guard in the tests was itself the only thing
+// standing between a synthetic process table of invented PIDs (31001+) and
+// SIGTERM to whatever really holds those PIDs on the host. That made the test
+// suite a hazard, not just under-covered. Tests point this at a recorder.
+// Never reassigned in production code.
+var killProc = process.Kill
+
 // scanGrafelProcs uses the cross-platform process package to find all
 // running grafel processes except myPID.
 //
@@ -516,7 +529,16 @@ func scanGrafelProcs(myPID int) ([]staleProcess, error) {
 			PPID:     p.PPID,
 			Exe:      exe,
 			IsOrphan: p.PPID == 1,
-			IsTmp:    strings.HasPrefix(exe, "/tmp/") || exe == "/tmp",
+			// The `|| exe == "/tmp"` arm this used to carry is deleted (#7268).
+			// It was an ungraded permissive branch on a SIGTERM path whose only
+			// defence was a comment: exe == "/tmp" implies
+			// filepath.Base(exe) == "tmp", which is not in
+			// daemon.canonicalBasenames (pinned to exactly {"grafel"}), so
+			// IsCanonicalBinaryPath rejected the path before either reader of
+			// IsTmp — criterion 1 and the printed [/tmp binary] note, both
+			// post-gate — could ever see it. No mutant could kill it and no
+			// fixture could reach it.
+			IsTmp: strings.HasPrefix(exe, "/tmp/"),
 		})
 	}
 	return result, nil

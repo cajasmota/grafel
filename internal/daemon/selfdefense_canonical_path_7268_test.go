@@ -10,44 +10,69 @@ package daemon
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/process"
 )
 
 func TestIsCanonicalBinaryPath_7268(t *testing.T) {
+	// PLATFORM. The gate opens with filepath.IsAbs, whose answer is
+	// GOOS-dependent, so every ACCEPT row must be made absolute for the running
+	// platform or the whole accept side inverts on windows — while the reject
+	// side would pass there for the unrelated reason that nothing looked
+	// absolute. See absFixture / testsupport.AbsFixture.
 	accept := []string{
-		"/usr/local/bin/grafel",
+		absFixture("/usr/local/bin/grafel"),
+		absFixture("/opt/grafel/daemon/bin/grafel"),
+		absFixture("/Users/jane smith/Library/grafel"), // spaces are ordinary path characters
+		absFixture("/opt/GRAFEL"),                      // the basename match is case-insensitive
+		absFixture("/opt/Grafel/Daemon/bin/GRAFEL"),
+		// NOT absolutised, and it cannot be: a volume prefix would move a
+		// /tmp-prefix fixture off the boundary the sibling guards test on. So
+		// this row grades the accept side on unix only. It is here because the
+		// gate must accept a /tmp-installed grafel — IsCanonicalBinaryPath says
+		// nothing about WHERE the binary lives — and that is worth pinning
+		// where it can be pinned.
 		"/tmp/agent-worktree/grafel",
-		"/opt/grafel/daemon/bin/grafel",
-		"/Users/jane smith/Library/grafel", // spaces are ordinary path characters
-		"/opt/GRAFEL",                      // the basename match is case-insensitive
-		"/opt/Grafel/Daemon/bin/GRAFEL",
 	}
 	for _, p := range accept {
 		if !IsCanonicalBinaryPath(p) {
-			t.Errorf("IsCanonicalBinaryPath(%q) = false, want true", p)
+			// Diagnostic for the windows leg: the overwhelmingly likely cause
+			// of an accept row failing there is that it is not absolute, which
+			// means the row grades nothing rather than that the gate is wrong.
+			extra := ""
+			if !filepath.IsAbs(p) {
+				extra = " — and it is NOT absolute on " + runtime.GOOS +
+					", so this row grades nothing here; route it through absFixture"
+			}
+			t.Errorf("IsCanonicalBinaryPath(%q) = false, want true%s", p, extra)
 		}
 	}
 
 	reject := []string{
-		// not our binary — the basename is what decides
-		"/Users/jane smith/Library/grafel-daemon-helper/bin/helper",
-		"/Users/jane/src/grafel/webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild",
-		"/usr/local/bin/grafel-daemon-old",
-		"/opt/grafel/daemon/bin/daemon",
-		"/opt/grafel/bin/grafeld",
-		"/opt/grafel/bin/mygrafel",
-		"/opt/grafel/bin/grafel-mcp",
-		"/opt/grafel/bin/grafel.exe", // no extension stripping: see doc
-		// not an absolute path — identity is not established
+		// not our binary — the basename is what decides. Absolutised so it is
+		// the BASENAME that rejects each of these on every platform; left bare,
+		// a windows run rejects them all at filepath.IsAbs and this block
+		// grades nothing there.
+		absFixture("/Users/jane smith/Library/grafel-daemon-helper/bin/helper"),
+		absFixture("/Users/jane/src/grafel/webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild"),
+		absFixture("/usr/local/bin/grafel-daemon-old"),
+		absFixture("/opt/grafel/daemon/bin/daemon"),
+		absFixture("/opt/grafel/bin/grafeld"),
+		absFixture("/opt/grafel/bin/mygrafel"),
+		absFixture("/opt/grafel/bin/grafel-mcp"),
+		absFixture("/opt/grafel/bin/grafel.exe"), // no extension stripping: see doc
+		// not an absolute path — identity is not established. Deliberately NOT
+		// absolutised: being relative is the property under test.
 		"grafel",
 		"./grafel",
 		"../bin/grafel",
 		"bin/grafel",
 		"",
-		// a directory named grafel is not a grafel binary
-		"/opt/grafel/",
+		// a directory named grafel is not a grafel binary. Built with the
+		// platform separator so it is a trailing-separator path on windows too.
+		absFixture("/opt/grafel") + string(filepath.Separator),
 	}
 	for _, p := range reject {
 		if IsCanonicalBinaryPath(p) {
@@ -64,7 +89,7 @@ func TestIsCanonicalBinaryPath_AgreesWithCanonicalBasenames_7268(t *testing.T) {
 		t.Fatal("canonicalBasenames is empty — this test would be vacuous")
 	}
 	for name := range canonicalBasenames {
-		if !IsCanonicalBinaryPath("/usr/local/bin/" + name) {
+		if !IsCanonicalBinaryPath(absFixture("/usr/local/bin/" + name)) {
 			t.Errorf("canonicalBasenames contains %q but IsCanonicalBinaryPath rejects it", name)
 		}
 		if IsCanonicalBinaryPath(name) {
