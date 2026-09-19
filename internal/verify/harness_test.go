@@ -171,6 +171,20 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	// Unix domain socket on other platforms).
 	t.Setenv(daemon.EnvRoot, daemonRoot)
 	t.Setenv("GRAFEL_HOME", daemonRoot)
+	// #7211 — this was the only daemon-booting test in the tree that did not
+	// disable the Layer-1 self-defense check (daemon_test.go:132,
+	// serve_split_e2e_test.go:62 and memlimit_plane_e2e_test.go:67 all do).
+	// The check scans the process table for a grafel process outside /tmp and
+	// refuses startup if it finds one, and the daemon this harness builds lives
+	// under t.TempDir(), so it always takes that arm. Its own doc (see
+	// EnvDisableSelfDefense) records why an isolated in-test daemon does not
+	// need the protection: it has its own root and socket and can never
+	// displace the developer's canonical daemon.
+	//
+	// This is the mitigation, not the fix — the misclassification it sidesteps
+	// also hits real users running from a /tmp worktree and is fixed in
+	// findCanonicalDaemon.
+	t.Setenv(daemon.EnvDisableSelfDefense, "1")
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		t.Fatalf("daemon layout: %v", err)
@@ -180,6 +194,10 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	// #6134 — GRAFEL_HOME too, or the child inherits the real one via os.Environ()
 	// and prunes the developer's live store on startup. See the note above.
 	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot,
+		// #7211 — t.Setenv above only covers THIS process; the daemon child is
+		// the one that runs SelfDefenseCheck, so the seam has to be re-exported
+		// here or it has no effect on the process that acts on it.
+		daemon.EnvDisableSelfDefense+"=1",
 		// Guard belt (#stop-fleet): testing.Testing() is false in this
 		// go-built child, so the watchers package's service-manager guard
 		// cannot see that it is under test. Export the belt so a child that

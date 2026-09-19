@@ -162,8 +162,18 @@ func RSSBytes(pid int) (uint64, error) {
 func readProcInfo(pid int) (Info, error) {
 	base := fmt.Sprintf("/proc/%d", pid)
 
-	// exe symlink — may fail if we lack permissions; that's OK.
-	exe, _ := os.Readlink(filepath.Join(base, "exe"))
+	// exe symlink. This read fails in two importantly different situations:
+	// we lack permission to resolve another user's link (EACCES/EPERM), or the
+	// process is a zombie / mid-exit, for which the kernel drops the link and
+	// returns ENOENT while comm and stat below keep reading fine. Both used to
+	// be swallowed here with the comment "that's OK", which left the caller
+	// holding an empty Exe it could not tell apart from a real answer — the
+	// misclassification in #7211. Keep the partial Info (name/ppid are still
+	// useful) but surface the error so the caller can treat Exe as UNKNOWN.
+	exe, exeErr := os.Readlink(filepath.Join(base, "exe"))
+	if exeErr != nil {
+		exe = ""
+	}
 
 	// comm — short name, max 15 bytes.
 	commData, err := os.ReadFile(filepath.Join(base, "comm"))
@@ -188,5 +198,5 @@ func readProcInfo(pid int) (Info, error) {
 		ppid, _ = strconv.Atoi(fields[1])
 	}
 
-	return Info{PID: pid, PPID: ppid, Name: name, Exe: exe}, nil
+	return Info{PID: pid, PPID: ppid, Name: name, Exe: exe, ExeErr: exeErr}, nil
 }
