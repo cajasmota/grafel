@@ -37,15 +37,53 @@ name: grammar-freshness
 #      at the one below) no longer matches upstream;
 #   4. a ref actually pinned in .github/workflows/ resolves upstream to a
 #      deprecated or non-Node runtime, or its tag no longer exists.
-# Exit 2 means the tool could not run: an upstream read failed for any reason
-# other than a 404, a response was unparseable, an `action.yml` carried no
-# `runs.using`, or the workflow directory yielded no pins at all. That code is
-# kept DISTINCT from exit 1 deliberately — a rate-limited run and a rotted
-# manifest must not look alike, or the first teaches everyone to ignore the
-# second.
+# Exit 2 means the tool could not run. Two shapes, and the difference matters:
+#   * a PRECONDITION failed — the workflow directory is missing or yielded no
+#     pins at all. Checked before any network, and an exit 2 unconditionally:
+#     it means the tool was pointed at the wrong place, which casts doubt on
+#     the whole run rather than truncating it.
+#   * an upstream read failed mid-run for any reason other than a 404, a
+#     response was unparseable, or an `action.yml` carried no `runs.using` —
+#     AND no drift had been established yet.
+# That code is kept DISTINCT from exit 1 deliberately — a rate-limited run and
+# a rotted manifest must not look alike, or the first teaches everyone to
+# ignore the second.
 #
-# Do not add a step to that job, or a failure path to that script, that can fail
-# for a reason not on this list without extending the list in the SAME commit.
+# A run that had ALREADY found drift when the failure hit exits 1 and prints
+# what it found. Rows are walked in sorted order, so the earlier arrangement —
+# one `try` around the whole derivation with a bare `return 2` — let a late 503
+# on `msys2` silently erase a real `TOO LOW` on `actions/cache` found seconds
+# before. "Distinct" has to mean the transient does not DESTROY the evidence,
+# not merely that it carries a different number.
+#
+# ── THIRD JOB: action-runtime-refresh-report ─────────────────────────────────
+# `needs: [action-runtime-refresh]` + `if: failure()`, and being skippable is
+# correct here: it is the reporting, not the verdict. The job above carries no
+# `if:`, no `needs:` and no `continue-on-error` — a control pins that — so a
+# skipped report never hides a drift, it only fails to advertise one.
+#
+# WHY IT EXISTS. A monthly cron that only goes red is a notification nobody
+# opens, and after a blip its message reads transient. The manifest rotting is
+# the single failure this half exists to catch, so it gets what grammars.lock
+# already gets in this file: ONE recurring, idempotent tracking issue, via the
+# same `.github/scripts/upsert-tracking-issue.sh`.
+#
+# It re-derives from upstream rather than replaying the failed job's output, so
+# the filed body is a fresh reading. It renders with `--markdown`, which is
+# RENDER-ONLY and exits 0 whatever it finds — a flag that must never reach the
+# job above, where it would be precisely the green no-op this change exists to
+# prevent. A control asserts the gate job does not pass it.
+#
+# This job's steps fail only on their own terms: checkout, the renderer, the
+# grep, `gh label create` (swallowed with `|| true`), and the upsert script,
+# which aborts without writing on any lookup error rather than risk forking the
+# thread. If the re-derivation hits the same transient, the body carries no
+# `grafel-drift:yes` marker, nothing is filed, and the job above stays red —
+# no worse than before this job existed.
+#
+# Do not add a step to either job, or a failure path to that script, that can
+# fail for a reason not on this list without extending the list in the SAME
+# commit.
 on:
   schedule:
     # 06:00 UTC on the 1st of every month.
@@ -128,3 +166,66 @@ jobs:
 
       - name: Re-derive ACTION_RUNTIMES from upstream and fail on drift
         run: python3 scripts/ci/action_runtime_refresh.py --print
+
+  # ── THIRD JOB: the drift report. See the THIRD JOB section in the header. ──
+  # Deliberately SKIPPABLE — it is the reporting, not the verdict. The job above
+  # carries no `if:`, no `needs:` and no `continue-on-error`, and a control pins
+  # that; this one exists only to turn that job's red into something a human
+  # opens. If it is skipped the drift is still red upstairs.
+  action-runtime-refresh-report:
+    name: action-runtime drift report
+    needs: [action-runtime-refresh]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      ISSUE_TITLE: 'Action runtime drift: ACTION_RUNTIMES no longer matches upstream'
+      ISSUE_LABEL: action-runtime-drift
+      ISSUE_MARKER: 'grafel-tracker:action-runtime-drift'
+    steps:
+      - uses: actions/checkout@v5
+
+      # `--markdown` is RENDER-ONLY and exits 0 whatever it finds, which is why
+      # it lives here and not in the job above: a verdict flag that suppresses
+      # the verdict is exactly the green no-op this whole change is about. A
+      # control asserts the gate job does NOT pass it.
+      #
+      # This re-derives rather than reusing the failed job's output. One extra
+      # monthly pass over ~20 reads is cheaper than an artifact handoff, and it
+      # means the filed body is a fresh reading rather than a replay. If the
+      # re-run hits the transient that reddened the job above, the body carries
+      # no drift marker and nothing is filed — the job above stays red, which is
+      # no worse than before this job existed.
+      - name: Render the drift report
+        run: python3 scripts/ci/action_runtime_refresh.py --markdown > issue-body.md
+
+      - name: Decide whether there is drift to file
+        id: drift
+        run: |
+          if grep -q 'grafel-drift:yes' issue-body.md; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure the tracking label exists
+        if: steps.drift.outputs.any == 'true'
+        run: |
+          gh label create "$ISSUE_LABEL" \
+            --description "ACTION_RUNTIMES has drifted from upstream action.yml (#7253)" \
+            --color D93F0B 2>/dev/null || true
+
+      - name: Create or update the single tracking issue (idempotent)
+        if: steps.drift.outputs.any == 'true'
+        env:
+          ISSUE_KIND: tracking
+          BODY_FILE: issue-body.md
+        run: .github/scripts/upsert-tracking-issue.sh
+
+      - name: No drift in the re-run — nothing to file
+        if: steps.drift.outputs.any == 'false'
+        run: |
+          echo "The gate job is red but this re-derivation found no drift."
+          echo "That is the transient case: exit 2 upstairs, not a rotted manifest."

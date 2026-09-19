@@ -416,7 +416,7 @@ class GateTest(unittest.TestCase):
         )
         r = no_floors(self.s.dir)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("3 `uses:` pin(s) (2 external, 1 local)", r.stdout)
+        self.assertIn("3 `uses:` pin(s) (2 external, 1 local, 0 unparseable)", r.stdout)
 
     def test_local_call_is_counted_but_not_runtime_checked(self) -> None:
         """A local reusable workflow has no upstream `runs.using`. It must not
@@ -432,7 +432,7 @@ class GateTest(unittest.TestCase):
         )
         r = no_floors(self.s.dir)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("1 `uses:` pin(s) (0 external, 1 local)", r.stdout)
+        self.assertIn("1 `uses:` pin(s) (0 external, 1 local, 0 unparseable)", r.stdout)
 
     def test_comment_is_not_a_pin(self) -> None:
         """The false-positive direction. This repo's workflow headers discuss
@@ -502,6 +502,16 @@ class GateTest(unittest.TestCase):
         self.assertIsNone(mod.major_of("main"))
         self.assertIsNone(mod.major_of("v5-beta"))
         self.assertIsNone(mod.major_of(None))
+        # TWO-DIGIT majors. Nothing in the tree exercises one today, so
+        # narrowing the regex to a single digit left the suite green while this
+        # control's name claimed to cover the spellings. github-script is at v9
+        # upstream right now, so v10 is one release away — and a v10 read as
+        # major 1 would be BELOW every floor, i.e. a loud false positive on the
+        # day the bump lands rather than a silent pass. Still wrong, still
+        # graded here.
+        self.assertEqual(mod.major_of("v10"), 10)
+        self.assertEqual(mod.major_of("v10.0.1"), 10)
+        self.assertEqual(mod.major_of("v123"), 123)
 
     # ── floors and exit 2 ────────────────────────────────────────────────────
 
@@ -540,10 +550,10 @@ class GateTest(unittest.TestCase):
             external += sum(1 for p in pins if p.action is not None)
         self.assertEqual(actual, mod.SCAN_MANIFEST)
         self.assertEqual(external, mod.TOTAL_EXTERNAL_PINS)
-        self.assertEqual(external, 70)
+        self.assertEqual(external, 71)
 
     def test_manifest_fires_when_a_pin_bearing_workflow_vanishes(self) -> None:
-        """The hole a floor leaves. release.yml alone carries 14 of 71 pins;
+        """The hole a floor leaves. release.yml alone carries 14 of 72 pins;
         deleting it whole still clears any floor with headroom."""
         tree = self.s.copy_real_tree()
         os.remove(os.path.join(tree, "release.yml"))
@@ -599,7 +609,7 @@ class GateTest(unittest.TestCase):
         r = run_gate(REAL_WORKFLOWS, "--print-manifest")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('"release.yml": 14,', r.stdout)
-        self.assertIn("TOTAL_EXTERNAL_PINS = 70", r.stdout)
+        self.assertIn("TOTAL_EXTERNAL_PINS = 71", r.stdout)
 
     # ── allow-list: both arms, on an empty-by-design dict ────────────────────
 
@@ -675,12 +685,26 @@ class GateTest(unittest.TestCase):
     # ── the host job: a skipped job reports SUCCESS ──────────────────────────
 
     def _job_block(self, path: str, job: str) -> str:
+        """One job's own text, bounded.
+
+        A `  # ──` banner ENDS the block. Without that the block ran on into the
+        next job's banner comment, and the reachability control below then read
+        the words `if:` out of that comment's PROSE and failed on a job that has
+        no `if:` at all. A control whose verdict depends on the wording of a
+        neighbouring comment is measuring the wrong thing in both directions:
+        it can fail on clean configuration, and a banner that happens to avoid
+        the words would let a real `if:` through. The extraction control below
+        pins that the boundary really is drawn.
+        """
         with open(path, encoding="utf-8") as fh:
             lines = fh.read().splitlines()
         start = next(i for i, ln in enumerate(lines) if ln == f"  {job}:")
         end = len(lines)
         for i in range(start + 1, len(lines)):
             ln = lines[i]
+            if ln.startswith("  # ──"):
+                end = i
+                break
             if ln.strip() and not ln.startswith("    ") and not ln.startswith("  #"):
                 end = i
                 break
@@ -775,6 +799,13 @@ class GateTest(unittest.TestCase):
             "no ACTION_RUNTIMES row",
             "first node24 major",
             "no readable major",
+            # round 2 added TWO exit-1 causes to the gate. The all-digit-SHA
+            # widening of cause 3 and the continued-`uses:` cause 3b were both
+            # written into the header and NEITHER was added here — a mutant
+            # deleting cause 3b from the header stayed ALIVE. The rule this
+            # control enforces is exactly the rule it had just broken.
+            "ALL-DIGIT abbreviated one",
+            "a `uses:` key whose value sits on a FOLLOWING line",
             "an ALLOWED row matched nothing",
             "external-pin\n#      total does not match the manifest",
             "fewer workflows or fewer pins than its floors",
@@ -784,6 +815,219 @@ class GateTest(unittest.TestCase):
             phead = fh.read()
         for phrase in ("TOO LOW", "TOO HIGH", "recorded evidence", "deprecated or non-Node"):
             self.assertIn(phrase, phead, f"missing from the refresh list: {phrase}")
+
+
+    # ── F1: a `uses:` whose value is on the next line ────────────────────────
+
+    def test_continued_uses_is_a_violation(self) -> None:
+        """THE HOLE THAT SHIPPED IN THE FIRST ROUND.
+
+            - uses:
+                actions/checkout@v4
+
+        is legal YAML and legal Actions. The same-line pattern cannot see it, so
+        a reintroduced `checkout@v4` written this way passed FULLY GREEN in a
+        copy of the real tree — 0 violations, rc 0 — with the per-file count,
+        the filename set AND the external total all still matching, because the
+        `uses:` LINE is still there and still counted. That settles a question
+        the manifest section raises: all three population checks can be correct
+        while a pin escapes. The manifest is not a backstop for a parser blind
+        spot, so the parser has to refuse the form.
+        """
+        self.s.write(
+            "continued.yml",
+            """
+            jobs:
+              j:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses:
+                      actions/checkout@v4
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("continued.yml:5", r.stderr)
+        self.assertIn("value is on a following line", r.stderr)
+
+    def test_continued_uses_in_a_copy_of_the_real_tree(self) -> None:
+        """The measured scenario, end to end: planted beside a legitimate pin in
+        the real population, with --manifest on and every count intact."""
+        tree = self.s.copy_real_tree()
+        target = os.path.join(tree, "windows.yml")
+        with open(target, encoding="utf-8") as fh:
+            body = fh.read()
+        old = "      - uses: actions/checkout@v5\n"
+        self.assertEqual(body.count(old), 1, "premise: the plant target")
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(body.replace(old, "      - uses:\n          actions/checkout@v4\n", 1))
+        with open(target, encoding="utf-8") as fh:
+            after = fh.read()
+        self.assertEqual(after.count("actions/checkout@v4"), 1, "the plant landed")
+
+        r = run_gate(tree, "--manifest")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("windows.yml", r.stderr)
+        # The population checks are NOT what caught it: the `uses:` line is
+        # still present, so the per-file count is unchanged. Asserting that
+        # here is what stops this control silently degrading into a duplicate
+        # of the manifest tests.
+        self.assertNotIn("SCAN MANIFEST MISMATCH", r.stderr)
+        self.assertIn("value is on a following line", r.stderr)
+
+    def test_continued_uses_is_counted_so_the_manifest_still_adds_up(self) -> None:
+        """An unparseable pin must not vanish from the census as well."""
+        self.s.write(
+            "continued.yml",
+            """
+            jobs:
+              j:
+                steps:
+                  - uses:
+                      actions/checkout@v4
+                  - uses: actions/cache@v5
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertIn("2 `uses:` pin(s) (1 external, 0 local, 1 unparseable)", r.stdout)
+
+    # ── F2: an all-digit abbreviated SHA must not read as a major ────────────
+
+    def test_all_digit_short_sha_is_not_read_as_a_major(self) -> None:
+        """A 7-char abbreviated SHA is all-digits with p ~= 3.6%, and people do
+        write short SHAs. `REF_MAJOR` alone reads `1234567` as major 1,234,567,
+        which clears every floor this gate will ever have — an accidental,
+        silent, always-passing bypass inside a gate whose premise is failing
+        closed. That is worse than failing open loudly.
+        """
+        mod = self._gate()
+        for sha in ("1234567", "0123456789", "deadbeef", "a" * 40, "1" * 40):
+            self.assertIsNone(mod.major_of(sha), sha)
+        # and the spellings that must SURVIVE the SHA guard
+        self.assertEqual(mod.major_of("v1234567"), 1234567)
+        self.assertEqual(mod.major_of("5"), 5)
+        self.assertEqual(mod.major_of("12"), 12)
+        self.assertEqual(mod.major_of("2.31.1"), 2)
+
+    def test_all_digit_short_sha_pin_is_a_violation(self) -> None:
+        """End to end, not just the helper: the pin must actually fail."""
+        self.s.write(
+            "shortsha.yml",
+            """
+            jobs:
+              j:
+                steps:
+                  - uses: actions/checkout@1234567
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("no major version can be read", r.stderr)
+
+    def test_the_sha_comment_is_true(self) -> None:
+        """The header claimed a SHA "deliberately does NOT match" while an
+        all-digit one did. A comment asserting a property nothing tests is the
+        dominant defect class in this repo; this pins the claim to behaviour.
+        """
+        mod = self._gate()
+        src = open(GATE, encoding="utf-8").read()
+        self.assertIn("SHA_LIKE", src)
+        self.assertIsNotNone(mod.SHA_LIKE.match("1234567"))
+        self.assertIsNone(mod.SHA_LIKE.match("v5"))
+        self.assertIsNone(mod.SHA_LIKE.match("2.31.1"))
+        self.assertIsNone(mod.SHA_LIKE.match("123456"))  # 6 chars: too short
+
+    # ── F7: the sub-path violation must say what to do ───────────────────────
+
+    def test_subpath_violation_names_the_row_to_add(self) -> None:
+        """`actions/cache/restore@v5` is a legitimate, common pin and IS a
+        violation here by design. A contributor hitting it needs the hint, or
+        the fail-closed rule reads as a bug."""
+        self.s.write(
+            "sub.yml",
+            """
+            jobs:
+              j:
+                steps:
+                  - uses: actions/cache/restore@v5
+            """,
+        )
+        r = no_floors(self.s.dir)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("actions/cache/restore", r.stderr)
+        self.assertIn("needs its own row", r.stderr)
+
+    # ── F6: the drift report job ─────────────────────────────────────────────
+
+    def test_job_block_boundaries_are_real(self) -> None:
+        """Grades the extractor the two reachability controls rest on.
+
+        Both failure modes of a block extractor pass `assertNotIn` for the wrong
+        reason: an empty block trivially contains nothing, and an over-long one
+        drags in a neighbour's text. The second is not hypothetical — the block
+        for `action-runtime-refresh` ran into the NEXT job's banner comment and
+        the reachability control failed on the word `if:` appearing in that
+        comment's prose, on a job carrying no `if:` at all.
+        """
+        gate_block = self._job_block(PERIODIC_HOST, "action-runtime-refresh")
+        report_block = self._job_block(PERIODIC_HOST, "action-runtime-refresh-report")
+        self.assertTrue(gate_block.startswith("  action-runtime-refresh:"))
+        self.assertTrue(
+            report_block.startswith("  action-runtime-refresh-report:")
+        )
+        # the gate block stops AT the report job's banner, not inside it
+        self.assertNotIn("THIRD JOB", gate_block)
+        self.assertNotIn("action-runtime-refresh-report", gate_block)
+        self.assertNotIn("upsert-tracking-issue", gate_block)
+        # and neither block is the whole file
+        self.assertNotIn("freshness:", gate_block)
+        self.assertNotIn("freshness:", report_block)
+        self.assertGreater(len(gate_block.splitlines()), 8)
+        self.assertLess(len(gate_block.splitlines()), 40)
+        self.assertGreater(len(report_block.splitlines()), 8)
+        self.assertLess(len(report_block.splitlines()), 70)
+
+    def test_drift_report_job_is_wired(self) -> None:
+        """A monthly cron that only goes red is a notification nobody opens.
+
+        The report job must depend on the gate job, run on its failure, and use
+        the repo's existing idempotent upsert rather than a second mechanism.
+        """
+        with open(PERIODIC_HOST, encoding="utf-8") as fh:
+            body = fh.read()
+        block = self._job_block(PERIODIC_HOST, "action-runtime-refresh-report")
+        self.assertIn("needs: [action-runtime-refresh]", block)
+        self.assertIn("if: failure()", block)
+        self.assertIn("action_runtime_refresh.py --markdown > issue-body.md", block)
+        self.assertIn(".github/scripts/upsert-tracking-issue.sh", block)
+        self.assertIn("ISSUE_MARKER: 'grafel-tracker:action-runtime-drift'", block)
+        # The DECIDE step. Without it the job files a tracking issue on every
+        # red run, including the transient one it exists to distinguish — and a
+        # tracker that fires monthly regardless is the notification nobody opens
+        # all over again. A mutant replacing the grep with `true` was ALIVE.
+        import importlib.util as _il
+        spec = _il.spec_from_file_location("arr_marker", REFRESH)
+        marker_mod = _il.module_from_spec(spec)
+        sys.modules["arr_marker"] = marker_mod
+        self.addCleanup(sys.modules.pop, "arr_marker", None)
+        self.addCleanup(sys.modules.pop, "action_runtime_gate", None)
+        spec.loader.exec_module(marker_mod)
+        # the grep and the renderer must agree on the marker, across two files
+        self.assertIn(f"grep -q '{marker_mod.DRIFT_MARKER}' issue-body.md", block)
+        self.assertIn("steps.drift.outputs.any == 'true'", block)
+        self.assertIn("steps.drift.outputs.any == 'false'", block)
+        self.assertTrue(os.path.exists(
+            os.path.join(REPO, ".github", "scripts", "upsert-tracking-issue.sh")
+        ))
+        self.assertIn("issues: write", body)
+
+    def test_the_gate_job_never_passes_the_render_only_flag(self) -> None:
+        """`--markdown` exits 0 whatever it finds. In the VERDICT job it would
+        be precisely the green no-op this whole change exists to prevent —
+        the `--manifest`-missing lesson, one flag over."""
+        block = self._job_block(PERIODIC_HOST, "action-runtime-refresh")
+        self.assertIn("action_runtime_refresh.py --print", block)
+        self.assertNotIn("--markdown", block)
 
 
 class RefreshTest(unittest.TestCase):
@@ -916,6 +1160,154 @@ class RefreshTest(unittest.TestCase):
         rc, err = self._run_main(mod, table)
         self.assertEqual(rc, 1)
         self.assertIn("DRIFT (pinned ref is gone) actions/download-artifact@v7", err)
+
+    def test_below_min_evidence_drift_is_reported(self) -> None:
+        """F3 — THE FOURTH ARM, and the same masking as the first two.
+
+        `_real_table` only ever perturbed the `@v{min_major}` entry, so nothing
+        in the suite ever moved `@v{min_major - 1}`. Mutating the `below_min`
+        comparison to never fire left all 51 tests green: half of every row's
+        recorded evidence — including the half the failure-list prose promises —
+        was asserted by prose alone. `node16` keeps v4 unsupported, so the
+        TOO HIGH arm cannot fire and this arm is scored on its own.
+        """
+        mod = self._refresh()
+        table = self._real_table(mod, {"actions/checkout@v4": "node16"})
+        rc, err = self._run_main(mod, table)
+        self.assertEqual(rc, 1)
+        self.assertIn("DRIFT (recorded evidence stale) actions/checkout", err)
+        self.assertIn("below_min", err)
+        self.assertNotIn("TOO HIGH", err)
+        self.assertNotIn("TOO LOW", err)
+
+    def test_drift_found_before_a_failure_is_not_erased(self) -> None:
+        """F5 — an upstream blip used to DESTROY a real finding.
+
+        The whole derivation sat in one `try` with a bare `return 2`, and rows
+        are walked in sorted order — so a 503 on `msys2` swallowed a `TOO LOW`
+        on `actions/cache` or `actions/checkout` found seconds earlier. Measured:
+        exit 2 with `TOO LOW` absent from the output entirely. Exit 2 was
+        supposed to merely LOOK different from a rotted manifest; instead it
+        erased the evidence.
+
+        A run that established drift before failing now exits 1 and prints it:
+        the drift is a fact about this repository, and the failure is not a
+        reason to doubt it.
+        """
+        mod = self._refresh()
+        table = self._real_table(mod, {"actions/checkout@v5": "node20"})
+        real = mod.runs_using
+
+        def flaky(action, ref):
+            # sorted order: cache, checkout, ..., msys2 is late
+            if action.startswith("msys2/"):
+                raise mod.Unavailable("HTTP 503 Service Unavailable")
+            return table.get(f"{action}@{ref}")
+
+        mod.runs_using = flaky
+        old = sys.argv
+        sys.argv = ["action_runtime_refresh.py", "--dir", REAL_WORKFLOWS]
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = mod.main()
+        finally:
+            sys.argv = old
+            mod.runs_using = real
+        out = err.getvalue()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("503", out, "the transient is still reported")
+        self.assertIn("CUT SHORT", out)
+        self.assertIn("DRIFT (manifest TOO LOW) actions/checkout", out)
+
+    def test_a_failure_with_no_drift_yet_is_still_exit_2(self) -> None:
+        """The other side of F5: when nothing was established, the verdict
+        really is unknown and must not masquerade as a clean bill either way."""
+        mod = self._refresh()
+        table = self._real_table(mod)
+
+        def flaky(action, ref):
+            if action == "actions/cache":  # first in sorted order
+                raise mod.Unavailable("HTTP 503 Service Unavailable")
+            return table.get(f"{action}@{ref}")
+
+        mod.runs_using = flaky
+        old = sys.argv
+        sys.argv = ["action_runtime_refresh.py", "--dir", REAL_WORKFLOWS]
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = mod.main()
+        finally:
+            sys.argv = old
+        self.assertEqual(rc, 2, err.getvalue())
+
+    # ── F6: the render-only mode ─────────────────────────────────────────────
+
+    def test_markdown_mode_marks_drift_and_never_decides(self) -> None:
+        """The report job's input. It must exit 0 whatever it finds — it is a
+        renderer — and it must carry the marker the workflow greps for, or the
+        tracking issue is never filed."""
+        mod = self._refresh()
+        table = self._real_table(mod, {"actions/checkout@v5": "node20"})
+        mod.runs_using = lambda a, r: table.get(f"{a}@{r}")
+        old = sys.argv
+        sys.argv = ["action_runtime_refresh.py", "--dir", REAL_WORKFLOWS, "--markdown"]
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = mod.main()
+        finally:
+            sys.argv = old
+        body = out.getvalue()
+        self.assertEqual(rc, 0, "render-only never decides")
+        self.assertIn("grafel-drift:yes", body)
+        self.assertIn("TOO LOW", body)
+        self.assertIn("| `actions/checkout` | v5 |", body)
+        # and the summary line must NOT land in the issue body
+        self.assertNotIn("drift finding(s).", body)
+
+    def test_markdown_mode_omits_the_marker_when_clean(self) -> None:
+        """Otherwise the workflow files a tracking issue every single month."""
+        mod = self._refresh()
+        table = self._real_table(mod)
+        mod.runs_using = lambda a, r: table.get(f"{a}@{r}")
+        old = sys.argv
+        sys.argv = ["action_runtime_refresh.py", "--dir", REAL_WORKFLOWS, "--markdown"]
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = mod.main()
+        finally:
+            sys.argv = old
+        body = out.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertNotIn("grafel-drift:yes", body)
+        self.assertIn("No drift", body)
+
+    def test_markdown_mode_renders_a_cut_short_run(self) -> None:
+        """A transient must not silently produce a body that reads complete."""
+        mod = self._refresh()
+        table = self._real_table(mod, {"actions/checkout@v5": "node20"})
+
+        def flaky(action, ref):
+            if action.startswith("msys2/"):
+                raise mod.Unavailable("HTTP 503")
+            return table.get(f"{action}@{ref}")
+
+        mod.runs_using = flaky
+        old = sys.argv
+        sys.argv = ["action_runtime_refresh.py", "--dir", REAL_WORKFLOWS, "--markdown"]
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = mod.main()
+        finally:
+            sys.argv = old
+        body = out.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("grafel-drift:yes", body)
+        self.assertIn("CUT SHORT", body)
 
     def test_network_failure_is_exit_2_not_drift(self) -> None:
         """A rate-limited run and a rotted manifest must not look the same, or

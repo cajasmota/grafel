@@ -135,7 +135,15 @@ name: node-type gate
 #   2. a `uses:` value names an action with no ACTION_RUNTIMES row — the gate
 #      fails closed rather than inventing a ticket-free exemption;
 #   3. a `uses:` value has no `@ref`, or a ref with no readable major (a branch
-#      name, a commit SHA), so its runtime cannot be resolved offline;
+#      name, a commit SHA — including an ALL-DIGIT abbreviated one, which a
+#      major-version regex alone reads as an astronomically large major and
+#      passes forever), so its runtime cannot be resolved offline;
+#   3b. a `uses:` key whose value sits on a FOLLOWING line. That is legal YAML
+#      and was measured passing fully green while carrying `checkout@v4`, with
+#      the per-file count, the filename set and the external total all still
+#      matching — so it escapes the parser AND all three population checks. It
+#      is a violation, not a skip, and the value is deliberately not read off
+#      the continuation line;
 #   4. an ALLOWED row matched nothing while its workflow is still present, or
 #      names a workflow outside the pinned set;
 #   5. the scanned filename set, a per-file `uses:` count, or the external-pin

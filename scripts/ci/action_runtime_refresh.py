@@ -36,11 +36,17 @@ EXIT CODES. Exhaustive; extend it in the same commit as any new failure path.
   0  every row matches upstream and every pinned ref is on a supported runtime.
   1  DRIFT: a manifest row disagrees with upstream, or a pinned ref resolves to
      a deprecated (or non-Node) runtime. A fact about this repo.
-  2  the tool could not run: an upstream read failed for a reason that is not a
-     404, the response was not parseable, or an `action.yml` had no `runs.using`
-     at all. Kept DISTINCT from 1 on purpose — a rate-limited run and a rotted
-     manifest must not look the same, or the first teaches everyone to ignore
-     the second.
+  2  the tool could not run AND had established no drift before failing: an
+     upstream read failed for a reason that is not a 404, the response was not
+     parseable, or an `action.yml` had no `runs.using` at all. Kept DISTINCT
+     from 1 on purpose — a rate-limited run and a rotted manifest must not look
+     the same, or the first teaches everyone to ignore the second.
+
+     A run that had ALREADY found drift when the failure hit exits 1 and prints
+     what it found. Anything else lets one 503 erase a real finding: rows are
+     walked in sorted order, so a late failure used to swallow every earlier
+     one silently. "Distinct" has to mean the transient does not destroy the
+     evidence, not merely that it carries a different number.
 """
 
 from __future__ import annotations
@@ -134,6 +140,64 @@ def supported(using: str | None) -> bool:
     return bool(m) and int(m.group(1)) >= MIN_NODE_MAJOR
 
 
+DRIFT_MARKER = "grafel-drift:yes"
+
+
+def render_markdown(
+    drift: list[str], derived: dict[str, dict], cut_short: str | None
+) -> str:
+    """The tracking-issue body. Rendering is deliberately separate from the
+    verdict: this returns text, never an exit code.
+
+    WHY THE ISSUE EXISTS AT ALL. A monthly cron that only goes red is a
+    notification nobody opens — and the message it goes red with, after a
+    network blip, reads transient. The manifest rotting is the one failure this
+    half exists to catch, so it gets the same treatment grammars.lock already
+    gets in this workflow: one recurring, idempotent tracking issue.
+    """
+    out = []
+    if drift:
+        out.append(f"<!-- {DRIFT_MARKER} -->")
+        out.append("")
+        out.append(
+            "`ACTION_RUNTIMES` in `scripts/ci/action_runtime_gate.py` no longer "
+            "describes upstream. That dict is the offline gate's entire "
+            "authority, so every PR since the drift began has been graded "
+            "against a stale floor."
+        )
+        if cut_short:
+            out.append("")
+            out.append(
+                f"> This run was CUT SHORT (`{cut_short}`). The findings below "
+                f"were already established and are real; there may be more."
+            )
+        out.append("")
+        out.append(f"## {len(drift)} finding(s)")
+        for d in drift:
+            out.append("")
+            out.append("```")
+            out.append(d.strip())
+            out.append("```")
+    else:
+        out.append("No drift: every `ACTION_RUNTIMES` row matches upstream.")
+    out.append("")
+    out.append("## Rows as upstream reports them now")
+    out.append("")
+    out.append("| action | min_major | runs.using at min | at min-1 |")
+    out.append("|---|---|---|---|")
+    for action in sorted(derived):
+        d = derived[action]
+        out.append(
+            f"| `{action}` | v{d['min_major']} | `{d['at_min']}` | "
+            f"`{d['below_min']}` |"
+        )
+    out.append("")
+    out.append(
+        "Re-derive with `python3 scripts/ci/action_runtime_refresh.py --print`."
+    )
+    return "\n".join(out) + "\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dir", default=".github/workflows")
@@ -144,9 +208,46 @@ def main() -> int:
         help="print the ACTION_RUNTIMES rows this upstream would produce, for "
         "re-pinning action_runtime_gate.py after a legitimate drift.",
     )
+    ap.add_argument(
+        "--markdown",
+        action="store_true",
+        help="RENDER ONLY: write a markdown drift report to stdout and exit 0 "
+        "whatever it finds. This is a reporting mode for the tracking-issue "
+        "job, NOT a verdict — the job that decides is the one run without this "
+        "flag, and a control asserts the gate job does not pass it. A body "
+        "containing the `grafel-drift:yes` marker line is what tells the "
+        "workflow there is something to file.",
+    )
     args = ap.parse_args()
 
     drift: list[str] = []
+
+    # ── 0: PRECONDITIONS, before any network and outside the drift try ───────
+    # Reading the tree is local and cannot flake, so it is settled first. It
+    # also must not interact with the exit-1/exit-2 rule below: "the directory
+    # yielded no pins" means the tool was pointed at the wrong place, and that
+    # is an exit 2 whatever else was found — unlike a mid-run upstream failure,
+    # it casts doubt on the run's premise rather than merely truncating it.
+    # (Found by the control for that rule: once drift could outrank Unavailable,
+    # an empty directory started reporting drift-exit-1 instead.)
+    try:
+        if not os.path.isdir(args.dir):
+            raise Unavailable(f"not a directory: {args.dir}")
+        pinned: set[tuple[str, str]] = set()
+        for f in sorted(os.listdir(args.dir)):
+            if not f.endswith((".yml", ".yaml")):
+                continue
+            for pin in parse_workflow(os.path.join(args.dir, f)):
+                if pin.action is not None and pin.ref:
+                    pinned.add((pin.action, pin.ref))
+        if not pinned:
+            raise Unavailable(
+                f"no external pins found in {args.dir}; this job would report "
+                f"green having checked nothing."
+            )
+    except Unavailable as exc:
+        print(f"action-runtime-refresh: cannot run: {exc}", file=sys.stderr)
+        return 2
 
     # ── 1 & 2: every manifest row, both directions ───────────────────────────
     derived: dict[str, dict] = {}
@@ -191,20 +292,6 @@ def main() -> int:
                 )
 
         # ── 3: every distinct ref the tree actually pins ─────────────────────
-        if not os.path.isdir(args.dir):
-            raise Unavailable(f"not a directory: {args.dir}")
-        pinned: set[tuple[str, str]] = set()
-        for f in sorted(os.listdir(args.dir)):
-            if not f.endswith((".yml", ".yaml")):
-                continue
-            for pin in parse_workflow(os.path.join(args.dir, f)):
-                if pin.action is not None and pin.ref:
-                    pinned.add((pin.action, pin.ref))
-        if not pinned:
-            raise Unavailable(
-                f"no external pins found in {args.dir}; this job would report "
-                f"green having checked nothing."
-            )
         for action, ref in sorted(pinned):
             using = runs_using(action, ref)
             if using is None:
@@ -225,8 +312,44 @@ def main() -> int:
                     f"what its major implies."
                 )
     except Unavailable as exc:
+        # DRIFT ALREADY FOUND IS NOT ERASED BY A LATER BLIP. Rows are walked in
+        # sorted order, so a 503 on `msys2` used to swallow a real `TOO LOW` on
+        # `actions/cache` or `actions/checkout` found seconds earlier: the whole
+        # derivation sat in this one `try`, and the early `return 2` printed
+        # nothing. Measured: `checkout@v5 -> node20` plus a later row failing
+        # gave exit 2 with `TOO LOW` absent from the output entirely. A
+        # rate-limited run was supposed to merely LOOK different from a rotted
+        # manifest; as written it destroyed the evidence.
+        #
+        # So: the partial findings are printed either way, and a run that found
+        # drift before the failure exits 1, because the drift is an established
+        # fact about this repository and the failure is not a reason to doubt
+        # it. Only a run that found NOTHING before failing exits 2 — that is the
+        # case where the verdict really is unknown.
         print(f"action-runtime-refresh: cannot run: {exc}", file=sys.stderr)
-        return 2
+        if args.markdown:
+            # Render-only mode never decides. A cut-short run still renders
+            # whatever it established, and says so in the body.
+            sys.stdout.write(render_markdown(drift, derived, str(exc)))
+            return 0
+        if not drift:
+            return 2
+        print(
+            f"action-runtime-refresh: the run was CUT SHORT by the error above, "
+            f"but {len(drift)} drift finding(s) were already established and "
+            f"are reported below. Exiting 1, not 2: what follows is a fact "
+            f"about this repository, not a fact about the network. Re-run to "
+            f"see whether there is more.",
+            file=sys.stderr,
+        )
+        for d in drift:
+            print(d, file=sys.stderr)
+        return 1
+
+    if args.markdown:
+        # Before the summary line below, which would otherwise land in the body.
+        sys.stdout.write(render_markdown(drift, derived, None))
+        return 0
 
     print(
         f"action-runtime-refresh: {len(ACTION_RUNTIMES)} manifest row(s) and "

@@ -55,6 +55,18 @@ workflow — it has no upstream runtime, is counted and NOT runtime-checked.
 Everything else must parse as `<owner>/<repo>[/<path>]@<ref>` where `<ref>`
 carries a major version, and must have a row in ACTION_RUNTIMES.
 
+A `uses:` with no value on the same line — the value indented beneath it — is
+legal YAML, is NOT read, and is a VIOLATION rather than a skip. See
+USES_CONTINUED: a pin written that way was measured passing fully green while
+carrying `checkout@v4`, with all three population checks still matching.
+
+SUB-PATH ACTIONS KEY ON THEIR FULL PATH. `actions/cache/restore@v5` is a
+different action from `actions/cache@v5` — a separate `action.yml` that can
+ship a separate runtime — so it needs its OWN ACTION_RUNTIMES row and does not
+inherit `actions/cache`'s. That is deliberate rather than an oversight, and it
+means a contributor adding a common, legitimate sub-path pin will get a
+violation; the message says which row to add.
+
 WHAT IS NOT READ, stated plainly, because an undisclosed blind spot in a tool
 built to catch undisclosed blind spots is the worst version of the defect:
 actions reached through a composite action's own `action.yml`, or through a
@@ -82,7 +94,11 @@ how gates get muted the first time it happens.
      a. a pin's major is below its action's first node24 major (the defect);
      b. a `uses:` value names an action with no ACTION_RUNTIMES row;
      c. a `uses:` value has no `@ref`, or a ref from which no major version can
-        be read (a branch name, a commit SHA) — unresolvable offline;
+        be read (a branch name, a commit SHA — including an all-digit
+        abbreviated one, see SHA_LIKE) — unresolvable offline;
+     c2. a `uses:` key whose value is not on the same line, so the pin is
+        outside everything this gate reads AND outside all three population
+        checks;
      d. an ALLOWED row matched no violation while its workflow is still
         present, or names a workflow outside the pinned set under --manifest;
      e. `--manifest`: the scanned filename set, a per-file `uses:` count, or
@@ -147,7 +163,7 @@ MIN_PINS = 50
 
 # ── The scan manifest: an EXACT pin, not a floor ─────────────────────────────
 # A floor with slack is a hole the exact size of the slack, and the pins here
-# are concentrated rather than spread: release.yml alone carries 14 of 71.
+# are concentrated rather than spread: release.yml alone carries 14 of 72.
 # MIN_PINS against a live total therefore leaves room for a whole pin-bearing
 # file to vanish while the run still prints a well-formed green line.
 #
@@ -161,7 +177,7 @@ SCAN_MANIFEST: dict[str, int] = {
     "board-hygiene.yml": 1,
     "coverage-docs.yml": 2,
     "cross-platform-compile.yml": 3,
-    "grammar-freshness.yml": 3,
+    "grammar-freshness.yml": 4,
     "language-release-calendar.yml": 1,
     "module-hygiene.yml": 2,
     "node-type-gate.yml": 4,
@@ -175,11 +191,17 @@ SCAN_MANIFEST: dict[str, int] = {
     "windows.yml": 3,
 }
 
-# Exact, not a floor. 71 `uses:` lines total, of which 1 is the local
-# `./.github/workflows/test.yml` call in release.yml, leaving 70 external pins.
+# Exact, not a floor. 72 `uses:` lines total, of which 1 is the local
+# `./.github/workflows/test.yml` call in release.yml, leaving 71 external pins.
 # (9242ccbea's tree had 67; c21353489 added one checkout for the
-# workflow-event-gate job, and this change adds two more — one per new job.)
-TOTAL_EXTERNAL_PINS = 70
+# workflow-event-gate job, and this change adds three more — one per new job:
+# action-runtime-gate, action-runtime-refresh and its drift-report sibling.)
+#
+# This number is not decorative. It is the ONLY check that sees an external pin
+# rewritten as a local `./.github/workflows/...` call, which leaves every
+# per-file count identical. It is also the check that caught the third checkout
+# above, during this very change.
+TOTAL_EXTERNAL_PINS = 71
 
 # ── Allow-list ───────────────────────────────────────────────────────────────
 # (workflow filename, action, ref) -> justification. Suppresses one pin that is
@@ -198,10 +220,44 @@ ALLOWED: dict[tuple[str, str, str], str] = {}
 # `#`; comment stripping has already run, so a trailing comment is gone.
 USES = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)\s*$")
 
-# A ref carrying a major version: `v5`, `v2.31.1`, `5`, `5.1`. A commit SHA or
-# a branch name deliberately does NOT match — it is unresolvable offline and is
-# reported as such rather than guessed at.
+# `uses:` with NOTHING after it — the value lives on a following, more-indented
+# line:
+#
+#     - uses:
+#         actions/checkout@v4
+#
+# That is legal YAML and legal Actions, and the pattern above cannot see it.
+# Measured, not theorised: planting exactly that beside an existing `@v5` in a
+# copy of the real tree produced 0 violations, rc=0, AND left the per-file
+# count, the filename set and TOTAL_EXTERNAL_PINS all matching — a reintroduced
+# `checkout@v4` sailing through fully green, which is the precise scenario this
+# gate exists to stop. It also settles a question the manifest section raises:
+# all three population checks CAN stay correct while a pin escapes, so the
+# manifest is not a backstop for a parser blind spot.
+#
+# The value is NOT read off the continuation line. It could be, but a parser
+# that half-understands a form is worse than one that refuses it: block
+# scalars, anchors and flow mappings all continue a `uses:` key and each would
+# need its own handling. So this is an UNPARSEABLE pin — counted, named, and an
+# exit-1 violation telling the author to write the value inline. Fail closed.
+USES_CONTINUED = re.compile(r"^\s*(?:-\s+)?uses:\s*$")
+
+# A ref carrying a major version: `v5`, `v2.31.1`, `5.1`.
 REF_MAJOR = re.compile(r"^v?(\d+)(?:\.\d+)*$")
+
+# A ref that could be an abbreviated or full commit SHA. Checked BEFORE
+# REF_MAJOR, and this ordering is the whole point: `REF_MAJOR` alone reads the
+# perfectly plausible 7-character abbreviated SHA `1234567` as major 1,234,567,
+# which clears every floor this gate will ever have — a silent, permanent,
+# always-passing bypass inside a gate whose entire premise is failing closed.
+# An all-hex-digit abbreviation is not exotic: a 7-char abbreviation is
+# all-digits with p = (10/16)^7 ~= 3.6%, and people do write short SHAs.
+#
+# A bare numeric ref of 7+ characters is therefore rejected as a possible SHA
+# rather than read as a major. `v1234567` is not (the `v` prefix says version),
+# nor is anything containing a dot, nor `5` or `12` — so no real version
+# spelling is lost.
+SHA_LIKE = re.compile(r"^[0-9a-f]{7,40}$")
 
 
 @dataclass
@@ -209,8 +265,10 @@ class Pin:
     workflow: str
     line: int
     raw: str  # the whole `uses:` value as written
-    action: str | None  # owner/repo[/path], or None for a local call
+    action: str | None  # owner/repo[/path], or None for a local call or an
+    # unparseable `uses:`
     ref: str | None
+    unparseable: bool = False  # `uses:` whose value is not on the same line
 
 
 def strip_comment(line: str) -> str:
@@ -258,6 +316,11 @@ def parse_workflow(path: str) -> list[Pin]:
         code = strip_comment(line)
         m = USES.match(code)
         if not m:
+            if USES_CONTINUED.match(code):
+                pins.append(
+                    Pin(name, n, "<value not on the `uses:` line>", None, None,
+                        unparseable=True)
+                )
             continue
         value = m.group(1).strip("'\"")
         if value.startswith("./") or value.startswith("../"):
@@ -269,7 +332,17 @@ def parse_workflow(path: str) -> list[Pin]:
 
 
 def major_of(ref: str | None) -> int | None:
+    """The major version a ref names, or None when it names none.
+
+    SHA_LIKE is consulted FIRST. Without that order an all-digit abbreviated
+    SHA parses as an astronomically large major and passes every floor
+    silently — see SHA_LIKE. Returning None here routes it to the same
+    "unresolvable offline" violation a branch name gets, which is the
+    fail-closed direction.
+    """
     if ref is None:
+        return None
+    if SHA_LIKE.match(ref):
         return None
     m = REF_MAJOR.match(ref)
     return int(m.group(1)) if m else None
@@ -322,10 +395,27 @@ def main() -> int:
         pins.extend(got)
 
     external = [p for p in pins if p.action is not None]
-    local = [p for p in pins if p.action is None]
+    local = [p for p in pins if p.action is None and not p.unparseable]
+    unparseable = [p for p in pins if p.unparseable]
 
     violations: list[str] = []
     allowed_hits: set[tuple[str, str, str]] = set()
+
+    # A `uses:` whose value is on a following line is counted (so the per-file
+    # manifest number still adds up) but cannot be resolved, and is a violation
+    # rather than a skip. It is NOT allow-listable: unlike a SHA pin there is
+    # no fact to record about it, only a line to rewrite.
+    for pin in unparseable:
+        violations.append(
+            f"\nVIOLATION {pin.workflow}:{pin.line}\n"
+            f"  uses: {pin.raw}\n"
+            f"  => the `uses:` value is on a following line. That is legal "
+            f"YAML, and this gate deliberately does not read it: a pin written "
+            f"this way was measured to pass fully green — 0 violations, and the "
+            f"per-file count, the filename set and the external total all still "
+            f"matching — while carrying `actions/checkout@v4`. Write the value "
+            f"on the `uses:` line itself."
+        )
 
     for pin in external:
         key = (pin.workflow, pin.action, pin.ref or "")
@@ -346,7 +436,11 @@ def main() -> int:
                 f"action is how the next node20 pin gets in. Look up its "
                 f"`runs.using` upstream (`python3 scripts/ci/"
                 f"action_runtime_refresh.py --print`) and add a row to "
-                f"{os.path.basename(__file__)}."
+                f"{os.path.basename(__file__)}.\n"
+                f"  NOTE: a sub-path action keys on its FULL path, so "
+                f"`actions/cache/restore` needs its own row even though "
+                f"`actions/cache` has one — they are separate action files and "
+                f"can ship separate runtimes."
             )
             continue
 
@@ -393,7 +487,8 @@ def main() -> int:
 
     print(
         f"action-runtime-gate: {len(paths)} workflow(s), {len(pins)} `uses:` "
-        f"pin(s) ({len(external)} external, {len(local)} local), "
+        f"pin(s) ({len(external)} external, {len(local)} local, "
+        f"{len(unparseable)} unparseable), "
         f"{len(violations)} violation(s), {len(allowed_hits)} allow-listed."
     )
     failed = False
