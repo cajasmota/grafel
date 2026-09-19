@@ -131,9 +131,19 @@ func buildTrendsReply(group string, days int, entries []quality.HealthEntry) Qua
 		}
 	}
 
-	// Build per-metric point lists. We always emit the core metrics
-	// (health_score, orphan_rate, bug_rate). Extended metrics are only
-	// emitted when at least one entry has a non-nil value.
+	// Build per-metric point lists. A metric contributes a point only for the
+	// entries that actually measured it — nil is skipped — and a metric NO
+	// entry measured is dropped from the reply entirely by the
+	// len(points) == 0 check below.
+	//
+	// That now includes health_score and bug_rate, which #7283 made
+	// omittable; this comment used to claim those three were emitted
+	// unconditionally, which stopped being true when they became pointers.
+	// Both behaviours are pinned, because they are separable:
+	// TestQualityTrends_UnmeasuredEntryLeavesAGap (some entries measured →
+	// sparse series, metric kept) and
+	// TestQualityTrends_MetricNoEntryMeasuredIsOmitted (none measured →
+	// metric gone).
 
 	type extractor struct {
 		label         string

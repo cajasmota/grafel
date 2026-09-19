@@ -833,10 +833,21 @@ func recordHealthHistory(group string, sum *RebuildSummary) {
 	// fidelity reading with it.
 	//
 	// #7283 — HealthEntry.BugRate and .HealthScore are pointers now, so this
-	// record can say "unknown" exactly as the webhook snapshot below does.
-	// Both are omitted together: ComputeHealthScore has no unknown state, and
+	// record omits both when the rebuild measured no IMPORTS edge at all.
+	// They go together because ComputeHealthScore has no unknown state:
 	// feeding it a 0 for an unmeasured bug rate inflates the score rather
 	// than blurring it.
+	//
+	// The webhook snapshot built below is NOT at parity, and an earlier
+	// version of this comment wrongly said it was. QualitySnapshot.BugRate is
+	// a *float64 and does go null, but QualitySnapshot.HealthScore is a bare
+	// float64, so a rebuild that measured nothing still emits
+	// {"bug_rate":null,"health_score":100} and the Slack/Discord renderers
+	// print the 100 beside the null. Fixing that is a webhook wire-contract
+	// change plus three renderer branches, tracked separately. It joins the
+	// two other surfaces #7283 deliberately left alone: HealthEntry.OrphanRate
+	// (still a bare float64) and the dashboard's "indexed but no history →
+	// fidelity 1.0 / healthy" fallback in deriveGroupHealth.
 	healthScore := quality.ComputeHealthScore(sum.OrphanRate, sum.BugRate.Pct())
 	entry := quality.HealthEntry{
 		Timestamp:     time.Now().UTC(),

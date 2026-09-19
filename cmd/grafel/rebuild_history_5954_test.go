@@ -262,7 +262,3 @@ func TestAppendRebuildHistory_ReleasesGateRegistrationOnError(t *testing.T) {
 		t.Errorf("a failed analytics batch left %d gate registration(s) held", n)
 	}
 }
-
-// fptr7283 wraps a float literal for the pointer-typed HealthEntry fields
-// (#7283 — nil is "not measured", which a bare float64 could not express).
-func fptr7283(f float64) *float64 { return &f }

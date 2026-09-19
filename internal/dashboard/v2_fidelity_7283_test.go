@@ -115,3 +115,48 @@ func TestQualityTrends_UnmeasuredEntryLeavesAGap(t *testing.T) {
 		t.Errorf("Health score points = %v, want [88 76]", got)
 	}
 }
+
+// TestQualityTrends_MetricNoEntryMeasuredIsOmitted pins the behaviour that
+// made the old "we always emit the core metrics (health_score, orphan_rate,
+// bug_rate)" comment false (#7283 review, finding 2).
+//
+// It is a DIFFERENT behaviour from the gap pinned above: a sparse series keeps
+// the metric and drops individual points, whereas a metric NO entry measured
+// is dropped from the reply entirely by the len(points) == 0 check. The gap
+// test cannot observe that — it always has two measured entries — so nothing
+// graded metric omission until this test.
+func TestQualityTrends_MetricNoEntryMeasuredIsOmitted(t *testing.T) {
+	base := time.Now().UTC().Add(-72 * time.Hour)
+	// Three entries, none of which recorded a bug rate or a health score —
+	// the shape a group gets while every one of its repos fails to scan.
+	// Three, not two, so "dropped because the series was too short" is not a
+	// competing explanation for the absence.
+	entries := []quality.HealthEntry{
+		{Timestamp: base, Group: "g", TotalEntities: 10, OrphanRate: 10},
+		{Timestamp: base.Add(time.Hour), Group: "g", TotalEntities: 10, OrphanRate: 20},
+		{Timestamp: base.Add(2 * time.Hour), Group: "g", TotalEntities: 10, OrphanRate: 30},
+	}
+
+	reply := buildTrendsReply("g", 30, entries)
+
+	present := map[string]int{}
+	for _, m := range reply.Metrics {
+		present[m.Label] = len(m.Points)
+	}
+
+	// Control: orphan rate IS measured on all three, so the reply is populated
+	// and a missing bug rate below cannot be "the builder emitted nothing".
+	if n, ok := present["Orphan rate"]; !ok || n != 3 {
+		t.Fatalf("Orphan rate = %d points (present=%v), want 3 — the reply must be populated at all: %v", n, ok, present)
+	}
+	if !reply.HasHistory {
+		t.Fatalf("has_history = false; the reply was short-circuited before the metric loop: %+v", reply)
+	}
+
+	for _, label := range []string{"Bug rate", "Health score"} {
+		if n, ok := present[label]; ok {
+			t.Errorf("%s is present with %d points although no entry measured one — "+
+				"an all-unmeasured metric must be omitted from the reply, not emitted empty or zero-filled", label, n)
+		}
+	}
+}

@@ -853,10 +853,6 @@ func TestBugRateLine_RepoCoverageCounts(t *testing.T) {
 	}
 }
 
-// fptr7283 wraps a float literal for the pointer-typed HealthEntry fields
-// (#7283 — nil is "not measured", which a bare float64 could not express).
-func fptr7283(f float64) *float64 { return &f }
-
 // TestRecordHealthHistory_UnmeasuredRateIsNotPersistedAsZero is the same
 // forbidden row one layer down from TestRebuildQualitySnapshot_UnmeasuredIsNull
 // (#7283). The webhook snapshot could already say "unknown"; the persisted
