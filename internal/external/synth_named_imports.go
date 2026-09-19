@@ -238,7 +238,17 @@ func buildNamedImportIndex(
 func importEdgePackageRoot(toID, lang string, relProps map[string]string, internal internalRoots) (string, bool) {
 	switch lang {
 	case "javascript", "typescript", "tsx", "jsx":
-		return jsExternalPackageRoot(toID, relProps)
+		// #7274 F2 — the JS arm was the only one that ignored its
+		// internal-root set, so `import { Button } from "components/Button"`
+		// still minted ext:components:Button for that file's bare-name
+		// references even when the repo owned components/. The guard has to
+		// hold on BOTH routes or the same root is guarded on one spelling
+		// and unguarded on the other within a single Synthesize call.
+		root, ok := jsExternalPackageRoot(toID, relProps)
+		if !ok || internal.js[strings.ToLower(root)] {
+			return "", false
+		}
+		return root, true
 	case "java", "kotlin":
 		return javaExternalPackageRoot(toID, relProps, internal.java)
 	case "python":
