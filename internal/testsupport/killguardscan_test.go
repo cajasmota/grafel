@@ -144,6 +144,93 @@ func f(pid int) error { return process.Kill(pid) } //killguard:direct deliberate
 			wantHits: 0,
 		},
 		{
+			name: "PLANTED VIOLATION — a BLOCK comment cannot carry the marker",
+			src: `package p
+` + procImport + `
+func f(pid int) error {
+	/*killguard:direct a block comment is not a path*/
+	return process.Kill(pid)
+}`,
+			wantHits: 1,
+			why: "killguardscan.go states this as a property of HasPrefix rather than as a decision; " +
+				"a row makes the claim observed instead of asserted, and pins that widening the " +
+				"marker match to block comments is a deliberate change",
+		},
+		{
+			name: "PLANTED VIOLATION — a BARE marker above the reference does not excuse it",
+			src: `package p
+` + procImport + `
+func f(pid int) error {
+	//killguard:direct
+	return process.Kill(pid)
+}`,
+			wantHits: 1,
+			why: "the marker's whole advantage over a file allowlist is the FORCED justification. " +
+				"Honouring a bare one makes it a line-scoped allowlist and makes this package's " +
+				"own design section a claim no test can kill — the repo's dominant defect class",
+		},
+		{
+			name: "PLANTED VIOLATION — a BARE marker TRAILING the reference does not excuse it either",
+			src: `package p
+` + procImport + `
+func f(pid int) error { return process.Kill(pid) } //killguard:direct`,
+			wantHits: 1,
+			why: "the scanner accepts the marker in three positions, so the rule has to behave " +
+				"identically in all three; a trailing marker simply has no continuation line to " +
+				"put the reason on",
+		},
+		{
+			name: "PLANTED VIOLATION — whitespace after the marker is not a reason",
+			src: `package p
+` + procImport + `
+func f(pid int) error {
+	//killguard:direct   ` + `
+	return process.Kill(pid)
+}`,
+			wantHits: 1,
+			why: "the cheapest way to defeat a naive `len(rest) > 0` check, and gofmt would strip it " +
+				"from the file leaving a bare marker that had once passed review",
+		},
+		{
+			name: "the reason may WRAP onto a continuation line with the marker line otherwise bare",
+			src: `package p
+` + procImport + `
+func f(pid int) error {
+	//killguard:direct
+	// this site kills a child the caller spawned itself.
+	return process.Kill(pid)
+}`,
+			wantHits: 0,
+			why: "a rule demanding the reason on the marker's OWN line would reject ordinary " +
+				"wrapping, which is how reaper.go's real justification is written",
+		},
+		{
+			name: "PLANTED VIOLATION — prose ABOVE the marker is not the reason",
+			src: `package p
+` + procImport + `
+func f(pid int) error {
+	// This function terminates a process.
+	//killguard:direct
+	return process.Kill(pid)
+}`,
+			wantHits: 1,
+			why: "text before the marker explains the CODE, not the exemption. Counting it would " +
+				"let a bare marker dropped under any existing comment pass, which is most of them",
+		},
+		{
+			name: "PLANTED VIOLATION — an empty continuation comment is not a reason",
+			src: `package p
+` + procImport + `
+func f(pid int) error {
+	//killguard:direct
+	//
+	return process.Kill(pid)
+}`,
+			wantHits: 1,
+			why: "`//` on its own is the blank line of a comment group; a check counting COMMENTS " +
+				"rather than TEXT would accept it",
+		},
+		{
 			name: "PLANTED VIOLATION — the marker excuses ONE line, not the function",
 			src: `package p
 ` + procImport + `
@@ -200,6 +287,46 @@ func (s *engineSupervisor) start() {
 		if !strings.Contains(s, want) {
 			t.Errorf("finding %q does not name %q", s, want)
 		}
+	}
+}
+
+// TestFindDirectKillsBareMarkerDiagnosis pins that a bare marker is reported
+// DIFFERENTLY from an unmarked site.
+//
+// Without this the author of a bare marker is told to "mark the line" on a line
+// they already marked, which reads as a broken guard rather than as the rule
+// being enforced — and the likeliest response to that is to delete the guard.
+// An enforcement whose diagnostic misdirects is worse than no enforcement.
+func TestFindDirectKillsBareMarkerDiagnosis(t *testing.T) {
+	bare := scanKills(t, `package p
+`+procImport+`
+func f(pid int) error {
+	//killguard:direct
+	return process.Kill(pid)
+}`)
+	if len(bare) != 1 {
+		t.Fatalf("got %d findings for a bare marker, want 1: %v", len(bare), bare)
+	}
+	if !bare[0].BareMarker {
+		t.Error("BareMarker is false for a site whose marker carries no reason")
+	}
+	if msg := bare[0].String(); !strings.Contains(msg, "BARE") || !strings.Contains(msg, "reason") {
+		t.Errorf("bare-marker finding %q does not say the marker was not honoured, and why", msg)
+	}
+
+	// Control: an UNMARKED site must NOT claim a bare marker, or the flag says
+	// nothing and the two diagnostics collapse back into one.
+	plain := scanKills(t, `package p
+`+procImport+`
+func f(pid int) error { return process.Kill(pid) }`)
+	if len(plain) != 1 {
+		t.Fatalf("got %d findings for an unmarked site, want 1: %v", len(plain), plain)
+	}
+	if plain[0].BareMarker {
+		t.Error("BareMarker is true for a site carrying no marker at all")
+	}
+	if msg := plain[0].String(); strings.Contains(msg, "BARE") {
+		t.Errorf("unmarked finding %q is reported as a bare marker", msg)
 	}
 }
 

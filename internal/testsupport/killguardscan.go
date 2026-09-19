@@ -68,6 +68,15 @@ package testsupport
 // forces a reason to be written next to it, and shows up in the diff that adds
 // it.
 //
+// All three of those are OBSERVED, which they were not at first. Line-scoping
+// was: moving the marker two lines away into a doc comment fires the sweep. The
+// diff-visibility is a property of writing it in the source at all. But "forces
+// a reason" was decorative — a bare `//killguard:direct` was honoured, so the
+// marker was really a line-scoped allowlist and this paragraph asserted
+// something no test could kill. It is enforced now: a marker with no reason
+// after it does NOT exempt, and the finding says so rather than telling the
+// author to mark a line they already marked. See killGuardMarkedLines.
+//
 // Exactly one site needs it today: internal/daemon/reaper.go's sigtermPID. It
 // is reached by tests, and the PIDs it receives are children the test spawned
 // itself (pidfile_test.go's spawnLiveChild — `exec.Command("sleep","30")`).
@@ -109,6 +118,13 @@ type DirectKill struct {
 	Line int
 	Fn   string // enclosing function name, or "" at package level
 	Expr string // the reference as written, e.g. "process.Kill" or "proc.Kill"
+
+	// BareMarker is true when the site DOES carry a KillGuardMarker but no
+	// reason after it, so the marker was not honoured. Without it the author
+	// reads "mark the line" on a line they already marked, which is the worst
+	// possible diagnostic: it reads as a broken guard rather than as the rule
+	// the guard is enforcing.
+	BareMarker bool
 }
 
 // Key is the ledger/diagnostic key: file + enclosing function. Not line-based —
@@ -116,6 +132,13 @@ type DirectKill struct {
 func (d DirectKill) Key() string { return d.File + ":" + d.Fn }
 
 func (d DirectKill) String() string {
+	if d.BareMarker {
+		return fmt.Sprintf("%s:%d %s references %s directly and carries a BARE %s with no reason "+
+			"after it, so the marker was not honoured. The marker must be followed by the reason "+
+			"it excuses — that forced justification is the whole of its advantage over an "+
+			"allowlist. Write it, or, if there is no such reason, use process.KillGuarded",
+			d.File, d.Line, d.Fn, d.Expr, KillGuardMarker)
+	}
 	return fmt.Sprintf("%s:%d %s references %s directly — use process.KillGuarded, "+
 		"or mark the line %s <reason> if this site must signal a process the caller spawned",
 		d.File, d.Line, d.Fn, d.Expr, KillGuardMarker)
@@ -131,7 +154,7 @@ func FindDirectKills(fset *token.FileSet, f *ast.File, rel string) []DirectKill 
 	if !ok {
 		return nil
 	}
-	exempt := killGuardExemptLines(fset, f)
+	exempt, bare := killGuardMarkedLines(fset, f)
 
 	var out []DirectKill
 	seen := map[int]bool{}
@@ -141,7 +164,9 @@ func FindDirectKills(fset *token.FileSet, f *ast.File, rel string) []DirectKill 
 			return
 		}
 		seen[p.Line] = true
-		out = append(out, DirectKill{File: rel, Line: p.Line, Fn: fn, Expr: expr})
+		out = append(out, DirectKill{
+			File: rel, Line: p.Line, Fn: fn, Expr: expr, BareMarker: bare[p.Line],
+		})
 	}
 
 	inspect := func(fn string, n ast.Node) {
@@ -207,33 +232,85 @@ func processPkgIdent(f *ast.File) (name string, dotImported bool, found bool) {
 	return "", false, false
 }
 
-// killGuardExemptLines returns the lines excused by a KillGuardMarker comment.
+// killGuardMarkedLines returns the lines a KillGuardMarker comment covers,
+// split by whether the marker carried a REASON: exempt lines were excused, bare
+// lines carry a marker that was NOT honoured.
 //
-// A comment GROUP carrying the marker excuses its own lines (for a marker
+// A comment GROUP carrying the marker covers its own lines (for a marker
 // trailing the reference) and the line after the group (for a marker above it).
 // The group rather than the single marker line, because the reason the marker
 // demands is prose and wraps — absfixturescan's first cut matched only the
 // marker line and the one below, and so ignored the very exemption it had just
 // been given.
-func killGuardExemptLines(fset *token.FileSet, f *ast.File) map[int]bool {
-	lines := map[int]bool{}
+//
+// # Why a reason is REQUIRED and not merely requested
+//
+// This file justifies choosing a marker over a file allowlist on three grounds:
+// the marker is line-scoped, it forces a reason to be written next to it, and
+// it shows up in the diff that adds it. Grounds one and three were observed
+// from the start. Ground two was NOT: a bare `//killguard:direct` was honoured,
+// which made the marker a line-scoped allowlist and the stated rationale a
+// claim no test could kill. That is this repository's dominant defect class,
+// and it was found by mutating the marker rather than by reading the prose.
+//
+// So the rule is enforced here: no reason, no exemption.
+//
+// # What counts as the reason, across all three positions the scanner accepts
+//
+// The reason is the text AFTER the marker, within the marker's own comment
+// group — either on the marker's own line, or on a continuation line below it
+// in the same group. One rule, applied identically whether the marker sits
+// above the reference or trails it; a trailing marker simply has no
+// continuation lines available, so its reason must be on its own line.
+//
+// Text BEFORE the marker does not count. `// some prose` on the line above is
+// the author explaining the code, not justifying the exemption, and accepting
+// it would let any marker dropped under an existing comment pass.
+//
+// Block comments are not a path: HasPrefix requires the comment to open with
+// `//`, and a `/*...*/` never does. So a block comment can neither mark a line
+// nor supply a reason, which is stated rather than left to be discovered.
+func killGuardMarkedLines(fset *token.FileSet, f *ast.File) (exempt, bare map[int]bool) {
+	exempt, bare = map[int]bool{}, map[int]bool{}
 	for _, cg := range f.Comments {
-		marked := false
-		for _, c := range cg.List {
+		idx := -1
+		for i, c := range cg.List {
 			if strings.HasPrefix(c.Text, KillGuardMarker) {
-				marked = true
+				idx = i
+				break
 			}
 		}
-		if !marked {
+		if idx < 0 {
 			continue
+		}
+		dst := bare
+		if killGuardReasonGiven(cg.List[idx:]) {
+			dst = exempt
 		}
 		start := fset.Position(cg.Pos()).Line
 		end := fset.Position(cg.End()).Line
 		for ln := start; ln <= end+1; ln++ {
-			lines[ln] = true
+			dst[ln] = true
 		}
 	}
-	return lines
+	return exempt, bare
+}
+
+// killGuardReasonGiven reports whether any non-empty text follows the marker in
+// rest, which is the marker's comment followed by the rest of its group.
+func killGuardReasonGiven(rest []*ast.Comment) bool {
+	if len(rest) == 0 {
+		return false
+	}
+	if strings.TrimSpace(strings.TrimPrefix(rest[0].Text, KillGuardMarker)) != "" {
+		return true
+	}
+	for _, c := range rest[1:] {
+		if strings.TrimSpace(strings.TrimPrefix(c.Text, "//")) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func killGuardReceiverName(e ast.Expr) string {

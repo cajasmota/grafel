@@ -163,6 +163,12 @@ func sigterm(pid int) error {
 	//killguard:direct kills a child this caller spawned
 	return process.Kill(pid)
 }`)
+	write("marked_noreason.go", `package planted
+import "`+testsupport.ProcessImportPath+`"
+func bareMarked(pid int) error {
+	//killguard:direct
+	return process.Kill(pid)
+}`)
 	write("guarded.go", `package planted
 import "`+testsupport.ProcessImportPath+`"
 func guarded() { reap(deps{kill: process.KillGuarded}) }`)
@@ -178,12 +184,18 @@ func TestX() { _ = process.Kill }`)
 		keys = append(keys, g.Key())
 	}
 	sort.Strings(keys)
-	want := []string{"internal/planted/offender_alias.go:sweep", "internal/planted/offender_literal.go:start"}
+	want := []string{
+		"internal/planted/marked_noreason.go:bareMarked",
+		"internal/planted/offender_alias.go:sweep",
+		"internal/planted/offender_literal.go:start",
+	}
 	if strings.Join(keys, ",") != strings.Join(want, ",") {
 		t.Fatalf("planted sweep reported %v, want exactly %v.\n"+
 			"A missing offender_literal row means the detector cannot see the #7280 struct-literal "+
 			"shape, which is the whole point. A missing offender_alias row means one rename defeats "+
-			"it. An extra marked.go row means the opt-out marker does not work. An extra guarded.go "+
+			"it. A missing marked_noreason.go row means a BARE marker is still honoured, so the "+
+			"marker is a line-scoped allowlist and this file's \"forces a reason\" rationale is "+
+			"decorative. An extra marked.go row means the opt-out marker does not work. An extra guarded.go "+
 			"row means the fix does not silence the guard. An extra offender_test.go row means the "+
 			"sweep reads test files and will fire on #7268's own identity assertions.", keys, want)
 	}
