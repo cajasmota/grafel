@@ -477,7 +477,7 @@ func literalFillsParamSlot(consumerPath, producerPath string) bool {
 	}
 	cSegs := strings.Split(cNorm, "/")
 	pSegs := strings.Split(pNorm, "/")
-	if len(cSegs) != len(pSegs) || len(cSegs) == 0 {
+	if len(cSegs) != len(pSegs) {
 		return false
 	}
 	filled := false

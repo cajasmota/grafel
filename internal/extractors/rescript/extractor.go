@@ -323,9 +323,6 @@ func importDisplayName(mod string) string {
 func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	rest := src[afterPos:]
 	lines := strings.Split(rest, "\n")
-	if len(lines) == 0 {
-		return ""
-	}
 
 	var bodyLines []string
 	// #7185: the threshold is baseIndentLen+1, not +2.

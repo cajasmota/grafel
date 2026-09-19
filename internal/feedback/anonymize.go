@@ -95,10 +95,10 @@ func NameHash(name string, kind string, salt []byte) string {
 //	src/main/java/com/example/UserController.java → <java>/<seg-1>/<seg-2>/<seg-3>/<seg-4>.java
 func PathScrub(p string) string {
 	p = filepath.ToSlash(p)
+	// #7200: no length guard needed — strings.Split with a non-empty separator
+	// always returns >= 1 element, so the index below cannot be out of range.
+	// Full derivation: extractIndentBody in internal/extractors/nim/nim.go.
 	segs := strings.Split(strings.TrimPrefix(p, "/"), "/")
-	if len(segs) == 0 {
-		return p
-	}
 
 	// Pull the filename and extension off the last segment.
 	last := segs[len(segs)-1]
