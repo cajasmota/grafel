@@ -181,8 +181,14 @@ func TestRunDoctorStaleDaemons_SelectsOnlyOurBinary_7268(t *testing.T) {
 	const (
 		portableRows = 10 // rows present on every platform
 		unixOnlyRows = 1  // the criterion-1 /tmp row; see the comment above
+		// portableSelected is this floor's own magic number — the rows that
+		// MUST be listed on every platform (staleDirPID, staleOrphanPID). It is
+		// named for the same reason the two above are: a floor whose expected
+		// value is an unexplained literal is one edit away from being tuned to
+		// match a regression instead of catching it.
+		portableSelected = 2
 	)
-	wantTable, wantSelected := portableRows, 2
+	wantTable, wantSelected := portableRows, portableSelected
 	if runtime.GOOS != "windows" {
 		wantTable += unixOnlyRows
 		wantSelected += unixOnlyRows
@@ -386,6 +392,21 @@ func TestRunDoctorStaleDaemons_KillBranchReportsFailure_7268(t *testing.T) {
 //
 // The chain is complete across the two packages: internal/process grades that
 // KillGuarded refuses; this grades that killProc IS KillGuarded.
+//
+// IT REJECTS EVEN A SEMANTICALLY EQUIVALENT WRAPPER, deliberately. A future
+// refactor writing `var killProc = func(pid int) error { log(pid); return
+// process.KillGuarded(pid) }` behaves identically and still fails here, because
+// the assertion is function IDENTITY and a closure has its own code pointer.
+// That strictness is the point — it is what makes this the sole grader of the
+// wiring line — but it will look like a spurious failure to whoever writes that
+// refactor, so: the fix is to keep the seam's DEFAULT as a bare reference to
+// process.KillGuarded and put the wrapper somewhere else, or to change this
+// test deliberately having re-established how the guard still applies.
+//
+// The control below establishes that the comparison DISCRIMINATES, not that
+// `want` is the right anchor: rewriting want to reflect.ValueOf(killProc) is
+// ALIVE and no assertion inside a test whose body IS the comparison can catch
+// that. Worth knowing so the control is not read as stronger than it is.
 func TestKillProcDefaultIsGuarded_7268(t *testing.T) {
 	got := reflect.ValueOf(killProc).Pointer()
 	want := reflect.ValueOf(process.KillGuarded).Pointer()

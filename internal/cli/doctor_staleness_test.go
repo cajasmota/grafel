@@ -101,28 +101,41 @@ func TestStaleProcessClassification(t *testing.T) {
 func TestRunDoctorStaleDaemons_DryRunOutputsNoneWhenClean(t *testing.T) {
 	// A non-empty table of processes that are all somebody else's binary, so
 	// "none found" is the selection talking rather than an empty input.
+	//
+	// THE COUNT IS DECLARED, not derived from the literal. The first cut of this
+	// guard compared len(scanned) against len(table) — but len(table) is the
+	// very thing a regression shrinks, so both sides moved together and the
+	// realistic regression (rows deleted from the literal) was invisible: it
+	// caught only the artificial shape of substituting nil at the call while
+	// leaving table intact. That is the same "if BOTH shrink together the test
+	// still passes while grading less" hole this branch had already closed in
+	// the sibling table — pinned in one file and left open in its neighbour.
+	const wantCandidates = 2
 	table := []process.Info{
 		{PID: 35001, PPID: 1, Name: "helper",
 			Exe: testsupport.AbsFixture("/Users/jane smith/Library/grafel-daemon-helper/bin/helper")},
 		{PID: 35002, PPID: 400, Name: "esbuild",
 			Exe: testsupport.AbsFixture("/Users/jane/src/grafel/node_modules/.bin/esbuild")},
 	}
+	if len(table) != wantCandidates {
+		t.Fatalf("the fixture table has %d rows, want %d — a row was added or dropped, which "+
+			"changes what this test feeds the scanner", len(table), wantCandidates)
+	}
 	withProcs7268(t, table)
 	killed := withNoKills(t)
 
-	// THE SENTENCE ABOVE IS NOW OBSERVED. It was not: replacing the table with
-	// nil left this test passing, because "none found" is equally the output of
-	// a scan that had nothing to reject. Asserting what the scanner actually
-	// received is what separates "rejected two candidates" from "was handed
-	// none", and it runs through production's scanGrafelProcs rather than
-	// counting the literal above.
+	// THE SENTENCE ABOVE IS NOW OBSERVED. It was not: with an empty input,
+	// "none found" is equally the output of a scan that had nothing to reject.
+	// Asserting what the scanner actually RECEIVED separates "rejected two
+	// candidates" from "was handed none", and it runs through production's
+	// scanGrafelProcs rather than counting the literal above.
 	scanned, err := scanGrafelProcs(-1)
 	if err != nil {
 		t.Fatalf("scanGrafelProcs: %v", err)
 	}
-	if len(scanned) != len(table) {
+	if len(scanned) != wantCandidates {
 		t.Fatalf("the scan saw %d candidates, want %d — with an empty input this test's "+
-			"'none found' proves nothing about the selection", len(scanned), len(table))
+			"'none found' proves nothing about the selection", len(scanned), wantCandidates)
 	}
 
 	var sb strings.Builder

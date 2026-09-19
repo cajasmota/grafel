@@ -6,11 +6,19 @@ package testsupport
 // THE DOUBLE IS A MODEL, NOT A PROOF. winIsAbs below models windows' rule
 // (a "C:" volume followed by a separator) purely so the COMPOSITION in
 // absFixtureFor can be exercised off windows. It deliberately does not attempt
-// to reproduce volumeNameLen — UNC paths, device paths, drive-relative forms —
-// because a double that claimed to be the real predicate would be the
-// "test re-implements the rule it grades" defect in a new costume. Agreement
-// between this model and real filepath.IsAbs is established by the windows CI
-// leg and by nothing here.
+// to reproduce volumeNameLen — UNC and device roots — because a double that
+// claimed to be the real predicate would be the "test re-implements the rule it
+// grades" defect in a new costume. Agreement between this model and real
+// filepath.IsAbs is established by the windows CI leg and by nothing here.
+//
+// THE DIRECTION OF THE DIVERGENCE IS THE REASSURING PART, and "does not
+// reproduce volumeNameLen" does not say which way it runs. The model is
+// STRICTER than the real predicate: it rejects exactly one class the real one
+// accepts — UNC and device roots (`\\server\share\x`, `\\?\C:\x`) — and
+// accepts nothing the real one rejects. A stricter model can only leave a
+// correct case UNGRADED; it cannot make a passing assertion here into a red
+// windows leg. (There is no divergence on non-letter drive letters: Go
+// deliberately does not enforce A-Z.)
 
 import (
 	"strings"
@@ -76,11 +84,37 @@ func TestAbsFixtureFor_IsIdempotent(t *testing.T) {
 	}
 }
 
-// TestFixtureVolume_IsNonEmpty pins the other half: a volume of "" would make
-// AbsFixture a silent no-op on windows, and every table would go back to
-// grading nothing there while staying green everywhere.
-func TestFixtureVolume_IsNonEmpty(t *testing.T) {
-	if v := fixtureVolume(); v == "" {
+// TestFixtureVolume_IsUsable pins the other half.
+//
+// Emptiness was already pinned: a volume of "" makes AbsFixture a silent no-op
+// on windows and every table goes back to grading nothing there while staying
+// green everywhere. WELL-FORMEDNESS was not, and nothing on any leg graded it:
+// mutating the fallback from "C:" to "C" was ALIVE, because on unix the
+// fallback is the only branch ever taken and a malformed-but-non-empty value
+// satisfies a non-empty check, while on a normal windows runner the fallback is
+// not reached at all.
+//
+// THE FALLBACK IS REACHABLE ON WINDOWS, so this is not an equivalent mutant.
+// os.tempDir() (os/file_windows.go) DISCARDS getTempPath's error — `n, _ =
+// getTempPath(...)` — and returns "" when n == 0, and filepath.VolumeName("")
+// is "". GetTempPathW itself returns TMP, then TEMP, then USERPROFILE without
+// validating any of them, so a relative TMP yields a relative path whose
+// volumeNameLen is 0. Either route lands on the fallback.
+//
+// Asserted through the same model the rest of this file uses, which is round
+// 6's own thesis applied to the sibling function: absFixtureFor got its
+// platform-dependent input injected so the decision is gradable off windows;
+// fixtureVolume did not.
+func TestFixtureVolume_IsUsable(t *testing.T) {
+	v := fixtureVolume()
+	if v == "" {
 		t.Fatal("fixtureVolume() is empty — AbsFixture would be a no-op on windows")
+	}
+	// A usable volume is one that yields an ABSOLUTE path when a rooted
+	// remainder is appended to it. "C" satisfies non-emptiness and fails this.
+	if !winIsAbs(v + `\x`) {
+		t.Fatalf("fixtureVolume() = %q is not a usable volume: %q is not absolute under the "+
+			"windows rule, so AbsFixture would produce fixtures the identity gate rejects",
+			v, v+`\x`)
 	}
 }
