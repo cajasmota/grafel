@@ -16,9 +16,11 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/cli"
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -224,9 +226,7 @@ func (s *Server) handleDiagnosticsKillStale(w http.ResponseWriter, r *http.Reque
 		if exe == "" {
 			exe = p.Name
 		}
-		isTmp := len(exe) >= 4 && exe[:4] == "/tmp"
-		isDifferentDaemon := containsLower(exe, "daemon") && exe != selfExe
-		if !(p.PPID == 1 && isTmp) && !isDifferentDaemon {
+		if !isStaleDiagnosticsProc(exe, p.PPID, selfExe) {
 			continue
 		}
 		kp := KilledProcess{PID: p.PID, PPID: p.PPID, Exe: exe}
@@ -243,6 +243,34 @@ func (s *Server) handleDiagnosticsKillStale(w http.ResponseWriter, r *http.Reque
 		killed = []KilledProcess{}
 	}
 	writeJSON(w, http.StatusOK, KillStaleReply{Killed: killed, DryRun: dryRun})
+}
+
+// isStaleDiagnosticsProc reports whether a scanned process is a candidate for
+// SIGTERM by POST /api/diagnostics/kill-stale.
+//
+// This is the dashboard's copy of internal/cli's isStaleProc — the same two
+// criteria, re-implemented against the same process.FindByName("grafel") scan
+// (#7258 tracks the duplication itself). It carried the same #7268 defect and
+// takes the same fix: daemon.IsCanonicalBinaryPath is a precondition for every
+// criterion, so a stranger's binary that merely lives under a directory named
+// "grafel" — /Users/jane smith/Library/grafel-daemon-helper/bin/helper — is
+// never signalled. The criteria themselves are unchanged and the gate can only
+// narrow what they select.
+//
+// One drift from the CLI twin is closed here: the /tmp test was
+// `exe[:4] == "/tmp"`, which also matched /tmpfoo/... — a prefix the CLI
+// rejects. Narrowed to agree with it. That is the safe direction on a kill
+// path (fewer processes selected) and leaves the two APIs answering the same
+// question the same way.
+func isStaleDiagnosticsProc(exe string, ppid int, selfExe string) bool {
+	if !daemon.IsCanonicalBinaryPath(exe) {
+		return false
+	}
+	isTmp := strings.HasPrefix(exe, "/tmp/") || exe == "/tmp"
+	if ppid == 1 && isTmp {
+		return true
+	}
+	return containsLower(exe, "daemon") && exe != selfExe
 }
 
 // handleDiagnosticsForceRescan — POST /api/diagnostics/force-rescan

@@ -372,16 +372,7 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 
 	var stale []staleProcess
 	for _, p := range procs {
-		isStale := false
-		// Stale criterion 1: PPID=1 (launchd/systemd orphan) + binary under /tmp
-		if p.PPID == 1 && p.IsTmp {
-			isStale = true
-		}
-		// Stale criterion 2: daemon process running from a different binary than self
-		if strings.Contains(strings.ToLower(p.Exe), "daemon") && p.Exe != selfExe {
-			isStale = true
-		}
-		if isStale {
+		if isStaleProc(p, selfExe) {
 			stale = append(stale, p)
 		}
 	}
@@ -419,6 +410,69 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 		fmt.Fprintf(w, "\nRun 'grafel doctor --kill-stale' to terminate these processes.\n")
 	}
 	return nil
+}
+
+// isStaleProc reports whether a scanned process is a candidate for SIGTERM by
+// `grafel doctor --kill-stale`.
+//
+// It used to live inline in runDoctorStaleDaemons, with a hand-copied twin in
+// doctor_staleness_test.go; the twin was the only thing any test exercised, so
+// the shipped predicate was ungraded. It is production code now and the tests
+// call THIS function.
+func isStaleProc(p staleProcess, selfExe string) bool {
+	// IDENTITY GATE (#7268), a precondition for EVERY criterion below.
+	//
+	// scanGrafelProcs finds its candidates with process.FindByName("grafel"),
+	// which is a case-insensitive substring match over the whole exec path —
+	// it matches any binary that merely LIVES under a directory named after
+	// this project. Both criteria below then decided kill-eligibility from
+	// path properties (a "daemon" substring, a /tmp prefix) that a stranger's
+	// binary can satisfy just as easily:
+	//
+	//   /Users/jane smith/Library/grafel-daemon-helper/bin/helper
+	//
+	// was eligible for SIGTERM. That is the same class of false positive
+	// #1719 fixed on the daemon path, where a project directory named
+	// "grafel" made every node_modules esbuild look canonical; the answer
+	// there was an exact basename match, and this call site simply never
+	// adopted it.
+	//
+	// So ask the identity question with the same gate findCanonicalDaemon
+	// uses, and ask it FIRST. The criteria that follow stay exactly as they
+	// were: the gate can only narrow what they select, never widen it.
+	if !daemon.IsCanonicalBinaryPath(p.Exe) {
+		return false
+	}
+	// Stale criterion 1: PPID=1 (launchd/systemd orphan) + binary under /tmp
+	if p.PPID == 1 && p.IsTmp {
+		return true
+	}
+	// Stale criterion 2: daemon process running from a different binary than self.
+	//
+	// NOT WIDENED HERE, deliberately. "daemon" is an ARGUMENT, not part of the
+	// exec path: the daemon is spawned as `<bin> daemon` (watcher_ctl.go) and
+	// launchd passes it the same way, while Info.Exe is the executable path on
+	// every platform (/proc/<pid>/exe on Linux, `ps -eo comm` on darwin — the
+	// `ps aux` fallback takes argv[0] only, see #7259). So this substring fires
+	// for a genuine daemon only when its INSTALL DIRECTORY happens to contain
+	// "daemon", and never because the process is a daemon. Replacing it with
+	// the identity gate alone would make every other grafel process — a
+	// concurrent `grafel status`, the user's mcp-bridge — kill-eligible, which
+	// is a widening of a kill path and needs its own decision. Filed as a
+	// finding on #7268 rather than changed under cover of this fix.
+	//
+	// p.Exe != selfExe is string equality, not identity: a daemon started via
+	// a symlink reports the link path while os.Executable resolves it, so the
+	// two can differ for one binary. Self is excluded by PID in
+	// scanGrafelProcs, so this cannot select the running process; the reachable
+	// consequence is that a sibling launched by a different path spelling is
+	// treated as a different binary. The relative-path spelling is closed by
+	// the absoluteness half of the identity gate above. Also a finding, not
+	// fixed here.
+	if strings.Contains(strings.ToLower(p.Exe), "daemon") && p.Exe != selfExe {
+		return true
+	}
+	return false
 }
 
 // scanGrafelProcs uses the cross-platform process package to find all

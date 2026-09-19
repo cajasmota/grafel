@@ -58,6 +58,40 @@ var canonicalBasenames = map[string]bool{
 	"grafel": true,
 }
 
+// IsCanonicalBinaryPath reports whether exe is an ABSOLUTE executable path
+// whose basename names the grafel binary (canonicalBasenames).
+//
+// It is the identity test findCanonicalDaemon has applied since #1719, lifted
+// out so the OTHER process-table consumers can share it instead of each
+// re-deciding "is this our binary" with a substring search. Two of those
+// consumers — `grafel doctor --kill-stale` (internal/cli) and
+// POST /api/diagnostics/kill-stale (internal/dashboard) — send SIGTERM to what
+// they select, so a path-substring match standing in for identity there means
+// signalling a stranger's process (#7268).
+//
+// Absoluteness is part of the identity, not a separate concern: an unknown or
+// relative path (a bare comm name from the #7211 Exe-empty fallback, or a
+// `./grafel` invocation) cannot be compared against any directory predicate,
+// so it must read as "not established", never as "ours".
+//
+// It deliberately says nothing about WHERE the binary lives or whether it is
+// a daemon rather than a CLI invocation; callers keep their own criteria for
+// that. It only ever narrows them.
+func IsCanonicalBinaryPath(exe string) bool {
+	if !filepath.IsAbs(exe) {
+		return false
+	}
+	// filepath.Base strips a trailing separator, so "/opt/grafel/" — plainly a
+	// DIRECTORY — would otherwise present the basename "grafel" and be accepted
+	// as an executable. No ps/proc reader produces that spelling today, so this
+	// closes a hole rather than a live bug; on a kill path an unreachable
+	// permissive case is still worth refusing.
+	if strings.HasSuffix(exe, string(filepath.Separator)) {
+		return false
+	}
+	return canonicalBasenames[strings.ToLower(filepath.Base(exe))]
+}
+
 // findProcs is process.FindByName, indirected through a package-level variable
 // so tests can drive the REAL findCanonicalDaemon with a synthetic process
 // table. The platform implementations read /proc or shell out to ps, so

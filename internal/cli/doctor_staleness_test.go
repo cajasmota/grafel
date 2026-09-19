@@ -31,12 +31,27 @@ func TestStaleProcessClassification(t *testing.T) {
 			wantStale: true,
 		},
 		{
-			// A daemon binary path that differs from self AND has "daemon" in
-			// the exe name (as would appear in ps comm column for the daemon process).
+			// A grafel binary installed under a directory named "daemon",
+			// running from a different path than self. This is criterion 2's
+			// only genuine population: "daemon" is an argument, never part of
+			// the exec path, so the substring can only come from a directory
+			// component (see isStaleProc).
 			name: "different canonical daemon binary",
-			proc: staleProcess{PID: 2, PPID: 100, Exe: "/usr/local/bin/grafel-daemon-old",
+			proc: staleProcess{PID: 2, PPID: 100, Exe: "/usr/local/lib/grafel/daemon/grafel",
 				IsOrphan: false, IsTmp: false},
 			wantStale: true,
+		},
+		{
+			// WAS wantStale:true here until #7268. The basename
+			// "grafel-daemon-old" is not the grafel binary — a renamed copy,
+			// a third-party helper, anything. Selecting it sent SIGTERM to a
+			// process on nothing but a path-substring match. Leaving such a
+			// process running is the conservative failure and is the one we
+			// choose.
+			name: "non-grafel basename with a daemon substring — NOT killed",
+			proc: staleProcess{PID: 5, PPID: 100, Exe: "/usr/local/bin/grafel-daemon-old",
+				IsOrphan: false, IsTmp: false},
+			wantStale: false,
 		},
 		{
 			name: "same binary as self — not stale",
@@ -62,21 +77,6 @@ func TestStaleProcessClassification(t *testing.T) {
 			}
 		})
 	}
-}
-
-// isStaleProc mirrors the classification logic from runDoctorStaleDaemons.
-// It is extracted here so we can unit-test it without running the full cobra
-// command. In doctor.go, the same logic lives inline inside runDoctorStaleDaemons.
-func isStaleProc(p staleProcess, selfExe string) bool {
-	// Stale criterion 1: PPID=1 (launchd/systemd orphan) + binary under /tmp
-	if p.PPID == 1 && p.IsTmp {
-		return true
-	}
-	// Stale criterion 2: daemon process running from a different binary than self
-	if strings.Contains(strings.ToLower(p.Exe), "daemon") && p.Exe != selfExe {
-		return true
-	}
-	return false
 }
 
 // TestRunDoctorStaleDaemons_DryRunOutputsNoneWhenClean verifies the full
