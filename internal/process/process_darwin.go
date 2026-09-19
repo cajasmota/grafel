@@ -149,6 +149,26 @@ func RSSBytes(pid int) (uint64, error) {
 	return kb * 1024, nil
 }
 
+// restAfterFields returns the remainder of line after its first n
+// whitespace-separated fields, with the whitespace that separates field n from
+// the remainder removed. It is the counterpart to strings.Fields for a column
+// layout whose LAST column may itself contain spaces: the numeric columns are
+// read from strings.Fields, the trailing column from here.
+//
+// Returns "" if line has n or fewer fields — a caller must treat that as
+// "no such column" rather than as an empty value.
+func restAfterFields(line string, n int) string {
+	s := strings.TrimLeft(line, " \t")
+	for i := 0; i < n; i++ {
+		j := strings.IndexAny(s, " \t")
+		if j < 0 {
+			return "" // fewer than n fields
+		}
+		s = strings.TrimLeft(s[j:], " \t")
+	}
+	return s
+}
+
 // parsePsEo parses `ps -eo pid,ppid,comm` output into Info records that
 // contain nameSubstr in the command name (case-insensitive).
 func parsePsEo(out []byte, nameSubstr string) []Info {
@@ -167,7 +187,21 @@ func parsePsEo(out []byte, nameSubstr string) []Info {
 		if len(fields) < 3 {
 			continue
 		}
-		name := fields[2]
+		// COMM is the LAST column and may contain spaces, so it must be taken
+		// as the remainder of the line rather than as fields[2] (#7259).
+		// `ps -eo comm` prints the executable path with NO arguments appended
+		// (measured on darwin 25.6.0 against a process started from a
+		// space-containing directory with an argument: the argument shows up
+		// in `ps -o args` and not in `ps -o comm`), so the remainder is
+		// exactly the path and nothing else. fields[2] silently discarded
+		// everything after the first space — "/Applications/Google" for a
+		// Chrome helper — which then made filepath.Base and every prefix test
+		// downstream answer a question about a string that is not a path.
+		//
+		// No empty-remainder guard is needed: the len(fields) >= 3 test above
+		// already establishes that line carries at least two field separators,
+		// so restAfterFields cannot return "" here.
+		name := restAfterFields(line, 2)
 		if !strings.Contains(strings.ToLower(name), needle) {
 			continue
 		}
@@ -198,6 +232,21 @@ func parsePsAux(out []byte, nameSubstr string) []Info {
 		if err != nil {
 			continue
 		}
+		// DELIBERATELY NOT restAfterFields(line, 10) — see #7259. Unlike
+		// `ps -eo comm`, `ps aux`'s COMMAND column is the full argv, arguments
+		// included (measured: the same process reads
+		//   comm -> "/private/tmp/.../my probe bin"
+		//   aux  -> "/private/tmp/.../my probe bin sleep"
+		// ). Taking the remainder here would put arguments inside Exe, so
+		// filepath.Base(Exe) in findCanonicalDaemon would return the last
+		// ARGUMENT and the basename gate would stop firing for any daemon
+		// started with flags — strictly worse than a truncated path.
+		//
+		// An argv[0] that itself contains spaces is unrecoverable from
+		// `ps aux` alone, so it stays truncated at the first space. This
+		// matters little in practice: `ps aux` is only the fallback for when
+		// `ps -eo` fails outright. Pinned by
+		// TestParsePsAux_SpacedArgv0IsStillTruncated_KnownLimitation.
 		exe := fields[10]
 		result = append(result, Info{PID: pid, PPID: 0, Name: exe, Exe: exe})
 	}
