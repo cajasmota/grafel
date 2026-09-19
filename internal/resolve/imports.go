@@ -3740,11 +3740,15 @@ func buildPlaceholderModuleRestores(records []types.EntityRecord, prunable []boo
 // file-level SCOPE.Component carrier for the resolved target file, if
 // one exists in carrierIDByPath.
 //
-// The resolver tries each canonical JS/TS extension (.ts, .tsx, .js,
-// .jsx, .mjs, .cjs) plus the directory-index forms (resolved/index.ts
-// and friends) in the same order as the JS extractor's
-// resolveRelativeImport so module derivation and import resolution
-// agree on which extension wins. Non-relative specifiers (anything
+// A carrier at the literal joined path wins first. Otherwise the
+// resolver strips one trailing canonical extension from the specifier
+// and tries each canonical JS/TS extension (.ts, .tsx, .js, .jsx,
+// .mjs, .cjs) as a REPLACEMENT, then the directory-index forms
+// (resolved/index.ts and friends), in the same order as the JS
+// extractor's resolveRelativeImport so module derivation and import
+// resolution agree on which extension wins. The replacement step is
+// what makes TypeScript's Node16/NodeNext ESM convention — importing
+// `./foo.js` to reach `foo.ts` — resolve (#7272). Non-relative specifiers (anything
 // not starting with `./` or `../`) and empty importers return ok=false
 // — those are bare-name or alias-resolved imports and the dotted-import
 // resolver already handled them in ResolveImports.
@@ -3757,16 +3761,50 @@ func resolveRelativeImportTarget(importer, module string, carrierIDByPath map[st
 	}
 	dir := path.Dir(importer)
 	base := path.Clean(path.Join(dir, module))
-	// Direct hit — module already includes a recognised extension.
+	// Direct hit — a carrier literally at the joined path. This runs
+	// FIRST so a real `foo.js` on disk still outranks the `foo.ts` the
+	// extension-replacement loop below would otherwise prefer.
 	if id, ok := carrierIDByPath[base]; ok {
 		return id, true
 	}
+	// Issue #7272 — extension REPLACEMENT, not append. TypeScript under
+	// Node16/NodeNext ESM requires the specifier to carry a `.js`
+	// extension even though the file on disk is `.ts`:
+	//
+	//	import { CategoriesService } from './categories.service.js';
+	//
+	// The old loop appended, probing `categories.service.js.ts`,
+	// `.js.tsx`, `.js.js` — paths that can never name a real file — so
+	// every such import was unresolvable by construction and its IMPORTS
+	// edge landed in bug-extractor (~113 of ~120 "bad" edges in the
+	// reporter's NestJS backend).
+	//
+	// Strip ONE trailing canonical extension, then try each canonical
+	// extension as a replacement. For an extensionless specifier the
+	// strip is a no-op (stem == base), so this single loop subsumes the
+	// old append-only fallback — no separate branch is needed. Only a
+	// CANONICAL extension is stripped: `./data.json` keeps its stem, so
+	// a JSON asset never binds to a same-named `.ts` module, and
+	// `./foo.min.js` strips to `foo.min`, not `foo`.
+	stem := base
 	for _, ext := range jsExtensions {
-		if id, ok := carrierIDByPath[base+ext]; ok {
+		if strings.HasSuffix(base, ext) {
+			stem = strings.TrimSuffix(base, ext)
+			break
+		}
+	}
+	for _, ext := range jsExtensions {
+		if id, ok := carrierIDByPath[stem+ext]; ok {
 			return id, true
 		}
 	}
 	// Directory-index form: `./components/branding` → `components/branding/index.ts`.
+	// This loop needs no replacement treatment of its own: the ESM
+	// spelling of a barrel import is `./components/branding/index.js`,
+	// whose extension sits on the FILE segment and is therefore handled
+	// by the replacement loop above. `./components/branding.js` is not a
+	// legal spelling of a directory import, so keying this loop off the
+	// unstripped `base` is correct.
 	for _, ext := range jsExtensions {
 		if id, ok := carrierIDByPath[path.Join(base, "index"+ext)]; ok {
 			return id, true
