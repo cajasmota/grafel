@@ -80,7 +80,16 @@ type importBinding struct {
 // The first match wins; ordering mirrors the TypeScript compiler's
 // resolution order so a project that ships both .ts and .d.ts pulls
 // the implementation file.
-var jsImportExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+//
+// Must agree with internal/resolve's jsExtensions: dottedModuleFromPath
+// strips from THIS list while the resolver's modulesForJSFile strips
+// from that one, and the two dotted forms have to match for an IMPORTS
+// edge to bind. `.mts` / `.cts` (the TypeScript sources for `.mjs` /
+// `.cjs`, which internal/classifier types as "typescript") were missing
+// from both; adding them only to the resolver side left
+// dottedModuleFromPath("src/x.mts") == "src.x.mts" against the
+// resolver's "src.x" (#7272).
+var jsImportExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"}
 
 // resolveRelativeImport resolves a relative import specifier (starts
 // with "./" or "../") against the importing file's directory. Returns

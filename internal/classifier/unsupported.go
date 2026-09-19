@@ -489,6 +489,28 @@ func RoutedLanguagesForTest() []string {
 	return out
 }
 
+// ExtensionsForLanguagesForTest returns every extension in
+// extensionLanguageMap whose language is one of langs, sorted. Tests in
+// downstream packages (internal/resolve, internal/extractors/javascript)
+// use it to assert their own per-language extension slices agree with the
+// classifier, which is the authority on what a file's language is, rather
+// than maintaining another hand-written copy of the same fact — five
+// divergent copies of the JS/TS set is what #7272 found.
+func ExtensionsForLanguagesForTest(langs ...string) []string {
+	want := make(map[string]bool, len(langs))
+	for _, l := range langs {
+		want[l] = true
+	}
+	out := make([]string, 0, len(extensionLanguageMap))
+	for ext, lang := range extensionLanguageMap {
+		if want[lang] {
+			out = append(out, ext)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func UnsupportedLanguageExtensionsForTest() []string {
 	out := make([]string, 0, len(unsupportedLanguageNames))
 	for ext := range unsupportedLanguageNames {
