@@ -416,6 +416,59 @@ func TestMtsCtsReachJSModuleDerivation_7272(t *testing.T) {
 	}
 }
 
+// TestModulesForFileJSArmRequiresTrailingExtension_7272 carries the
+// narrowness rows for hasJSExtension, the JS/TS arm of modulesForFile's
+// dispatch.
+//
+// Round 3 added forbidden rows for looksLikeSourceFilePath (the OTHER list's
+// consumer) and none for this one, leaving the same lexical-boundary defect
+// class guarded on one twin and open on its sibling. The mutant that exposed
+// it is `strings.HasSuffix(p, ext)` -> `strings.Contains(p, ext)`, which was
+// ALIVE against all 2519 tests in this package: with Contains, any path
+// merely CONTAINING a canonical extension gets JS module derivation, so a
+// `.map`/`.orig` build artefact, a markdown note, and — worst — a file of
+// another language living under a DIRECTORY named `x.ts` all acquire dotted
+// JS modules they have no business having.
+//
+// Entered through modulesForFile, its production entry point, not through
+// hasJSExtension directly.
+func TestModulesForFileJSArmRequiresTrailingExtension_7272(t *testing.T) {
+	forbidden := []struct{ path, why string }{
+		{"docs/notes.ts.md", "a markdown note whose stem ends in `.ts` is not a TypeScript file"},
+		{"dist/bundle.js.map", "a source map is a build artefact, not a module"},
+		{"src/app.ts.orig", "an editor/merge backup must not register a module"},
+		{"src/x.ts/helper.rb", "a DIRECTORY component named `x.ts` must not make a Ruby file a JS module"},
+		{"src/x.ts/README.md", "same, for a file with no language arm at all"},
+		{"src/x.tsx/a.go", "same, for a `.tsx` directory component and a Go file"},
+		{"src/typescript", "a path segment spelling a language name is not an extension"},
+		{"tsconfig.json", "a JSON config is not a JS/TS source"},
+		// The extension must include its DOT. Without it `HasSuffix(p, "ts")`
+		// matches any extensionless path whose name merely ENDS in those
+		// letters, and these three are all ordinary real-world paths. A
+		// dot-stripping variant of hasJSExtension was ALIVE until these rows
+		// existed — the mid-path rows above do not catch it, because it is a
+		// different boundary (missing separator, not missing anchor).
+		{"src/components", "an extensionless path ending in the letters `ts` is not a TypeScript file"},
+		{"docs/requirements", "same — `requirements` ends in `ts`"},
+		{"assets/js", "a directory named `js` is not a JavaScript file"},
+	}
+	for _, tc := range forbidden {
+		if mods := modulesForFile(tc.path); len(mods) != 0 {
+			t.Errorf("modulesForFile(%q) = %v, want nil — FORBIDDEN: the JS/TS dispatch arm must "+
+				"match a TRAILING extension, never a mid-path occurrence (%s)",
+				tc.path, mods, tc.why)
+		}
+	}
+	// Positive controls: without these, every row above would pass even if
+	// the JS/TS arm had been removed from the switch entirely.
+	for _, p := range []string{"src/real.ts", "src/real.mts", "src/real.tsx"} {
+		if mods := modulesForFile(p); len(mods) == 0 {
+			t.Errorf("modulesForFile(%q) = nil — the forbidden rows above are vacuous unless the "+
+				"accepting direction actually works", p)
+		}
+	}
+}
+
 // TestJSExtensionSetsAgreeWithClassifier_7272 is the alarm at the edit site.
 //
 // #7272 found FIVE copies of the JS/TS extension set, four of which had

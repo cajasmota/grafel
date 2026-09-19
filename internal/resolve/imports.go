@@ -604,8 +604,20 @@ func modulesForFile(p string) []string {
 // jsExtensions listed eight, so modulesForFile returned nil for every
 // `.mts` / `.cts` file and modulesForJSFile was unreachable for them —
 // the extension set was widened in one place and the only production
-// caller never saw it (#7272). Case-sensitive, matching the sibling
-// arms of the switch.
+// caller never saw it (#7272).
+//
+// The match is on a TRAILING extension, never a mid-path occurrence: a
+// `.map`/`.orig` build artefact, and above all a file of another
+// language sitting under a directory named `x.ts`, must not acquire JS
+// module derivation. TestModulesForFileJSArmRequiresTrailingExtension_7272
+// carries those forbidden rows — a `strings.Contains` variant here was
+// ALIVE against the whole package before they existed.
+//
+// Case-sensitive, like the `.py` / `.java` / `.scala` / `.php` arms of
+// the same switch. Note this differs from isJSImportSource below, which
+// lowercases. Uppercase extensions (`App.TS`) are therefore not handled
+// by any arm of this switch; that is pre-existing and consistent across
+// the switch, not a property this change relies on.
 func hasJSExtension(p string) bool {
 	for _, ext := range jsExtensions {
 		if strings.HasSuffix(p, ext) {
