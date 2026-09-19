@@ -98,6 +98,7 @@ func TestPrintDoctorHealth(t *testing.T) {
 		TotalRelationships:   50,
 		TotalCrossRepoEdges:  5,
 		BugRate:              audit.BugRate{TotalImports: 40, ResolvedImports: 40},
+		ReposGraphRead:       1,
 		OrphanEntities:       10,
 		OrphanRate:           10.0,
 		RepairCandidates:     2,

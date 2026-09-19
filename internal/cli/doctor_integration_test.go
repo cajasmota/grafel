@@ -105,6 +105,7 @@ func TestPrintDoctorHealthCompleteOutput(t *testing.T) {
 		TotalRelationships:   7700,
 		TotalCrossRepoEdges:  92,
 		BugRate:              audit.BugRate{TotalImports: 200, ResolvedImports: 197},
+		ReposGraphRead:       2,
 		OrphanEntities:       350,
 		OrphanRate:           10.0,
 		RepairCandidates:     12,

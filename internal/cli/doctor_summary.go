@@ -39,6 +39,11 @@ type DoctorRepoHealth struct {
 	// (#7271). Counts, not a percentage: see audit.BugRate.
 	bugRate audit.BugRate
 
+	// graphRead records whether this repo's graph actually loaded. A repo that
+	// could not be read contributes nothing to bugRate, and a tally missing a
+	// repo must not be reported as if it covered the group (#7271).
+	graphRead bool
+
 	// RebuildFailure is the "last rebuild FAILED" marker read from the
 	// status-plane sidecar (internal/statusfile), if any (#5822 sub-ask 3) —
 	// e.g. the per-repo watchdog SIGKILL. Non-nil is surfaced as a doctor
@@ -142,7 +147,12 @@ type DoctorGroupHealth struct {
 	// BugRate is the group's unresolved-import tally. It carries the counts
 	// it is derived from, not a percentage, so "nothing could be measured"
 	// never renders as a perfect score (#7271).
-	BugRate              audit.BugRate
+	BugRate audit.BugRate
+
+	// ReposGraphRead is how many of Repos had a readable graph. It qualifies
+	// BugRate: a tally drawn from 1 of 2 repos is partial, and saying so is the
+	// difference between a measurement and a claim (#7271).
+	ReposGraphRead       int
 	OrphanEntities       int
 	OrphanRate           float64
 	RepairCandidates     int
@@ -388,6 +398,7 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 	if err == nil && doc != nil {
 		rh.Entities = doc.Stats.Entities
 		rh.Relationships = doc.Stats.Relationships
+		rh.graphRead = true
 		rh.CrossRepoEdges, rh.orphanEntities, rh.bugRate = computeCrossRepoAndOrphans(doc)
 	}
 
@@ -408,14 +419,23 @@ func computeCrossRepoAndOrphans(doc *graph.Document) (crossRepo, orphans int, bu
 	}
 	hasIncoming := make(map[string]bool, len(doc.Relationships))
 	for _, rel := range doc.Relationships {
+		// #7271 — the unresolved-import tally rides along in this same pass;
+		// the rule lives in audit, the only place that classifies an IMPORTS
+		// target, so doctor and the dashboard cannot disagree about it.
+		//
+		// Deliberately ABOVE the empty-ToID skip below. An IMPORTS edge with no
+		// target at all is the most unresolved an edge can be: skipping it
+		// would drop it from the numerator AND the denominator, hiding exactly
+		// the breakage this metric exists to surface, and it would leave doctor
+		// measuring a different edge population from audit (which classifies
+		// "" as ImportFormatOther → unresolved) and from ComputeRebuildSummary
+		// (which already tallies before its own ToID check). Three surfaces,
+		// one population.
+		bugRate.AddEdge(rel.Kind, rel.ToID)
 		if rel.ToID == "" {
 			continue
 		}
 		hasIncoming[rel.ToID] = true
-		// #7271 — the unresolved-import tally rides along in this same pass;
-		// the rule lives in audit, the only place that classifies an IMPORTS
-		// target, so doctor and the dashboard cannot disagree about it.
-		bugRate.AddEdge(rel.Kind, rel.ToID)
 		if _, ok := entityIDs[rel.ToID]; !ok {
 			// ToID points at something not in this repo → cross-repo edge.
 			crossRepo++
@@ -439,6 +459,9 @@ func computeQualityMetrics(health *DoctorGroupHealth) {
 	for _, r := range health.Repos {
 		health.OrphanEntities += r.orphanEntities
 		health.BugRate.Add(r.bugRate)
+		if r.graphRead {
+			health.ReposGraphRead++
+		}
 
 		stateDir := daemon.StateDirForRepo(r.Path)
 		// Load candidate counts (enrichSubjects = unique entities needing enrichment).
@@ -472,16 +495,36 @@ func computeQualityMetrics(health *DoctorGroupHealth) {
 // claims a clean bill of health from an unread instrument. The counts are shown
 // alongside the percentage so the denominator that decides between these states
 // is visible on the line itself.
-func BugRateLine(b audit.BugRate) string {
+func BugRateLine(b audit.BugRate, reposRead, reposTotal int) string {
+	const label = "Bug-rate (unresolved edges):"
+
 	if !b.Known() {
-		return "Bug-rate (unresolved edges): not measured (no IMPORTS edges found in this group's graphs)"
+		// Two different silences. "No import edge in the graphs we read" is a
+		// statement about the graphs; "we read no graphs" is a statement about
+		// the instrument, and the line must not blame the former for the
+		// latter — asserting an unchecked cause is the same unearned claim
+		// this whole issue is about.
+		if reposTotal > 0 && reposRead == 0 {
+			return label + " not measured (no repo graph in this group could be read)"
+		}
+		return fmt.Sprintf("%s not measured (no IMPORTS edges in the %s repo graph(s) read)",
+			label, fmtInt(reposRead))
 	}
+
 	mark := "⚠"
 	if b.Pct() <= audit.BugRateHealthyMaxPct {
 		mark = "✓"
 	}
-	return fmt.Sprintf("Bug-rate (unresolved edges): %.1f%% (%s of %s import edges unresolved) %s",
-		b.Pct(), fmtInt(b.TotalImports-b.ResolvedImports), fmtInt(b.TotalImports), mark)
+	line := fmt.Sprintf("%s %.1f%% (%s of %s import edges unresolved) %s",
+		label, b.Pct(), fmtInt(b.TotalImports-b.ResolvedImports), fmtInt(b.TotalImports), mark)
+
+	// A rate drawn from some of the group's repos is real but PARTIAL, and the
+	// counts above would otherwise read as complete.
+	if reposRead < reposTotal {
+		line += fmt.Sprintf(" — PARTIAL: %s of %s repo graphs could not be read",
+			fmtInt(reposTotal-reposRead), fmtInt(reposTotal))
+	}
+	return line
 }
 
 // aggregateUnsupported sums every repo's unsupported-extension counts into the
@@ -627,7 +670,7 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 
 		// Quality section
 		fmt.Fprintf(w, "\n  Quality:\n")
-		fmt.Fprintf(w, "    %s\n", BugRateLine(g.BugRate))
+		fmt.Fprintf(w, "    %s\n", BugRateLine(g.BugRate, g.ReposGraphRead, len(g.Repos)))
 		fmt.Fprintf(w, "    Orphan entities: %s (%.1f%%)\n",
 			fmtInt(g.OrphanEntities), g.OrphanRate)
 		fmt.Fprintf(w, "    Repair candidates: %s\n", fmtInt(g.RepairCandidates))

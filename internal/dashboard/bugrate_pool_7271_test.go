@@ -22,9 +22,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/cli"
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
@@ -157,5 +159,92 @@ func TestQualityComposite_BugRatePoolsEveryRepo(t *testing.T) {
 	}
 	if reply.BugRatePct != 40.0 {
 		t.Errorf("bug_rate_pct = %v, want 40 (pooled 4 of 10). 25 = first repo only, 50 = last repo only, 37.5 = mean of the per-repo rates", reply.BugRatePct)
+	}
+}
+
+// TestGroupDiagnostics_UnmeasuredBugRateIsExplicitNull asserts the serialised
+// diagnostics payload. Same reason as the webhook body: the pointer is only
+// worth anything if the null survives to the wire, and `,omitempty` on the tag
+// would silently delete it.
+func TestGroupDiagnostics_UnmeasuredBugRateIsExplicitNull(t *testing.T) {
+	gd := convertGroupHealth(&cli.DoctorGroupHealth{
+		GroupName: "g",
+		Status:    "HEALTHY",
+		Repos:     []*cli.DoctorRepoHealth{},
+	})
+	body, err := json.Marshal(gd)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := string(body); !strings.Contains(got, `"bug_rate":null`) {
+		t.Errorf("diagnostics payload does not carry an explicit null bug_rate:\n%s", got)
+	}
+
+	// Positive control: a measured rate reaches the wire as a number.
+	gd = convertGroupHealth(&cli.DoctorGroupHealth{
+		GroupName:      "g",
+		Status:         "HEALTHY",
+		Repos:          []*cli.DoctorRepoHealth{},
+		BugRate:        audit.BugRate{TotalImports: 4, ResolvedImports: 3},
+		ReposGraphRead: 1,
+	})
+	body, err = json.Marshal(gd)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := string(body); !strings.Contains(got, `"bug_rate":25`) {
+		t.Errorf("measured bug_rate missing from the diagnostics payload:\n%s", got)
+	}
+}
+
+// TestBugRateHealthyBand_MatchesDashboardFidelity ties the terminal's healthy
+// band to the dashboard's. `doctor` prints "✓" at or below
+// audit.BugRateHealthyMaxPct; the dashboard calls a group healthy at fidelity
+// >= 0.97. The comment on the constant claims these agree — this is the
+// assertion that makes the claim checkable, in the only package that can see
+// both.
+func TestBugRateHealthyBand_MatchesDashboardFidelity(t *testing.T) {
+	const healthyFidelity = 0.97
+
+	if fid := fidelityFromBugRate(audit.BugRateHealthyMaxPct); fid != healthyFidelity {
+		t.Errorf("fidelityFromBugRate(%.2f) = %v, want exactly %v — the terminal's band and the dashboard's have drifted apart",
+			audit.BugRateHealthyMaxPct, fid, healthyFidelity)
+	}
+	if fid := fidelityFromBugRate(audit.BugRateHealthyMaxPct + 0.1); fid >= healthyFidelity {
+		t.Errorf("a rate just past the band still reads as healthy fidelity (%v)", fid)
+	}
+	if _, health := deriveHealthFromFidelity(fidelityFromBugRate(audit.BugRateHealthyMaxPct)); health != healthHealthy {
+		t.Errorf("the band's own rate is not %q on the dashboard: %q", healthHealthy, health)
+	}
+}
+
+// TestBuildOrphanAuditReply_ReferencesUseTheSameTally closes the last seam in
+// this reply. The unresolved-references panel used to be fed by a second pair
+// of counters accumulated beside the bug-rate tally; they are gone, and this
+// pins that the panel now reads the same pooled numbers the rate does. Without
+// it the argument could be replaced by anything (including zeros) and nothing
+// would notice — which is how a third derivation gets wired back in.
+func TestBuildOrphanAuditReply_ReferencesUseTheSameTally(t *testing.T) {
+	reply := buildOrphanAuditReply("g", []*audit.RepoReport{
+		reportWithImports("/tmp/a", 4, 1),
+		reportWithImports("/tmp/b", 6, 3),
+	})
+
+	if reply.References.Total != 10 {
+		t.Errorf("References.Total = %d, want the pooled 10", reply.References.Total)
+	}
+	if reply.References.Resolved != 6 {
+		t.Errorf("References.Resolved = %d, want the pooled 6", reply.References.Resolved)
+	}
+	if reply.References.Unresolved != 4 {
+		t.Errorf("References.Unresolved = %d, want 4", reply.References.Unresolved)
+	}
+	if reply.References.ResolvedRate != 0.6 {
+		t.Errorf("References.ResolvedRate = %v, want 0.6", reply.References.ResolvedRate)
+	}
+	// The panel and the headline rate describe the same population: 40%
+	// unresolved is the complement of a 0.6 resolved rate.
+	if reply.BugRatePct != 40.0 {
+		t.Errorf("bug_rate_pct = %v, want 40 — the panel and the rate have drifted apart", reply.BugRatePct)
 	}
 }

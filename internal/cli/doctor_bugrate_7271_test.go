@@ -12,6 +12,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -49,6 +50,30 @@ func importsDoc(computedAt time.Time) *graph.Document {
 			{FromID: "cccccccccccccccc", ToID: "bbbbbbbbbbbbbbbb", Kind: "IMPORTS"},
 			{FromID: "cccccccccccccccc", ToID: "ext:react:useState", Kind: "IMPORTS"},
 			{FromID: "cccccccccccccccc", ToID: "./unresolved/target", Kind: "IMPORTS"},
+		},
+	}
+}
+
+// emptyToIDDoc is the reviewer's probe for #7271's second divergence: an
+// IMPORTS edge with no target at all. audit classifies "" as unresolved;
+// doctor's adjacency walk skips empty-ToID edges before its orphan bookkeeping,
+// so for a while it measured a different edge population and printed
+// "0.0% … ✓" for this graph while the dashboard said 50%.
+//
+//	2 IMPORTS edges, 1 bound to a hex id, 1 with to_id ""
+//	→ 1 of 2 unresolved → 50.0%
+func emptyToIDDoc(computedAt time.Time) *graph.Document {
+	return &graph.Document{
+		Version:     1,
+		GeneratedAt: computedAt,
+		Stats:       graph.Stats{Entities: 2, Relationships: 2, Files: 2},
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "A", Kind: "function", SourceFile: "a.go", Language: "go"},
+			{ID: "bbbbbbbbbbbbbbbb", Name: "B", Kind: "function", SourceFile: "b.go", Language: "go"},
+		},
+		Relationships: []graph.Relationship{
+			{FromID: "bbbbbbbbbbbbbbbb", ToID: "aaaaaaaaaaaaaaaa", Kind: "IMPORTS"},
+			{FromID: "bbbbbbbbbbbbbbbb", ToID: "", Kind: "IMPORTS"},
 		},
 	}
 }
@@ -485,4 +510,241 @@ func TestRebuildSummaryBugRate_PoolsEveryRepo(t *testing.T) {
 	if snap.BugRate == nil || *snap.BugRate != 40.0 {
 		t.Errorf("snapshot bug_rate = %v, want the pooled 40", snap.BugRate)
 	}
+}
+
+// TestDoctorBugRate_CountsEdgesWithNoTarget is the forbidden row for the edge
+// population. An IMPORTS edge with an empty to_id is the most unresolved an
+// edge can be; dropping it would shrink BOTH the numerator and the denominator,
+// so the surface that exists to report unresolved imports would go quiet
+// precisely when an import is maximally broken.
+//
+// Before the fix this rendered as "0.0% (0 of 1 import edges unresolved) ✓" —
+// #7271 verbatim, on the branch that fixes #7271.
+func TestDoctorBugRate_CountsEdgesWithNoTarget(t *testing.T) {
+	line := renderDoctorBugRateLine(t, emptyToIDDoc(time.Now()))
+
+	if !strings.Contains(line, "50.0%") {
+		t.Errorf("an IMPORTS edge with no target is not counted as unresolved:\n  %s", line)
+	}
+	if !strings.Contains(line, "1 of 2 import edges unresolved") {
+		t.Errorf("the empty-target edge is missing from the denominator too:\n  %s", line)
+	}
+	if strings.Contains(line, "✓") {
+		t.Errorf("half the imports point nowhere and the line is marked healthy:\n  %s", line)
+	}
+}
+
+// TestDoctorBugRate_AgreesWithTheAuditedRate_EmptyToID is the cross-surface pin
+// extended to the class that defeated the original one: its fixture had no
+// empty-to_id edge, so it could not observe a population difference at all.
+func TestDoctorBugRate_AgreesWithTheAuditedRate_EmptyToID(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmp)
+
+	doc := emptyToIDDoc(time.Now())
+	repoPath := writeRepoWithGraph(t, tmp, "svc", doc, doc.Stats.Entities, doc.Stats.Relationships)
+
+	cfgPath := filepath.Join(tmp, "group.json")
+	cfg := &registry.GroupConfig{
+		Name:  "g1",
+		Repos: []registry.Repo{{Slug: "svc", Path: repoPath, Stack: registry.StackList{"go"}}},
+	}
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("SaveGroupConfig: %v", err)
+	}
+
+	rep, err := audit.AuditPath(repoPath, false)
+	if err != nil {
+		t.Fatalf("AuditPath: %v", err)
+	}
+	if len(rep.Repos) != 1 {
+		t.Fatalf("audit returned %d repos, want 1", len(rep.Repos))
+	}
+	audited := audit.BugRateFromReport(rep.Repos[0])
+	if audited.TotalImports != 2 {
+		t.Fatalf("audit saw %d import edges, want 2 — the fixture cannot pin the population", audited.TotalImports)
+	}
+
+	reports := ComputeDoctorHealth([]registry.GroupRef{{Name: "g1", ConfigPath: cfgPath}}, false)
+	if len(reports) != 1 {
+		t.Fatalf("got %d group reports, want 1", len(reports))
+	}
+	doctored := reports[0].BugRate
+
+	if doctored != audited {
+		t.Errorf("doctor and audit measure different edge populations: doctor=%+v audit=%+v", doctored, audited)
+	}
+	if doctored.Pct() != 50.0 {
+		t.Errorf("both surfaces report %.4f%%, but 1 of the 2 import edges has no target (50%%)", doctored.Pct())
+	}
+}
+
+// TestRebuildSummaryBugRate_CountsEdgesWithNoTarget is the same population on
+// the third surface — scored on its own, because a DEAD verdict on doctor says
+// nothing about the rebuild walk.
+func TestRebuildSummaryBugRate_CountsEdgesWithNoTarget(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmp)
+
+	doc := emptyToIDDoc(time.Now())
+	repoPath := writeRepoWithGraph(t, tmp, "svc", doc, doc.Stats.Entities, doc.Stats.Relationships)
+
+	sum := ComputeRebuildSummary("g1", []string{repoPath}, 0)
+	if sum.BugRate.TotalImports != 2 || sum.BugRate.ResolvedImports != 1 {
+		t.Fatalf("rebuild tally = %+v, want {2 1}", sum.BugRate)
+	}
+	if got := sum.BugRate.Pct(); got != 50.0 {
+		t.Errorf("rebuild bug rate = %v, want 50", got)
+	}
+}
+
+// TestBugRateLine_HealthyBandBoundary grades the band itself. Without a fixture
+// on the boundary the constant could be set to 0 (nothing is ever healthy) or
+// to 24.9 (the 25% case above passes as healthy) with the suite still green —
+// the mark would be back to meaning nothing.
+//
+// The three tallies below are exact in binary: 100.0 * u / t is evaluated as
+// (100*u)/t, so 2900/1000, 3000/1000 and 3100/1000 land on the doubles the
+// literals below name.
+func TestBugRateLine_HealthyBandBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		unresolved int
+		total      int
+		pct        float64
+		wantMark   string
+	}{
+		{"just inside the band", 29, 1000, 2.9, "✓"},
+		{"exactly on the band", 30, 1000, 3.0, "✓"},
+		{"just outside the band", 31, 1000, 3.1, "⚠"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := audit.BugRate{TotalImports: tc.total, ResolvedImports: tc.total - tc.unresolved}
+			if got := b.Pct(); got != tc.pct {
+				t.Fatalf("fixture drifted: Pct = %v, want %v", got, tc.pct)
+			}
+			line := BugRateLine(b, 1, 1)
+			if !strings.Contains(line, tc.wantMark) {
+				t.Errorf("%.1f%% rendered without %s:\n  %s", tc.pct, tc.wantMark, line)
+			}
+			other := "⚠"
+			if tc.wantMark == "⚠" {
+				other = "✓"
+			}
+			if strings.Contains(line, other) {
+				t.Errorf("%.1f%% rendered with %s:\n  %s", tc.pct, other, line)
+			}
+		})
+	}
+}
+
+// TestDoctorBugRate_NoReadableGraphSaysSo covers the third state's OWN honesty.
+// For a group whose repo was never indexed the old line still read "no IMPORTS
+// edges found in this group's graphs" — but there were no graphs to find them
+// in. Asserting an unchecked cause is the same unearned claim this issue is
+// about, one layer down.
+func TestDoctorBugRate_NoReadableGraphSaysSo(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmp)
+
+	repoPath := filepath.Join(tmp, "never-indexed")
+	if err := os.MkdirAll(filepath.Join(repoPath, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfgPath := filepath.Join(tmp, "group.json")
+	cfg := &registry.GroupConfig{
+		Name:  "g1",
+		Repos: []registry.Repo{{Slug: "never-indexed", Path: repoPath, Stack: registry.StackList{"go"}}},
+	}
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("SaveGroupConfig: %v", err)
+	}
+	reports := ComputeDoctorHealth([]registry.GroupRef{{Name: "g1", ConfigPath: cfgPath}}, false)
+	if len(reports) != 1 {
+		t.Fatalf("got %d group reports, want 1", len(reports))
+	}
+	if reports[0].ReposGraphRead != 0 {
+		t.Fatalf("fixture read %d graphs, want 0", reports[0].ReposGraphRead)
+	}
+
+	var buf bytes.Buffer
+	PrintDoctorHealth(&buf, reports)
+	line := bugRateLineOf(t, buf.String())
+
+	if !strings.Contains(line, "no repo graph in this group could be read") {
+		t.Errorf("line blames the graphs for a group whose graphs were never read:\n  %s", line)
+	}
+	if strings.Contains(line, "no IMPORTS edges") {
+		t.Errorf("line asserts a cause it never checked:\n  %s", line)
+	}
+	if strings.Contains(line, "✓") {
+		t.Errorf("unreadable group rendered as healthy:\n  %s", line)
+	}
+}
+
+// TestDoctorBugRate_PartialCoverageIsDeclared is the mixed case: one repo reads,
+// one does not. The rate is real but drawn from part of the group, and the
+// counts beside it would otherwise read as complete.
+func TestDoctorBugRate_PartialCoverageIsDeclared(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmp)
+
+	doc := importsDocN(time.Now(), 4, 1)
+	readable := writeRepoWithGraph(t, tmp, "svc0", doc, doc.Stats.Entities, doc.Stats.Relationships)
+	missing := filepath.Join(tmp, "svc1")
+	if err := os.MkdirAll(filepath.Join(missing, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfgPath := filepath.Join(tmp, "group.json")
+	cfg := &registry.GroupConfig{
+		Name: "g1",
+		Repos: []registry.Repo{
+			{Slug: "svc0", Path: readable, Stack: registry.StackList{"go"}},
+			{Slug: "svc1", Path: missing, Stack: registry.StackList{"go"}},
+		},
+	}
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("SaveGroupConfig: %v", err)
+	}
+	reports := ComputeDoctorHealth([]registry.GroupRef{{Name: "g1", ConfigPath: cfgPath}}, false)
+	if len(reports) != 1 {
+		t.Fatalf("got %d group reports, want 1", len(reports))
+	}
+	if reports[0].ReposGraphRead != 1 {
+		t.Fatalf("read %d of 2 graphs, want exactly 1 — the fixture cannot pin partial coverage", reports[0].ReposGraphRead)
+	}
+
+	var buf bytes.Buffer
+	PrintDoctorHealth(&buf, reports)
+	line := bugRateLineOf(t, buf.String())
+
+	if !strings.Contains(line, "25.0%") {
+		t.Errorf("the readable repo's rate is missing:\n  %s", line)
+	}
+	if !strings.Contains(line, "PARTIAL") {
+		t.Errorf("a rate drawn from 1 of 2 repos is presented as complete:\n  %s", line)
+	}
+	if !strings.Contains(line, "1 of 2 repo graphs could not be read") {
+		t.Errorf("the partial notice does not say how much is missing:\n  %s", line)
+	}
+}
+
+// bugRateLineOf extracts the single rendered Bug-rate line from doctor output.
+func bugRateLineOf(t *testing.T, out string) string {
+	t.Helper()
+	var found string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Bug-rate") {
+			if found != "" {
+				t.Fatalf("more than one Bug-rate line rendered:\n%s", out)
+			}
+			found = strings.TrimSpace(line)
+		}
+	}
+	if found == "" {
+		t.Fatalf("no Bug-rate line rendered:\n%s", out)
+	}
+	return found
 }

@@ -285,8 +285,6 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 	// Aggregate totals and build per-repo rows.
 	kindEntities := map[string]int{}
 	kindOrphans := map[string]int{}
-	totalImports := 0
-	goodImports := 0
 	var bug audit.BugRate
 	formatCounts := map[audit.ImportFormat]int{}
 
@@ -297,13 +295,12 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 		reply.Total.Entities += rr.Entities
 		reply.Total.Orphans += rr.Orphans
 
-		totalImports += rr.ImportsTotal
-		// #7271 — the rate itself is derived by audit.BugRate below, the same
-		// helper `grafel doctor` renders from, so the two surfaces cannot
-		// report different figures for the same group.
+		// #7271 — the rate AND the reference breakdown below are derived from
+		// this one tally, the same helper `grafel doctor` renders from, so the
+		// two surfaces cannot report different figures for the same group. The
+		// parallel totalImports/goodImports counters that used to run beside it
+		// are gone: a second set of numbers is a second thing to drift.
 		bug.Add(audit.BugRateFromReport(rr))
-		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
-			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
 		for f, c := range rr.ImportsToIDFormat {
 			formatCounts[f] += c
 		}
@@ -373,7 +370,7 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 	fid := fidelityFromBugRate(bugPct)
 	reply.Fidelity = &fid
 
-	reply.References = buildUnresolvedReferences(totalImports, goodImports, formatCounts)
+	reply.References = buildUnresolvedReferences(bug.TotalImports, bug.ResolvedImports, formatCounts)
 
 	return reply
 }
@@ -697,8 +694,6 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 	// Audit each repo and accumulate totals.
 	totalEntities := 0
 	totalOrphans := 0
-	totalImports := 0
-	goodImports := 0
 	var bug audit.BugRate
 	repos := 0
 
@@ -711,9 +706,6 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 		repos++
 		totalEntities += rr.Entities
 		totalOrphans += rr.Orphans
-		totalImports += rr.ImportsTotal
-		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
-			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
 		bug.Add(audit.BugRateFromReport(rr)) // #7271 — one shared derivation
 	}
 
