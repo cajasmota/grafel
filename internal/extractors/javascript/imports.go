@@ -158,8 +158,25 @@ func resolveRelativeImport(repoRoot, importerFile, spec string) string {
 // This is the one place in this file that turns a guess into a measurement,
 // so it is strictly narrowing: with no repoRoot to stat against, or when
 // NOTHING in the family exists, the specifier is returned verbatim — exactly
-// the pre-#7276 value. The widening can only ever move a path onto a file
-// that is really there.
+// the pre-#7276 value. The widening can only ever move a path onto a file the
+// OS says is there.
+//
+// "the OS says" is doing real work in that sentence and the stronger claim
+// ("a file that is really there") would be FALSE. On a case-insensitive
+// filesystem — APFS, NTFS — os.Stat answers yes for a spelling that exists
+// nowhere: `./Casing.js` against an on-disk `src/casing.ts` returns
+// "src/Casing.ts", which internal/resolve's byLocation index (keyed on the
+// entity's real SourceFile, "src/casing.ts") cannot match. That is NOT a
+// regression — the pre-fix value "src/Casing.js" missed for the same reason,
+// so both spellings are equally unbound — and it is not repaired here because
+// confirming the returned spelling means a directory read per candidate. It
+// is recorded because asserting an invariant the code does not enforce is
+// precisely the defect class #7272/#7276 are about.
+//
+// Out-of-repo specifiers (`../../../../etc/passwd.js`) survive path.Clean's
+// leading `..` and are now stat'd, not merely emitted. Pre-existing in the
+// ToID shape — the old verbatim branch emitted the same path — and it is a
+// stat, never a read; such a path is unbindable either way.
 func resolveEmittedExtension(repoRoot, joined, ext string) string {
 	if repoRoot == "" {
 		return joined

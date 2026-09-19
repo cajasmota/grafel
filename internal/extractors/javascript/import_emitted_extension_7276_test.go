@@ -123,6 +123,9 @@ func TestEmittedJsExtensionForbiddenRows_7276(t *testing.T) {
 		name string
 		// files created on disk, repo-relative
 		files []string
+		// dirs created on disk, repo-relative — planted to grade the
+		// regular-file half of the probe, not just the exists half.
+		dirs []string
 		// importer path and specifier
 		importer string
 		spec     string
@@ -181,6 +184,30 @@ func TestEmittedJsExtensionForbiddenRows_7276(t *testing.T) {
 				"resolution must never climb out of the specified directory",
 		},
 		{
+			name:     "ts_spec_reaches_the_js_that_exists",
+			files:    []string{"src/only.js"},
+			importer: "src/app.ts",
+			spec:     "./only.ts",
+			want:     "src/only.js",
+			why: "the helper deliberately covers the .ts/.tsx/.mts/.cts " +
+				"specifier families too, not just the literal #7276 .js case. " +
+				"`./foo.ts` when only foo.js exists is broken TypeScript " +
+				"either way, and addressing the file that IS there beats " +
+				"addressing one that is not; js_spec_prefers_ts_when_both_exist " +
+				"holds the answer when both are present. Narrowing the helper " +
+				"back to the emitted-only families must not pass silently",
+		},
+		{
+			name:     "directory_named_like_a_module_is_not_a_carrier",
+			dirs:     []string{"src/svc.ts"},
+			importer: "src/app.ts",
+			spec:     "./svc.js",
+			want:     "src/svc.js",
+			why: "osStatRegular's IsRegular check is load-bearing: a DIRECTORY " +
+				"named svc.ts must not satisfy the probe and be handed back as " +
+				"a resolved file path",
+		},
+		{
 			name:     "extensionless_still_defaults_to_ts",
 			files:    []string{"src/plain.js"},
 			importer: "src/app.ts",
@@ -195,6 +222,11 @@ func TestEmittedJsExtensionForbiddenRows_7276(t *testing.T) {
 			dir := t.TempDir()
 			for _, f := range row.files {
 				writeFile7276(t, dir, f, "export const x = 1;\n")
+			}
+			for _, d := range row.dirs {
+				if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(d)), 0o755); err != nil {
+					t.Fatal(err)
+				}
 			}
 			got := resolveRelativeImport(dir, row.importer, row.spec)
 			if got != row.want {
@@ -270,5 +302,44 @@ func TestEveryImportExtensionHasAFamily_7276(t *testing.T) {
 				"a specifier naming a file that really exists under its own extension "+
 				"would be walked past", ext, fam, ext)
 		}
+	}
+}
+
+// TestBarrelDirectoryIsNotMistakenForAFile_7276 grades osStatRegular's
+// IsRegular half at the caller where it actually bites.
+//
+// firstExistingJSPath probes the candidate VERBATIM first (imports.go), before
+// the `<candidate><.ext>` and `<candidate>/index<.ext>` loops. If the
+// predicate were relaxed to "stat succeeded" — the obvious simplification,
+// since os.Stat already returns an error for a missing path — a DIRECTORY
+// would satisfy that first probe and the function would return the directory
+// itself, never reaching the index loop.
+//
+// A directory named `svc.ts` is rare, which is why this looked harmless. A
+// directory named `utils` is not: the barrel import (`from '@/utils'` →
+// `src/utils/index.ts`) is the dominant alias shape in JS/TS projects, and
+// every one of them would silently resolve to a path with no entity behind it.
+// #7276 added a second consumer of osStatRegular, which is why this predicate
+// is pinned now rather than left to the next reader to rediscover.
+func TestBarrelDirectoryIsNotMistakenForAFile_7276(t *testing.T) {
+	dir := t.TempDir()
+	writeFile7276(t, dir, "src/utils/index.ts", "export const x = 1;\n")
+
+	if got, want := firstExistingJSPath(dir, "src/utils"), "src/utils/index.ts"; got != want {
+		t.Errorf("firstExistingJSPath(<root>, %q) = %q, want %q — the directory "+
+			"satisfied the verbatim probe and short-circuited the /index<.ext> "+
+			"loop, so every barrel import resolves to a path no entity occupies",
+			"src/utils", got, want)
+	}
+
+	// Negative control: a directory with NO index file resolves to nothing at
+	// all, so the assertion above is not passing merely because the function
+	// happens to append "/index.ts" unconditionally.
+	if err := os.MkdirAll(filepath.Join(dir, "src", "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := firstExistingJSPath(dir, "src/empty"); got != "" {
+		t.Errorf("firstExistingJSPath(<root>, %q) = %q, want \"\" — a directory "+
+			"with no index file is not a carrier", "src/empty", got)
 	}
 }
