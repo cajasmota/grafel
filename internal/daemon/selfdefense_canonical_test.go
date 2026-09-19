@@ -6,10 +6,11 @@ package daemon
 // These drive the REAL findCanonicalDaemon through the findProcs seam with a
 // synthetic process table, rather than re-implementing its predicate in-test.
 // That distinction is the point: the pre-existing #1719 test
-// (TestFindCanonicalDaemon_EsbuildFalsePositive) asserts on its own copy of the
-// basename rule and so cannot observe anything the shipped function does — it
-// passes with findCanonicalDaemon stubbed to return (0, ""). Every row below
-// fails if the shipped classification changes.
+// (TestFindCanonicalDaemon_EsbuildFalsePositive) used to assert on its own copy
+// of the basename rule and so could not observe anything the shipped function
+// did — it passed with findCanonicalDaemon stubbed to return (0, ""). #7277
+// rewrote it to call daemon.IsCanonicalBinaryPath, so it now grades production
+// like the rows below, which fail if the shipped classification changes.
 //
 // PLATFORM NOTE. In production findCanonicalDaemon never reaches its loop on
 // windows: process.FindByName returns ErrUnsupported there and the function
