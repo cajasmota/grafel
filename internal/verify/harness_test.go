@@ -117,6 +117,32 @@ func waitForDaemon(socketPath string, out *outputBuffer, timeout time.Duration) 
 	return nil, fmt.Errorf("daemon never came up; socket=%s; output=%s", socketPath, out.String())
 }
 
+// assertSelfDefenseDisabledInChild fails the test unless the spawned daemon
+// reported that the Layer-1 self-defense conflict check was disabled.
+//
+// The marker is built from daemon.EnvDisableSelfDefense rather than hard-coded,
+// so the assertion follows the constant it is about.
+//
+// It polls because the daemon is already past this log line by the time the
+// socket accepts a dial (SelfDefenseCheck runs before socket-listen), but the
+// os/exec copier goroutine that fills daemonOut may not have drained the pipe
+// yet. The wait is bounded and its expiry is a failure, not a skip.
+func assertSelfDefenseDisabledInChild(t *testing.T, out *outputBuffer) {
+	t.Helper()
+	marker := "selfdefense: Layer-1 conflict check disabled via " + daemon.EnvDisableSelfDefense
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if strings.Contains(out.String(), marker) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("daemon child never reported %q - the self-defense mitigation did not reach the process that acts on it.\ndaemon output:\n%s",
+				marker, out.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // TestHarness_FixturesCorpus builds grafel, runs `index --json-stats`
 // against testdata/fixtures/sources/, and asserts the regression net: at least
 // some entities / relationships were extracted and the bug-rate is well
@@ -181,6 +207,15 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	// need the protection: it has its own root and socket and can never
 	// displace the developer's canonical daemon.
 	//
+	// This one line is the whole mitigation. t.Setenv mutates the real process
+	// environment, and dcmd.Env below is built from os.Environ() AFTER this
+	// point, so the daemon child inherits it without an explicit re-export.
+	// An earlier revision also seeded dcmd.Env with it "because t.Setenv only
+	// covers this process" — that justification was false, and the two copies
+	// masked each other: deleting either one on its own left the suite green.
+	// One line, one assertion (assertSelfDefenseDisabledInChild below), so a
+	// deletion is actually observed.
+	//
 	// This is the mitigation, not the fix — the misclassification it sidesteps
 	// also hits real users running from a /tmp worktree and is fixed in
 	// findCanonicalDaemon.
@@ -194,10 +229,6 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	// #6134 — GRAFEL_HOME too, or the child inherits the real one via os.Environ()
 	// and prunes the developer's live store on startup. See the note above.
 	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot, "GRAFEL_HOME="+daemonRoot,
-		// #7211 — t.Setenv above only covers THIS process; the daemon child is
-		// the one that runs SelfDefenseCheck, so the seam has to be re-exported
-		// here or it has no effect on the process that acts on it.
-		daemon.EnvDisableSelfDefense+"=1",
 		// Guard belt (#stop-fleet): testing.Testing() is false in this
 		// go-built child, so the watchers package's service-manager guard
 		// cannot see that it is under test. Export the belt so a child that
@@ -227,6 +258,22 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer dc.Close()
+
+	// #7211 — grade the self-defense mitigation instead of assuming it.
+	//
+	// Setting the env var is not the property that matters; the property is
+	// that it reached the process which ACTS on it. The daemon child is the
+	// one that calls SelfDefenseCheck, and it announces the disable on its own
+	// stderr, so its log is the only place the effect is observable. Without
+	// this assertion the whole mitigation is ungraded: the t.Setenv above could
+	// be deleted and the suite stays green, which is precisely the failure mode
+	// for a guard whose job is to suppress an intermittent — a silent removal
+	// is never caught by re-running.
+	//
+	// Deliberately NOT graded by a -count=N repetition: the collision this
+	// suppresses is a zombie's reap latency, so a green repeated run is weak
+	// evidence in exactly the direction that misleads.
+	assertSelfDefenseDisabledInChild(t, daemonOut)
 
 	reply, err := dc.Index(proto.IndexArgs{RepoPath: corpus, JSONStats: true})
 	if err != nil {
