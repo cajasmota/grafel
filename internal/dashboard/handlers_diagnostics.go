@@ -196,6 +196,24 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, reply)
 }
 
+// findProcs is process.FindByName, indirected through a package-level variable
+// so tests can drive the REAL handleDiagnosticsKillStale — selection AND the
+// reply it builds — with a synthetic process table. Same seam, same reason, as
+// daemon.findProcs (internal/daemon/selfdefense.go) and cli.findProcs.
+//
+// Without it isStaleDiagnosticsProc was gradable but its only consumer was
+// not: no test drove this handler at all, so widening the call-site condition
+// to select every process FindByName returns — the population #7268 exists to
+// protect — left ./internal/dashboard green. The platform implementations read
+// /proc or shell out to ps, so the only process table a test could otherwise
+// observe is whatever happens to be running on the test machine. Never
+// reassigned in production code.
+//
+// On windows process.FindByName is unsupported and returns an error, so this
+// handler answers 500 there and the selection below is unreachable in
+// production on that platform (the seam deliberately bypasses that for tests).
+var findProcs = process.FindByName
+
 // handleDiagnosticsKillStale — POST /api/diagnostics/kill-stale
 //
 // Terminates stale grafel daemon processes (PPID=1 + /tmp binary, or a
@@ -211,7 +229,7 @@ func (s *Server) handleDiagnosticsKillStale(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	procs, err := process.FindByName("grafel")
+	procs, err := findProcs("grafel")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "process scan: "+err.Error())
 		return

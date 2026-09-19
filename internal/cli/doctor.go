@@ -450,8 +450,10 @@ func isStaleProc(p staleProcess, selfExe string) bool {
 	// Stale criterion 2: daemon process running from a different binary than self.
 	//
 	// NOT WIDENED HERE, deliberately. "daemon" is an ARGUMENT, not part of the
-	// exec path: the daemon is spawned as `<bin> daemon` (watcher_ctl.go) and
-	// launchd passes it the same way, while Info.Exe is the executable path on
+	// exec path: a manual fork spawns it as `<bin> daemon` (watcher_ctl.go),
+	// while the INSTALLED service passes `serve` instead (the launchd plist's
+	// ProgramArguments is {BinPath, "serve"}). Either spelling is an argument,
+	// not a path component, while Info.Exe is the executable path on
 	// every platform (/proc/<pid>/exe on Linux, `ps -eo comm` on darwin — the
 	// `ps aux` fallback takes argv[0] only, see #7259). So this substring fires
 	// for a genuine daemon only when its INSTALL DIRECTORY happens to contain
@@ -475,10 +477,28 @@ func isStaleProc(p staleProcess, selfExe string) bool {
 	return false
 }
 
+// findProcs is process.FindByName, indirected through a package-level variable
+// so tests can drive the REAL runDoctorStaleDaemons — selection AND the kill
+// loop's output — with a synthetic process table. Same seam, same reason, as
+// daemon.findProcs (internal/daemon/selfdefense.go).
+//
+// Without it isStaleProc was gradable but its ONLY CONSUMER was not: changing
+// the call site in runDoctorStaleDaemons to `if isStaleProc(p, selfExe) ||
+// p.PID != 0` — SIGTERM to every process FindByName returns, which is exactly
+// the population #7268 exists to protect — left ./internal/cli green. The
+// platform implementations read /proc or shell out to ps, so the only process
+// table a test could otherwise observe is whatever happens to be running on
+// the test machine. Never reassigned in production code.
+var findProcs = process.FindByName
+
 // scanGrafelProcs uses the cross-platform process package to find all
 // running grafel processes except myPID.
+//
+// On windows this always returns an error: process.FindByName is unsupported
+// there, so the whole stale-daemon scan is unreachable in production on that
+// platform (the findProcs seam deliberately bypasses that for tests).
 func scanGrafelProcs(myPID int) ([]staleProcess, error) {
-	infos, err := process.FindByName("grafel")
+	infos, err := findProcs("grafel")
 	if err != nil {
 		return nil, fmt.Errorf("process scan: %w", err)
 	}
