@@ -149,12 +149,22 @@ func TestParsePsEo_RejectsUnusableRows(t *testing.T) {
 		"PID PPID COMM\nxx 1 /a b/c\n", // non-numeric pid
 		"PID PPID COMM\n\n",            // blank line
 	}
-	for _, out := range cases {
-		if got := parsePsEo([]byte(out), "/a"); len(got) != 0 {
-			t.Errorf("parsePsEo(%q) = %+v, want no matches", out, got)
-		}
-		if got := parsePsEo([]byte(out), "grafel"); len(got) != 0 {
-			t.Errorf("parsePsEo(%q) = %+v, want no matches", out, got)
+	// The EMPTY needle is the load-bearing one. strings.Contains(x, "") is
+	// true for every x, so it is the only needle that cannot mask a
+	// row-rejection failure behind the name match — with any non-empty needle
+	// a row that should have been rejected is dropped by the Contains test
+	// instead, and the assertion passes for the wrong reason.
+	//
+	// It is therefore what pins parsePsEo's "no empty-remainder guard is
+	// needed: the len(fields) >= 3 test above already establishes ...
+	// restAfterFields cannot return \"\" here" comment to the code. Weakening
+	// that bound to >= 2 makes the first row parse with an empty Name/Exe, and
+	// nothing else in the suite notices.
+	for _, needle := range []string{"/a", "grafel", ""} {
+		for _, out := range cases {
+			if got := parsePsEo([]byte(out), needle); len(got) != 0 {
+				t.Errorf("parsePsEo(%q, needle=%q) = %+v, want no matches", out, needle, got)
+			}
 		}
 	}
 }
