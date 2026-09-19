@@ -397,10 +397,10 @@ func TestRecordHealthHistory_StoresTheMeasuredRate(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("got %d history entries, want 1", len(entries))
 	}
-	if entries[0].BugRate != 25.0 {
+	if entries[0].BugRate == nil || *entries[0].BugRate != 25.0 {
 		t.Errorf("recorded bug_rate = %v, want 25", entries[0].BugRate)
 	}
-	if entries[0].HealthScore == 100 {
+	if entries[0].HealthScore == nil || *entries[0].HealthScore == 100 {
 		t.Errorf("health score is a perfect 100 despite a 25%% bug rate: %+v", entries[0])
 	}
 }
@@ -851,3 +851,7 @@ func TestBugRateLine_RepoCoverageCounts(t *testing.T) {
 		})
 	}
 }
+
+// fptr7283 wraps a float literal for the pointer-typed HealthEntry fields
+// (#7283 — nil is "not measured", which a bare float64 could not express).
+func fptr7283(f float64) *float64 { return &f }

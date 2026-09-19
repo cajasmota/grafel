@@ -53,16 +53,16 @@ func TestLatestGroupBugRate_WithHistory(t *testing.T) {
 	e1 := quality.HealthEntry{
 		Timestamp:   time.Now().Add(-2 * time.Hour),
 		Group:       "mygroup",
-		BugRate:     20.0,
+		BugRate:     fptr7283(20.0),
 		OrphanRate:  5.0,
-		HealthScore: 75.0,
+		HealthScore: fptr7283(75.0),
 	}
 	e2 := quality.HealthEntry{
 		Timestamp:   time.Now().Add(-1 * time.Hour),
 		Group:       "mygroup",
-		BugRate:     3.5,
+		BugRate:     fptr7283(3.5),
 		OrphanRate:  2.0,
-		HealthScore: 94.5,
+		HealthScore: fptr7283(94.5),
 	}
 	if err := quality.AppendEntry(dir, e1); err != nil {
 		t.Fatalf("AppendEntry e1: %v", err)
@@ -85,8 +85,8 @@ func TestLatestGroupBugRate_OtherGroupIgnored(t *testing.T) {
 	e := quality.HealthEntry{
 		Timestamp:   time.Now(),
 		Group:       "othergroup",
-		BugRate:     15.0,
-		HealthScore: 85.0,
+		BugRate:     fptr7283(15.0),
+		HealthScore: fptr7283(85.0),
 	}
 	if err := quality.AppendEntry(dir, e); err != nil {
 		t.Fatalf("AppendEntry: %v", err)
@@ -105,3 +105,7 @@ func TestLatestGroupBugRate_BadDir(t *testing.T) {
 		t.Error("want ok=false for bad root dir")
 	}
 }
+
+// fptr7283 wraps a float literal for the pointer-typed HealthEntry fields
+// (#7283 — nil is "not measured", which a bare float64 could not express).
+func fptr7283(f float64) *float64 { return &f }

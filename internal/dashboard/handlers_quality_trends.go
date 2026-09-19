@@ -151,7 +151,10 @@ func buildTrendsReply(group string, days int, entries []quality.HealthEntry) Qua
 			unit:          "%",
 			lowerIsBetter: false,
 			goal:          90,
-			fn:            func(e quality.HealthEntry) *float64 { return ptrF(e.HealthScore) },
+			// Nil on an entry that recorded no measurement (#7283); the
+			// series loop below drops the point, leaving a gap rather than
+			// a fabricated 100.
+			fn: func(e quality.HealthEntry) *float64 { return e.HealthScore },
 		},
 		{
 			label:         "Orphan rate",
@@ -165,7 +168,7 @@ func buildTrendsReply(group string, days int, entries []quality.HealthEntry) Qua
 			unit:          "%",
 			lowerIsBetter: true,
 			goal:          3,
-			fn:            func(e quality.HealthEntry) *float64 { return ptrF(e.BugRate) },
+			fn:            func(e quality.HealthEntry) *float64 { return e.BugRate },
 		},
 		{
 			label:         "Test coverage",

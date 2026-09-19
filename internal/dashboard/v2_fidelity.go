@@ -66,5 +66,15 @@ func latestGroupBugRate(groupName, root string) (bugRatePct float64, ok bool) {
 	// ReadHistory returns entries in file order (oldest first).
 	// The last entry is the most recent.
 	last := entries[len(entries)-1]
-	return last.BugRate, true
+	// #7283 — an entry written when nothing could be measured carries no
+	// bug rate. Reporting it as 0 here would render the group at fidelity
+	// 1.0 / healthy off a measurement that never happened.
+	//
+	// NOTE: the callers' no-history fallback is ALSO "indexed → 1.0 /
+	// healthy", so this returns the lie to where it already lived rather
+	// than removing it. See the comment above deriveGroupHealth.
+	if last.BugRate == nil {
+		return 0, false
+	}
+	return *last.BugRate, true
 }

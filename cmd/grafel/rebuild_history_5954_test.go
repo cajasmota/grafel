@@ -181,12 +181,12 @@ func TestAppendRebuildHistory_OutputUnchanged(t *testing.T) {
 	if got.OrphanRate != wantOrphanRate {
 		t.Errorf("OrphanRate = %v, want %v", got.OrphanRate, wantOrphanRate)
 	}
-	if got.BugRate != wantBugRate {
+	if got.BugRate == nil || *got.BugRate != wantBugRate {
 		t.Errorf("BugRate = %v, want %v", got.BugRate, wantBugRate)
 	}
-	if got.HealthScore != quality.ComputeHealthScore(wantOrphanRate, wantBugRate) {
-		t.Errorf("HealthScore = %v, want %v", got.HealthScore,
-			quality.ComputeHealthScore(wantOrphanRate, wantBugRate))
+	wantHealth := quality.ComputeHealthScore(wantOrphanRate, wantBugRate)
+	if got.HealthScore == nil || *got.HealthScore != wantHealth {
+		t.Errorf("HealthScore = %v, want %v", got.HealthScore, wantHealth)
 	}
 	if got.CoveragePct == nil || *got.CoveragePct != wantCoverage {
 		t.Errorf("CoveragePct = %v, want %v", got.CoveragePct, wantCoverage)
@@ -262,3 +262,7 @@ func TestAppendRebuildHistory_ReleasesGateRegistrationOnError(t *testing.T) {
 		t.Errorf("a failed analytics batch left %d gate registration(s) held", n)
 	}
 }
+
+// fptr7283 wraps a float literal for the pointer-typed HealthEntry fields
+// (#7283 — nil is "not measured", which a bare float64 could not express).
+func fptr7283(f float64) *float64 { return &f }

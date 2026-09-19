@@ -38,16 +38,16 @@ func TestAppendAndReadHistory(t *testing.T) {
 			Group:         "mygroup",
 			TotalEntities: 1000,
 			OrphanRate:    20.0,
-			BugRate:       5.0,
-			HealthScore:   quality.ComputeHealthScore(20.0, 5.0),
+			BugRate:       fptr7283(5.0),
+			HealthScore:   fptr7283(quality.ComputeHealthScore(20.0, 5.0)),
 		},
 		{
 			Timestamp:     now.Add(-24 * time.Hour),
 			Group:         "mygroup",
 			TotalEntities: 1050,
 			OrphanRate:    18.0,
-			BugRate:       4.0,
-			HealthScore:   quality.ComputeHealthScore(18.0, 4.0),
+			BugRate:       fptr7283(4.0),
+			HealthScore:   fptr7283(quality.ComputeHealthScore(18.0, 4.0)),
 		},
 		{
 			// Different group — should not appear in results for "mygroup".
@@ -55,8 +55,8 @@ func TestAppendAndReadHistory(t *testing.T) {
 			Group:         "othergroup",
 			TotalEntities: 500,
 			OrphanRate:    10.0,
-			BugRate:       2.0,
-			HealthScore:   quality.ComputeHealthScore(10.0, 2.0),
+			BugRate:       fptr7283(2.0),
+			HealthScore:   fptr7283(quality.ComputeHealthScore(10.0, 2.0)),
 		},
 	}
 
@@ -106,16 +106,16 @@ func TestReadHistory_DayFilter(t *testing.T) {
 		Group:         "g",
 		TotalEntities: 100,
 		OrphanRate:    15.0,
-		BugRate:       3.0,
-		HealthScore:   quality.ComputeHealthScore(15.0, 3.0),
+		BugRate:       fptr7283(3.0),
+		HealthScore:   fptr7283(quality.ComputeHealthScore(15.0, 3.0)),
 	}
 	recent := quality.HealthEntry{
 		Timestamp:     now.AddDate(0, 0, -3),
 		Group:         "g",
 		TotalEntities: 110,
 		OrphanRate:    12.0,
-		BugRate:       2.0,
-		HealthScore:   quality.ComputeHealthScore(12.0, 2.0),
+		BugRate:       fptr7283(2.0),
+		HealthScore:   fptr7283(quality.ComputeHealthScore(12.0, 2.0)),
 	}
 
 	_ = quality.AppendEntry(root, old)
@@ -152,8 +152,8 @@ func TestAppendAndReadHistory_ExtendedFields(t *testing.T) {
 		TotalFlows:     12,
 		TotalEndpoints: 30,
 		OrphanRate:     8.0,
-		BugRate:        2.5,
-		HealthScore:    quality.ComputeHealthScore(8.0, 2.5),
+		BugRate:        fptr7283(2.5),
+		HealthScore:    fptr7283(quality.ComputeHealthScore(8.0, 2.5)),
 		CoveragePct:    &covPct,
 		Cycles:         &cycles,
 		AuthUncovered:  &authUncov,
@@ -192,3 +192,7 @@ func TestAppendAndReadHistory_ExtendedFields(t *testing.T) {
 		t.Errorf("secrets: got %v, want 1", e.Secrets)
 	}
 }
+
+// fptr7283 wraps a float literal for the pointer-typed HealthEntry fields
+// (#7283 — nil is "not measured", which a bare float64 could not express).
+func fptr7283(f float64) *float64 { return &f }

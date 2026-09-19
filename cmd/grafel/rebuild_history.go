@@ -41,6 +41,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/quality"
 	"github.com/cajasmota/grafel/internal/quality/analytics"
+	"github.com/cajasmota/grafel/internal/quality/audit"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/secrets"
 )
@@ -88,8 +89,7 @@ func appendRebuildHistory(root, group string, cfg *registry.GroupConfig, rebuilt
 	// ── one scan per repo, every metric folded from it ───────────────────────
 	totalEntities := 0
 	totalOrphans := 0
-	totalImports := 0
-	goodImports := 0
+	var bugRate audit.BugRate
 	totalProduction := 0
 	coveredProduction := 0
 	totalCycles := 0
@@ -107,8 +107,14 @@ func appendRebuildHistory(root, group string, cfg *registry.GroupConfig, rebuilt
 
 		totalEntities += sc.Entities
 		totalOrphans += sc.Orphans
-		totalImports += sc.ImportsTotal
-		goodImports += sc.ImportsResolved
+		// #7271/#7283 — the counts, never a per-repo percentage. Folding
+		// them into the shared audit.BugRate is what keeps "no repo could
+		// be scanned" distinguishable from "every import resolved"; there
+		// is one derivation of this number and it lives in that type.
+		bugRate.Add(audit.BugRate{
+			TotalImports:    sc.ImportsTotal,
+			ResolvedImports: sc.ImportsResolved,
+		})
 
 		totalProduction += sc.TotalProduction
 		coveredProduction += sc.CoveredProduction
@@ -123,10 +129,17 @@ func appendRebuildHistory(root, group string, cfg *registry.GroupConfig, rebuilt
 	if totalEntities > 0 {
 		entry.OrphanRate = 100.0 * float64(totalOrphans) / float64(totalEntities)
 	}
-	if totalImports > 0 {
-		entry.BugRate = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
+	// Both nil unless a bug rate was actually measured. Every repo's scan
+	// erroring used to land here as BugRate 0 and, through ComputeHealthScore,
+	// a HealthScore of 100 — a perfect score from zero measurements, written
+	// to the file the dashboard's fidelity badge reads (#7283). The coverage
+	// and cycle fields three lines below have been pointer-typed and gated on
+	// evidence since #5954; this is the same treatment.
+	entry.BugRate = bugRate.PctPtr()
+	if entry.BugRate != nil {
+		hs := quality.ComputeHealthScore(entry.OrphanRate, *entry.BugRate)
+		entry.HealthScore = &hs
 	}
-	entry.HealthScore = quality.ComputeHealthScore(entry.OrphanRate, entry.BugRate)
 
 	entry.TotalFlows = totalFlows
 	entry.TotalEndpoints = totalEndpoints

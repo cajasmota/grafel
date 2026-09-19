@@ -31,12 +31,28 @@ type HealthEntry struct {
 	TotalEndpoints int `json:"total_endpoints,omitempty"`
 	// OrphanRate is the percentage of entities with no incoming relationship (0–100).
 	OrphanRate float64 `json:"orphan_rate"`
-	// BugRate is the percentage of entities that are repair candidates (0–100).
-	// Zero when not applicable.
-	BugRate float64 `json:"bug_rate"`
+	// BugRate is the percentage of IMPORTS edges whose target did not resolve
+	// to an addressable entity (0–100) — NOT, as this comment said until
+	// #7283, a repair-candidate rate over entities.
+	//
+	// Omitted (null) when nothing was measured: no repo's graph could be
+	// scanned, or the repos that were scanned carry no IMPORTS edge at all.
+	// A bare float64 could not say that — 0.0 meant both "every import
+	// resolved" and "nobody counted", and the second reads as a perfect
+	// score everywhere this file is consumed (see internal/quality/audit's
+	// BugRate, which carries the counts for exactly this reason).
+	//
+	// NOTE for readers of an old file: rows written before #7283 stored a
+	// literal `"bug_rate":0` in both states and decode as a measured zero.
+	// Absence, not zero, is the unmeasured signal, and only from #7283 on.
+	BugRate *float64 `json:"bug_rate,omitempty"`
 	// HealthScore is a composite quality score (0–100, higher is better).
 	// Computed as max(0, 100 - OrphanRate - BugRate).
-	HealthScore float64 `json:"health_score"`
+	//
+	// Omitted (null) when BugRate is, because ComputeHealthScore has no
+	// unknown state: handing it a 0 for an unmeasured bug rate does not
+	// produce an uncertain score, it produces an INFLATED one (#7283).
+	HealthScore *float64 `json:"health_score,omitempty"`
 	// CoveragePct is the test-coverage percentage (0–100) measured from
 	// Test-entity → production-entity edges. Omitted when not available.
 	CoveragePct *float64 `json:"coverage_pct,omitempty"`
