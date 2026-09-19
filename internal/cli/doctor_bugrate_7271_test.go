@@ -11,6 +11,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -397,10 +398,10 @@ func TestRecordHealthHistory_StoresTheMeasuredRate(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("got %d history entries, want 1", len(entries))
 	}
-	if entries[0].BugRate != 25.0 {
+	if entries[0].BugRate == nil || *entries[0].BugRate != 25.0 {
 		t.Errorf("recorded bug_rate = %v, want 25", entries[0].BugRate)
 	}
-	if entries[0].HealthScore == 100 {
+	if entries[0].HealthScore == nil || *entries[0].HealthScore == 100 {
 		t.Errorf("health score is a perfect 100 despite a 25%% bug rate: %+v", entries[0])
 	}
 }
@@ -849,5 +850,49 @@ func TestBugRateLine_RepoCoverageCounts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRecordHealthHistory_UnmeasuredRateIsNotPersistedAsZero is the same
+// forbidden row one layer down from TestRebuildQualitySnapshot_UnmeasuredIsNull
+// (#7283). The webhook snapshot could already say "unknown"; the persisted
+// JSONL record — the one the dashboard's fidelity badge actually reads — could
+// not, and stored a measured 0 with a health score computed from it.
+//
+// The assertion is on the serialised bytes: the whole point is what a later
+// reader decodes, and a decoded-struct check cannot tell an absent key from a
+// present zero on a field that is about to be made a pointer either way.
+func TestRecordHealthHistory_UnmeasuredRateIsNotPersistedAsZero(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(daemon.EnvRoot, root)
+
+	// A rebuild that counted entities and orphans but saw no IMPORTS edge at
+	// all: the bug rate is undefined, not zero.
+	sum := &RebuildSummary{Group: "g1", TotalEntities: 100, OrphanRate: 12.5}
+	recordHealthHistory("g1", sum)
+
+	b, err := os.ReadFile(filepath.Join(root, "health-history.jsonl"))
+	if err != nil {
+		t.Fatalf("read history: %v", err)
+	}
+	line := strings.TrimSpace(string(b))
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		t.Fatalf("decode history line %q: %v", line, err)
+	}
+
+	if v, ok := raw["bug_rate"]; ok {
+		t.Errorf("no IMPORTS edge was measured, yet bug_rate=%s was persisted\nline: %s", v, line)
+	}
+	if v, ok := raw["health_score"]; ok {
+		t.Errorf("bug rate unmeasured, yet health_score=%s was persisted — "+
+			"ComputeHealthScore has no unknown state, so a 0 here inflates the score\nline: %s", v, line)
+	}
+	// Control: the rest of the record IS written, so the assertions above
+	// cannot pass merely because nothing was persisted.
+	if v, ok := raw["orphan_rate"]; !ok {
+		t.Errorf("orphan_rate missing — the record was not written at all\nline: %s", line)
+	} else if string(v) != "12.5" {
+		t.Errorf("orphan_rate = %s, want 12.5\nline: %s", v, line)
 	}
 }

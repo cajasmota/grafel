@@ -59,6 +59,14 @@ type corpusGroupResult struct {
 	// Top5Improvements are the highest-value actions to improve this group's score.
 	Top5Improvements []string `json:"top_5_improvements,omitempty"`
 
+	// bugRate is the unresolved-import tally BugRatePct is rounded from.
+	// Unexported and unserialised: the report's own wire shape is unchanged,
+	// but the history entry written from this result needs to know whether a
+	// rate was measured at all, and a rounded percentage cannot say (#7283).
+	// The zero value — the measureGroup-failed result built below — is the
+	// unmeasured state.
+	bugRate audit.BugRate
+
 	// PreviousScore is the last recorded health score for this group, or -1
 	// when no prior measurement exists.
 	PreviousScore float64 `json:"previous_score"`
@@ -112,15 +120,7 @@ func runBugRateCorpus(argv []string) error {
 	// Persist to health history unless suppressed.
 	if !*noHistory && histRoot != "" {
 		for _, r := range results {
-			entry := quality.HealthEntry{
-				Timestamp:     r.MeasuredAt,
-				Group:         r.Name,
-				TotalEntities: r.Entities,
-				OrphanRate:    r.OrphanRatePct,
-				BugRate:       r.BugRatePct,
-				HealthScore:   r.Composite.Score,
-			}
-			_ = quality.AppendEntry(histRoot, entry)
+			_ = quality.AppendEntry(histRoot, corpusHistoryEntry(r))
 		}
 	}
 
@@ -228,8 +228,7 @@ func measureGroup(path string) (corpusGroupResult, error) {
 	// Aggregate orphan + entity counts across repos.
 	totalEntities := 0
 	totalOrphans := 0
-	totalImports := 0
-	goodImports := 0
+	var bugRate audit.BugRate
 	repos := 0
 	var allErrs []string
 	for _, rr := range rep.Repos {
@@ -239,9 +238,9 @@ func measureGroup(path string) (corpusGroupResult, error) {
 		repos++
 		totalEntities += rr.Entities
 		totalOrphans += rr.Orphans
-		totalImports += rr.ImportsTotal
-		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
-			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
+		// One derivation of the bug rate, shared with doctor, the dashboard
+		// and the rebuild history (#7271).
+		bugRate.Add(audit.BugRateFromReport(rr))
 		allErrs = append(allErrs, rr.Errors...)
 	}
 
@@ -250,11 +249,10 @@ func measureGroup(path string) (corpusGroupResult, error) {
 		orphanRatePct = 100.0 * float64(totalOrphans) / float64(totalEntities)
 	}
 	// Bug rate: fraction of IMPORTS edges that are NOT resolved to a hex ID or
-	// ext-qualified reference. These are edges to unresolved targets.
-	bugRatePct := 0.0
-	if totalImports > 0 {
-		bugRatePct = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
-	}
+	// ext-qualified reference. These are edges to unresolved targets. Pct()
+	// returns 0 when nothing was counted — which is why the tally, not this
+	// number, decides what the history entry records (#7283).
+	bugRatePct := bugRate.Pct()
 
 	composite := quality.CompositeScoreFromPcts(orphanRatePct, bugRatePct, 0)
 	top5 := buildTop5(rep, orphanRatePct, bugRatePct)
@@ -264,6 +262,7 @@ func measureGroup(path string) (corpusGroupResult, error) {
 		Path:             path,
 		OrphanRatePct:    math.Round(orphanRatePct*10) / 10,
 		BugRatePct:       math.Round(bugRatePct*10) / 10,
+		bugRate:          bugRate,
 		RecallMissPct:    0,
 		Composite:        composite,
 		Entities:         totalEntities,
@@ -304,14 +303,44 @@ func buildTop5(rep *audit.Report, orphanPct, bugPct float64) []string {
 // History helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// corpusHistoryEntry converts one measured group into the record appended to
+// health-history.jsonl.
+//
+// The bug rate and the composite score are written only when a bug rate was
+// actually measured (#7283). A group whose audit failed reaches here as the
+// zero-valued result measureCorpus builds on error, and used to persist
+// bug_rate 0 beside a composite score of 0 as if both had been measured — the
+// same collapse the daemon's own writer had, one command over.
+func corpusHistoryEntry(r corpusGroupResult) quality.HealthEntry {
+	entry := quality.HealthEntry{
+		Timestamp:     r.MeasuredAt,
+		Group:         r.Name,
+		TotalEntities: r.Entities,
+		OrphanRate:    r.OrphanRatePct,
+	}
+	if bugPct := r.bugRate.PctPtr(); bugPct != nil {
+		entry.BugRate = bugPct
+		score := r.Composite.Score
+		entry.HealthScore = &score
+	}
+	return entry
+}
+
 // lastHealthScore reads the most recent HealthEntry for the named group and
 // returns its HealthScore, or -1 when no prior entry exists.
+//
+// An entry whose health score was never measured (#7283) is -1 too: there is
+// no baseline to compare against, which is exactly what -1 already meant.
 func lastHealthScore(histRoot, group string) float64 {
 	entries, err := quality.ReadHistory(histRoot, group, 365)
 	if err != nil || len(entries) == 0 {
 		return -1
 	}
-	return entries[len(entries)-1].HealthScore
+	hs := entries[len(entries)-1].HealthScore
+	if hs == nil {
+		return -1
+	}
+	return *hs
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

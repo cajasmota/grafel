@@ -231,8 +231,8 @@ func TestV2Groups_RealFidelityFromHistory(t *testing.T) {
 	if err := quality.AppendEntry(histDir, quality.HealthEntry{
 		Timestamp:   time.Now(),
 		Group:       "indexed",
-		BugRate:     6.0,
-		HealthScore: 94.0,
+		BugRate:     fptr7283(6.0),
+		HealthScore: fptr7283(94.0),
 	}); err != nil {
 		t.Fatalf("AppendEntry: %v", err)
 	}

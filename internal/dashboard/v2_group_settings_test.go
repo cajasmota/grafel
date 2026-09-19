@@ -307,8 +307,8 @@ func TestV2GetGroup_FidelityMath_BugRate4(t *testing.T) {
 	if err := quality.AppendEntry(histDir, quality.HealthEntry{
 		Timestamp:   time.Now(),
 		Group:       "prod",
-		BugRate:     4.0,
-		HealthScore: 96.0,
+		BugRate:     fptr7283(4.0),
+		HealthScore: fptr7283(96.0),
 	}); err != nil {
 		t.Fatalf("AppendEntry: %v", err)
 	}
@@ -338,8 +338,8 @@ func TestV2GetGroup_RealFidelityViaServer(t *testing.T) {
 	if err := quality.AppendEntry(histDir, quality.HealthEntry{
 		Timestamp:   time.Now(),
 		Group:       "mygroup",
-		BugRate:     5.0,
-		HealthScore: 95.0,
+		BugRate:     fptr7283(5.0),
+		HealthScore: fptr7283(95.0),
 	}); err != nil {
 		t.Fatalf("AppendEntry: %v", err)
 	}

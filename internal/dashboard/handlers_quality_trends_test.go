@@ -45,8 +45,8 @@ func TestBuildTrendsReply_singleSnapshot(t *testing.T) {
 			Group:         "g",
 			TotalEntities: 500,
 			OrphanRate:    10.0,
-			BugRate:       2.0,
-			HealthScore:   88.0,
+			BugRate:       fptr7283(2.0),
+			HealthScore:   fptr7283(88.0),
 			CoveragePct:   &covPct,
 			Cycles:        &cycles,
 			Secrets:       &secrets,
@@ -80,16 +80,16 @@ func TestBuildTrendsReply_coreMetrics(t *testing.T) {
 			Group:         "g",
 			TotalEntities: 1000,
 			OrphanRate:    20.0,
-			BugRate:       5.0,
-			HealthScore:   75.0,
+			BugRate:       fptr7283(5.0),
+			HealthScore:   fptr7283(75.0),
 		},
 		{
 			Timestamp:     now.Add(-24 * time.Hour),
 			Group:         "g",
 			TotalEntities: 1050,
 			OrphanRate:    18.0,
-			BugRate:       4.5,
-			HealthScore:   77.5,
+			BugRate:       fptr7283(4.5),
+			HealthScore:   fptr7283(77.5),
 		},
 	}
 
@@ -148,8 +148,8 @@ func TestBuildTrendsReply_extendedMetrics(t *testing.T) {
 			Group:         "g",
 			TotalEntities: 480,
 			OrphanRate:    11.0,
-			BugRate:       2.5,
-			HealthScore:   86.5,
+			BugRate:       fptr7283(2.5),
+			HealthScore:   fptr7283(86.5),
 			CoveragePct:   &covPct0,
 			Cycles:        &cycles0,
 			Secrets:       &secrets0,
@@ -159,8 +159,8 @@ func TestBuildTrendsReply_extendedMetrics(t *testing.T) {
 			Group:         "g",
 			TotalEntities: 500,
 			OrphanRate:    10.0,
-			BugRate:       2.0,
-			HealthScore:   88.0,
+			BugRate:       fptr7283(2.0),
+			HealthScore:   fptr7283(88.0),
 			CoveragePct:   &covPct,
 			Cycles:        &cycles,
 			Secrets:       &secrets,
@@ -204,8 +204,8 @@ func TestBuildTrendsReply_sparseMetricExcluded(t *testing.T) {
 			Group:         "g",
 			TotalEntities: 480,
 			OrphanRate:    11.0,
-			BugRate:       2.5,
-			HealthScore:   86.5,
+			BugRate:       fptr7283(2.5),
+			HealthScore:   fptr7283(86.5),
 			// CoveragePct, Cycles, Secrets all nil → should be excluded.
 		},
 		{
@@ -213,8 +213,8 @@ func TestBuildTrendsReply_sparseMetricExcluded(t *testing.T) {
 			Group:         "g",
 			TotalEntities: 500,
 			OrphanRate:    10.0,
-			BugRate:       2.0,
-			HealthScore:   88.0,
+			BugRate:       fptr7283(2.0),
+			HealthScore:   fptr7283(88.0),
 			// CoveragePct, Cycles, Secrets all nil → should be excluded.
 		},
 	}
@@ -239,24 +239,24 @@ func TestBuildTrendsReply_delta(t *testing.T) {
 			Group:         "g",
 			TotalEntities: 900,
 			OrphanRate:    25.0,
-			BugRate:       6.0,
-			HealthScore:   69.0, // old entry (>30d ago)
+			BugRate:       fptr7283(6.0),
+			HealthScore:   fptr7283(69.0), // old entry (>30d ago)
 		},
 		{
 			Timestamp:     now.AddDate(0, 0, -8),
 			Group:         "g",
 			TotalEntities: 950,
 			OrphanRate:    22.0,
-			BugRate:       5.0,
-			HealthScore:   73.0, // ~7-30d ago
+			BugRate:       fptr7283(5.0),
+			HealthScore:   fptr7283(73.0), // ~7-30d ago
 		},
 		{
 			Timestamp:     now,
 			Group:         "g",
 			TotalEntities: 1000,
 			OrphanRate:    20.0,
-			BugRate:       4.5,
-			HealthScore:   80.0, // latest
+			BugRate:       fptr7283(4.5),
+			HealthScore:   fptr7283(80.0), // latest
 		},
 	}
 

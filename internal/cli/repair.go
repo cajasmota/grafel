@@ -832,18 +832,32 @@ func recordHealthHistory(group string, sum *RebuildSummary) {
 	// recorded health score and, through the history file, the dashboard's
 	// fidelity reading with it.
 	//
-	// HealthEntry.BugRate is a bare float64 on a persisted, already-written
-	// JSONL record, so an unmeasured rate is still stored as 0 here — the one
-	// surface in this change that cannot yet say "unknown". The webhook
-	// snapshot below CAN, and does.
+	// #7283 — HealthEntry.BugRate and .HealthScore are pointers now, so this
+	// record omits both when the rebuild measured no IMPORTS edge at all.
+	// They go together because ComputeHealthScore has no unknown state:
+	// feeding it a 0 for an unmeasured bug rate inflates the score rather
+	// than blurring it.
+	//
+	// The webhook snapshot built below is NOT at parity, and an earlier
+	// version of this comment wrongly said it was. QualitySnapshot.BugRate is
+	// a *float64 and does go null, but QualitySnapshot.HealthScore is a bare
+	// float64, so a rebuild that measured nothing still emits
+	// {"bug_rate":null,"health_score":100} and the Slack/Discord renderers
+	// print the 100 beside the null. Fixing that is a webhook wire-contract
+	// change plus three renderer branches, tracked separately. It joins the
+	// two other surfaces #7283 deliberately left alone: HealthEntry.OrphanRate
+	// (still a bare float64) and the dashboard's "indexed but no history →
+	// fidelity 1.0 / healthy" fallback in deriveGroupHealth.
 	healthScore := quality.ComputeHealthScore(sum.OrphanRate, sum.BugRate.Pct())
 	entry := quality.HealthEntry{
 		Timestamp:     time.Now().UTC(),
 		Group:         group,
 		TotalEntities: sum.TotalEntities,
 		OrphanRate:    sum.OrphanRate,
-		BugRate:       sum.BugRate.Pct(),
-		HealthScore:   healthScore,
+		BugRate:       sum.BugRate.PctPtr(),
+	}
+	if entry.BugRate != nil {
+		entry.HealthScore = &healthScore
 	}
 	_ = quality.AppendEntry(layout.Root, entry)
 
@@ -915,10 +929,13 @@ func dispatchRebuildWebhooks(group string, sum *RebuildSummary, healthScore floa
 		prevSnap := notifications.QualitySnapshot{
 			Group:      group,
 			OrphanRate: prevEntry.OrphanRate,
-			// Always non-nil: a stored entry's bug rate is whatever the
-			// previous run recorded, and the record has no unknown state.
-			BugRate:     &prevEntry.BugRate,
-			HealthScore: prevEntry.HealthScore,
+			// Nil when the previous run could not measure one (#7283).
+			// RegressionDetected needs two measured numbers and already
+			// skips the comparison when either side is nil.
+			BugRate: prevEntry.BugRate,
+		}
+		if prevEntry.HealthScore != nil {
+			prevSnap.HealthScore = *prevEntry.HealthScore
 		}
 		if notifications.RegressionDetected(prevSnap, snap) {
 			dispatcher.DispatchAll(settings.Webhooks, notifications.WebhookPayload{

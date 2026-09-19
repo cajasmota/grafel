@@ -181,12 +181,12 @@ func TestAppendRebuildHistory_OutputUnchanged(t *testing.T) {
 	if got.OrphanRate != wantOrphanRate {
 		t.Errorf("OrphanRate = %v, want %v", got.OrphanRate, wantOrphanRate)
 	}
-	if got.BugRate != wantBugRate {
+	if got.BugRate == nil || *got.BugRate != wantBugRate {
 		t.Errorf("BugRate = %v, want %v", got.BugRate, wantBugRate)
 	}
-	if got.HealthScore != quality.ComputeHealthScore(wantOrphanRate, wantBugRate) {
-		t.Errorf("HealthScore = %v, want %v", got.HealthScore,
-			quality.ComputeHealthScore(wantOrphanRate, wantBugRate))
+	wantHealth := quality.ComputeHealthScore(wantOrphanRate, wantBugRate)
+	if got.HealthScore == nil || *got.HealthScore != wantHealth {
+		t.Errorf("HealthScore = %v, want %v", got.HealthScore, wantHealth)
 	}
 	if got.CoveragePct == nil || *got.CoveragePct != wantCoverage {
 		t.Errorf("CoveragePct = %v, want %v", got.CoveragePct, wantCoverage)

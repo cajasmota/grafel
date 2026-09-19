@@ -25,8 +25,14 @@ import (
 //	  "group":   "mygroup",
 //	  "days":    30,
 //	  "entries": [ { "timestamp", "group", "total_entities", "orphan_rate",
-//	                 "bug_rate", "health_score", "recall_pct?" } … ]
+//	                 "bug_rate?", "health_score?", "recall_pct?" } … ]
 //	}
+//
+// The entries are serialised verbatim from quality.HealthEntry, so every
+// omitempty on that struct reaches this endpoint. bug_rate and health_score
+// joined recall_pct in the optional set in #7283: an entry recorded when
+// nothing could be measured omits both rather than reporting a zero rate and
+// a perfect score.
 func (s *Server) handleQualityHistory(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
 	if group == "" {
