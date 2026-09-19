@@ -100,6 +100,55 @@ name: node-type gate
 # about. Same rule as the job above, and it is not decorative: do not add a
 # step to that job, or a failure path to the gate, that can fail for a reason
 # not on this list without extending the list in the SAME commit.
+#
+# ── THIRD JOB: action-runtime-gate (Closes #7253) ────────────────────────────
+# A THIRD independent job in this file. The two `SCOPE` restrictions above are
+# kept intact: neither of the jobs above gains a step, an exit code or a failure
+# reason. All three fail independently and report as separate checks.
+#
+# WHY IT LIVES HERE. Same defect family, third domain. Up top, a string literal
+# names a grammar node that does not exist. In the middle, a string literal
+# names an event the workflow cannot receive. Here, a `uses:` ref names a major
+# whose action runs on a Node runtime GitHub has deprecated — and the runner
+# force-migrates it, so it keeps working right up until it does not, and
+# nothing says so in between. 9242ccbea moved all 67 external pins to their
+# first node24 major; a branch rebased directly onto that commit reintroduced
+# `actions/checkout@v4` within hours, the only `@v4` among 21 `@v5`, and a human
+# reviewer caught it because no check could.
+#
+# WHY THIS FILE AND NOT THE WORKFLOWS IT GUARDS. Same reason as the job above,
+# and a stronger one: this gate reads EVERY workflow, so a per-workflow host
+# would be sixteen hosts, each of them inert exactly when its own workflow is
+# disabled — which is how 939a0b348 neutered a gate here.
+#
+# WHY THE UPSTREAM CHECK IS NOT IN THIS JOB. Resolving `runs.using` is one HTTPS
+# read per distinct action; on every PR that is a flake source and a cost, to
+# re-learn a fact that changes a few times a year. So this job enforces a pinned
+# local manifest offline, and a SEPARATE monthly job in grammar-freshness.yml
+# (`action-runtime-refresh`) re-derives that manifest from upstream and fails on
+# drift. The manifest is prose and can rot; the periodic re-derivation is the
+# only thing that stops it rotting silently.
+#
+# ITS FAILURE LIST, exhaustive. `action-runtime-gate` exit 1 means one of:
+#   1. a `uses:` pin's major is below its action's first node24 major, with no
+#      allow-list row;
+#   2. a `uses:` value names an action with no ACTION_RUNTIMES row — the gate
+#      fails closed rather than inventing a ticket-free exemption;
+#   3. a `uses:` value has no `@ref`, or a ref with no readable major (a branch
+#      name, a commit SHA), so its runtime cannot be resolved offline;
+#   4. an ALLOWED row matched nothing while its workflow is still present, or
+#      names a workflow outside the pinned set;
+#   5. the scanned filename set, a per-file `uses:` count, or the external-pin
+#      total does not match the manifest (the job runs with `--manifest`);
+#   6. the scan read fewer workflows or fewer pins than its floors, i.e. it is
+#      not looking at the tree and its verdict means nothing.
+# Exit 2 means the gate could not run: the workflow directory is missing, or a
+# workflow file could not be read. Its positive-controls step can fail on its
+# own terms.
+#
+# Same rule, written before the first chance to break it: do not add a step to
+# that job, or a failure path to that gate, that can fail for a reason not on
+# this list without extending the list in the SAME commit.
 
 on:
   # ALWAYS ON. A path filter would be wrong twice over: a grammar bump changes
@@ -198,3 +247,43 @@ jobs:
       # turns on is the same nothing as no manifest.
       - name: workflow-event gate (all workflows)
         run: python3 scripts/ci/workflow_event_gate.py --manifest
+
+  # ── Closes #7253. See the THIRD JOB section in the header. ─────────────────
+  action-runtime-gate:
+    name: action-runtime gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      # stdlib-only python, no pip install, no setup-python — the runner image's
+      # preinstalled python3 is the entire dependency set. No network either:
+      # the upstream half runs monthly in grammar-freshness.yml.
+      - name: python3 version
+        run: python3 --version
+
+      # The controls run FIRST and are not optional. This is a
+      # scan-and-assert-absence tool, the shape with five independent ways to be
+      # a silent no-op: it reads nothing, it reads the wrong files, it parses
+      # nothing out of them, it detects nothing, or it detects and fails to
+      # fail. A count floor catches only the first. Each is driven by a control;
+      # the permissive direction is driven separately and scored first, because
+      # a gate that PASSES a node20 pin is the failure that matters while a gate
+      # that trips on a legitimate one is loud and self-correcting.
+      #
+      # `msys2/setup-msys2@v2` is the live regression case: already node24 at
+      # the major this repo pins, no v3 to bump to, and wrong under any rule of
+      # the form "every action at major N". It is asserted green from the real
+      # tree, not from a synthetic one.
+      - name: Positive controls
+        run: python3 -m unittest -v scripts.ci.test_action_runtime_gate
+
+      # --manifest pins the exact filename set, the exact `uses:` count per
+      # file, and the exact external-pin total. Without it the only population
+      # check is a floor, and a floor with slack is a hole the size of the
+      # slack: release.yml alone carries 14 of the 71 pins, so losing it whole
+      # still clears any floor with headroom. A control asserts this step passes
+      # the flag, because a manifest nobody turns on is the same nothing as no
+      # manifest.
+      - name: action-runtime gate (all workflow pins)
+        run: python3 scripts/ci/action_runtime_gate.py --manifest

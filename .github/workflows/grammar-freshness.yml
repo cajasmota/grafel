@@ -6,6 +6,46 @@ name: grammar-freshness
 # bundles every grammar is unmaintained — see docs/grammar-freshness-audit.md.
 #
 # Cron + manual only (NOT push/PR) to stay inside free-tier minutes per CI policy.
+#
+# ── SECOND JOB: action-runtime-refresh (Closes #7253, half 2) ────────────────
+# A SEPARATE job in this file, not a step in the one above: the two fail
+# independently and report as separate checks, and `freshness`'s steps are
+# untouched.
+#
+# WHY IT LIVES HERE. It is the same job shape one domain over — "a pinned local
+# record of an upstream fact, re-derived on a schedule so it cannot rot
+# silently". `freshness` does that for grammars.lock against the tree-sitter
+# repos; `action-runtime-refresh` does it for ACTION_RUNTIMES in
+# scripts/ci/action_runtime_gate.py against each action's own `action.yml`.
+# Same monthly cron, same manual dispatch, same reason for both: it is network
+# I/O, which is a real flake source and a real cost on a per-PR path.
+#
+# THE PER-PR HALF IS ELSEWHERE, AND THAT IS THE POINT. node-type-gate.yml's
+# `action-runtime-gate` job enforces the pinned manifest offline on every PR —
+# that is what catches a node20 pin being reintroduced one line at a time, which
+# is the #7253 defect. This job catches the manifest itself going stale. Neither
+# half substitutes for the other, and a reader reaching for "just merge them"
+# should note that merging them puts ten HTTPS reads on every push.
+#
+# ITS FAILURE LIST, exhaustive. `action-runtime-refresh` exit 1 means one of:
+#   1. a manifest row's minimum major is TOO LOW — upstream `runs.using` at
+#      that major is a deprecated Node runtime, so the offline gate has been
+#      passing pins it should have caught;
+#   2. a manifest row's minimum major is TOO HIGH — the major below it is
+#      already node24, so the offline gate has been rejecting legitimate pins;
+#   3. a row's recorded evidence (the runtime observed at the minimum major and
+#      at the one below) no longer matches upstream;
+#   4. a ref actually pinned in .github/workflows/ resolves upstream to a
+#      deprecated or non-Node runtime, or its tag no longer exists.
+# Exit 2 means the tool could not run: an upstream read failed for any reason
+# other than a 404, a response was unparseable, an `action.yml` carried no
+# `runs.using`, or the workflow directory yielded no pins at all. That code is
+# kept DISTINCT from exit 1 deliberately — a rate-limited run and a rotted
+# manifest must not look alike, or the first teaches everyone to ignore the
+# second.
+#
+# Do not add a step to that job, or a failure path to that script, that can fail
+# for a reason not on this list without extending the list in the SAME commit.
 on:
   schedule:
     # 06:00 UTC on the 1st of every month.
@@ -70,3 +110,21 @@ jobs:
       - name: No stale grammars — nothing to track
         if: steps.stale.outputs.any == 'false'
         run: echo "All grammars current against upstream; tracking issue left untouched."
+
+  # ── Closes #7253 (half 2). See the SECOND JOB section in the header. ───────
+  action-runtime-refresh:
+    name: action-runtime refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # stdlib-only python — urllib against api.github.com, no pip, no
+      # setup-python, the same contract the offline half runs under.
+      - name: python3 version
+        run: python3 --version
+
+      - name: Re-derive ACTION_RUNTIMES from upstream and fail on drift
+        run: python3 scripts/ci/action_runtime_refresh.py --print
