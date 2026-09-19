@@ -8,17 +8,49 @@ package daemon
 // That distinction is the point: the pre-existing #1719 test
 // (TestFindCanonicalDaemon_EsbuildFalsePositive) asserts on its own copy of the
 // basename rule and so cannot observe anything the shipped function does — it
-// would pass unchanged with findCanonicalDaemon deleted. Every row below fails
-// if the shipped classification changes.
+// passes with findCanonicalDaemon stubbed to return (0, ""). Every row below
+// fails if the shipped classification changes.
+//
+// PLATFORM NOTE. In production findCanonicalDaemon never reaches its loop on
+// windows: process.FindByName returns ErrUnsupported there and the function
+// returns (0, "") first. The findProcs seam deliberately bypasses that, which
+// is what makes the classification gradable at all — and also what makes these
+// tests platform-sensitive, because findCanonicalDaemon consults
+// filepath.IsAbs, whose answer is GOOS-dependent. "/usr/local/bin/grafel" is
+// absolute on unix and NOT absolute on windows (no volume). Fixtures therefore
+// go through absFixture so the rows grade the same logic on every platform
+// rather than passing on windows for the unrelated reason that every path
+// looked relative. See TestFindCanonicalDaemon_AbsolutenessIsPlatformSpecific,
+// which pins that distinction directly.
 
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/process"
 )
+
+// absFixture makes a unix-style absolute test path absolute for the RUNNING
+// platform, so a fixture is classified by the guard under test rather than
+// rejected wholesale by filepath.IsAbs on windows.
+//
+// filepath.Join("/", "usr", …) does NOT work for this: it yields `\usr\…`,
+// which still has no volume and is still not absolute on windows. A volume is
+// required, so one is taken from os.TempDir() (absolute on every platform).
+func absFixture(path string) string {
+	if runtime.GOOS != "windows" {
+		return path
+	}
+	vol := filepath.VolumeName(os.TempDir())
+	if vol == "" {
+		vol = "C:"
+	}
+	return vol + path
+}
 
 // withProcs installs a synthetic process table for the duration of one test.
 func withProcs(t *testing.T, procs []process.Info, err error) {
@@ -28,6 +60,17 @@ func withProcs(t *testing.T, procs []process.Info, err error) {
 	t.Cleanup(func() { findProcs = prev })
 }
 
+// A NOTE ON WHAT THIS TABLE CANNOT GRADE: isTmpPath's second arm
+// (`path == "/tmp"`) is unreachable from findCanonicalDaemon, so no fixture
+// here can kill a mutant that deletes it. filepath.Base("/tmp") is "tmp",
+// which is not in canonicalBasenames, so a process whose Exe is exactly
+// "/tmp" is rejected by the basename gate whether or not isTmpPath excluded
+// it first. An earlier revision of this file had a "bare /tmp is excluded"
+// row that looked like it covered the arm and did not — it passed for a
+// reason unrelated to the guard it named, and deleting the arm left the full
+// package green. That is a property of the production code, not a weakness in
+// this table. See the PR discussion on #7211.
+//
 // TestFindCanonicalDaemon_Classification is the grading table for #7211.
 //
 // Both directions are scored deliberately. The restrictive rows pin the fix
@@ -43,6 +86,14 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 		procs   []process.Info
 		wantPID int
 		wantExe string
+		// unixOnly marks a row whose premise is isTmpPath's hard-coded "/tmp/"
+		// exclusion zone. That predicate is Unix-only by construction, and the
+		// row cannot be made portable: prepending a volume stops the path
+		// being a /tmp path at all, while leaving it volume-less makes it
+		// non-absolute on windows, so the row would pass there via the
+		// absoluteness guard instead of the exclusion it names — vacuous in
+		// exactly the way this file warns about above.
+		unixOnly bool
 	}{
 		{
 			// The #7211 defect itself: an exiting sibling whose
@@ -70,7 +121,7 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 		{
 			// A non-empty but relative path is equally unusable: isTmpPath is
 			// a prefix test, so "bin/grafel" reads as "not under /tmp" when
-			// the truth is "unknown".
+			// the truth is "unknown". Relative on every platform.
 			name: "relative Exe is not canonical",
 			procs: []process.Info{
 				{PID: otherPID, Name: "grafel", Exe: "bin/grafel"},
@@ -83,18 +134,18 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 			// found, or the /tmp anti-displacement protection is gone.
 			name: "genuine canonical daemon is still matched",
 			procs: []process.Info{
-				{PID: otherPID, Name: "grafel", Exe: "/usr/local/bin/grafel"},
+				{PID: otherPID, Name: "grafel", Exe: absFixture("/usr/local/bin/grafel")},
 			},
 			wantPID: otherPID,
-			wantExe: "/usr/local/bin/grafel",
+			wantExe: absFixture("/usr/local/bin/grafel"),
 		},
 		{
 			name: "canonical daemon under a home go/bin is still matched",
 			procs: []process.Info{
-				{PID: otherPID, Name: "grafel", Exe: "/home/user/go/bin/grafel"},
+				{PID: otherPID, Name: "grafel", Exe: absFixture("/home/user/go/bin/grafel")},
 			},
 			wantPID: otherPID,
-			wantExe: "/home/user/go/bin/grafel",
+			wantExe: absFixture("/home/user/go/bin/grafel"),
 		},
 		{
 			// The #857 exclusion must survive the fix.
@@ -102,23 +153,41 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 			procs: []process.Info{
 				{PID: otherPID, Name: "grafel", Exe: "/tmp/TestHarness_FixturesCorpus123/001/grafel"},
 			},
-			wantPID: 0,
-			wantExe: "",
+			wantPID:  0,
+			wantExe:  "",
+			unixOnly: true,
 		},
 		{
-			name: "bare /tmp is excluded",
+			// Minimal form directly under /tmp — the boundary of the prefix
+			// arm, where the excluded directory has no intervening component.
+			name: "daemon directly under /tmp is excluded",
 			procs: []process.Info{
-				{PID: otherPID, Name: "tmp", Exe: "/tmp"},
+				{PID: otherPID, Name: "grafel", Exe: "/tmp/grafel"},
 			},
-			wantPID: 0,
-			wantExe: "",
+			wantPID:  0,
+			wantExe:  "",
+			unixOnly: true,
+		},
+		{
+			// PERMISSIVE DIRECTION, and the row that grades the trailing slash
+			// in isTmpPath's "/tmp/" prefix. Without it the prefix would also
+			// swallow sibling directories whose names merely START with "tmp",
+			// excluding a genuine canonical daemon and silently disabling the
+			// whole anti-displacement protection for anyone installed there.
+			name: "a directory merely starting with tmp is not under /tmp",
+			procs: []process.Info{
+				{PID: otherPID, Name: "grafel", Exe: "/tmpfoo/grafel"},
+			},
+			wantPID:  otherPID,
+			wantExe:  "/tmpfoo/grafel",
+			unixOnly: true,
 		},
 		{
 			// The #1719 exclusion must survive the fix, now asserted through
 			// the shipped function instead of a re-implementation.
 			name: "esbuild under a directory named grafel is not canonical",
 			procs: []process.Info{
-				{PID: otherPID, Name: "esbuild", Exe: "/Users/user/Projects/grafel/webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild"},
+				{PID: otherPID, Name: "esbuild", Exe: absFixture("/Users/user/Projects/grafel/webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild")},
 			},
 			wantPID: 0,
 			wantExe: "",
@@ -129,26 +198,29 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 			name: "empty Exe entry does not mask a later genuine daemon",
 			procs: []process.Info{
 				{PID: otherPID, Name: "grafel", Exe: ""},
-				{PID: otherPID + 1, Name: "grafel", Exe: "/usr/local/bin/grafel"},
+				{PID: otherPID + 1, Name: "grafel", Exe: absFixture("/usr/local/bin/grafel")},
 			},
 			wantPID: otherPID + 1,
-			wantExe: "/usr/local/bin/grafel",
+			wantExe: absFixture("/usr/local/bin/grafel"),
 		},
 		{
 			// Ordering control in the other direction: a genuine daemon listed
 			// first is returned even though an unknown-path entry follows.
 			name: "genuine daemon first is returned",
 			procs: []process.Info{
-				{PID: otherPID + 1, Name: "grafel", Exe: "/usr/local/bin/grafel"},
+				{PID: otherPID + 1, Name: "grafel", Exe: absFixture("/usr/local/bin/grafel")},
 				{PID: otherPID, Name: "grafel", Exe: ""},
 			},
 			wantPID: otherPID + 1,
-			wantExe: "/usr/local/bin/grafel",
+			wantExe: absFixture("/usr/local/bin/grafel"),
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.unixOnly && runtime.GOOS == "windows" {
+				t.Skip("isTmpPath's exclusion zone is a hard-coded unix path; see unixOnly")
+			}
 			withProcs(t, tc.procs, nil)
 			gotPID, gotExe := findCanonicalDaemon()
 			if gotPID != tc.wantPID || gotExe != tc.wantExe {
@@ -159,12 +231,56 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 	}
 }
 
+// TestFindCanonicalDaemon_AbsolutenessIsPlatformSpecific pins that the guard
+// consults the RUNNING platform's notion of an absolute path, and exists so the
+// next person to add a fixture cannot quietly hard-code a unix path again.
+//
+// The #7211 table originally did exactly that and went red on the windows leg:
+// "/usr/local/bin/grafel" has no volume, so filepath.IsAbs reports false there
+// and every "a genuine daemon is still matched" row was skipped by the
+// absoluteness guard. This test asserts both halves of that difference rather
+// than leaving it to be rediscovered by CI.
+func TestFindCanonicalDaemon_AbsolutenessIsPlatformSpecific(t *testing.T) {
+	const pid = 62425
+
+	// Absolute on whatever platform is running: always canonical.
+	platformAbs := absFixture("/usr/local/bin/grafel")
+	withProcs(t, []process.Info{{PID: pid, Name: "grafel", Exe: platformAbs}}, nil)
+	if gotPID, gotExe := findCanonicalDaemon(); gotPID != pid || gotExe != platformAbs {
+		t.Errorf("platform-absolute %q: got (%d, %q), want (%d, %q)",
+			platformAbs, gotPID, gotExe, pid, platformAbs)
+	}
+
+	// Absolute on unix only — no volume, so windows says it is relative.
+	const unixOnlyAbs = "/usr/local/bin/grafel"
+	withProcs(t, []process.Info{{PID: pid, Name: "grafel", Exe: unixOnlyAbs}}, nil)
+	gotPID, gotExe := findCanonicalDaemon()
+	if runtime.GOOS == "windows" {
+		if gotPID != 0 || gotExe != "" {
+			t.Errorf("windows: volume-less %q must not be canonical; got (%d, %q)",
+				unixOnlyAbs, gotPID, gotExe)
+		}
+		// Sanity: the two fixtures really are different strings here, or the
+		// assertion above is testing the same thing twice.
+		if platformAbs == unixOnlyAbs {
+			t.Errorf("absFixture did not add a volume on windows: %q", platformAbs)
+		}
+		return
+	}
+	if gotPID != pid || gotExe != unixOnlyAbs {
+		t.Errorf("unix: %q must be canonical; got (%d, %q)", unixOnlyAbs, gotPID, gotExe)
+	}
+	if platformAbs != unixOnlyAbs {
+		t.Errorf("absFixture must be a no-op off windows; got %q", platformAbs)
+	}
+}
+
 // TestFindCanonicalDaemon_SkipsSelf pins that the scanning process never
 // matches itself — without it, a canonical-path test binary would refuse its
 // own startup.
 func TestFindCanonicalDaemon_SkipsSelf(t *testing.T) {
 	withProcs(t, []process.Info{
-		{PID: os.Getpid(), Name: "grafel", Exe: "/usr/local/bin/grafel"},
+		{PID: os.Getpid(), Name: "grafel", Exe: absFixture("/usr/local/bin/grafel")},
 	}, nil)
 	if pid, exe := findCanonicalDaemon(); pid != 0 || exe != "" {
 		t.Errorf("findCanonicalDaemon() matched self: (%d, %q)", pid, exe)
@@ -175,7 +291,7 @@ func TestFindCanonicalDaemon_SkipsSelf(t *testing.T) {
 // resolves to "no canonical daemon" rather than blocking startup.
 func TestFindCanonicalDaemon_ScanError(t *testing.T) {
 	withProcs(t, []process.Info{
-		{PID: 62425, Name: "grafel", Exe: "/usr/local/bin/grafel"},
+		{PID: 62425, Name: "grafel", Exe: absFixture("/usr/local/bin/grafel")},
 	}, errors.New("readdir /proc: permission denied"))
 	if pid, exe := findCanonicalDaemon(); pid != 0 || exe != "" {
 		t.Errorf("findCanonicalDaemon() = (%d, %q) despite a scan error, want (0, \"\")", pid, exe)
@@ -198,9 +314,11 @@ func TestSelfDefenseCheck_ConsultsFindCanonicalDaemon(t *testing.T) {
 		t.Skipf("os.Executable: %v", err)
 	}
 
+	canonExe := absFixture("/usr/local/bin/grafel")
+
 	// A genuine canonical daemon in the synthetic table.
 	withProcs(t, []process.Info{
-		{PID: 62425, Name: "grafel", Exe: "/usr/local/bin/grafel"},
+		{PID: 62425, Name: "grafel", Exe: canonExe},
 	}, nil)
 	gotCanonical := SelfDefenseCheck(nil)
 
@@ -216,7 +334,7 @@ func TestSelfDefenseCheck_ConsultsFindCanonicalDaemon(t *testing.T) {
 	if gotCanonical == nil {
 		t.Fatal("SelfDefenseCheck returned nil for a /tmp binary while a canonical daemon was in the process table")
 	}
-	if !strings.Contains(gotCanonical.Error(), "62425") || !strings.Contains(gotCanonical.Error(), "/usr/local/bin/grafel") {
+	if !strings.Contains(gotCanonical.Error(), "62425") || !strings.Contains(gotCanonical.Error(), canonExe) {
 		t.Errorf("refusal does not report the scanned process: %v", gotCanonical)
 	}
 

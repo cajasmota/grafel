@@ -22,6 +22,13 @@ import (
 // readable process the fix must change nothing — Exe is populated and ExeErr is
 // nil. Without this row a fix that unconditionally blanked Exe would pass the
 // zombie assertion below.
+//
+// WHAT IT DOES NOT ASSERT: Exe is only checked for being non-empty, never
+// compared against os.Executable(), so a regression that returned a wrong but
+// non-empty path would still pass here. Left as-is deliberately — /proc's exe
+// link and os.Executable can legitimately differ (a deleted or replaced
+// binary appends " (deleted)"), so an equality assertion would be a flake
+// dressed up as rigour. The gap is real; it is named rather than papered over.
 func TestReadProcInfo_SelfHasExeAndNoError(t *testing.T) {
 	info, err := readProcInfo(os.Getpid())
 	if err != nil {
@@ -46,7 +53,13 @@ func TestReadProcInfo_SelfHasExeAndNoError(t *testing.T) {
 func TestReadProcInfo_ZombieReportsExeError(t *testing.T) {
 	cmd := exec.Command("/bin/sh", "-c", "exit 0")
 	if err := cmd.Start(); err != nil {
-		t.Skipf("cannot start child: %v", err)
+		// NOT a Skipf. This is the only escape hatch in the file, and this test
+		// is the sole observer of ExeErr in the tree, so a skip here retires
+		// the grading silently: `--- SKIP` prints only under -v and the CI leg
+		// does not use it, so the leg still reports ok. A linux runner that
+		// cannot fork /bin/sh is a broken environment, not a licence to stop
+		// grading.
+		t.Fatalf("cannot start child: %v", err)
 	}
 	pid := cmd.Process.Pid
 	// Deliberately do NOT Wait until the assertions are done — the child stays

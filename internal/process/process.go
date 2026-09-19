@@ -102,6 +102,13 @@ type Info struct {
 	// ways readlink /proc/<pid>/exe fails while comm and stat still succeed.
 	// Only the Linux reader populates it; elsewhere it is always nil because
 	// Exe is derived from the same `ps` row as Name and is never empty.
+	//
+	// STATUS: no production code consults this field yet, and no test asserts
+	// that it actually distinguishes ENOENT from EACCES — the zombie test in
+	// process_linux_exe_test.go only requires it to be non-nil. So the
+	// distinction this doc describes is the field's justification, not a
+	// graded property. daemon.findCanonicalDaemon currently treats every
+	// unknown Exe alike for that reason. Tracked as the follow-up on #7211.
 	ExeErr error
 }
 

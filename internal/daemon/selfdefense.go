@@ -199,6 +199,37 @@ func findCanonicalDaemon() (pid int, exe string) {
 		// determine the path" must resolve to "not canonical". The test for a
 		// usable path is absoluteness: only an absolute path can be compared
 		// against the /tmp exclusion zone at all.
+		//
+		// WHAT THIS NARROWS, deliberately and with a cost. "Unknown" here
+		// lumps together two causes that Info.ExeErr can tell apart:
+		//
+		//   ENOENT — the process is a zombie or mid-exit. This is #7211, and
+		//            skipping it is exactly right.
+		//   EACCES — the exe link belongs to another uid and we may not read
+		//            it. A canonical daemon running as another user (a
+		//            system-wide systemd unit, or one started by root) lands
+		//            here, and it is now skipped too.
+		//
+		// So a daemon in a /tmp worktree that previously REFUSED to start
+		// against such a daemon will now start, and can displace it — the #857
+		// harm, with no error and no log line. That is accepted: the bare-comm
+		// fallback it replaces was not a correct detection either (it matched
+		// on the basename alone, which is why it also matched exiting /tmp
+		// siblings), and wrongly refusing startup is the louder failure.
+		//
+		// Info.ExeErr exists precisely to separate these two, and is
+		// DELIBERATELY NOT CONSULTED YET — the field is unread in production
+		// and nothing asserts that it distinguishes ENOENT from EACCES, so
+		// treating EACCES as canonical today would rest on an ungraded
+		// mechanism. Tracked as the follow-up on #7211.
+		//
+		// On darwin there is a second, narrower case: `ps -eo comm` reports
+		// the literal invocation path, so a binary started as `./grafel` is
+		// reported as "./grafel" and is skipped here as non-absolute
+		// (measured, not assumed). Narrow in practice because launchd starts
+		// services by absolute path, and unreachable in production anyway
+		// because SelfDefenseCheck returns at its !isTmpPath(self) guard on a
+		// platform whose TMPDIR is /var/folders/... rather than /tmp.
 		if !filepath.IsAbs(cmdBin) {
 			continue
 		}
