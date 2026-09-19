@@ -58,8 +58,20 @@ var canonicalBasenames = map[string]bool{
 	"grafel": true,
 }
 
+// findProcs is process.FindByName, indirected through a package-level variable
+// so tests can drive the REAL findCanonicalDaemon with a synthetic process
+// table. The platform implementations read /proc or shell out to ps, so
+// without this seam the classification in findCanonicalDaemon can only be
+// exercised against whatever happens to be running on the test machine —
+// which is how the #7211 empty-Exe path went unnoticed. Never reassigned in
+// production code.
+var findProcs = process.FindByName
+
 // isTmpPath reports whether path starts with /tmp (a hard-coded exclusion zone
-// for canonical daemons; see issue #857).
+// for canonical daemons; see issue #857). It is a pure prefix test and is only
+// meaningful for an ABSOLUTE path: callers must establish that first (see
+// findCanonicalDaemon), because a relative or bare-basename argument returns
+// false and thereby reads as "not a temp path" rather than "unknown".
 func isTmpPath(path string) bool {
 	return strings.HasPrefix(path, "/tmp/") || path == "/tmp"
 }
@@ -97,8 +109,13 @@ func SelfDefenseCheck(logger *slog.Logger) error {
 	canonPID, canonExe := findCanonicalDaemon()
 	if canonPID > 0 {
 		return fmt.Errorf(
-			"daemon refusing to start: another daemon (pid %d) is running on the canonical socket "+
-				"from %s; this binary at %s is under /tmp and should not displace it. "+
+			// Say what was actually observed. The previous wording claimed the
+			// matched process was "running on the canonical socket", a fact
+			// this check never establishes — it only scans the process table —
+			// and that sentence sent the #7211 investigation after HOME-derived
+			// socket paths for two rounds.
+			"daemon refusing to start: another grafel process (pid %d) is running "+
+				"from %s, outside /tmp; this binary at %s is under /tmp and should not displace it. "+
 				"Run 'grafel doctor --kill-stale' to clean up stale processes.",
 			canonPID, canonExe, self)
 	}
@@ -156,7 +173,7 @@ func FindCanonicalDaemon() (pid int, exe string) {
 func findCanonicalDaemon() (pid int, exe string) {
 	myPID := os.Getpid()
 
-	procs, err := process.FindByName("grafel")
+	procs, err := findProcs("grafel")
 	if err != nil {
 		return 0, ""
 	}
@@ -166,8 +183,55 @@ func findCanonicalDaemon() (pid int, exe string) {
 			continue
 		}
 		cmdBin := p.Exe
-		if cmdBin == "" {
-			cmdBin = p.Name
+		// An unknown executable path is NOT canonical (#7211).
+		//
+		// This used to fall back to p.Name — the bare command name — when Exe
+		// was empty. That fallback defeated the /tmp exclusion below rather
+		// than complementing it: isTmpPath is a prefix test, and a bare
+		// basename such as "grafel" can never carry a "/tmp/" prefix, so the
+		// exclusion was silently skipped and the basename match then fired.
+		// On Linux, readlink /proc/<pid>/exe fails precisely for a zombie or
+		// exiting process while /proc/<pid>/comm still reads, so a sibling
+		// /tmp daemon caught mid-exit was classified as the user's permanent
+		// canonical daemon and refused an otherwise-legitimate startup.
+		//
+		// Refusing to start is the destructive outcome here, so "we could not
+		// determine the path" must resolve to "not canonical". The test for a
+		// usable path is absoluteness: only an absolute path can be compared
+		// against the /tmp exclusion zone at all.
+		//
+		// WHAT THIS NARROWS, deliberately and with a cost. "Unknown" here
+		// lumps together two causes that Info.ExeErr can tell apart:
+		//
+		//   ENOENT — the process is a zombie or mid-exit. This is #7211, and
+		//            skipping it is exactly right.
+		//   EACCES — the exe link belongs to another uid and we may not read
+		//            it. A canonical daemon running as another user (a
+		//            system-wide systemd unit, or one started by root) lands
+		//            here, and it is now skipped too.
+		//
+		// So a daemon in a /tmp worktree that previously REFUSED to start
+		// against such a daemon will now start, and can displace it — the #857
+		// harm, with no error and no log line. That is accepted: the bare-comm
+		// fallback it replaces was not a correct detection either (it matched
+		// on the basename alone, which is why it also matched exiting /tmp
+		// siblings), and wrongly refusing startup is the louder failure.
+		//
+		// Info.ExeErr exists precisely to separate these two, and is
+		// DELIBERATELY NOT CONSULTED YET — the field is unread in production
+		// and nothing asserts that it distinguishes ENOENT from EACCES, so
+		// treating EACCES as canonical today would rest on an ungraded
+		// mechanism. Tracked as the follow-up on #7211.
+		//
+		// On darwin there is a second, narrower case: `ps -eo comm` reports
+		// the literal invocation path, so a binary started as `./grafel` is
+		// reported as "./grafel" and is skipped here as non-absolute
+		// (measured, not assumed). Narrow in practice because launchd starts
+		// services by absolute path, and unreachable in production anyway
+		// because SelfDefenseCheck returns at its !isTmpPath(self) guard on a
+		// platform whose TMPDIR is /var/folders/... rather than /tmp.
+		if !filepath.IsAbs(cmdBin) {
+			continue
 		}
 		if isTmpPath(cmdBin) {
 			continue // also a temp daemon — not canonical

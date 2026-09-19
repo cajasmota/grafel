@@ -90,8 +90,26 @@ type Info struct {
 	PPID int
 	// Name is the short command name (basename of the executable).
 	Name string
-	// Exe is the full path to the executable, if readable.
+	// Exe is the full path to the executable, if readable. An EMPTY Exe means
+	// "unknown", NOT "no path" — the reader could not determine the
+	// executable's location. Callers MUST NOT fall back to Name and then
+	// path-test the result: Name is a bare command name and can never satisfy
+	// a directory predicate, so the predicate is silently skipped (#7211).
 	Exe string
+	// ExeErr is the error that prevented Exe from being read, or nil. It lets a
+	// caller distinguish "we lack permission to read another user's exe link"
+	// from "the process is a zombie / already gone", which on Linux are the two
+	// ways readlink /proc/<pid>/exe fails while comm and stat still succeed.
+	// Only the Linux reader populates it; elsewhere it is always nil because
+	// Exe is derived from the same `ps` row as Name and is never empty.
+	//
+	// STATUS: no production code consults this field yet, and no test asserts
+	// that it actually distinguishes ENOENT from EACCES — the zombie test in
+	// process_linux_exe_test.go only requires it to be non-nil. So the
+	// distinction this doc describes is the field's justification, not a
+	// graded property. daemon.findCanonicalDaemon currently treats every
+	// unknown Exe alike for that reason. Tracked as the follow-up on #7211.
+	ExeErr error
 }
 
 // ErrUnsupported is returned by introspection helpers on platforms where
