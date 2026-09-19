@@ -195,6 +195,15 @@ func TestJSFileRoots_7274(t *testing.T) {
 		{"src/components/Button.tsx", []string{"src", "components"}},
 		{"components/Button.tsx", []string{"components"}},
 		{"packages/ui/src/index.ts", []string{"packages", "ui", "src"}},
+		// The "never the trailing filename" invariant was asserted only for
+		// the non-monorepo arm; the extra monorepo hop could run off the end.
+		{"packages/index.ts", []string{"packages"}},
+		// The extra hop belongs to packages/ and apps/ ONLY. Applied to every
+		// wrapper it walks one level too deep and registers a nested source
+		// directory ("ui") as an importable root.
+		{"src/components/ui/Button.tsx", []string{"src", "components"}},
+		{"lib/components/ui/x.ts", []string{"lib", "components"}},
+		{"apps/main.tsx", []string{"apps"}},
 		{"app/routes/home.jsx", []string{"app", "routes"}},
 		{"lib/db.ts", []string{"lib"}},
 		{"index.ts", nil},
@@ -228,11 +237,23 @@ func TestJSFileRoots_7274(t *testing.T) {
 // jsFileRoots only promotes the SECOND path segment to an internal root when
 // the first is a recognised source-root wrapper (src/lib/app/packages/apps).
 // If it promoted the second segment unconditionally, a repo vendoring its
-// dependencies — "vendor/react/index.js", "third_party/lodash/util.js" —
-// would register `react` / `lodash` as repo-owned roots. An
-// `import "react/jsx-runtime"` would then be masked as internal, never get an
-// ext: prefix, and land right back in ImportFormatOther: the exact #7274
-// symptom, reintroduced by the guard that exists to prevent over-firing.
+// dependencies would register those package names as repo-owned roots, the
+// import would be masked as internal, never get an ext: prefix, and land
+// right back in ImportFormatOther: the exact #7274 symptom, reintroduced by
+// the guard that exists to prevent over-firing.
+//
+// EVERY ROOT HERE MUST BE UNCATALOGUED, and the loop asserts it. An
+// allowlisted root (the original "vendor/react", "third_party/lodash") is
+// classified by the earlier isKnownExternalPackage branch, which never
+// consults the internal-root set — so such a row passes whatever the root
+// set contains and grades nothing. Three of the four original rows were
+// vacuous this way; the self-check keeps a future edit from reintroducing
+// one by picking a name that happens to be on the list.
+//
+// The original "scoped-vendored" row was vacuous by CONSTRUCTION and is
+// deleted rather than repaired: jsFileRoots only ever emits directory names,
+// so internal.js can never hold a key of the form "@scope/pkg", and no
+// mutation of the root set can make a scoped row fire.
 //
 // Asserted through the production path (Synthesize), not jsFileRoots alone,
 // so the wiring is graded too.
@@ -243,13 +264,20 @@ func TestSynthesize_VendoredDirDoesNotBecomeInternalRoot_7274(t *testing.T) {
 		spec       string
 		wantToID   string
 	}{
-		{"vendor", "vendor/react/index.js", "react/jsx-runtime", "ext:react"},
-		{"third_party", "third_party/lodash/util.js", "lodash/fp", "ext:lodash"},
-		{"node_modules", "node_modules/better-auth/dist/index.js", "better-auth/node", "ext:better-auth"},
-		{"scoped-vendored", "vendor/base-ui/react/toast.js", "@base-ui/react/toast", "ext:@base-ui/react"},
+		{"vendor", "vendor/better-auth/index.js", "better-auth/node", "ext:better-auth"},
+		{"third_party", "third_party/zzcorp-ui/util.js", "zzcorp-ui/button", "ext:zzcorp-ui"},
+		{"node_modules", "node_modules/tiny-invariant-x/dist/i.js", "tiny-invariant-x/esm", "ext:tiny-invariant-x"},
+		{"deep-vendor", "vendor/js/better-auth/index.js", "better-auth/node", "ext:better-auth"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Self-check: an allowlisted root is classified before the
+			// internal-root guard is ever consulted, so a row built on one
+			// passes regardless of the root set and grades nothing.
+			root := strings.SplitN(tc.spec, "/", 2)[0]
+			if isKnownExternalPackage(root) {
+				t.Fatalf("row %q uses the allowlisted root %q — it would pass whatever internal.js contains; pick an uncatalogued package", tc.name, root)
+			}
 			doc := &graph.Document{
 				Entities: []graph.Entity{
 					{ID: "aaaaaaaaaaaaaaaa", Name: "app", Kind: "SCOPE.Component", SourceFile: "src/app.ts", Language: "typescript"},
@@ -409,8 +437,16 @@ func TestSynthesize_InternalRootGuardResidualGap_7274(t *testing.T) {
 // #7274 is about working dependencies being mis-counted as bugs; letting a
 // malformed reference escape ImportFormatOther is the same error with the
 // sign flipped, and worse, because it hides a real defect instead of
-// inflating a number. Every row below classified as an ext: placeholder
-// before the isLegalNpmImportSpecifier gate.
+// inflating a number.
+//
+// The rows do NOT all grade the same mechanism, and saying so matters: with
+// isLegalNpmImportSpecifier deleted, only some of them classify. The rest are
+// rejected by pre-existing jsExternalPackageRoot / isNpmSegment machinery, or
+// (for "pkg:x/sub") by the branch reading the raw stub instead of the
+// kind-prefix-stripped name. Which row grades which mechanism is asserted by
+// TestClassifyExternal_MalformedRowMechanisms_7274 rather than claimed here,
+// so the table cannot quietly become a set of rows that all pass for reasons
+// this change does not own.
 func TestClassifyExternal_MalformedNpmSpecifiersStayBugs_7274(t *testing.T) {
 	const imports = string(types.RelationshipKindImports)
 	for _, spec := range []string{
@@ -431,8 +467,22 @@ func TestClassifyExternal_MalformedNpmSpecifiersStayBugs_7274(t *testing.T) {
 		"UPPER/Case",
 		"com.example.Foo/Bar",
 		"MyPkg/sub",
+		// SCOPED — the alphabet #7274's second defect lives in, and the half
+		// the first cut of this table left entirely open. Deleting the scope
+		// validation (validating only the package segment) left the suite
+		// green while "@UPPER/pkg/x" and "@_bad/pkg/x" were handed
+		// placeholders.
+		"@UPPER/pkg/x",
+		"@_bad/pkg/x",
+		"@.bad/pkg/x",
+		"@a/UPPER/x",
+		"@-bad/pkg/x",
+		"@a/_bad/x",
 		// Dotted root that is a module host, not a package.
 		"github.com/x",
+		// Length — npm caps a name at 214. Reachable: nothing upstream caps
+		// specifier length.
+		strings.Repeat("a", 215) + "/sub",
 		// Non-URL-safe characters.
 		"pk g/sub",
 		"pkg!/sub",
@@ -460,6 +510,20 @@ func TestClassifyExternal_MalformedNpmSpecifiersStayBugs_7274(t *testing.T) {
 		{"pkg2/sub", "pkg2"},
 		{"@base-ui/react/toast", "@base-ui/react"},
 		{"@scope-x/pkg_y", "@scope-x/pkg_y"},
+		// The 214 boundary is a boundary, not a blanket reject.
+		{strings.Repeat("a", 214) + "/sub", strings.Repeat("a", 214)},
+		{strings.Repeat("a", 213) + "/sub", strings.Repeat("a", 213)},
+		// The dotted-root rule's ESCAPE clause. It must be exercised with a
+		// SCOPED root: an unscoped dotted allowlisted root ("lodash.debounce/x")
+		// is claimed by the earlier isGoImportPath + allowlist branch and never
+		// reaches the legality gate, so a row built on one grades nothing —
+		// which is exactly how the first attempt at this row was vacuous.
+		// "@bam.tech" is an allowlisted scope containing a dot, and a leading
+		// '@' makes isGoImportPath decline, so this row does reach the gate.
+		{"@bam.tech/react-native-image-resizer/x", "@bam.tech/react-native-image-resizer"},
+		// Kept as a regression row for the upstream branch, explicitly NOT as
+		// a control for this gate.
+		{"lodash.debounce/x", "lodash.debounce"},
 	} {
 		if got, _, ok := classifyExternal(tc.spec, imports, "typescript", "src/app.ts", nil, nil, internalRoots{}); !ok || got != tc.want {
 			t.Fatalf("control: %q = (%q, ok=%v), want (%q, true) — the legality gate is over-rejecting", tc.spec, got, ok, tc.want)
@@ -570,5 +634,116 @@ func TestSynthesize_NamedImportRouteHonoursInternalJSRoots_7274(t *testing.T) {
 	}
 	if !hit {
 		t.Fatal("control: a real npm named import did not produce ext:better-auth:Session — the named-import route is inert, so the row above grades nothing")
+	}
+}
+
+// #7274 — which mechanism actually rejects each malformed row. The first cut
+// of the malformed table claimed in prose that every row "classified as an
+// ext: placeholder before the isLegalNpmImportSpecifier gate". That was false
+// for 7 of 19 rows, and it named the wrong mechanism for "pkg:x/sub". A
+// forbidden table whose rows are saved by machinery the change does not own
+// is not vacuous, but it grades less than it appears to — so the split is
+// asserted here instead of asserted in a comment.
+//
+// legalityGated  — jsExternalPackageRoot ACCEPTS; only the new legality gate
+//
+//	rejects. These are the rows that grade this change.
+//
+// helperGated    — jsExternalPackageRoot itself rejects (pre-existing
+//
+//	isNpmSegment / relative-path machinery). Kept as
+//	regression rows, but they do not grade the legality gate.
+func TestClassifyExternal_MalformedRowMechanisms_7274(t *testing.T) {
+	legalityGated := []string{
+		".hidden/x", "..x/y", ".npmrc/x", "_private/x", "-bad/pkg",
+		"a//b", "pkg/", "pkg//", "UPPER/Case", "com.example.Foo/Bar",
+		"MyPkg/sub", "github.com/x",
+		"@UPPER/pkg/x", "@_bad/pkg/x", "@.bad/pkg/x", "@a/UPPER/x",
+		"@-bad/pkg/x", "@a/_bad/x",
+		strings.Repeat("a", 215) + "/sub",
+	}
+	for _, spec := range legalityGated {
+		t.Run("legality/"+spec, func(t *testing.T) {
+			root, ok := jsExternalPackageRoot(spec, nil)
+			if !ok {
+				t.Fatalf("jsExternalPackageRoot(%q) already rejects — this row does NOT grade the legality gate; move it to helperGated", spec)
+			}
+			if isLegalNpmImportSpecifier(spec, root) {
+				t.Fatalf("isLegalNpmImportSpecifier(%q, %q) = true — the row would classify", spec, root)
+			}
+		})
+	}
+
+	// The dotted-root rule has an ESCAPE clause, and it is asserted directly
+	// rather than through classifyExternal: an end-to-end row for an UNSCOPED
+	// dotted root is shadowed by the earlier isGoImportPath branch and cannot
+	// observe this gate at all.
+	if !isLegalNpmImportSpecifier("@bam.tech/pkg/x", "@bam.tech/pkg") {
+		t.Fatal("allowlisted dotted SCOPED root rejected — the escape clause in the dotted rule is gone, and with it the recall its documented departure claims")
+	}
+	if isLegalNpmImportSpecifier("@nope.invalid/pkg/x", "@nope.invalid/pkg") {
+		t.Fatal("uncatalogued dotted scoped root accepted — the dotted rule no longer rejects module-host shapes")
+	}
+
+	helperGated := []string{"/", "//pkg", "pk g/sub", "pkg!/sub", "pkg~/sub", "pkg%20x/sub"}
+	for _, spec := range helperGated {
+		t.Run("helper/"+spec, func(t *testing.T) {
+			if root, ok := jsExternalPackageRoot(spec, nil); ok {
+				t.Fatalf("jsExternalPackageRoot(%q) = (%q, true) — this row now grades the legality gate; move it to legalityGated", spec, root)
+			}
+		})
+	}
+
+	// "pkg:x/sub" is its own mechanism: the branch reads the RAW stub, so the
+	// kind-prefix strip never gets to turn it into the legal-looking "x/sub".
+	// Pin both halves — the stub form must reject AND the stripped form must
+	// be acceptable — or the reason this row passes is unobserved.
+	if root, ok := jsExternalPackageRoot("pkg:x/sub", nil); ok {
+		t.Fatalf("jsExternalPackageRoot(\"pkg:x/sub\") = (%q, true), want reject", root)
+	}
+	root, ok := jsExternalPackageRoot("x/sub", nil)
+	if !ok || !isLegalNpmImportSpecifier("x/sub", root) {
+		t.Fatalf("the kind-stripped form %q no longer classifies (root=%q ok=%v) — "+
+			"the raw-stub gate is what saves \"pkg:x/sub\", and this pin no longer demonstrates it", "x/sub", root, ok)
+	}
+}
+
+// #7274 — the two classification routes must agree about the internal-root
+// guard. The F2 fix introduced a divergence in the opposite direction to the
+// one it repaired: classifyExternal classifies an ALLOWLISTED root through an
+// earlier branch that never consults internal.js, while importEdgePackageRoot
+// applied the guard to every root. In a repo owning src/react/,
+// `import "react/jsx-runtime"` yielded ext:react while
+// `import { useState } from "react"` silently lost its per-symbol node.
+//
+// Precedence is now identical on both routes: allowlisted root wins over a
+// same-named repo directory; uncatalogued root is guarded.
+func TestRoutesAgreeOnInternalRootPrecedence_7274(t *testing.T) {
+	const imports = string(types.RelationshipKindImports)
+
+	for _, tc := range []struct {
+		name        string
+		owned       string
+		slashSpec   string
+		bareSpec    string
+		wantAllowed bool // true => both routes classify despite the owned root
+	}{
+		{"allowlisted-root-wins", "react", "react/jsx-runtime", "react", true},
+		{"allowlisted-root-wins-lodash", "lodash", "lodash/fp", "lodash", true},
+		{"uncatalogued-root-guarded", "components", "components/Button", "components", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			roots := internalRoots{js: map[string]bool{tc.owned: true}}
+			_, _, slashOK := classifyExternal(tc.slashSpec, imports, "typescript", "src/app.ts", nil, nil, roots)
+			_, bareOK := importEdgePackageRoot(tc.bareSpec, "typescript", nil, roots)
+			if slashOK != bareOK {
+				t.Fatalf("routes disagree for owned root %q: classifyExternal(%q) ok=%v, importEdgePackageRoot(%q) ok=%v — "+
+					"the same root must not be guarded on one spelling and unguarded on the other within a single Synthesize call",
+					tc.owned, tc.slashSpec, slashOK, tc.bareSpec, bareOK)
+			}
+			if slashOK != tc.wantAllowed {
+				t.Fatalf("owned root %q: ok=%v, want %v", tc.owned, slashOK, tc.wantAllowed)
+			}
+		})
 	}
 }

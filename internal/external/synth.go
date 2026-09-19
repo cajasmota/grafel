@@ -2746,7 +2746,18 @@ func jsSpecifierFor(stub string, relProps map[string]string) string {
 //     population (see the branch comment). Cost: a non-allowlisted dotted
 //     package such as socket.io keeps counting as a bug, exactly as it
 //     does on the base revision — this is a smaller improvement, not a
-//     regression.
+//     regression. The cost applies to SCOPED roots too, and the scope key
+//     is what decides: "@socket.io/component-emitter/x" is rejected
+//     because isKnownExternalPackage falls back to the uncatalogued
+//     "@socket.io" scope, despite being a very widely installed package.
+//
+// Known wart, not a regression: an allowlisted DOTTED root canonicalises
+// differently by spelling — "lodash.debounce" folds to ext:lodash through
+// the dotted-module branch below, while "lodash.debounce/x" resolves here
+// to ext:lodash.debounce, so one package can hold two placeholders. The
+// slash spelling never reached any classifier before #7274, so this is
+// newly created rather than newly broken; canonicalising the pair is
+// tracked separately.
 func isLegalNpmImportSpecifier(spec, root string) bool {
 	if spec == "" || root == "" {
 		return false
@@ -2934,10 +2945,19 @@ func jsFileRoots(path string) []string {
 	// container and stop.
 	//
 	// Stopping at the first non-container is what keeps the guard from
-	// swallowing vendored trees: "vendor/react/index.js" yields ["vendor"]
-	// only, so a real `import "react/jsx-runtime"` still classifies as
-	// external. Promoting the second segment unconditionally would register
-	// `react` as repo-owned and re-create the #7274 symptom.
+	// swallowing vendored trees: "vendor/better-auth/index.js" yields
+	// ["vendor"] only, so a real `import "better-auth/node"` still
+	// classifies as external. Promoting the second segment unconditionally
+	// would register `better-auth` as repo-owned and re-create the #7274
+	// symptom.
+	//
+	// The example is deliberately an UNCATALOGUED package. An allowlisted
+	// one ("vendor/react/...") would prove nothing here: a known package
+	// root is classified by the earlier allowlist branch (isGoImportPath ->
+	// isKnownExternalPackage, ~150 lines above this file's #7274 branch),
+	// which never consults the internal-root set at all. For those names
+	// this guard is not the mechanism, so a fixture built on one grades
+	// nothing.
 	//
 	// Walking the WHOLE prefix rather than one level is what makes the guard
 	// cover more than a flat src/ layout: "packages/ui/src/components/x.tsx"

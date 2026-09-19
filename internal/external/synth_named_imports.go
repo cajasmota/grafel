@@ -245,7 +245,21 @@ func importEdgePackageRoot(toID, lang string, relProps map[string]string, intern
 		// hold on BOTH routes or the same root is guarded on one spelling
 		// and unguarded on the other within a single Synthesize call.
 		root, ok := jsExternalPackageRoot(toID, relProps)
-		if !ok || internal.js[strings.ToLower(root)] {
+		if !ok {
+			return "", false
+		}
+		// Precedence must MATCH classifyExternal or the same root is
+		// guarded on one spelling and unguarded on the other inside a
+		// single Synthesize call — which is the defect this arm was fixed
+		// for. classifyExternal classifies an allowlisted root through the
+		// earlier isKnownExternalPackage branch, which never consults the
+		// internal-root set, so a known package name wins over a
+		// same-named repo directory there. Mirror that here: a repo owning
+		// src/react/ that imports "react" means the npm package.
+		if isKnownExternalPackage(root) {
+			return root, true
+		}
+		if internal.js[strings.ToLower(root)] {
 			return "", false
 		}
 		return root, true
