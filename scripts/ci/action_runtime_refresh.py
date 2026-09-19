@@ -71,8 +71,58 @@ from action_runtime_gate import (  # noqa: E402
 )
 
 API = "https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
-NODE_USING = re.compile(r"^node(\d+)$")
+NODE_USING = re.compile(r"^node([0-9]+)$")  # ASCII, as above
 USING_LINE = re.compile(r"^\s+using:\s*['\"]?([A-Za-z0-9_.-]+)['\"]?\s*$")
+
+
+# ── DRIFT_CAUSES: the table this script and its control BOTH read ───────────
+# Same contract as FAILURE_CAUSES in action_runtime_gate.py, and the same
+# reason: the control that checks the host workflow's exhaustive failure list
+# was SAMPLING it with hand-written phrases and fell behind three times — most
+# recently on the cut-short semantic THIS script introduced, whose entire
+# documenting paragraph could be deleted with the suite still green.
+#
+# cause -> (emitted label, phrase that must appear in grammar-freshness.yml)
+# Every exit-1 finding is raised through `record(<cause>, ...)`, which renders
+# the label and rejects an unknown cause.
+# cause -> (emitted label, every phrase its header clause must contain). The
+# phrase side is a tuple for the same reason as FAILURE_CAUSES: a clause whose
+# detail is the whole point must have that detail pinned, not just its topic
+# sentence.
+DRIFT_CAUSES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "manifest_too_low": (
+        "DRIFT (manifest TOO LOW)",
+        ("minimum major is TOO LOW", "passing pins it should have caught"),
+    ),
+    "manifest_too_high": (
+        "DRIFT (manifest TOO HIGH)",
+        ("minimum major is TOO HIGH", "rejecting legitimate pins"),
+    ),
+    "evidence_stale_at_min": (
+        "DRIFT (recorded evidence stale)",
+        ("recorded evidence (the runtime observed at the minimum major",),
+    ),
+    "evidence_stale_below_min": (
+        "DRIFT (recorded evidence stale)",
+        ("at the one below) no longer matches upstream",),
+    ),
+    "pinned_ref_deprecated": (
+        "VIOLATION (pinned ref on a deprecated runtime)",
+        ("deprecated or non-Node runtime",),
+    ),
+    "pinned_ref_gone": (
+        "DRIFT (pinned ref is gone)",
+        ("or its tag no longer exists",),
+    ),
+    "cut_short_with_drift": (
+        "CUT SHORT",
+        (
+            "ALREADY found drift when the failure hit exits 1",
+            # the reason exit 1 outranks exit 2 here, which is the finding
+            "does not DESTROY the evidence",
+        ),
+    ),
+}
 
 
 class Unavailable(Exception):
@@ -141,6 +191,28 @@ def supported(using: str | None) -> bool:
 
 
 DRIFT_MARKER = "grafel-drift:yes"
+UNDOCUMENTED_DRIFT = "undocumented drift cause"
+
+
+def record(drift: list[str], cause: str, body: str) -> None:
+    """The only way a drift finding is created.
+
+    Rejects an unknown cause rather than accepting it, so a typo crashes at the
+    finding site instead of producing an exit-1 reason no header documents.
+    """
+    # The explicit check must carry its own MESSAGE, and the control must
+    # assert that message. Without it this guard is ungradeable: the very next
+    # line indexes DRIFT_CAUSES and raises KeyError by itself, so deleting the
+    # check left `assertRaises(KeyError)` passing and the mutant ALIVE — two
+    # guards that can only fire together grade neither. The message is the only
+    # thing that distinguishes "rejected on purpose" from "crashed anyway".
+    if cause not in DRIFT_CAUSES:
+        raise KeyError(
+            f"{UNDOCUMENTED_DRIFT} {cause!r}: add it to DRIFT_CAUSES and to "
+            f"grammar-freshness.yml's exhaustive list"
+        )
+    label = DRIFT_CAUSES[cause][0]
+    drift.append(f"\n{label} {body}")
 
 
 def render_markdown(
@@ -260,8 +332,10 @@ def main() -> int:
             derived[action] = {"min_major": m, "at_min": at_min, "below_min": below}
 
             if not supported(at_min):
-                drift.append(
-                    f"\nDRIFT (manifest TOO LOW) {action}\n"
+                record(
+                    drift,
+                    "manifest_too_low",
+                    f"{action}\n"
                     f"  ACTION_RUNTIMES says v{m} is the first supported major, "
                     f"but upstream `runs.using` at v{m} is {at_min!r}.\n"
                     f"  => the offline gate has been passing pins on a "
@@ -269,24 +343,30 @@ def main() -> int:
                     f"Find the real first supported major and raise the row."
                 )
             elif at_min != row["at_min"]:
-                drift.append(
-                    f"\nDRIFT (recorded evidence stale) {action}\n"
+                record(
+                    drift,
+                    "evidence_stale_at_min",
+                    f"{action}\n"
                     f"  row records `at_min={row['at_min']!r}` at v{m}; upstream "
                     f"now says {at_min!r}. Still supported, but the row's "
                     f"evidence no longer describes upstream — update it."
                 )
 
             if below is not None and supported(below):
-                drift.append(
-                    f"\nDRIFT (manifest TOO HIGH) {action}\n"
+                record(
+                    drift,
+                    "manifest_too_high",
+                    f"{action}\n"
                     f"  ACTION_RUNTIMES says v{m} is the first supported major, "
                     f"but v{m - 1} is already {below!r}.\n"
                     f"  => the offline gate is rejecting legitimate pins. Lower "
                     f"the row (and check further down: v{m - 2} may qualify too)."
                 )
             elif below != row["below_min"]:
-                drift.append(
-                    f"\nDRIFT (recorded evidence stale) {action}\n"
+                record(
+                    drift,
+                    "evidence_stale_below_min",
+                    f"{action}\n"
                     f"  row records `below_min={row['below_min']!r}` at v{m - 1}; "
                     f"upstream now says {below!r}. Update the row."
                 )
@@ -295,15 +375,18 @@ def main() -> int:
         for action, ref in sorted(pinned):
             using = runs_using(action, ref)
             if using is None:
-                drift.append(
-                    f"\nDRIFT (pinned ref is gone) {action}@{ref}\n"
+                record(
+                    drift,
+                    "pinned_ref_gone",
+                    f"{action}@{ref}\n"
                     f"  no action file at that ref upstream — the tag was moved "
                     f"or deleted. The offline gate cannot see this."
                 )
                 continue
             if not supported(using):
-                drift.append(
-                    f"\nVIOLATION (pinned ref on a deprecated runtime) "
+                record(
+                    drift,
+                    "pinned_ref_deprecated",
                     f"{action}@{ref}\n"
                     f"  upstream `runs.using` is {using!r}, and node"
                     f"{MIN_NODE_MAJOR} is the floor.\n"
@@ -335,7 +418,8 @@ def main() -> int:
         if not drift:
             return 2
         print(
-            f"action-runtime-refresh: the run was CUT SHORT by the error above, "
+            f"action-runtime-refresh: the run was "
+            f"{DRIFT_CAUSES['cut_short_with_drift'][0]} by the error above, "
             f"but {len(drift)} drift finding(s) were already established and "
             f"are reported below. Exiting 1, not 2: what follows is a fact "
             f"about this repository, not a fact about the network. Re-run to "

@@ -275,8 +275,97 @@ USES_CONTINUED = re.compile(r"^\s*(?:-\s+)?uses:\s*$")
 # was false — the same unverified-prose defect this whole gate exists to catch.)
 # Should somebody want it back, the fix is an explicit `ALLOWED` row, not a
 # looser regex.
-REF_MAJOR_V = re.compile(r"^v(\d+)(?:\.\d+)*$")
-REF_MAJOR_DOTTED = re.compile(r"^(\d+)(?:\.\d+)+$")
+# ASCII digits explicitly. Python's `\d` is Unicode-wide, so `\d` would make
+# `v５` (fullwidth five) and the Arabic-Indic digits read as major 5. Not a
+# SHA bypass — a commit SHA is ASCII hex, so fail-closed still holds — but a
+# rule whose comment says "digits" should mean the digits a version tag can
+# actually contain, and a ref nobody can type twice is not a version.
+REF_MAJOR_V = re.compile(r"^v([0-9]+)(?:\.[0-9]+)*$")
+REF_MAJOR_DOTTED = re.compile(r"^([0-9]+)(?:\.[0-9]+)+$")
+
+
+# ── FAILURE_CAUSES: the single table the code and its control BOTH read ──────
+# Every exit-1 path in this file is raised through `Verdict.fail(<cause>)`, and
+# every cause here carries the phrase that documents it in the host workflow's
+# exhaustive failure list. A control asserts three things against this dict:
+# no failure may be raised except through it, every cause is actually reachable,
+# and every phrase is present in the header.
+#
+# WHY A TABLE AND NOT A DERIVATION. The control that checks the header used to
+# SAMPLE it — a hand-written list of `assertIn` phrases — and fell behind THREE
+# TIMES: when this gate's causes 3 and 3b were added, on the refresh's
+# cut-short semantic, and on the `names a workflow outside the pinned set`
+# clause. Each round fixed the instance and left the shape. A repeated local
+# patch is a missing abstraction.
+#
+# A fully automatic derivation was considered and rejected: a scanner can find
+# every failure SITE, but nothing in the code says which sentence of English
+# prose documents which site — that mapping is exactly the part a human has to
+# write down, and inventing it by proximity would be a guess that fails
+# silently. So the mapping is explicit and written ONCE, here, where both
+# readers see the same object. What IS automatic is the part that kept rotting:
+# the control derives its phrase list FROM this dict instead of restating it,
+# and asserts that no bare boolean failure flag survives anywhere in this file
+# (the shape every one of these sites used to have) — so a new failure path
+# cannot be added without a cause, and a cause cannot be added without a
+# phrase. The control's own scan is pinned in both directions, because a
+# scan-and-assert-absence check is the shape this whole file exists to distrust.
+# cause -> EVERY phrase its header clause must contain. A tuple, not a single
+# string, because a clause can carry detail that is itself hard-won and worth
+# pinning: `unreadable_ref` below documents the version-marker rule and the
+# retired length threshold, and with one phrase per cause those sentences went
+# unasserted the moment the derived control replaced the hand-written one —
+# measured, two mutants deleting them were ALIVE.
+FAILURE_CAUSES: dict[str, tuple[str, ...]] = {
+    "below_minimum": ("below its action's first node24 major",),
+    "unknown_action": ("no ACTION_RUNTIMES row",),
+    "unreadable_ref": (
+        "a ref with no readable major",
+        # the CM-38 rule and the reason it is not a length threshold
+        "VERSION MARKER — a leading `v` or an embedded dot",
+        "ALL-DIGIT abbreviated commit SHA",
+        "A length threshold was tried and was wrong",
+    ),
+    "continued_uses": ("a `uses:` key whose value sits on a FOLLOWING line",),
+    "manifest_mismatch": ("the scanned filename set, a per-file `uses:` count",),
+    "external_total": ("the external-pin",),
+    "stale_allow_row": (
+        "an ALLOWED row matched nothing while its workflow is still present",
+    ),
+    "stale_allow_row_absent_file": ("names a workflow outside the pinned set",),
+    # NOT "read fewer workflows": the SIBLING workflow-event-gate job's clause
+    # in the same file reads "the scan read fewer workflows or parsed fewer
+    # guards", so that phrase was satisfied by a neighbour's prose and leg 3
+    # passed with this gate's own clause deleted. Section-scoped in the control
+    # now, and disambiguated here too — an over-broad assertion fails exactly
+    # like no assertion.
+    "floor_workflows": ("fewer workflows or fewer pins",),
+    "floor_pins": ("fewer pins than its floors",),
+}
+
+
+class Verdict:
+    """The only way this gate fails.
+
+    `fail()` REJECTS an unknown cause rather than accepting it, so a typo is a
+    crash at the failure site instead of a silently-undocumented exit.
+    """
+
+    def __init__(self) -> None:
+        self.causes: set[str] = set()
+
+    UNDOCUMENTED = "undocumented failure cause"
+
+    def fail(self, cause: str) -> None:
+        if cause not in FAILURE_CAUSES:
+            raise KeyError(
+                f"{self.UNDOCUMENTED} {cause!r}: add it to FAILURE_CAUSES and "
+                f"to the host workflow's exhaustive list"
+            )
+        self.causes.add(cause)
+
+    def __bool__(self) -> bool:
+        return bool(self.causes)
 
 
 @dataclass
@@ -293,11 +382,20 @@ class Pin:
 def strip_comment(line: str) -> str:
     """Drop a trailing YAML comment, respecting quotes.
 
-    Load-bearing in one direction only, and it is the FALSE-POSITIVE one: this
-    repo's workflow headers discuss pins in prose (board-hygiene.yml's banner
-    names `v8` and `v9` of github-script in a comment), and a comment-blind
-    scan that read `# was uses: actions/checkout@v4` as a pin would invent a
-    violation in a file that has none. The controls plant exactly that.
+    PRECAUTIONARY TODAY, and said plainly because the previous wording claimed
+    more than anything observed. It pointed at board-hygiene.yml's banner,
+    which does name `v8` and `v9` of github-script in prose — but naming a
+    version in a comment was never the hazard. The pin pattern needs a line
+    that IS `uses: <value>`, and a comment line starts with `#`, so it cannot
+    match with or without this function. No comment in this tree is load-bearing
+    for the scan, and a control asserts that rather than leaving it assumed.
+
+    The hazard it actually guards is a commented-out pin —
+    `# - uses: actions/checkout@v4`, the shape a bisect or a revert leaves
+    behind — which a comment-blind scan reads as a real pin and reports as a
+    violation in a file that has none. Nothing in this tree is that shape yet,
+    so the guard is graded on a SYNTHETIC case (test_comment_is_not_a_pin) and
+    the real-tree claim is graded separately and stated as what it is.
     """
     out = []
     quote = None
@@ -415,7 +513,7 @@ def main() -> int:
     local = [p for p in pins if p.action is None and not p.unparseable]
     unparseable = [p for p in pins if p.unparseable]
 
-    violations: list[str] = []
+    violations: list[tuple[str, str]] = []  # (cause, rendered text)
     allowed_hits: set[tuple[str, str, str]] = set()
 
     # A `uses:` whose value is on a following line is counted (so the per-file
@@ -423,7 +521,8 @@ def main() -> int:
     # rather than a skip. It is NOT allow-listable: unlike a SHA pin there is
     # no fact to record about it, only a line to rewrite.
     for pin in unparseable:
-        violations.append(
+        violations.append((
+            "continued_uses",
             f"\nVIOLATION {pin.workflow}:{pin.line}\n"
             f"  uses: {pin.raw}\n"
             f"  => the `uses:` value is on a following line. That is legal "
@@ -431,8 +530,8 @@ def main() -> int:
             f"this way was measured to pass fully green — 0 violations, and the "
             f"per-file count, the filename set and the external total all still "
             f"matching — while carrying `actions/checkout@v4`. Write the value "
-            f"on the `uses:` line itself."
-        )
+            f"on the `uses:` line itself.",
+        ))
 
     for pin in external:
         key = (pin.workflow, pin.action, pin.ref or "")
@@ -444,7 +543,8 @@ def main() -> int:
                 allowed_hits.add(key)
                 print(f"ALLOWED {pin.workflow}:{pin.line} {pin.raw} — {ALLOWED[key]}")
                 continue
-            violations.append(
+            violations.append((
+                "unknown_action",
                 f"\nVIOLATION {pin.workflow}:{pin.line}\n"
                 f"  uses: {pin.raw}\n"
                 f"  action: {pin.action}\n"
@@ -457,8 +557,8 @@ def main() -> int:
                 f"  NOTE: a sub-path action keys on its FULL path, so "
                 f"`actions/cache/restore` needs its own row even though "
                 f"`actions/cache` has one — they are separate action files and "
-                f"can ship separate runtimes."
-            )
+                f"can ship separate runtimes.",
+            ))
             continue
 
         if major is None:
@@ -466,7 +566,8 @@ def main() -> int:
                 allowed_hits.add(key)
                 print(f"ALLOWED {pin.workflow}:{pin.line} {pin.raw} — {ALLOWED[key]}")
                 continue
-            violations.append(
+            violations.append((
+                "unreadable_ref",
                 f"\nVIOLATION {pin.workflow}:{pin.line}\n"
                 f"  uses: {pin.raw}\n"
                 f"  action: {pin.action}\n"
@@ -478,8 +579,8 @@ def main() -> int:
                 f"abbreviated commit SHA at every length. A commit SHA or a "
                 f"branch name needs a ticket-bearing ALLOWED row in "
                 f"{os.path.basename(__file__)} recording which runtime it was "
-                f"checked to be on, and when."
-            )
+                f"checked to be on, and when.",
+            ))
             continue
 
         if major >= row["min_major"]:
@@ -490,7 +591,8 @@ def main() -> int:
             print(f"ALLOWED {pin.workflow}:{pin.line} {pin.raw} — {ALLOWED[key]}")
             continue
 
-        violations.append(
+        violations.append((
+            "below_minimum",
             f"\nVIOLATION {pin.workflow}:{pin.line}\n"
             f"  uses: {pin.raw}\n"
             f"  action: {pin.action}\n"
@@ -502,8 +604,8 @@ def main() -> int:
             f"force-migrates such actions today and will stop running them. "
             f"Bump it to at least v{row['min_major']} — note the minimum is per "
             f"ACTION, not per org: upload-artifact reaches node24 at v6 and "
-            f"download-artifact only at v7."
-        )
+            f"download-artifact only at v7.",
+        ))
 
     print(
         f"action-runtime-gate: {len(paths)} workflow(s), {len(pins)} `uses:` "
@@ -511,7 +613,7 @@ def main() -> int:
         f"{len(unparseable)} unparseable), "
         f"{len(violations)} violation(s), {len(allowed_hits)} allow-listed."
     )
-    failed = False
+    verdict = Verdict()
 
     if args.print_manifest:
         for name in sorted(per_file):
@@ -550,7 +652,7 @@ def main() -> int:
                 )
             print("  Re-derive with --print-manifest once you know WHICH pin moved.",
                   file=sys.stderr)
-            failed = True
+            verdict.fail("manifest_mismatch")
         if len(external) != TOTAL_EXTERNAL_PINS:
             print(
                 f"\nEXTERNAL PIN TOTAL MISMATCH: pinned {TOTAL_EXTERNAL_PINS}, "
@@ -560,11 +662,11 @@ def main() -> int:
                 f"examined.",
                 file=sys.stderr,
             )
-            failed = True
+            verdict.fail("external_total")
 
-    for v in violations:
-        print(v, file=sys.stderr)
-        failed = True
+    for cause, text in violations:
+        print(text, file=sys.stderr)
+        verdict.fail(cause)
 
     if not args.no_allow_list:
         for key, why in ALLOWED.items():
@@ -584,7 +686,7 @@ def main() -> int:
                         f"The workflow was deleted or renamed — delete the row.",
                         file=sys.stderr,
                     )
-                    failed = True
+                    verdict.fail("stale_allow_row_absent_file")
                 else:
                     print(
                         f"NOTE: allow-list row {key!r} not checked — {key[0]} is "
@@ -598,7 +700,7 @@ def main() -> int:
                 f"The pin was bumped, moved or deleted — delete the row.",
                 file=sys.stderr,
             )
-            failed = True
+            verdict.fail("stale_allow_row")
 
     if len(paths) < args.min_workflows:
         print(
@@ -606,7 +708,7 @@ def main() -> int:
             f"{args.min_workflows}. The gate is not looking at the tree.",
             file=sys.stderr,
         )
-        failed = True
+        verdict.fail("floor_workflows")
     if len(pins) < args.min_pins:
         print(
             f"\nFLOOR: parsed {len(pins)} `uses:` pin(s), floor is "
@@ -614,9 +716,9 @@ def main() -> int:
             f"from them.",
             file=sys.stderr,
         )
-        failed = True
+        verdict.fail("floor_pins")
 
-    return 1 if failed else 0
+    return 1 if verdict else 0
 
 
 if __name__ == "__main__":

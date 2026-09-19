@@ -789,36 +789,229 @@ class GateTest(unittest.TestCase):
         for forbidden in ("if:", "continue-on-error", "needs:"):
             self.assertNotIn(forbidden, block, f"`{forbidden}` in the refresh job")
 
-    def test_both_halves_named_in_the_host_failure_lists(self) -> None:
-        """The workflow headers forbid adding a failure path without listing it.
+    # ── H1: the failure lists, DERIVED rather than sampled ───────────────────
+    #
+    # What used to live here was a hand-written list of `assertIn` phrases. It
+    # fell behind THREE separate times — on this gate's causes 3 and 3b, on the
+    # refresh's cut-short semantic, and on the `names a workflow outside the
+    # pinned set` clause — each round fixing the instance and leaving the
+    # shape. The third time, the cause it missed was one the SAME round had
+    # introduced, in a commit whose message recorded fixing exactly this class.
+    # A repeated local patch is a missing abstraction: the control was SAMPLING
+    # a computation it should be DERIVING.
+    #
+    # So the phrases are no longer restated here. They are read out of
+    # FAILURE_CAUSES / DRIFT_CAUSES — the tables the SCRIPTS raise their
+    # failures through — and the legs below close the loop:
+    #   1. no failure may be raised outside the table  (a new path is caught)
+    #   2. every table cause is reachable from the code (a row cannot go stale)
+    #   3. every table phrase is in the host header     (prose cannot fall behind)
+    # Adding a failure path without documenting it now fails automatically,
+    # because there is nowhere to add one that leg 3 does not then see.
 
-        Each new exit-1 cause is named in its host's exhaustive list, in the
-        same commit that added it.
+    # The two tagging forms, both read from source. The gate tags a violation
+    # where it is BUILT (`violations.append((cause, text))`) and everything
+    # else where it FAILS (`verdict.fail(cause)`); the loop that prints
+    # violations passes the cause through as a variable, so a scan that looked
+    # only at `verdict.fail` would miss four causes and — worse — would have
+    # reported them as stale table rows. Found by this control failing.
+    GATE_CAUSE_PATTERNS = (
+        r'verdict\.fail\(\s*\n?\s*"([a-z_]+)"',
+        r'violations\.append\(\(\s*\n\s*"([a-z_]+)"',
+    )
+    REFRESH_CAUSE_PATTERNS = (r'record\(\s*\n\s*drift,\s*\n\s*"([a-z_]+)"',)
+
+    def _causes_fired_in(self, path: str, patterns) -> set[str]:
+        """Every cause literal the source raises, read from the source itself."""
+        import re as _re
+
+        src = open(path, encoding="utf-8").read()
+        found: set[str] = set()
+        for pat in patterns:
+            found |= set(_re.findall(pat, src))
+        return found
+
+    def test_no_failure_is_raised_outside_the_cause_table(self) -> None:
+        """LEG 1 — the automatic part. A new failure path cannot be added in the
+        shape every existing one used to have.
+
+        Both scripts funnel: the gate through `Verdict.fail`, the refresh
+        through `record`. The bare forms are asserted ABSENT, and the funnels
+        asserted PRESENT — otherwise this passes on a file with no failure
+        paths at all, which is the vacuous direction.
         """
-        with open(HOST, encoding="utf-8") as fh:
-            head = fh.read()
-        for phrase in (
-            "no ACTION_RUNTIMES row",
-            "first node24 major",
-            "no readable major",
-            # round 2 added TWO exit-1 causes to the gate. The all-digit-SHA
-            # widening of cause 3 and the continued-`uses:` cause 3b were both
-            # written into the header and NEITHER was added here — a mutant
-            # deleting cause 3b from the header stayed ALIVE. The rule this
-            # control enforces is exactly the rule it had just broken.
-            "ALL-DIGIT abbreviated commit SHA",
-            "VERSION MARKER",
-            "a `uses:` key whose value sits on a FOLLOWING line",
-            "an ALLOWED row matched nothing",
-            "external-pin\n#      total does not match the manifest",
-            "fewer workflows or fewer pins than its floors",
-        ):
-            self.assertIn(phrase, head, f"missing from the action-runtime-gate list: {phrase}")
-        with open(PERIODIC_HOST, encoding="utf-8") as fh:
-            phead = fh.read()
-        for phrase in ("TOO LOW", "TOO HIGH", "recorded evidence", "deprecated or non-Node"):
-            self.assertIn(phrase, phead, f"missing from the refresh list: {phrase}")
+        gate_src = open(GATE, encoding="utf-8").read()
+        refresh_src = open(REFRESH, encoding="utf-8").read()
+        self.assertNotIn("failed = True", gate_src)
+        self.assertNotIn("failed = False", gate_src)
+        self.assertGreaterEqual(gate_src.count("verdict.fail("), 7)
+        self.assertIn("return 1 if verdict else 0", gate_src)
+        # the refresh's only literal append is the one inside record() itself
+        self.assertEqual(refresh_src.count("drift.append("), 1)
+        self.assertGreaterEqual(refresh_src.count("record(\n"), 6)
 
+    def test_every_cause_in_the_table_is_reachable(self) -> None:
+        """LEG 2 — a table row nothing raises is stale, exactly like a stale
+        allow-list row. Both directions, by set equality rather than
+        containment."""
+        gate = self._gate()
+        refresh_mod = load(REFRESH, "arr_causes")
+        self.addCleanup(sys.modules.pop, "arr_causes", None)
+        self.addCleanup(sys.modules.pop, "action_runtime_gate", None)
+
+        self.assertEqual(
+            self._causes_fired_in(GATE, self.GATE_CAUSE_PATTERNS),
+            set(gate.FAILURE_CAUSES),
+            "FAILURE_CAUSES and the causes the gate actually raises disagree",
+        )
+        # cut_short_with_drift is raised by the exit path, not by record()
+        self.assertEqual(
+            self._causes_fired_in(REFRESH, self.REFRESH_CAUSE_PATTERNS) | {"cut_short_with_drift"},
+            set(refresh_mod.DRIFT_CAUSES),
+            "DRIFT_CAUSES and the causes the refresh actually raises disagree",
+        )
+        self.assertIn(
+            "DRIFT_CAUSES['cut_short_with_drift'][0]",
+            open(REFRESH, encoding="utf-8").read(),
+            "the cut-short label must come from the table like every other",
+        )
+
+    def _own_header_section(self, path: str, start_marker: str) -> str:
+        """The part of a host header that belongs to THIS change.
+
+        Searching the whole file is an over-broad assertion, and it bit: the
+        `floor_workflows` phrase "read fewer workflows" was satisfied by the
+        SIBLING workflow-event-gate job's clause in the same file ("the scan
+        read fewer workflows or parsed fewer guards"), so leg 3 passed with this
+        gate's own clause deleted. A whole-file grep survives deleting the thing
+        it checks.
+
+        SCORED AS A PAIR, because neither half is observable alone. Scoping and
+        the disambiguated phrase each make the other redundant, so a single
+        mutant reverting either one is EQUIVALENT — recorded rather than
+        papered over with a contrived assertion. What is observable is the
+        defect they jointly prevent, and it was measured: with the pre-fix
+        world restored (whole-file search + the ambiguous phrase) and this
+        gate's own floor clause rewritten, the suite is GREEN — the reviewer's
+        finding, reproduced; with only the clause rewritten, it is RED.
+        """
+        lines = open(path, encoding="utf-8").read().splitlines()
+        start = next(i for i, ln in enumerate(lines) if start_marker in ln)
+        end = len(lines)
+        for i in range(start + 1, len(lines)):
+            if not lines[i].startswith("#"):
+                end = i
+                break
+        return "\n".join(lines[start:end])
+
+    def test_the_header_section_slice_is_not_vacuous(self) -> None:
+        """Leg 3 rests on that slice, and both of its failure modes pass
+        `assertIn` for the wrong reason: an empty slice fails everything
+        (loudly, fine) but a whole-file slice passes everything (silently, the
+        bug it was introduced to fix)."""
+        gate_sec = self._own_header_section(HOST, "THIRD JOB: action-runtime-gate")
+        self.assertIn("action-runtime-gate` exit 1 means one of", gate_sec)
+        # the sibling's clause must NOT be in our slice — that is the point
+        self.assertNotIn("parsed fewer guards", gate_sec)
+        self.assertNotIn("workflow-event-gate` exit 1", gate_sec)
+        self.assertNotIn("node-type-gate job's steps", gate_sec)
+        self.assertGreater(len(gate_sec.splitlines()), 20)
+        self.assertLess(len(gate_sec.splitlines()), 120)
+
+        per_sec = self._own_header_section(
+            PERIODIC_HOST, "SECOND JOB: action-runtime-refresh"
+        )
+        self.assertIn("action-runtime-refresh` exit 1 means one of", per_sec)
+        self.assertNotIn("grammars.lock, checks each upstream", per_sec)
+        self.assertGreater(len(per_sec.splitlines()), 20)
+
+    def test_every_cause_is_documented_in_its_host_failure_list(self) -> None:
+        """LEG 3 — the leg that kept rotting, now derived.
+
+        Every phrase comes from the table, so a cause added without a header
+        sentence fails here with nobody having to remember to extend a list of
+        assertions. Scoped to this change's OWN header sections: a phrase
+        satisfied by a neighbouring job's prose is not documentation of this
+        one.
+        """
+        gate = self._gate()
+        refresh_mod = load(REFRESH, "arr_doc")
+        self.addCleanup(sys.modules.pop, "arr_doc", None)
+        self.addCleanup(sys.modules.pop, "action_runtime_gate", None)
+
+        host = self._own_header_section(HOST, "THIRD JOB: action-runtime-gate")
+        for cause, phrases in gate.FAILURE_CAUSES.items():
+            for phrase in phrases:
+                with self.subTest(cause=cause, phrase=phrase):
+                    self.assertIn(
+                        phrase,
+                        host,
+                        f"exit-1 cause {cause!r} is not documented in "
+                        f"node-type-gate.yml's exhaustive failure list",
+                    )
+        periodic = self._own_header_section(
+            PERIODIC_HOST, "SECOND JOB: action-runtime-refresh"
+        )
+        for cause, (_label, phrases) in refresh_mod.DRIFT_CAUSES.items():
+            for phrase in phrases:
+                with self.subTest(cause=cause, phrase=phrase):
+                    self.assertIn(
+                        phrase,
+                        periodic,
+                        f"exit-1 cause {cause!r} is not documented in "
+                        f"grammar-freshness.yml's exhaustive failure list",
+                    )
+
+    def test_the_cause_scan_is_not_vacuous(self) -> None:
+        """Legs 1-3 rest on a regex over source text, and a regex matching
+        nothing satisfies leg 2's set equality only if the table is empty too —
+        but it satisfies leg 1 trivially. So the scan is pinned in both
+        directions: known causes found, an invented one not, and a floor on the
+        count."""
+        fired = self._causes_fired_in(GATE, self.GATE_CAUSE_PATTERNS)
+        for cause in ("manifest_mismatch", "stale_allow_row_absent_file",
+                      "external_total", "floor_pins", "below_minimum",
+                      "continued_uses"):
+            self.assertIn(cause, fired)
+        self.assertNotIn("not_a_real_cause", fired)
+        self.assertGreaterEqual(len(fired), 10)
+        drift_fired = self._causes_fired_in(REFRESH, self.REFRESH_CAUSE_PATTERNS)
+        for cause in ("manifest_too_low", "manifest_too_high", "pinned_ref_gone",
+                      "pinned_ref_deprecated", "evidence_stale_below_min"):
+            self.assertIn(cause, drift_fired)
+        self.assertNotIn("not_a_real_cause", drift_fired)
+        self.assertGreaterEqual(len(drift_fired), 6)
+
+    def test_an_undocumented_cause_is_rejected_at_the_failure_site(self) -> None:
+        """The runtime half of leg 1: `fail()` / `record()` REFUSE an unknown
+        cause rather than accepting it, so a typo crashes where it happens
+        instead of producing an exit no header sentence explains."""
+        gate = self._gate()
+        v = gate.Verdict()
+        self.assertFalse(bool(v))
+        with self.assertRaises(KeyError) as caught:
+            v.fail("no_such_cause")
+        self.assertIn(gate.Verdict.UNDOCUMENTED, str(caught.exception))
+        self.assertFalse(bool(v), "a rejected cause must not set the verdict")
+        v.fail("floor_pins")
+        self.assertTrue(bool(v))
+
+        refresh_mod = load(REFRESH, "arr_reject")
+        self.addCleanup(sys.modules.pop, "arr_reject", None)
+        self.addCleanup(sys.modules.pop, "action_runtime_gate", None)
+        acc: list[str] = []
+        # THE MESSAGE, not merely the exception type. `record()` indexes
+        # DRIFT_CAUSES on the very next line and raises a bare KeyError by
+        # itself, so deleting the explicit check left `assertRaises(KeyError)`
+        # passing and the mutant ALIVE. Two guards that can only fire together
+        # grade neither; the message is what separates them.
+        with self.assertRaises(KeyError) as caught:
+            refresh_mod.record(acc, "no_such_cause", "body")
+        self.assertIn(refresh_mod.UNDOCUMENTED_DRIFT, str(caught.exception))
+        self.assertEqual(acc, [], "a rejected cause must not record a finding")
+        refresh_mod.record(acc, "manifest_too_low", "actions/x")
+        self.assertEqual(len(acc), 1)
+        self.assertIn("DRIFT (manifest TOO LOW) actions/x", acc[0])
 
     # ── F1: a `uses:` whose value is on the next line ────────────────────────
 
@@ -959,21 +1152,49 @@ class GateTest(unittest.TestCase):
         for ref in actual:
             self.assertIsNotNone(mod.major_of(ref), ref)
 
-    def test_no_length_threshold_remains_in_the_rule(self) -> None:
-        """The retired constant must not creep back.
+    def test_the_retired_sha_guard_is_gone_and_the_patterns_are_pinned(self) -> None:
+        """NARROWED to what it observes.
 
-        A length threshold reads as principled and is arbitrary; this is the
-        cheapest thing that notices one returning. The rule is two regexes with
-        no repetition bound, and the retired `SHA_LIKE` name is gone rather than
-        left as a second, redundant guard — two guards that can only fire
-        together grade neither.
+        Its previous name and docstring called it "the cheapest thing that
+        notices a length threshold returning". It is not: reintroducing a
+        `{7,40}` guard under a NEW name survives this control untouched. That
+        is harmless — such a guard rejects only what the marker rule already
+        rejects, and the permissive direction is covered by
+        test_the_version_marker_spellings_survive — but a control claiming more
+        than it checks is the defect this file exists to catch, and this branch
+        has now been bitten by that three times (the bare `5` spelling, the
+        board-hygiene comment, this).
+
+        What it ACTUALLY observes: the name `SHA_LIKE` is gone from both the
+        source and the module, and the two patterns are exactly what they
+        should be — which does catch the specific regression of the old guard
+        being restored in place, and any widening of the marker rule itself.
         """
         mod = self._gate()
         src = open(GATE, encoding="utf-8").read()
         self.assertNotIn("SHA_LIKE", src)
         self.assertFalse(hasattr(mod, "SHA_LIKE"))
-        self.assertEqual(mod.REF_MAJOR_V.pattern, r"^v(\d+)(?:\.\d+)*$")
-        self.assertEqual(mod.REF_MAJOR_DOTTED.pattern, r"^(\d+)(?:\.\d+)+$")
+        self.assertEqual(mod.REF_MAJOR_V.pattern, r"^v([0-9]+)(?:\.[0-9]+)*$")
+        self.assertEqual(mod.REF_MAJOR_DOTTED.pattern, r"^([0-9]+)(?:\.[0-9]+)+$")
+
+    def test_digits_means_ascii_digits(self) -> None:
+        """Python's `\\d` is Unicode-wide: with it, `v５` (fullwidth five) and the
+        Arabic-Indic digits read as major 5.
+
+        Not a SHA bypass — a commit SHA is ASCII hex, so fail-closed holds
+        either way — which is exactly why nothing would have noticed. A rule
+        whose comment says "digits" should mean the digits a version tag can
+        contain, and a ref nobody can type twice is not a version.
+        """
+        mod = self._gate()
+        for exotic in ("v\uff15", "v\u0665", "\uff15.1", "v1\uff10"):
+            self.assertIsNone(mod.major_of(exotic), repr(exotic))
+        self.assertEqual(mod.major_of("v5"), 5)
+        refresh_mod = load(REFRESH, "arr_ascii")
+        self.addCleanup(sys.modules.pop, "arr_ascii", None)
+        self.addCleanup(sys.modules.pop, "action_runtime_gate", None)
+        self.assertFalse(refresh_mod.supported("node\uff12\uff14"))
+        self.assertTrue(refresh_mod.supported("node24"))
 
     def test_unmarked_digit_pins_are_violations_end_to_end(self) -> None:
         """Not just the helper: both sides of the retired boundary must fail as
@@ -1015,6 +1236,84 @@ class GateTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("actions/cache/restore", r.stderr)
         self.assertIn("needs its own row", r.stderr)
+
+    # ── G1: the stale-allow-row arm for a workflow outside the pinned set ────
+
+    def test_stale_allow_row_for_a_vanished_workflow_fails_under_manifest(self) -> None:
+        """G1 — an arm that could be replaced with `pass` while the suite stayed
+        green.
+
+        Scenario: a workflow is renamed, the ALLOWED row covering one of its
+        pins now names a file that does not exist, and `--manifest` CI reports
+        clean. The row is then permanently unfalsifiable — it suppresses
+        nothing, documents nothing, and can never go stale. Under `--manifest`
+        the filename set is PINNED, so "not there" is a fact about the tree and
+        the row is stale like any other.
+        """
+        tree = self.s.copy_real_tree()
+        rows = {"deleted-workflow.yml|actions/checkout|v4": "#9999: a row left behind"}
+        r = run_gate_with_allowed(tree, rows, "--manifest")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("STALE ALLOW-LIST ROW", r.stderr)
+        self.assertIn("not in the pinned workflow set at all", r.stderr)
+
+    def test_the_same_row_is_only_a_note_without_the_manifest(self) -> None:
+        """The other arm, and the reason the first is conditional: outside
+        `--manifest` the scanned set is whatever the directory happens to hold,
+        so a row about an absent file cannot be judged — the ordinary state
+        when the controls point the gate at a synthetic tree. Asserting the
+        NOTE separately stops the first control from being satisfied by a gate
+        that simply fails on every absent-file row."""
+        tree = self.s.copy_real_tree()
+        rows = {"deleted-workflow.yml|actions/checkout|v4": "#9999: a row left behind"}
+        r = run_gate_with_allowed(tree, rows)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("not checked", r.stdout)
+        self.assertNotIn("STALE ALLOW-LIST ROW", r.stderr)
+
+    # ── the real-tree half of the comment-stripping claim ────────────────────
+
+    def test_no_comment_in_this_tree_is_load_bearing_for_the_scan(self) -> None:
+        """`strip_comment`'s docstring used to justify itself with
+        board-hygiene.yml's banner naming `v8`/`v9` in prose — but naming a
+        version in a comment was never the hazard, and nothing read the real
+        file. Same shape as the bare-`5` claim.
+
+        The hazard is a COMMENTED-OUT PIN (`# - uses: actions/checkout@v4`, what
+        a revert leaves behind). This asserts the docstring's real-tree claim
+        directly: no line in any workflow here would be read as a pin without
+        stripping. When one appears, this control is what says so — and the
+        synthetic case in test_comment_is_not_a_pin is what grades the guard.
+        """
+        mod = self._gate()
+        stripped_lines = 0
+        for f in sorted(os.listdir(REAL_WORKFLOWS)):
+            if not f.endswith((".yml", ".yaml")):
+                continue
+            with open(os.path.join(REAL_WORKFLOWS, f), encoding="utf-8") as fh:
+                for n, raw in enumerate(fh.read().splitlines(), start=1):
+                    code = mod.strip_comment(raw)
+                    if code != raw:
+                        stripped_lines += 1
+                    if mod.USES.match(raw) and not mod.USES.match(code):
+                        self.fail(
+                            f"{f}:{n} is read as a pin only because stripping "
+                            f"removed a comment — the guard is now load-bearing "
+                            f"on the real tree, and this control's premise has "
+                            f"changed: {raw!r}"
+                        )
+        # premise: stripping actually does something here, or the walk above
+        # proves nothing about it
+        self.assertGreater(stripped_lines, 0, "no comment found in any workflow")
+        # and the file the old docstring pointed at really does discuss versions
+        with open(os.path.join(REAL_WORKFLOWS, "board-hygiene.yml"), encoding="utf-8") as fh:
+            banner = fh.read()
+        self.assertIn("# #7243: v8 is the first github-script major", banner)
+        self.assertEqual(
+            len(mod.parse_workflow(os.path.join(REAL_WORKFLOWS, "board-hygiene.yml"))),
+            1,
+            "that banner contributes no pins, with or without stripping",
+        )
 
     # ── F6: the drift report job ─────────────────────────────────────────────
 
@@ -1383,6 +1682,32 @@ class RefreshTest(unittest.TestCase):
             self.assertEqual(mod.main(), 2)
         finally:
             sys.argv = old
+
+    def test_a_missing_directory_is_exit_2(self) -> None:
+        """F3 — the precondition that had no control, and the asymmetry was the
+        tell: the GATE has test_missing_directory_is_exit_2, the refresh had no
+        counterpart, so neutering `if not os.path.isdir(args.dir)` left the
+        suite green.
+
+        It is not harmless. With the guard gone `os.listdir` raises an uncaught
+        FileNotFoundError, python exits 1, and the host workflow's exhaustive
+        list maps exit 1 to DRIFT — a missing directory would be reported as a
+        rotted manifest, the one distinction this script's exit codes exist to
+        preserve. The message is asserted too, because the exit code alone does
+        not say WHICH precondition failed.
+        """
+        mod = self._refresh()
+        mod.runs_using = lambda a, r: "node24"
+        old = sys.argv
+        sys.argv = ["action_runtime_refresh.py", "--dir", "/nonexistent/workflows"]
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = mod.main()
+        finally:
+            sys.argv = old
+        self.assertEqual(rc, 2, err.getvalue())
+        self.assertIn("cannot run: not a directory", err.getvalue())
 
     def test_an_empty_pin_set_is_exit_2_not_a_green_no_op(self) -> None:
         """Otherwise the job reports success having checked nothing."""
