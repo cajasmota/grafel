@@ -413,9 +413,7 @@ func collectImportStems(root ts.Node, src []byte) map[string]bool {
 			if child.Type() == "interpreted_string_literal" {
 				raw := strings.Trim(nodeText(child, src), `"`)
 				parts := strings.Split(raw, "/")
-				if len(parts) > 0 {
-					stems[parts[len(parts)-1]] = true
-				}
+				stems[parts[len(parts)-1]] = true
 			}
 		}
 	}
