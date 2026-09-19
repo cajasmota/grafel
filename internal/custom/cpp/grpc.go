@@ -275,19 +275,13 @@ func cppGrpcParseArgs(argList string) (reqType, respType, streamKind string) {
 			switch kind {
 			case "ServerWriter":
 				// server-streaming: response messages flow out.
-				if len(parts) >= 1 {
-					respType = cppGrpcBareType(parts[0])
-				}
+				respType = cppGrpcBareType(parts[0])
 			case "ServerReader":
 				// client-streaming: request messages flow in.
-				if len(parts) >= 1 {
-					reqType = cppGrpcBareType(parts[0])
-				}
+				reqType = cppGrpcBareType(parts[0])
 			case "ServerReaderWriter":
 				// bidi: <Response, Request>.
-				if len(parts) >= 1 {
-					respType = cppGrpcBareType(parts[0])
-				}
+				respType = cppGrpcBareType(parts[0])
 				if len(parts) >= 2 {
 					reqType = cppGrpcBareType(parts[1])
 				}

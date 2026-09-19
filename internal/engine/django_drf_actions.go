@@ -2070,9 +2070,7 @@ func extractClassBody(src string, offset int) string {
 	lines := strings.Split(rest, "\n")
 	pos := 0
 	// Skip the first line (the class declaration line itself, even after offset).
-	if len(lines) > 0 {
-		pos += len(lines[0]) + 1
-	}
+	pos += len(lines[0]) + 1
 	for i := 1; i < len(lines); i++ {
 		line := lines[i]
 		trimmed := strings.TrimLeft(line, " \t")

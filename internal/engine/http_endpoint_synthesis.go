@@ -6778,7 +6778,7 @@ func deriveOwningBackend(filePath string) string {
 	// Fallback: use the top-level directory segment of the file path.
 	// This covers single-backend repos where there is no nested manifest.
 	parts := strings.SplitN(filepath.ToSlash(filePath), "/", 3)
-	if len(parts) > 0 && parts[0] != "" && parts[0] != "." {
+	if parts[0] != "" && parts[0] != "." {
 		return parts[0]
 	}
 	return "unknown"

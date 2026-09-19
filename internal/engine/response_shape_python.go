@@ -474,7 +474,7 @@ func lookupFastAPIResponseModel(src, handler string) string {
 	lines := strings.Split(prefix, "\n")
 	// Drop a trailing empty element produced by the newline immediately before
 	// the def line, so the scan starts on the real decorator line.
-	if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+	if strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
 	start := len(lines) // first line index (in `lines`) that belongs to the block
