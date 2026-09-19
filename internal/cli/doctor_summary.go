@@ -12,6 +12,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/quality/audit"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/types"
@@ -32,6 +33,11 @@ type DoctorRepoHealth struct {
 	// relationship. Computed once (O(E)) during computeRepoHealth and summed
 	// by computeQualityMetrics so the graph is loaded at most once per repo.
 	orphanEntities int
+
+	// bugRate is this repo's unresolved-import tally, folded from the SAME
+	// O(E) pass as orphanEntities so the metric costs no extra graph load
+	// (#7271). Counts, not a percentage: see audit.BugRate.
+	bugRate audit.BugRate
 
 	// RebuildFailure is the "last rebuild FAILED" marker read from the
 	// status-plane sidecar (internal/statusfile), if any (#5822 sub-ask 3) —
@@ -130,10 +136,13 @@ type DoctorGroupHealth struct {
 	Repos []*DoctorRepoHealth
 
 	// Aggregated quality metrics
-	TotalEntities        int
-	TotalRelationships   int
-	TotalCrossRepoEdges  int
-	BugRate              float64 // unresolved-edges percentage
+	TotalEntities       int
+	TotalRelationships  int
+	TotalCrossRepoEdges int
+	// BugRate is the group's unresolved-import tally. It carries the counts
+	// it is derived from, not a percentage, so "nothing could be measured"
+	// never renders as a perfect score (#7271).
+	BugRate              audit.BugRate
 	OrphanEntities       int
 	OrphanRate           float64
 	RepairCandidates     int
@@ -379,7 +388,7 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 	if err == nil && doc != nil {
 		rh.Entities = doc.Stats.Entities
 		rh.Relationships = doc.Stats.Relationships
-		rh.CrossRepoEdges, rh.orphanEntities = computeCrossRepoAndOrphans(doc)
+		rh.CrossRepoEdges, rh.orphanEntities, rh.bugRate = computeCrossRepoAndOrphans(doc)
 	}
 
 	return rh
@@ -392,7 +401,7 @@ func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 // This replaces the old O(relationships×entities) nested loop; on a 291k-entity
 // / 1.4M-edge graph that scan was ≈10^12 operations. Membership lookups here are
 // O(1) via a pre-built entity-ID set, so the whole pass is O(E+N).
-func computeCrossRepoAndOrphans(doc *graph.Document) (crossRepo, orphans int) {
+func computeCrossRepoAndOrphans(doc *graph.Document) (crossRepo, orphans int, bugRate audit.BugRate) {
 	entityIDs := make(map[string]struct{}, len(doc.Entities))
 	for _, e := range doc.Entities {
 		entityIDs[e.ID] = struct{}{}
@@ -403,6 +412,10 @@ func computeCrossRepoAndOrphans(doc *graph.Document) (crossRepo, orphans int) {
 			continue
 		}
 		hasIncoming[rel.ToID] = true
+		// #7271 — the unresolved-import tally rides along in this same pass;
+		// the rule lives in audit, the only place that classifies an IMPORTS
+		// target, so doctor and the dashboard cannot disagree about it.
+		bugRate.AddEdge(rel.Kind, rel.ToID)
 		if _, ok := entityIDs[rel.ToID]; !ok {
 			// ToID points at something not in this repo → cross-repo edge.
 			crossRepo++
@@ -413,7 +426,7 @@ func computeCrossRepoAndOrphans(doc *graph.Document) (crossRepo, orphans int) {
 			orphans++
 		}
 	}
-	return crossRepo, orphans
+	return crossRepo, orphans, bugRate
 }
 
 // computeQualityMetrics aggregates orphan rate, bug rate, and candidate counts
@@ -425,6 +438,7 @@ func computeQualityMetrics(health *DoctorGroupHealth) {
 	// read the (cheap) candidate-count sidecar.
 	for _, r := range health.Repos {
 		health.OrphanEntities += r.orphanEntities
+		health.BugRate.Add(r.bugRate)
 
 		stateDir := daemon.StateDirForRepo(r.Path)
 		// Load candidate counts (enrichSubjects = unique entities needing enrichment).
@@ -438,9 +452,36 @@ func computeQualityMetrics(health *DoctorGroupHealth) {
 		health.OrphanRate = 100.0 * float64(health.OrphanEntities) / float64(health.TotalEntities)
 	}
 
-	// Bug rate is a placeholder for unresolved-edges metric
-	// This would be populated from a bug-rate.json or similar in a real scenario
-	health.BugRate = 0.0
+	// BugRate needs no rate computation here: it is the summed tally, and the
+	// percentage is derived at the point of use by audit.BugRate.Pct() — which
+	// refuses to answer at all when nothing was measured (#7271).
+}
+
+// BugRateLine renders the doctor Quality section's unresolved-edges row.
+//
+// Both halves of #7271 live here. The figure comes from the tally doctor
+// actually measured, and the "✓" — which used to be a string literal handed to
+// Fprintf, printed beside a hardcoded 0.0 — is now a verdict about that figure:
+//
+//   - measured and within the healthy band  → the rate, with "✓"
+//   - measured and outside it               → the rate, with "⚠"
+//   - nothing measured                      → no number and no mark at all
+//
+// The third case is the one worth spelling out: a group whose graphs contain no
+// IMPORTS edge has no unresolved-import rate, and printing "0.0% ✓" for it
+// claims a clean bill of health from an unread instrument. The counts are shown
+// alongside the percentage so the denominator that decides between these states
+// is visible on the line itself.
+func BugRateLine(b audit.BugRate) string {
+	if !b.Known() {
+		return "Bug-rate (unresolved edges): not measured (no IMPORTS edges found in this group's graphs)"
+	}
+	mark := "⚠"
+	if b.Pct() <= audit.BugRateHealthyMaxPct {
+		mark = "✓"
+	}
+	return fmt.Sprintf("Bug-rate (unresolved edges): %.1f%% (%s of %s import edges unresolved) %s",
+		b.Pct(), fmtInt(b.TotalImports-b.ResolvedImports), fmtInt(b.TotalImports), mark)
 }
 
 // aggregateUnsupported sums every repo's unsupported-extension counts into the
@@ -586,8 +627,7 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 
 		// Quality section
 		fmt.Fprintf(w, "\n  Quality:\n")
-		fmt.Fprintf(w, "    Bug-rate (unresolved edges): %.1f%% %s\n",
-			g.BugRate, "✓")
+		fmt.Fprintf(w, "    %s\n", BugRateLine(g.BugRate))
 		fmt.Fprintf(w, "    Orphan entities: %s (%.1f%%)\n",
 			fmtInt(g.OrphanEntities), g.OrphanRate)
 		fmt.Fprintf(w, "    Repair candidates: %s\n", fmtInt(g.RepairCandidates))

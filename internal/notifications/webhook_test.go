@@ -13,13 +13,15 @@ import (
 // ────────────────────────────────────────────────────────────────────────────
 
 func goodSnap(group string) QualitySnapshot {
-	return QualitySnapshot{Group: group, OrphanRate: 5, BugRate: 2, HealthScore: 93, TotalEntities: 1000}
+	b := 2.0
+	return QualitySnapshot{Group: group, OrphanRate: 5, BugRate: &b, HealthScore: 93, TotalEntities: 1000}
 }
 
 func badSnap(group string) QualitySnapshot {
 	s := 5
 	c := 3
-	return QualitySnapshot{Group: group, OrphanRate: 25, BugRate: 15, HealthScore: 60, TotalEntities: 1000, Secrets: &s, Cycles: &c}
+	b := 15.0
+	return QualitySnapshot{Group: group, OrphanRate: 25, BugRate: &b, HealthScore: 60, TotalEntities: 1000, Secrets: &s, Cycles: &c}
 }
 
 func payload(event EventType, snap QualitySnapshot) WebhookPayload {

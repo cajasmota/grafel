@@ -101,15 +101,18 @@ type DaemonDiagnostics struct {
 
 // GroupDiagnostics covers one group's health.
 type GroupDiagnostics struct {
-	Name                 string            `json:"name"`
-	Status               string            `json:"status"` // "HEALTHY" | "DEGRADED" | "FAILED"
-	DaemonManaged        bool              `json:"daemon_managed"`
-	TotalEntities        int               `json:"total_entities"`
-	TotalRelationships   int               `json:"total_relationships"`
-	TotalCrossRepoEdges  int               `json:"total_cross_repo_edges"`
-	OrphanEntities       int               `json:"orphan_entities"`
-	OrphanRate           float64           `json:"orphan_rate"`
-	BugRate              float64           `json:"bug_rate"`
+	Name                string  `json:"name"`
+	Status              string  `json:"status"` // "HEALTHY" | "DEGRADED" | "FAILED"
+	DaemonManaged       bool    `json:"daemon_managed"`
+	TotalEntities       int     `json:"total_entities"`
+	TotalRelationships  int     `json:"total_relationships"`
+	TotalCrossRepoEdges int     `json:"total_cross_repo_edges"`
+	OrphanEntities      int     `json:"orphan_entities"`
+	OrphanRate          float64 `json:"orphan_rate"`
+	// BugRate is the unresolved-import percentage, null when doctor could not
+	// measure one (#7271) — same three-state contract as the terminal line and
+	// the webhook payload.
+	BugRate              *float64          `json:"bug_rate"`
 	PendingRepairs       int               `json:"pending_repairs"`
 	PendingEnrichments   int               `json:"pending_enrichments"`
 	WatcherRepoCount     int               `json:"watcher_repo_count"`
@@ -388,7 +391,7 @@ func convertGroupHealth(gh *cli.DoctorGroupHealth) GroupDiagnostics {
 		TotalCrossRepoEdges:  gh.TotalCrossRepoEdges,
 		OrphanEntities:       gh.OrphanEntities,
 		OrphanRate:           gh.OrphanRate,
-		BugRate:              gh.BugRate,
+		BugRate:              gh.BugRate.PctPtr(),
 		PendingRepairs:       gh.RepairCandidates,
 		PendingEnrichments:   gh.EnrichmentCandidates,
 		WatcherRepoCount:     gh.WatcherRepoCount,

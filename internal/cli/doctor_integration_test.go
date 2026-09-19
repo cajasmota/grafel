@@ -10,6 +10,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/quality/audit"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -103,7 +104,7 @@ func TestPrintDoctorHealthCompleteOutput(t *testing.T) {
 		TotalEntities:        3500,
 		TotalRelationships:   7700,
 		TotalCrossRepoEdges:  92,
-		BugRate:              1.5,
+		BugRate:              audit.BugRate{TotalImports: 200, ResolvedImports: 197},
 		OrphanEntities:       350,
 		OrphanRate:           10.0,
 		RepairCandidates:     12,

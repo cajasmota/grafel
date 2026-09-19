@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/quality/audit"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -96,7 +97,7 @@ func TestPrintDoctorHealth(t *testing.T) {
 		TotalEntities:        100,
 		TotalRelationships:   50,
 		TotalCrossRepoEdges:  5,
-		BugRate:              0.0,
+		BugRate:              audit.BugRate{TotalImports: 40, ResolvedImports: 40},
 		OrphanEntities:       10,
 		OrphanRate:           10.0,
 		RepairCandidates:     2,

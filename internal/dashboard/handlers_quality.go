@@ -287,6 +287,7 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 	kindOrphans := map[string]int{}
 	totalImports := 0
 	goodImports := 0
+	var bug audit.BugRate
 	formatCounts := map[audit.ImportFormat]int{}
 
 	for _, rr := range repos {
@@ -297,6 +298,10 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 		reply.Total.Orphans += rr.Orphans
 
 		totalImports += rr.ImportsTotal
+		// #7271 — the rate itself is derived by audit.BugRate below, the same
+		// helper `grafel doctor` renders from, so the two surfaces cannot
+		// report different figures for the same group.
+		bug.Add(audit.BugRateFromReport(rr))
 		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
 			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
 		for f, c := range rr.ImportsToIDFormat {
@@ -361,10 +366,7 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 
 	// Health + fidelity from the REAL measured rates (not an avg risk score).
 	orphanPct := reply.Total.OrphanRate * 100
-	bugPct := 0.0
-	if totalImports > 0 {
-		bugPct = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
-	}
+	bugPct := bug.Pct()
 	reply.BugRatePct = bugPct
 	cr := quality.CompositeScoreFromPcts(orphanPct, bugPct, 0)
 	reply.HealthScore = int(cr.Score + 0.5)
@@ -697,6 +699,7 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 	totalOrphans := 0
 	totalImports := 0
 	goodImports := 0
+	var bug audit.BugRate
 	repos := 0
 
 	for _, rp := range repoPaths {
@@ -711,16 +714,14 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 		totalImports += rr.ImportsTotal
 		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
 			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
+		bug.Add(audit.BugRateFromReport(rr)) // #7271 — one shared derivation
 	}
 
 	orphanPct := 0.0
 	if totalEntities > 0 {
 		orphanPct = 100.0 * float64(totalOrphans) / float64(totalEntities)
 	}
-	bugPct := 0.0
-	if totalImports > 0 {
-		bugPct = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
-	}
+	bugPct := bug.Pct()
 
 	cr := quality.CompositeScoreFromPcts(orphanPct, bugPct, 0)
 	writeJSON(w, http.StatusOK, CompositeScoreReply{

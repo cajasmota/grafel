@@ -827,18 +827,45 @@ func recordHealthHistory(group string, sum *RebuildSummary) {
 	if err != nil {
 		return
 	}
-	healthScore := quality.ComputeHealthScore(sum.OrphanRate, 0)
+	// #7271 — the bug rate is measured in the rebuild's own relationship pass.
+	// This used to hand ComputeHealthScore a hardcoded 0, which inflated every
+	// recorded health score and, through the history file, the dashboard's
+	// fidelity reading with it.
+	//
+	// HealthEntry.BugRate is a bare float64 on a persisted, already-written
+	// JSONL record, so an unmeasured rate is still stored as 0 here — the one
+	// surface in this change that cannot yet say "unknown". The webhook
+	// snapshot below CAN, and does.
+	healthScore := quality.ComputeHealthScore(sum.OrphanRate, sum.BugRate.Pct())
 	entry := quality.HealthEntry{
 		Timestamp:     time.Now().UTC(),
 		Group:         group,
 		TotalEntities: sum.TotalEntities,
 		OrphanRate:    sum.OrphanRate,
+		BugRate:       sum.BugRate.Pct(),
 		HealthScore:   healthScore,
 	}
 	_ = quality.AppendEntry(layout.Root, entry)
 
 	// Fire webhook notifications asynchronously — never block the CLI.
 	go dispatchRebuildWebhooks(group, sum, healthScore, layout.Root)
+}
+
+// rebuildQualitySnapshot builds the quality snapshot a rebuild broadcasts to
+// every configured webhook.
+//
+// Extracted so the contract of #7271 is reachable by a test without a live
+// dispatcher: BugRate is nil whenever the rebuild could not measure one. It was
+// previously a literal 0 written beside a real orphan rate, and a webhook
+// consumer — unlike a reader of this file — had no way to tell.
+func rebuildQualitySnapshot(group string, sum *RebuildSummary, healthScore float64) notifications.QualitySnapshot {
+	return notifications.QualitySnapshot{
+		Group:         group,
+		OrphanRate:    sum.OrphanRate,
+		BugRate:       sum.BugRate.PctPtr(),
+		HealthScore:   healthScore,
+		TotalEntities: sum.TotalEntities,
+	}
 }
 
 // dispatchRebuildWebhooks loads webhook configuration from settings and fires
@@ -851,13 +878,7 @@ func dispatchRebuildWebhooks(group string, sum *RebuildSummary, healthScore floa
 		return
 	}
 
-	snap := notifications.QualitySnapshot{
-		Group:         group,
-		OrphanRate:    sum.OrphanRate,
-		BugRate:       0, // BugRate not yet computed in rebuild path
-		HealthScore:   healthScore,
-		TotalEntities: sum.TotalEntities,
-	}
+	snap := rebuildQualitySnapshot(group, sum, healthScore)
 
 	dispatcher := notifications.NewDispatcher()
 	now := time.Now().UTC()
@@ -892,9 +913,11 @@ func dispatchRebuildWebhooks(group string, sum *RebuildSummary, healthScore floa
 	if readErr == nil && len(prev) >= 2 {
 		prevEntry := prev[len(prev)-2] // second-to-last = prior rebuild
 		prevSnap := notifications.QualitySnapshot{
-			Group:       group,
-			OrphanRate:  prevEntry.OrphanRate,
-			BugRate:     prevEntry.BugRate,
+			Group:      group,
+			OrphanRate: prevEntry.OrphanRate,
+			// Always non-nil: a stored entry's bug rate is whatever the
+			// previous run recorded, and the record has no unknown state.
+			BugRate:     &prevEntry.BugRate,
 			HealthScore: prevEntry.HealthScore,
 		}
 		if notifications.RegressionDetected(prevSnap, snap) {

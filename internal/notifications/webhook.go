@@ -89,9 +89,13 @@ type WebhookConfig struct {
 
 // QualitySnapshot is the measured state at the time of the event.
 type QualitySnapshot struct {
-	Group         string   `json:"group"`
-	OrphanRate    float64  `json:"orphan_rate"`
-	BugRate       float64  `json:"bug_rate"`
+	Group      string  `json:"group"`
+	OrphanRate float64 `json:"orphan_rate"`
+	// BugRate is the unresolved-import percentage, or nil when it could not be
+	// measured (#7271). Deliberately a pointer with NO omitempty: a receiver of
+	// this payload cannot read grafel's source to discover that a 0 meant "we
+	// never looked", so the wire has to carry an explicit null instead.
+	BugRate       *float64 `json:"bug_rate"`
 	HealthScore   float64  `json:"health_score"`
 	TotalEntities int      `json:"total_entities"`
 	Cycles        *int     `json:"cycles,omitempty"`
@@ -321,7 +325,7 @@ func marshalSlack(p WebhookPayload) ([]byte, error) {
 		{"title": "Group", "value": p.Quality.Group, "short": true},
 		{"title": "Health Score", "value": fmt.Sprintf("%.1f", p.Quality.HealthScore), "short": true},
 		{"title": "Orphan Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.OrphanRate), "short": true},
-		{"title": "Bug Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.BugRate), "short": true},
+		{"title": "Bug Rate", "value": formatOptionalPct(p.Quality.BugRate), "short": true},
 	}
 	if p.Quality.Secrets != nil {
 		fields = append(fields, map[string]any{"title": "Secrets", "value": fmt.Sprintf("%d", *p.Quality.Secrets), "short": true})
@@ -354,7 +358,7 @@ func marshalDiscord(p WebhookPayload) ([]byte, error) {
 	fields := []map[string]any{
 		{"name": "Health Score", "value": fmt.Sprintf("%.1f", p.Quality.HealthScore), "inline": true},
 		{"name": "Orphan Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.OrphanRate), "inline": true},
-		{"name": "Bug Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.BugRate), "inline": true},
+		{"name": "Bug Rate", "value": formatOptionalPct(p.Quality.BugRate), "inline": true},
 	}
 	if p.Quality.Secrets != nil {
 		fields = append(fields, map[string]any{"name": "Secrets", "value": fmt.Sprintf("%d", *p.Quality.Secrets), "inline": true})
@@ -417,14 +421,26 @@ type BudgetViolation struct {
 	Actual    float64 `json:"actual"`
 }
 
+// formatOptionalPct renders a percentage that may not have been measured. It
+// never falls back to a number, because "0.00%" is indistinguishable from a
+// perfect score to whoever reads the message (#7271).
+func formatOptionalPct(v *float64) string {
+	if v == nil {
+		return "not measured"
+	}
+	return fmt.Sprintf("%.2f%%", *v)
+}
+
 // CheckBudgets compares snap against budgets and returns any violations.
 func CheckBudgets(snap QualitySnapshot, budgets QualityBudgets) []BudgetViolation {
 	var out []BudgetViolation
 	if budgets.MaxOrphanRate > 0 && snap.OrphanRate > budgets.MaxOrphanRate {
 		out = append(out, BudgetViolation{"orphan_rate", budgets.MaxOrphanRate, snap.OrphanRate})
 	}
-	if budgets.MaxBugRate > 0 && snap.BugRate > budgets.MaxBugRate {
-		out = append(out, BudgetViolation{"bug_rate", budgets.MaxBugRate, snap.BugRate})
+	// An unmeasured bug rate breaches no budget: reading nil as 0 would report
+	// every unmeasured group as comfortably inside its threshold (#7271).
+	if budgets.MaxBugRate > 0 && snap.BugRate != nil && *snap.BugRate > budgets.MaxBugRate {
+		out = append(out, BudgetViolation{"bug_rate", budgets.MaxBugRate, *snap.BugRate})
 	}
 	if budgets.MaxSecrets > 0 && snap.Secrets != nil && *snap.Secrets > budgets.MaxSecrets {
 		out = append(out, BudgetViolation{"secrets", float64(budgets.MaxSecrets), float64(*snap.Secrets)})
@@ -443,7 +459,10 @@ func RegressionDetected(prev, curr QualitySnapshot) bool {
 	if curr.OrphanRate > prev.OrphanRate+eps {
 		return true
 	}
-	if curr.BugRate > prev.BugRate+eps {
+	// Same shape as the Secrets/Cycles comparisons below: a regression needs
+	// two measured numbers. Comparing against an unmeasured side would report a
+	// regression, or hide one, on the strength of a zero nobody computed.
+	if curr.BugRate != nil && prev.BugRate != nil && *curr.BugRate > *prev.BugRate+eps {
 		return true
 	}
 	if curr.Secrets != nil && prev.Secrets != nil && *curr.Secrets > *prev.Secrets {
