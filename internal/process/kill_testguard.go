@@ -32,6 +32,15 @@ package process
 // testing.Testing() is false in a binary produced by `go build` that a harness
 // then execs — a real shipped grafel, which SHOULD be able to kill. That is the
 // intended production path, not a gap.
+//
+// The guard also REFUSES rather than diagnoses in one case: it fires via panic,
+// and net/http's conn.serve recovers panics raised inside a handler. The
+// dashboard kill path is driven through httptest.NewRecorder today, so the
+// panic propagates and names the pid; a future test standing the mux up with
+// httptest.NewServer would see it swallowed into a connection error instead. No
+// signal is sent either way — the refusal happens before Kill — but the
+// diagnosis degrades from a named pid to "EOF", which is worth knowing before
+// debugging that from scratch.
 
 import (
 	"fmt"

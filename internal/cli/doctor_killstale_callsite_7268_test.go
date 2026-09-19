@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -170,6 +171,28 @@ func TestRunDoctorStaleDaemons_SelectsOnlyOurBinary_7268(t *testing.T) {
 		table = append(table, process.Info{PID: staleTmpPID, PPID: 1, Name: "grafel", Exe: staleTmp})
 		wantListed = append(wantListed, staleTmpPID)
 	}
+
+	// COUNT FLOOR — this is the fourth table, and the only one that had the
+	// windows conditional without one. A row dropped from either side of that
+	// conditional reports SUCCESS: the exact-count assertion further down
+	// compares the output against wantListed, so if BOTH shrink together the
+	// test still passes while grading less. Declaring the sizes is what makes
+	// the conditional's effect visible.
+	const (
+		portableRows = 10 // rows present on every platform
+		unixOnlyRows = 1  // the criterion-1 /tmp row; see the comment above
+	)
+	wantTable, wantSelected := portableRows, 2
+	if runtime.GOOS != "windows" {
+		wantTable += unixOnlyRows
+		wantSelected += unixOnlyRows
+	}
+	if len(table) != wantTable || len(wantListed) != wantSelected {
+		t.Fatalf("table has %d rows and expects %d selected on %s, want %d/%d — a row was "+
+			"added or dropped, which silently changes what this table grades",
+			len(table), len(wantListed), runtime.GOOS, wantTable, wantSelected)
+	}
+
 	withProcs7268(t, table)
 	killed := withNoKills(t)
 
@@ -337,5 +360,43 @@ func TestRunDoctorStaleDaemons_KillBranchReportsFailure_7268(t *testing.T) {
 	}
 	if strings.Contains(out, fmt.Sprintf("killed pid %d", staleDirPID)) {
 		t.Errorf("a failing kill reported success; output:\n%s", out)
+	}
+}
+
+// TestKillProcDefaultIsGuarded_7268 grades the WIRING, which nothing did.
+//
+// Round 5 added process.KillGuarded and graded the function itself, in
+// internal/process. It did not grade the one line that makes the guard apply
+// here — `var killProc = process.KillGuarded` — and a grep for KillGuarded
+// across every _test.go outside internal/process returned nothing. Reverting
+// that line to process.Kill therefore shipped green while the invariant
+// silently stopped existing: the round-1 defect of this branch (a well-graded
+// mechanism with an ungraded call site) recurring on the very line whose
+// comment promises the mechanism.
+//
+// WHY IDENTITY AND NOT BEHAVIOUR. The obvious form of this test calls
+// killProc(somePID) with no seam installed and asserts it panics. That test is
+// only safe while it PASSES: in the exact failure mode it exists to catch — the
+// default reverted to the real process.Kill — it does not panic, it sends
+// SIGTERM to somePID. There is no pid that is safe to name (0 and negatives
+// address process GROUPS, and a large fixture pid can exist on a host with a
+// raised pid_max), so the regression detector would commit the harm once on the
+// way to reporting it. Comparing the function value costs nothing and cannot
+// signal in any state.
+//
+// The chain is complete across the two packages: internal/process grades that
+// KillGuarded refuses; this grades that killProc IS KillGuarded.
+func TestKillProcDefaultIsGuarded_7268(t *testing.T) {
+	got := reflect.ValueOf(killProc).Pointer()
+	want := reflect.ValueOf(process.KillGuarded).Pointer()
+	if got != want {
+		t.Fatal("killProc's default is not process.KillGuarded — any test that drives the " +
+			"kill branch without installing withNoKills now sends a REAL SIGTERM to whatever " +
+			"holds the pid its synthetic process table invented")
+	}
+	// Control: the assertion above must be capable of failing. If every func
+	// value compared equal, the check would be vacuous.
+	if reflect.ValueOf(process.Kill).Pointer() == want {
+		t.Fatal("process.Kill and process.KillGuarded compare equal — the identity check is vacuous")
 	}
 }

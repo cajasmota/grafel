@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -281,5 +282,31 @@ func TestHandleDiagnosticsKillStale_ReportsKillFailure_7268(t *testing.T) {
 	}
 	if reply.Killed[0].KillErr != "operation not permitted" {
 		t.Errorf("KillErr = %q, want the kill error surfaced", reply.Killed[0].KillErr)
+	}
+}
+
+// TestKillProcDefaultIsGuarded_7268 grades the WIRING — see the identical test
+// in internal/cli for why the function being graded in internal/process is not
+// enough, and why this asserts function IDENTITY rather than the panic (the
+// behavioural form sends the SIGTERM in exactly the failure mode it detects).
+//
+// ONE DASHBOARD-SPECIFIC CAVEAT, worth knowing before debugging a future
+// mystery: the guard fires via panic, and net/http's conn.serve RECOVERS panics
+// from handlers. Every test here drives the handler directly through
+// httptest.NewRecorder, so the panic propagates to the test and this assertion
+// works. A future test that stood the mux up with httptest.NewServer would
+// instead see the guard's message swallowed into a connection error. No signal
+// is sent either way — the guard still refuses before reaching process.Kill —
+// but the diagnosis degrades from a named pid to "EOF".
+func TestKillProcDefaultIsGuarded_7268(t *testing.T) {
+	got := reflect.ValueOf(killProc).Pointer()
+	want := reflect.ValueOf(process.KillGuarded).Pointer()
+	if got != want {
+		t.Fatal("killProc's default is not process.KillGuarded — any test that drives the " +
+			"live branch without installing withNoKills now sends a REAL SIGTERM to whatever " +
+			"holds the pid its synthetic process table invented")
+	}
+	if reflect.ValueOf(process.Kill).Pointer() == want {
+		t.Fatal("process.Kill and process.KillGuarded compare equal — the identity check is vacuous")
 	}
 }

@@ -101,13 +101,29 @@ func TestStaleProcessClassification(t *testing.T) {
 func TestRunDoctorStaleDaemons_DryRunOutputsNoneWhenClean(t *testing.T) {
 	// A non-empty table of processes that are all somebody else's binary, so
 	// "none found" is the selection talking rather than an empty input.
-	withProcs7268(t, []process.Info{
+	table := []process.Info{
 		{PID: 35001, PPID: 1, Name: "helper",
 			Exe: testsupport.AbsFixture("/Users/jane smith/Library/grafel-daemon-helper/bin/helper")},
 		{PID: 35002, PPID: 400, Name: "esbuild",
 			Exe: testsupport.AbsFixture("/Users/jane/src/grafel/node_modules/.bin/esbuild")},
-	})
+	}
+	withProcs7268(t, table)
 	killed := withNoKills(t)
+
+	// THE SENTENCE ABOVE IS NOW OBSERVED. It was not: replacing the table with
+	// nil left this test passing, because "none found" is equally the output of
+	// a scan that had nothing to reject. Asserting what the scanner actually
+	// received is what separates "rejected two candidates" from "was handed
+	// none", and it runs through production's scanGrafelProcs rather than
+	// counting the literal above.
+	scanned, err := scanGrafelProcs(-1)
+	if err != nil {
+		t.Fatalf("scanGrafelProcs: %v", err)
+	}
+	if len(scanned) != len(table) {
+		t.Fatalf("the scan saw %d candidates, want %d — with an empty input this test's "+
+			"'none found' proves nothing about the selection", len(scanned), len(table))
+	}
 
 	var sb strings.Builder
 	if err := runDoctorStaleDaemons(&sb, false); err != nil {
