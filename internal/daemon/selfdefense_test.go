@@ -22,6 +22,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/install/watchers"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestSelfDefenseCheck_AllowsCanonicalBinary verifies that SelfDefenseCheck
@@ -255,47 +256,111 @@ func TestFindCanonicalDaemon_SkipsTmpProcesses(t *testing.T) {
 //
 // The fix uses filepath.Base() so only the binary's own name is tested against
 // the allowlist — a directory component containing "grafel" is irrelevant.
+//
+// WHAT CHANGED IN #7277. Until then this test computed
+// `strings.ToLower(filepath.Base(path)) == "grafel"` itself and asserted on
+// that, which is a hand-written copy of the rule it claims to grade: the
+// assertion compared the copy against itself and could not observe the shipped
+// code at all. Measured on the pre-fix revision, all three of these mutants
+// left it PASSING — canonicalBasenames emptied, IsCanonicalBinaryPath forced to
+// true, IsCanonicalBinaryPath forced to false. The rows below now go through
+// daemon.IsCanonicalBinaryPath, the exported identity gate #7268 lifted out of
+// findCanonicalDaemon, and each of those three mutants fails at least one half.
+// Do not reintroduce a local derivation of the rule here; call production.
+//
+// PLATFORM. IsCanonicalBinaryPath opens with filepath.IsAbs, whose answer is
+// GOOS-dependent: "/usr/local/bin/grafel" is absolute on unix and NOT absolute
+// on windows, which has no volume in it. Every row is therefore routed through
+// testsupport.AbsFixture, or on windows the accept rows would invert and the
+// reject rows would pass for the unrelated reason that nothing looked absolute.
+// A /tmp-PREFIX fixture cannot be routed — a volume moves it off the boundary
+// its sibling guards test on, see testsupport.AbsFixture — so such a row is
+// SKIPPED on windows instead, with a count floor below because a skipped row
+// reports SUCCESS.
 func TestFindCanonicalDaemon_EsbuildFalsePositive(t *testing.T) {
-	// We can't inject a synthetic process into FindByName, so we verify the
-	// underlying classification logic directly via FindCanonicalDaemon's
-	// documented contract: it must never return a process whose base-name is
-	// NOT in the canonical set.
-	//
-	// Specifically, construct hypothetical paths that the old code would have
-	// matched but the new code must not, and confirm they are rejected by
-	// reproducing the basename check in-test.
+	type row struct {
+		path string
+		// tmpPrefix marks a fixture whose /tmp prefix must survive verbatim, so
+		// it cannot be absolutised and does not grade the gate on windows.
+		tmpPrefix bool
+	}
 
-	falsePositivePaths := []string{
+	// Paths the old strings.Contains check matched and the shipped gate must
+	// reject: the "grafel" is a DIRECTORY component, never the binary's name.
+	rejected := []row{
 		// The exact path from the bug report (project root named "grafel").
-		"/Users/user/Projects/grafel/webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild",
+		{path: "/Users/user/Projects/grafel/webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild"},
 		// Generic worktree layout.
-		"/tmp/grafel-worktrees/fix-selfdefense/node_modules/.bin/esbuild",
+		{path: "/tmp/grafel-worktrees/fix-selfdefense/node_modules/.bin/esbuild", tmpPrefix: true},
 		// Another tool in a directory named after the project.
-		"/home/ci/grafel/scripts/build-helper.sh",
+		{path: "/home/ci/grafel/scripts/build-helper.sh"},
 		// vite binary in an grafel project.
-		"/home/user/grafel/node_modules/.bin/vite",
+		{path: "/home/user/grafel/node_modules/.bin/vite"},
 	}
 
-	for _, path := range falsePositivePaths {
-		base := strings.ToLower(filepath.Base(path))
-		isCanonical := base == "grafel"
-		if isCanonical {
-			t.Errorf("false-positive: path %q has basename %q which incorrectly matches canonical set", path, base)
-		}
+	// PERMISSIVE DIRECTION. Real grafel binaries must still match, or the gate
+	// stops finding the user's canonical daemon and the whole anti-displacement
+	// protection silently switches off. Both halves have to be load-bearing:
+	// a gate hard-wired to false satisfies every row above on its own.
+	accepted := []row{
+		{path: "/usr/local/bin/grafel"},
+		{path: "/home/user/go/bin/grafel"},
+		{path: "/opt/grafel/bin/grafel"},
 	}
 
-	// Sanity: real grafel binaries must still match.
-	truePaths := []string{
-		"/usr/local/bin/grafel",
-		"/home/user/go/bin/grafel",
-		"/opt/grafel/bin/grafel",
+	// Count floors, stated separately from the tables so emptying or thinning
+	// one is loud rather than a silently vacuous pass. Measured: deleting the
+	// rows leaves the assertions below with nothing to check and the test green
+	// without them.
+	const (
+		wantRejected  = 4
+		wantAccepted  = 3
+		tmpPrefixRows = 1 // rows ungradable on windows; see PLATFORM above
+	)
+	if len(rejected) != wantRejected || len(accepted) != wantAccepted {
+		t.Fatalf("table has %d reject / %d accept rows, want %d / %d — change the constants deliberately",
+			len(rejected), len(accepted), wantRejected, wantAccepted)
 	}
-	for _, path := range truePaths {
-		base := strings.ToLower(filepath.Base(path))
-		isCanonical := base == "grafel"
-		if !isCanonical {
-			t.Errorf("true-negative: path %q with basename %q should match canonical set but does not", path, base)
+	flagged := 0
+	for _, r := range append(append([]row{}, rejected...), accepted...) {
+		if r.tmpPrefix {
+			flagged++
 		}
+	}
+	if flagged != tmpPrefixRows {
+		t.Fatalf("%d rows are marked tmpPrefix, want %d — change tmpPrefixRows deliberately, or drop the flag",
+			flagged, tmpPrefixRows)
+	}
+
+	wantRun := wantRejected + wantAccepted
+	if runtime.GOOS == "windows" {
+		wantRun -= tmpPrefixRows
+	}
+	ran := 0
+
+	check := func(r row, want bool) {
+		if r.tmpPrefix && runtime.GOOS == "windows" {
+			return // ungradable here; counted by wantRun
+		}
+		ran++
+		exe := r.path
+		if !r.tmpPrefix {
+			exe = testsupport.AbsFixture(r.path)
+		}
+		if got := daemon.IsCanonicalBinaryPath(exe); got != want {
+			t.Errorf("daemon.IsCanonicalBinaryPath(%q) = %v, want %v", exe, got, want)
+		}
+	}
+	for _, r := range rejected {
+		check(r, false)
+	}
+	for _, r := range accepted {
+		check(r, true)
+	}
+
+	if ran != wantRun {
+		t.Errorf("%d of %d rows ran on %s, want %d — a widened skip grades less while still reporting ok",
+			ran, wantRejected+wantAccepted, runtime.GOOS, wantRun)
 	}
 }
 
