@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/jsext"
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
@@ -106,7 +107,7 @@ var jsImportExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", 
 // Index files (`./users` → `./users/index.ts`) are not handled here;
 // the verify2 corpus on ts/nestjs and ts/nestjs-starter reaches every
 // receiver-typed call through an explicit module file path.
-func resolveRelativeImport(importerFile, spec string) string {
+func resolveRelativeImport(repoRoot, importerFile, spec string) string {
 	if spec == "" {
 		return ""
 	}
@@ -115,10 +116,11 @@ func resolveRelativeImport(importerFile, spec string) string {
 	}
 	dir := path.Dir(importerFile)
 	joined := path.Clean(path.Join(dir, spec))
-	// Spec already carries an extension we know? Use it verbatim.
+	// Spec already carries an extension we know? Resolve it against the
+	// module-system family (#7276) — see resolveEmittedExtension.
 	for _, ext := range jsImportExtensions {
 		if strings.HasSuffix(joined, ext) {
-			return joined
+			return resolveEmittedExtension(repoRoot, joined, ext)
 		}
 	}
 	// Default: prefer .ts, fall back through the others. Receiver
@@ -126,6 +128,49 @@ func resolveRelativeImport(importerFile, spec string) string {
 	// index either has the file or it doesn't, and bare-name fallback
 	// handles the miss.
 	return joined + ".ts"
+}
+
+// resolveEmittedExtension maps a relative-import path whose specifier already
+// carries a recognised extension onto the file that actually exists on disk.
+//
+// TypeScript under Node16/NodeNext requires the specifier to name the EMITTED
+// file while the source keeps its own extension:
+//
+//	import { CategoriesService } from './categories.service.js';
+//	// on disk: src/categories.service.ts
+//
+// Returning the specifier's extension verbatim made importBinding.resolvedFile
+// "src/categories.service.js" — a path internal/resolve keys no entity under,
+// because byLocation is built from each entity's real SourceFile. Every
+// consumer of resolvedFile (the identifier-call structural ref, the
+// receiver-typed CALLS ref, and the IMPORTS edge's resolved_file property)
+// then addressed a location that does not exist. The bug fires ONLY on the
+// spelling Node16/NodeNext requires — the extensionless spelling falls through
+// to the `.ts` default below and always worked, which is why it stayed
+// invisible.
+//
+// The candidate set is family-restricted (internal/jsext, shared with
+// internal/resolve's carrier-map probe #7279): `./x.mjs` may only reach
+// `x.mts` or `x.mjs`, never `x.ts`. Source extensions are tried before
+// emitted ones, so when both `foo.ts` and `foo.js` exist the `.js` is taken
+// to be the build output and the source is addressed.
+//
+// This is the one place in this file that turns a guess into a measurement,
+// so it is strictly narrowing: with no repoRoot to stat against, or when
+// NOTHING in the family exists, the specifier is returned verbatim — exactly
+// the pre-#7276 value. The widening can only ever move a path onto a file
+// that is really there.
+func resolveEmittedExtension(repoRoot, joined, ext string) string {
+	if repoRoot == "" {
+		return joined
+	}
+	stem := strings.TrimSuffix(joined, ext)
+	for _, cand := range jsext.ReplacementsFor(ext) {
+		if osStatRegular(filepathJoin(repoRoot, stem+cand)) {
+			return stem + cand
+		}
+	}
+	return joined
 }
 
 // appendDefaultJSExtension stamps a `.ts` extension onto p when p does
@@ -222,7 +267,7 @@ func (x *extractor) collectFromImportStatement(n ts.Node, out *[]importBinding) 
 	if source == "" {
 		return
 	}
-	resolved := resolveRelativeImport(x.filePath, source)
+	resolved := resolveRelativeImport(x.repoRoot, x.filePath, source)
 	// Issue #505 — when the spec doesn't resolve as a relative path,
 	// try the project's path-alias map (tsconfig paths, vite
 	// resolve.alias, metro resolver.alias, babel module-resolver).
