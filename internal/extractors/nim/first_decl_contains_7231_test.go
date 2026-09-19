@@ -628,3 +628,49 @@ func TestFirstDecl7231_ExportMarkerFileTotals(t *testing.T) {
 			len(extends), strings.Join(extends, "\n  "))
 	}
 }
+
+// nimSharedMethodFixture: ONE proc whose parameter list names TWO different
+// types. Both must contain it.
+//
+// `methodSeen` is constructed fresh per declaration, inside the CONTAINS scan.
+// That is load-bearing and was ungraded: hoisting it above the type loop — so
+// one map is shared by every type in the file — is ALIVE against everything
+// else in this package, and is NOT equivalent. Under the hoist, whichever type
+// the loop reaches first claims `combine` and the other silently loses its
+// edge. The map's job is to stop ONE type claiming one proc twice, not to stop
+// two types claiming the same proc, which is a legitimate and common shape in
+// Nim precisely because a "method" is a free-standing proc: a binary operation
+// belongs to both of its operand types.
+//
+// This predates #7231, but #7231 moved that construction inside the
+// `if firstDecl` block, so it is in scope now rather than later.
+//
+// LEGALITY: `doc/grammar.txt` gives `paramList = '(' declColonEquals
+// ^* comma ')'`, so a routine taking two differently-typed parameters is the
+// ordinary form.
+const nimSharedMethodFixture = `
+type Alpha = object
+  a: int
+
+type Beta = object
+  b: int
+
+proc combine*(x: Alpha, y: Beta): int = discard
+`
+
+func TestFirstDecl7231_OneProcCanBelongToTwoTypes(t *testing.T) {
+	ents := runNim(t, nimSharedMethodFixture, "shared.nim")
+
+	for _, typeName := range []string{"Alpha", "Beta"} {
+		got := nimComponents(ents, typeName)
+		if len(got) != 1 {
+			t.Fatalf("%s records = %d, want 1", typeName, len(got))
+		}
+		edges := nimContainsToIDs(got[0])
+		if len(edges) != 1 || !strings.Contains(edges[0], "combine") {
+			t.Errorf("%s CONTAINS = %v, want exactly 1 edge to combine — `methodSeen` must be built "+
+				"PER DECLARATION; one map shared across the type loop lets whichever type comes "+
+				"first claim the proc and silently strips the other", typeName, edges)
+		}
+	}
+}
