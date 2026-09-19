@@ -328,6 +328,13 @@ func TestDoctorBugRate_MeasuredHealthyRateKeepsTheMark(t *testing.T) {
 	if strings.Contains(line, "not measured") {
 		t.Errorf("a measured rate is reported as unmeasured:\n  %s", line)
 	}
+	// Forbidden row, end to end: this group's single repo WAS read, so there is
+	// nothing partial to declare. A guard keyed on "any repo was read" instead
+	// of "some repo was not" would print "PARTIAL: 0 of 1 repo graphs could not
+	// be read" on every healthy group.
+	if strings.Contains(line, "PARTIAL") {
+		t.Errorf("a fully-read group is declared partial:\n  %s", line)
+	}
 }
 
 // TestRebuildQualitySnapshot_CarriesTheMeasuredRate pins the payload the
@@ -747,4 +754,100 @@ func bugRateLineOf(t *testing.T, out string) string {
 		t.Fatalf("no Bug-rate line rendered:\n%s", out)
 	}
 	return found
+}
+
+// TestBugRateLine_RepoCoverageCounts grades the two repo counts the line
+// renders. Both were unobservable before: the only PARTIAL fixture was 1-of-2,
+// where read (1) and unread (1) are the same number, and the only
+// nothing-measured fixture was 1-of-1, where read and total are the same
+// number. Two different expressions rendered identically, so neither was pinned.
+//
+// Every discriminating row below picks reposRead and reposTotal so that read,
+// total and (total-read) are three DIFFERENT numbers — never read == total and
+// never total == 2*read — which is what makes "wrote the wrong one of the
+// three" visible at all.
+func TestBugRateLine_RepoCoverageCounts(t *testing.T) {
+	healthy := audit.BugRate{TotalImports: 100, ResolvedImports: 100} // 0.0% ✓
+	bad := audit.BugRate{TotalImports: 4, ResolvedImports: 3}         // 25.0% ⚠
+	var unmeasured audit.BugRate
+
+	for _, tc := range []struct {
+		name       string
+		b          audit.BugRate
+		read       int
+		total      int
+		want       []string
+		notWant    []string
+		wantReason string
+	}{
+		{
+			name: "fully read, one repo",
+			b:    healthy, read: 1, total: 1,
+			want:       []string{"0.0%", "✓"},
+			notWant:    []string{"PARTIAL"},
+			wantReason: "a fully covered group has nothing partial to declare, and 'PARTIAL: 0 … could not be read' contradicts itself",
+		},
+		{
+			name: "fully read, three repos",
+			b:    healthy, read: 3, total: 3,
+			want:       []string{"0.0%"},
+			notWant:    []string{"PARTIAL"},
+			wantReason: "same, with reposRead > 1 so a guard keyed on 'read > 0' cannot pass here either",
+		},
+		{
+			name: "one of three read",
+			b:    bad, read: 1, total: 3,
+			want: []string{"25.0%", "PARTIAL: 2 of 3 repo graphs could not be read"},
+			// read=1, unread=2, total=3 — all different, so rendering the
+			// read count or the total instead of the unread count is visible.
+			notWant:    []string{"1 of 3 repo graphs could not be read", "3 of 3 repo graphs could not be read"},
+			wantReason: "the count names how many repos are MISSING from the rate",
+		},
+		{
+			name: "two of three read",
+			b:    bad, read: 2, total: 3,
+			want: []string{"PARTIAL: 1 of 3 repo graphs could not be read"},
+			// The mirror of the row above: here the read count is the larger
+			// number, so a swap shows up in the opposite direction.
+			notWant:    []string{"2 of 3 repo graphs could not be read", "3 of 3 repo graphs could not be read"},
+			wantReason: "same count, with read and unread exchanged",
+		},
+		{
+			name: "nothing measured, one of three read",
+			b:    unmeasured, read: 1, total: 3,
+			want: []string{"not measured", "no IMPORTS edges in the 1 repo graph(s) read"},
+			// Claiming 3 graphs were read when 1 was is an unchecked claim
+			// inside the message added to stop making unchecked claims.
+			notWant:    []string{"3 repo graph(s) read"},
+			wantReason: "the count names how many graphs were actually READ, not how many exist",
+		},
+		{
+			name: "nothing measured, two of five read",
+			b:    unmeasured, read: 2, total: 5,
+			want:       []string{"no IMPORTS edges in the 2 repo graph(s) read"},
+			notWant:    []string{"5 repo graph(s) read"},
+			wantReason: "second shape, wider gap between read and total",
+		},
+		{
+			name: "nothing read at all",
+			b:    unmeasured, read: 0, total: 2,
+			want:       []string{"not measured (no repo graph in this group could be read)"},
+			notWant:    []string{"IMPORTS", "repo graph(s) read", "PARTIAL"},
+			wantReason: "with no graph read there is no edge population to describe, so the line must not describe one",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			line := BugRateLine(tc.b, tc.read, tc.total)
+			for _, w := range tc.want {
+				if !strings.Contains(line, w) {
+					t.Errorf("line is missing %q (%s):\n  %s", w, tc.wantReason, line)
+				}
+			}
+			for _, nw := range tc.notWant {
+				if strings.Contains(line, nw) {
+					t.Errorf("line contains %q (%s):\n  %s", nw, tc.wantReason, line)
+				}
+			}
+		})
+	}
 }
