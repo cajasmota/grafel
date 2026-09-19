@@ -75,8 +75,25 @@ package process_test
 // TestDirectKillSweepCanFail plants unguarded sites in a synthetic tree and
 // requires the scan to name them, so "this lint can go red" is an assertion
 // rather than a hope. TestDirectKillSweepIsNotVacuous pins that the repo walk
-// actually reaches source, because a walk that reads nothing reports nothing
-// and looks green.
+// actually reaches source AND that it reaches the files the known sites live
+// in, because a walk that reads nothing — or that reads everything except
+// internal/daemon — reports nothing and looks green.
+//
+// # The guard's ALPHABET is one symbol, and that is a limit on the claim
+//
+// This sweep observes references to internal/process.Kill. It is NOT a general
+// "no test binary may signal a stranger" lint: a future site reaching for
+// syscall.Kill, (*os.Process).Signal, (*exec.Cmd).Process.Kill or a platform
+// taskkill shell-out is outside its alphabet and would pass unseen.
+//
+// So "a third site cannot be added silently" is true of the process.Kill
+// class, not of the kill class. Stated because the narrower claim is the one
+// that was measured: a sweep of the other kill primitives in this tree found
+// no live #7280-class site outside process.Kill —
+// dashboard/handlers_system.go:127,155 signal os.Getpid() (self, and no test
+// drives those handlers), supervise_unix.go:72 and sched/nice_unix.go:69 take
+// a process the supervisor spawned, and install/watchers/loader_windows.go:59
+// kills its own child. The wording is over-broad; it hides no hole today.
 
 import (
 	"go/ast"
@@ -178,21 +195,81 @@ func TestX() { _ = process.Kill }`)
 	}
 }
 
-// TestDirectKillSweepIsNotVacuous pins that the repo walk reaches real source.
+// TestDirectKillSweepIsNotVacuous pins that the repo walk reaches real source,
+// and specifically that it reaches THE FILES THE KNOWN SITES LIVE IN.
+//
 // A walk rooted at the wrong directory, or one whose exclusion list swallowed
-// internal/, reports a clean tree it never looked at.
+// the trees those sites live in, reports a clean tree it never looked at.
 func TestDirectKillSweepIsNotVacuous(t *testing.T) {
 	root := repoRootFor7280(t)
-	n := countNonTestGoFilesFor7280(t, root)
-	if n < 500 {
+
+	// One walk, its delivery recorded. Everything below asserts against what
+	// the WALKER actually handed over, which is the distinction the first cut
+	// of this test got wrong — see "reads the wrong files" below.
+	visited := map[string]bool{}
+	walkNonTestGoFilesFor7280(t, root, func(rel string, _ *token.FileSet, _ *ast.File) {
+		visited[rel] = true
+	})
+
+	if n := len(visited); n < 500 {
 		t.Fatalf("repo walk parsed %d non-test .go files under internal/ and cmd/; the sweep is "+
 			"not binding the repository", n)
 	}
-	// A floor on files read catches only the FIRST way to be a no-op. This
-	// catches the fourth and fifth: that the walk reaches the file the marker
-	// lives in, that the file's content is actually inspected, and that the
-	// marker is what silences it rather than the scan being dead. Deleting the
-	// marker from reaper.go must make the sweep fire.
+
+	// READS THE WRONG FILES — vacuity way #2, which the count floor above
+	// CANNOT see, and this is measured rather than argued.
+	//
+	// Adding one base name to the walker's prune — `|| d.Name() == "daemon"` —
+	// hides reaper.go, supervise.go AND service/service.go, i.e. the entire
+	// known population, in a single token. Measured on this tree rather than
+	// estimated: the walk delivers 2112 non-test files, 127 of them under
+	// internal/daemon, so the blinded walk still delivers 1985 — four times
+	// the floor above, while the sweep goes green having looked at none of the
+	// sites it exists for. That mutant was ALIVE against the first cut of this
+	// file, and TestNoDirectProcessKills still PASSES under it today; the loop
+	// below is the only thing that catches it. Compound it with the literal
+	// #7280 regression (`kill: reapStaleKill` reverted to `kill: process.Kill`)
+	// and the whole suite went green — the sweep is the SOLE grader of that
+	// direction, so blinding the walk retires the one thing grading the
+	// regression this issue exists to prevent. That compound is RED now, and
+	// only because of the loop below.
+	//
+	// The hazard is not contrived. repowalk.SkippedDir is deliberately shared,
+	// and internal/repowalk's own doc records a MEASURED instance of exactly
+	// this: widening that list left 7 production Go files unread by both sides
+	// of a guard. Three sibling guards (entkinds, relkinds, types) keep an
+	// independent replica walk for that reason. This guard has one walk, so
+	// the cross-check is this: name the files that must arrive.
+	//
+	// ALL THREE, not just the marked one, and that is a measurement rather
+	// than a preference. reaper.go alone closes the `daemon` case above, but a
+	// narrower prune — `|| d.Name() == "service"` — hides only
+	// service/service.go: scored both ways, that prune is RED against the list
+	// below and GREEN against a list holding reaper.go alone. The two WIRING
+	// sites are the ones M3/M6 protect and this sweep is their only grader, so
+	// each has to be named. The cost is a literal path list that must be updated by
+	// hand if a site moves; that is a deliberate two-place edit, visible in
+	// the diff, and it is the same trade the sibling guards make for their
+	// independent floors.
+	for _, want := range []string{
+		"internal/daemon/reaper.go",          // the one MARKED site
+		"internal/daemon/supervise.go",       // wiring site 2 (#7280)
+		"internal/daemon/service/service.go", // wiring site 1 (#7280)
+	} {
+		if !visited[want] {
+			t.Fatalf("the repo walk never delivered %s — the marked site and both #7280 wiring "+
+				"sites live under internal/daemon, so a prune that swallows it leaves "+
+				"TestNoDirectProcessKills green having inspected none of them. It walked %d "+
+				"files, which is why the count floor above says nothing about this", want, len(visited))
+		}
+	}
+
+	// The remaining check grades the DETECTOR, not the walker: that removing
+	// the marker from reaper.go's source makes the site visible again, so the
+	// live clean verdict is the marker talking and not a dead scan. It reads
+	// the file directly rather than through the walker ON PURPOSE — the walker
+	// hands back a parsed *ast.File and this needs source text to strip — and
+	// therefore proves nothing about delivery. Delivery is the loop above.
 	src, err := os.ReadFile(filepath.Join(root, "internal", "daemon", "reaper.go"))
 	if err != nil {
 		t.Fatalf("read reaper.go: %v", err)
@@ -231,13 +308,6 @@ func scanDirectKills(t *testing.T, root string) []testsupport.DirectKill {
 		return out[i].Line < out[j].Line
 	})
 	return out
-}
-
-func countNonTestGoFilesFor7280(t *testing.T, root string) int {
-	t.Helper()
-	n := 0
-	walkNonTestGoFilesFor7280(t, root, func(string, *token.FileSet, *ast.File) { n++ })
-	return n
 }
 
 // walkNonTestGoFilesFor7280 visits every non-test .go file under root/internal
