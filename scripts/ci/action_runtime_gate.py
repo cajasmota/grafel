@@ -94,8 +94,9 @@ how gates get muted the first time it happens.
      a. a pin's major is below its action's first node24 major (the defect);
      b. a `uses:` value names an action with no ACTION_RUNTIMES row;
      c. a `uses:` value has no `@ref`, or a ref from which no major version can
-        be read (a branch name, a commit SHA — including an all-digit
-        abbreviated one, see SHA_LIKE) — unresolvable offline;
+        be read (a branch name, or a commit SHA — including an all-digit
+        abbreviated one of ANY length, which is why a version marker is
+        required rather than a length threshold) — unresolvable offline;
      c2. a `uses:` key whose value is not on the same line, so the pin is
         outside everything this gate reads AND outside all three population
         checks;
@@ -242,22 +243,40 @@ USES = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)\s*$")
 # exit-1 violation telling the author to write the value inline. Fail closed.
 USES_CONTINUED = re.compile(r"^\s*(?:-\s+)?uses:\s*$")
 
-# A ref carrying a major version: `v5`, `v2.31.1`, `5.1`.
-REF_MAJOR = re.compile(r"^v?(\d+)(?:\.\d+)*$")
-
-# A ref that could be an abbreviated or full commit SHA. Checked BEFORE
-# REF_MAJOR, and this ordering is the whole point: `REF_MAJOR` alone reads the
-# perfectly plausible 7-character abbreviated SHA `1234567` as major 1,234,567,
-# which clears every floor this gate will ever have — a silent, permanent,
-# always-passing bypass inside a gate whose entire premise is failing closed.
-# An all-hex-digit abbreviation is not exotic: a 7-char abbreviation is
-# all-digits with p = (10/16)^7 ~= 3.6%, and people do write short SHAs.
+# A ref names a major version ONLY if it carries a VERSION MARKER: a leading
+# `v`, or an embedded dot. `v5`, `v10`, `v2.31.1`, `5.1` — and nothing else.
 #
-# A bare numeric ref of 7+ characters is therefore rejected as a possible SHA
-# rather than read as a major. `v1234567` is not (the `v` prefix says version),
-# nor is anything containing a dot, nor `5` or `12` — so no real version
-# spelling is lost.
-SHA_LIKE = re.compile(r"^[0-9a-f]{7,40}$")
+# WHY A MARKER AND NOT A LENGTH. The previous shape was `^v?(\d+)(?:\.\d+)*$`
+# with a SHA guard of `^[0-9a-f]{7,40}$` consulted first. That closed the
+# 7-character case and left SIX characters wide open: `actions/checkout@123456`
+# is a legal pin (GitHub resolves any unambiguous prefix, and
+# `git rev-parse --short=6` produces exactly six), and it parsed as major
+# 123456 — clearing every floor this gate will ever have, silently, forever.
+#
+# The probability a 6-char prefix is all-digits is (10/16)^6 ~= 6%, HIGHER than
+# the 7-char case the guard was written for, so the threshold landed on the
+# wrong side of its own argument. Lowering it to `{4,40}` would only move the
+# boundary and would start swallowing legitimate short refs. A length threshold
+# is exactly the kind of constant that reads as principled and is arbitrary.
+#
+# So the inference "all digits, therefore a version" is abandoned outright. A
+# commit SHA can never carry a `v` prefix or a dot, so requiring one of those
+# removes the ambiguity rather than relocating it, and no length appears in the
+# rule at all. The dedicated SHA pattern is GONE with it: once the marker rule
+# rejects every unmarked ref, a SHA guard is a redundant second guard that only
+# fires where the first already did — two guards that can only fire together
+# grade neither.
+#
+# WHAT IT COSTS: the bare `5` / `12` spelling, which resolves to unresolvable
+# rather than to a major. Verified against the tree before choosing: every ref
+# here is `v`-prefixed (`v2`, `v2.31.1`, `v3`, `v5`, `v6`, `v7`, `v8`) and
+# ALLOWED is empty, so nothing is lost today. (An earlier control's docstring
+# asserted bare `5` was "a spelling the tree uses". Nothing had checked, and it
+# was false — the same unverified-prose defect this whole gate exists to catch.)
+# Should somebody want it back, the fix is an explicit `ALLOWED` row, not a
+# looser regex.
+REF_MAJOR_V = re.compile(r"^v(\d+)(?:\.\d+)*$")
+REF_MAJOR_DOTTED = re.compile(r"^(\d+)(?:\.\d+)+$")
 
 
 @dataclass
@@ -334,17 +353,15 @@ def parse_workflow(path: str) -> list[Pin]:
 def major_of(ref: str | None) -> int | None:
     """The major version a ref names, or None when it names none.
 
-    SHA_LIKE is consulted FIRST. Without that order an all-digit abbreviated
-    SHA parses as an astronomically large major and passes every floor
-    silently — see SHA_LIKE. Returning None here routes it to the same
-    "unresolvable offline" violation a branch name gets, which is the
-    fail-closed direction.
+    A VERSION MARKER is required — see REF_MAJOR_V / REF_MAJOR_DOTTED. An
+    unmarked all-digit ref (`123456`, `1234567`) is a plausible abbreviated
+    commit SHA, not a major, and returning None routes it to the same
+    "unresolvable offline" violation a branch name gets. That is the
+    fail-closed direction, and it is reached without any length threshold.
     """
     if ref is None:
         return None
-    if SHA_LIKE.match(ref):
-        return None
-    m = REF_MAJOR.match(ref)
+    m = REF_MAJOR_V.match(ref) or REF_MAJOR_DOTTED.match(ref)
     return int(m.group(1)) if m else None
 
 
@@ -455,8 +472,11 @@ def main() -> int:
                 f"  action: {pin.action}\n"
                 f"  ref: {pin.ref!r}\n"
                 f"  => no major version can be read from this ref, so its Node "
-                f"runtime cannot be resolved offline. A commit SHA or a branch "
-                f"name needs a ticket-bearing ALLOWED row in "
+                f"runtime cannot be resolved offline. A major is recognised "
+                f"only with a version marker — a leading `v` or an embedded "
+                f"dot — because an unmarked run of digits is a plausible "
+                f"abbreviated commit SHA at every length. A commit SHA or a "
+                f"branch name needs a ticket-bearing ALLOWED row in "
                 f"{os.path.basename(__file__)} recording which runtime it was "
                 f"checked to be on, and when."
             )

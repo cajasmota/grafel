@@ -494,7 +494,9 @@ class GateTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("no ACTION_RUNTIMES row", r.stderr)
 
-    def test_major_of_accepts_the_spellings_the_tree_uses(self) -> None:
+    def test_major_of_rejects_non_version_refs(self) -> None:
+        """Branch names and decorated tags. The version-marker spellings and the
+        all-digit boundary are graded separately, under CM-38 below."""
         mod = self._gate()
         self.assertEqual(mod.major_of("v5"), 5)
         self.assertEqual(mod.major_of("v2.31.1"), 2)
@@ -804,7 +806,8 @@ class GateTest(unittest.TestCase):
             # written into the header and NEITHER was added here — a mutant
             # deleting cause 3b from the header stayed ALIVE. The rule this
             # control enforces is exactly the rule it had just broken.
-            "ALL-DIGIT abbreviated one",
+            "ALL-DIGIT abbreviated commit SHA",
+            "VERSION MARKER",
             "a `uses:` key whose value sits on a FOLLOWING line",
             "an ALLOWED row matched nothing",
             "external-pin\n#      total does not match the manifest",
@@ -891,51 +894,107 @@ class GateTest(unittest.TestCase):
         r = no_floors(self.s.dir)
         self.assertIn("2 `uses:` pin(s) (1 external, 0 local, 1 unparseable)", r.stdout)
 
-    # ── F2: an all-digit abbreviated SHA must not read as a major ────────────
+    # ── F2 / CM-38: a major needs a VERSION MARKER, not a length ─────────────
 
-    def test_all_digit_short_sha_is_not_read_as_a_major(self) -> None:
-        """A 7-char abbreviated SHA is all-digits with p ~= 3.6%, and people do
-        write short SHAs. `REF_MAJOR` alone reads `1234567` as major 1,234,567,
-        which clears every floor this gate will ever have — an accidental,
-        silent, always-passing bypass inside a gate whose premise is failing
-        closed. That is worse than failing open loudly.
+    def test_an_unmarked_run_of_digits_is_never_a_major(self) -> None:
+        """EXHAUSTIVE OVER LENGTH, because the bug was a length threshold.
+
+        Round 2 shipped `SHA_LIKE = ^[0-9a-f]{7,40}$` consulted before the
+        version regex. That closed `1234567` and left SIX characters open:
+        `actions/checkout@123456` is a legal pin (GitHub resolves any
+        unambiguous prefix; `git rev-parse --short=6` produces six) and it
+        parsed as major 123456, clearing every floor forever. A 6-char prefix
+        is all-digits with p ~= 6% — HIGHER than the 7-char case the guard was
+        written for — so the threshold sat on the wrong side of its own
+        argument.
+
+        Lowering the threshold would only move the boundary, so the boundary is
+        gone: a major is recognised only with a `v` prefix or an embedded dot,
+        and a commit SHA can carry neither. This enumerates EVERY length from 1
+        to 40 rather than sampling, because sampling is what let the last
+        threshold through — a hand-picked `1234567` said nothing about `123456`.
         """
         mod = self._gate()
-        for sha in ("1234567", "0123456789", "deadbeef", "a" * 40, "1" * 40):
-            self.assertIsNone(mod.major_of(sha), sha)
-        # and the spellings that must SURVIVE the SHA guard
-        self.assertEqual(mod.major_of("v1234567"), 1234567)
-        self.assertEqual(mod.major_of("5"), 5)
-        self.assertEqual(mod.major_of("12"), 12)
+        for n in range(1, 41):
+            self.assertIsNone(mod.major_of("1" * n), f"{n} digits")
+            self.assertIsNone(mod.major_of("9" * n), f"{n} nines")
+        # the specific neighbours of the retired threshold, named so that
+        # re-introducing a length cannot pass by moving it
+        for ref in ("12345", "123456", "1234567", "12345678"):
+            self.assertIsNone(mod.major_of(ref), ref)
+        # hex and non-hex alike, and the case-varied form (loud either way)
+        for ref in ("deadbeef", "DEADBEEF", "a" * 40, "0123456789abcdef"):
+            self.assertIsNone(mod.major_of(ref), ref)
+
+    def test_the_version_marker_spellings_survive(self) -> None:
+        """The permissive direction for CM-38: removing the inference must not
+        cost a spelling anything actually uses.
+
+        Verified against the tree before the rule was chosen — every ref here is
+        `v`-prefixed — so the bare `5` spelling costs nothing. That check was
+        the point: an earlier version of this control asserted bare `5` was "a
+        spelling the tree uses", nothing had ever checked, and it was FALSE.
+        """
+        mod = self._gate()
+        self.assertEqual(mod.major_of("v5"), 5)
+        self.assertEqual(mod.major_of("v10"), 10)
+        self.assertEqual(mod.major_of("v10.0.1"), 10)
+        self.assertEqual(mod.major_of("v123"), 123)
+        self.assertEqual(mod.major_of("v2.31.1"), 2)
+        self.assertEqual(mod.major_of("v1234567"), 1234567)  # `v` says version
+        self.assertEqual(mod.major_of("5.1"), 5)  # a dot says version
         self.assertEqual(mod.major_of("2.31.1"), 2)
-
-    def test_all_digit_short_sha_pin_is_a_violation(self) -> None:
-        """End to end, not just the helper: the pin must actually fail."""
-        self.s.write(
-            "shortsha.yml",
-            """
-            jobs:
-              j:
-                steps:
-                  - uses: actions/checkout@1234567
-            """,
+        # and every ref the real tree carries resolves
+        actual = set()
+        for f in sorted(os.listdir(REAL_WORKFLOWS)):
+            if f.endswith((".yml", ".yaml")):
+                for pin in mod.parse_workflow(os.path.join(REAL_WORKFLOWS, f)):
+                    if pin.action is not None and pin.ref:
+                        actual.add(pin.ref)
+        self.assertEqual(
+            actual,
+            {"v2", "v2.31.1", "v3", "v5", "v6", "v7", "v8"},
+            "premise: the tree's ref spellings, which the rule was chosen against",
         )
-        r = no_floors(self.s.dir)
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("no major version can be read", r.stderr)
+        for ref in actual:
+            self.assertIsNotNone(mod.major_of(ref), ref)
 
-    def test_the_sha_comment_is_true(self) -> None:
-        """The header claimed a SHA "deliberately does NOT match" while an
-        all-digit one did. A comment asserting a property nothing tests is the
-        dominant defect class in this repo; this pins the claim to behaviour.
+    def test_no_length_threshold_remains_in_the_rule(self) -> None:
+        """The retired constant must not creep back.
+
+        A length threshold reads as principled and is arbitrary; this is the
+        cheapest thing that notices one returning. The rule is two regexes with
+        no repetition bound, and the retired `SHA_LIKE` name is gone rather than
+        left as a second, redundant guard — two guards that can only fire
+        together grade neither.
         """
         mod = self._gate()
         src = open(GATE, encoding="utf-8").read()
-        self.assertIn("SHA_LIKE", src)
-        self.assertIsNotNone(mod.SHA_LIKE.match("1234567"))
-        self.assertIsNone(mod.SHA_LIKE.match("v5"))
-        self.assertIsNone(mod.SHA_LIKE.match("2.31.1"))
-        self.assertIsNone(mod.SHA_LIKE.match("123456"))  # 6 chars: too short
+        self.assertNotIn("SHA_LIKE", src)
+        self.assertFalse(hasattr(mod, "SHA_LIKE"))
+        self.assertEqual(mod.REF_MAJOR_V.pattern, r"^v(\d+)(?:\.\d+)*$")
+        self.assertEqual(mod.REF_MAJOR_DOTTED.pattern, r"^(\d+)(?:\.\d+)+$")
+
+    def test_unmarked_digit_pins_are_violations_end_to_end(self) -> None:
+        """Not just the helper: both sides of the retired boundary must fail as
+        real pins, with the message naming the marker rule."""
+        for ref in ("1234567", "123456"):
+            with self.subTest(ref=ref):
+                scratch = Scratch()
+                self.addCleanup(scratch.tmp.cleanup)
+                scratch.write(
+                    "shortsha.yml",
+                    f"""
+                    jobs:
+                      j:
+                        steps:
+                          - uses: actions/checkout@{ref}
+                    """,
+                )
+                r = no_floors(scratch.dir)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("no major version can be read", r.stderr)
+                self.assertIn("version marker", r.stderr)
 
     # ── F7: the sub-path violation must say what to do ───────────────────────
 

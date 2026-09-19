@@ -134,10 +134,14 @@ name: node-type gate
 #      allow-list row;
 #   2. a `uses:` value names an action with no ACTION_RUNTIMES row — the gate
 #      fails closed rather than inventing a ticket-free exemption;
-#   3. a `uses:` value has no `@ref`, or a ref with no readable major (a branch
-#      name, a commit SHA — including an ALL-DIGIT abbreviated one, which a
-#      major-version regex alone reads as an astronomically large major and
-#      passes forever), so its runtime cannot be resolved offline;
+#   3. a `uses:` value has no `@ref`, or a ref with no readable major, so its
+#      runtime cannot be resolved offline. A major is recognised only with a
+#      VERSION MARKER — a leading `v` or an embedded dot — never from digits
+#      alone: an ALL-DIGIT abbreviated commit SHA otherwise parses as an
+#      astronomically large major and passes every floor forever, at every
+#      length. A length threshold was tried and was wrong: guarding 7+
+#      characters left 6 open, and a 6-char prefix is all-digits MORE often
+#      (~6%) than a 7-char one (~3.6%);
 #   3b. a `uses:` key whose value sits on a FOLLOWING line. That is legal YAML
 #      and was measured passing fully green while carrying `checkout@v4`, with
 #      the per-file count, the filename set and the external total all still
