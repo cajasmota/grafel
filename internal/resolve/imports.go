@@ -590,15 +590,29 @@ func modulesForFile(p string) []string {
 		return modulesForScalaFile(p)
 	case strings.HasSuffix(p, ".php"):
 		return modulesForPHPFile(p)
-	case strings.HasSuffix(p, ".ts"),
-		strings.HasSuffix(p, ".tsx"),
-		strings.HasSuffix(p, ".js"),
-		strings.HasSuffix(p, ".jsx"),
-		strings.HasSuffix(p, ".mjs"),
-		strings.HasSuffix(p, ".cjs"):
+	case hasJSExtension(p):
 		return modulesForJSFile(p)
 	}
 	return nil
+}
+
+// hasJSExtension reports whether p ends in one of jsExtensions.
+//
+// This is the JS/TS arm of modulesForFile's dispatch. It reads
+// jsExtensions rather than repeating the suffix list inline, because the
+// inline copy had already drifted: it listed six extensions while
+// jsExtensions listed eight, so modulesForFile returned nil for every
+// `.mts` / `.cts` file and modulesForJSFile was unreachable for them —
+// the extension set was widened in one place and the only production
+// caller never saw it (#7272). Case-sensitive, matching the sibling
+// arms of the switch.
+func hasJSExtension(p string) bool {
+	for _, ext := range jsExtensions {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // modulesForJSFile derives the dotted-module forms of a JavaScript /
@@ -667,11 +681,18 @@ func modulesForJSFile(p string) []string {
 // resolution agree on which extension to strip.
 //
 // `.mts` / `.cts` are the TypeScript sources for `.mjs` / `.cjs`
-// (#7272). internal/classifier maps both to "typescript", so files with
-// those extensions DO get SCOPE.Component file carriers — omitting them
-// here meant modulesForJSFile derived the dotted module `foo.mts`
-// instead of `foo`, isJSImportSource refused to treat them as JS import
-// sources, and resolveRelativeImportTarget could not reach them at all.
+// (#7272). internal/classifier maps both to "typescript" and file
+// discovery is classifier-gated, so files with those extensions DO get
+// SCOPE.Component file carriers. Omitting them here meant
+// resolveRelativeImportTarget could not reach such a file at all and
+// isJSImportSource refused to treat it as a JS import source.
+//
+// Adding them here is NOT sufficient on its own: modulesForFile's
+// dispatch arm and refs.go's sourceFileExtensions kept their own copies
+// of this set, and internal/extractors/javascript keeps a fifth in
+// jsImportExtensions. All four now agree with the classifier, and
+// TestJSExtensionSetsAgreeWithClassifier_7272 probes each through its
+// production entry point so the next divergence fails at the edit site.
 //
 // NOTE: no element of this slice is a string suffix of another
 // (`"x.mjs"` does not end in `".js"`, `"x.tsx"` does not end in
@@ -697,8 +718,24 @@ var jsExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts"
 // Letting it reach `x.ts` would mint an IMPORTS edge to a file the
 // author did not reference — trading the false negative this change
 // fixes for a false positive, which is precisely the inflated bug-rate
-// #7272 reports. An extensionless specifier has no family signal and
-// falls back to the full jsExtensions list.
+// #7272 reports.
+//
+// An extensionless specifier has no family signal and deliberately
+// falls back to the FULL jsExtensions list, `.mts`/`.cts` included.
+// That is broader than any real toolchain: under Node16/NodeNext an
+// extensionless relative specifier is illegal outright, and the
+// node10/bundler algorithms probe `.ts`/`.tsx`/`.d.ts`/`.js`/`.jsx`
+// only. The decision is deliberate and asymmetric with the rule above,
+// for two reasons. First, the asymmetry is in the INPUT, not the
+// policy: `./x.mjs` carries a positive statement about module system
+// that `./x` does not, and refusing `.mts` for `./x` would encode a
+// claim the specifier never made. Second, the two directions have
+// different costs here — a bare `./x` alongside a lone `x.mts` carrier
+// is unambiguous, so resolving it recovers a real edge, whereas
+// `./x.mjs` alongside `x.ts` is a *contradiction* and resolving it
+// invents one. If a corpus ever shows extensionless specifiers
+// mis-binding to `.mts`/`.cts`, narrow this to the four-entry
+// node10 set; nothing else depends on the wider list.
 var jsExtensionReplacements = map[string][]string{
 	".ts":  {".ts", ".tsx", ".js", ".jsx"},
 	".tsx": {".ts", ".tsx", ".js", ".jsx"},
@@ -3827,9 +3864,19 @@ func resolveRelativeImportTarget(importer, module string, carrierIDByPath map[st
 	// Strip ONE trailing canonical extension, then try that extension's
 	// family as a replacement (see jsExtensionReplacements). For an
 	// extensionless specifier the strip is a no-op (stem == base) and
-	// the replacement set stays the full jsExtensions list, so this
-	// single loop subsumes the old append-only fallback — no separate
-	// branch is needed.
+	// the replacement set stays the full jsExtensions list, so no
+	// separate append-only branch is needed.
+	//
+	// This loop does NOT strictly subsume the old append-only fallback.
+	// Over a wider alphabet than the graded table covers there are
+	// stacked-canonical shapes the old code reached and this does not —
+	// e.g. a carrier literally named `m.ts.js` reached by the specifier
+	// `./m.ts` (old: appended `.js` and hit; new: strips nothing, since
+	// `./m.ts` ends in a canonical extension, and probes `m.ts`,
+	// `m.tsx`, ...). A differential oracle over 2176 specifier/carrier
+	// pairs found 41 such rows. They are pathological — no toolchain
+	// emits a `.ts.js` source file — and losing them is the cost of not
+	// binding `./x.mjs` to `x.ts`. Recorded rather than fixed.
 	//
 	// Exactly ONE extension is stripped, and only a CANONICAL one:
 	//   - `./data.json` keeps its whole stem, so a JSON asset never

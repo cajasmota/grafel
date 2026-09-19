@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/classifier"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -381,28 +382,121 @@ func TestPruneRewritesESMExtensionImport_7272(t *testing.T) {
 	}
 }
 
-// TestMtsCtsAreTreatedAsJSSources_7272 grades the OTHER two consumers of
-// jsExtensions that adding ".mts"/".cts" changed. Neither had a direct test,
-// so without this the widening's effect on module derivation would be
-// unobserved: a `.mts` file previously derived the dotted module
-// `src.x.mts` (extension not stripped) and was not recognised as a JS import
-// source at all, even though internal/classifier types it as "typescript".
-func TestMtsCtsAreTreatedAsJSSources_7272(t *testing.T) {
+// TestMtsCtsReachJSModuleDerivation_7272 grades the DISPATCHER, not
+// modulesForJSFile.
+//
+// Round 2 of #7272 added ".mts"/".cts" to jsExtensions and tested
+// modulesForJSFile directly — but modulesForFile, the only production caller,
+// dispatched on a hardcoded six-entry suffix list that did not read
+// jsExtensions. modulesForFile("src/x.mts") returned nil both before and
+// after, so the test graded an unreachable path and shipped-vs-correct were
+// indistinguishable. Entering through modulesForFile is what makes the
+// dispatch arm observable.
+func TestMtsCtsReachJSModuleDerivation_7272(t *testing.T) {
 	for _, ext := range []string{".mts", ".cts"} {
-		mods := modulesForJSFile("src/x" + ext)
+		mods := modulesForFile("src/x" + ext)
+		if len(mods) == 0 {
+			t.Errorf("modulesForFile(%q) = %v — the JS/TS dispatch arm does not recognise this "+
+				"extension, so the file registers ZERO dotted modules and no import can bind "+
+				"to it; internal/classifier types it as \"typescript\"", "src/x"+ext, mods)
+			continue
+		}
 		if containsExt(mods, "src.x"+ext) {
-			t.Errorf("modulesForJSFile(%q) = %v — still carries the unstripped extension; the "+
+			t.Errorf("modulesForFile(%q) = %v — still carries the unstripped extension; the "+
 				"dotted module of a TypeScript source must not embed its file extension",
 				"src/x"+ext, mods)
 		}
 		if !containsExt(mods, "src.x") {
-			t.Errorf("modulesForJSFile(%q) = %v, want it to contain \"src.x\"", "src/x"+ext, mods)
+			t.Errorf("modulesForFile(%q) = %v, want it to contain \"src.x\"", "src/x"+ext, mods)
 		}
 		if !isJSImportSource("src/x" + ext) {
 			t.Errorf("isJSImportSource(%q) = false — a .mts/.cts file is a TypeScript source "+
-				"(internal/classifier maps both to \"typescript\") and must gate the JS "+
-				"default-export fallback like any other", "src/x"+ext)
+				"and must gate the JS default-export fallback like any other", "src/x"+ext)
 		}
+	}
+}
+
+// TestJSExtensionSetsAgreeWithClassifier_7272 is the alarm at the edit site.
+//
+// #7272 found FIVE copies of the JS/TS extension set, four of which had
+// drifted from internal/classifier — the authority on what language a file
+// is. This guard derives the expected set from the classifier and probes each
+// consumer through its real production entry point, so it fails at the moment
+// someone adds an extension to the classifier without updating a consumer,
+// rather than a release later.
+//
+// jsImportExtensions lives in internal/extractors/javascript and is
+// unexported; its half of this guard is
+// TestJSImportExtensionsAgreeWithClassifier_7272 in that package.
+func TestJSExtensionSetsAgreeWithClassifier_7272(t *testing.T) {
+	authority := classifier.ExtensionsForLanguagesForTest("javascript", "typescript")
+	if len(authority) == 0 {
+		t.Fatal("classifier reported no javascript/typescript extensions — the guard would be " +
+			"vacuous, so this is a failure rather than a pass")
+	}
+
+	// Direction 1: every extension the classifier calls JS/TS must be in
+	// jsExtensions. A missing entry is the #7272 defect.
+	for _, ext := range authority {
+		if !containsExt(jsExtensions, ext) {
+			t.Errorf("classifier types %q as javascript/typescript but jsExtensions omits it — "+
+				"relative imports cannot reach such a file and it registers no dotted module", ext)
+		}
+	}
+	// Direction 2: jsExtensions must not claim anything the classifier does
+	// not consider JS/TS, or the resolver would strip an extension off a
+	// file belonging to another language.
+	for _, ext := range jsExtensions {
+		if !containsExt(authority, ext) {
+			t.Errorf("jsExtensions lists %q but the classifier does not type it as "+
+				"javascript/typescript (it says %q)", ext, classifier.LanguageForExtension(ext))
+		}
+	}
+
+	// Direction 3: the two OTHER consumers in this package, probed through
+	// their real production functions rather than by reading their literals.
+	// modulesForFile covers the dispatch switch (B1); looksLikeSourceFilePath
+	// covers sourceFileExtensions in refs.go.
+	for _, ext := range jsExtensions {
+		if mods := modulesForFile("src/x" + ext); len(mods) == 0 {
+			t.Errorf("modulesForFile(%q) = nil — modulesForFile's JS/TS dispatch arm disagrees "+
+				"with jsExtensions", "src/x"+ext)
+		}
+		if !looksLikeSourceFilePath("src/x" + ext) {
+			t.Errorf("looksLikeSourceFilePath(%q) = false — sourceFileExtensions in refs.go "+
+				"disagrees with jsExtensions, so an IMPORTS-edge FromID on such a file is "+
+				"counted as a bug-extractor miss instead of Dynamic", "src/x"+ext)
+		}
+	}
+}
+
+// TestLooksLikeSourceFilePathStaysNarrow_7272 carries the forbidden rows for
+// the sourceFileExtensions widening. That list gates a disposition heuristic,
+// so broadening it risks laundering genuine extractor bugs into Dynamic;
+// these rows pin the guards that must keep holding.
+func TestLooksLikeSourceFilePathStaysNarrow_7272(t *testing.T) {
+	forbidden := []struct{ in, why string }{
+		{"scope:operation:ref:typescript:src/x.mts:foo",
+			"a structural ref contains ':' and is not a file path, however it ends"},
+		{"/abs/path/x.mts", "absolute paths are not extractor-emitted"},
+		{"src/x.mts extra", "a space means this is not a single path"},
+		{"src\\x.mts", "backslash paths are rejected"},
+		{"x.mtsx", "a longer extension that merely starts with a known one must not match"},
+		{"x.cjsx", "same for the CommonJS family"},
+		{"mts", "the bare word is not a path"},
+		{"x.d", "a truncated extension must not match"},
+	}
+	for _, tc := range forbidden {
+		if looksLikeSourceFilePath(tc.in) {
+			t.Errorf("looksLikeSourceFilePath(%q) = true — FORBIDDEN (%s); widening the "+
+				"extension list must not widen the shape guards", tc.in, tc.why)
+		}
+	}
+	// Positive control: without this, every row above would pass even if the
+	// function had been replaced by `return false`.
+	if !looksLikeSourceFilePath("src/x.mts") {
+		t.Error("looksLikeSourceFilePath(\"src/x.mts\") = false — the forbidden rows above are " +
+			"vacuous unless the accepting direction actually works")
 	}
 }
 

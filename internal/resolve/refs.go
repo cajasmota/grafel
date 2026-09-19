@@ -3531,6 +3531,13 @@ func looksLikeSourceFilePath(s string) bool {
 var sourceFileExtensions = []string{
 	".py", ".java", ".kt", ".kts", ".scala", ".groovy",
 	".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+	// `.mts` / `.cts` are TypeScript sources per internal/classifier, so
+	// the JS/TS extractor emits IMPORTS edges whose FromID is such a
+	// path. Without these entries that FromID fails
+	// looksLikeSourceFilePath and every import in a `.mts` file
+	// contributes a bug-extractor count — the same inflated-bug-rate
+	// defect class #7272 was filed about, on a different code path.
+	".mts", ".cts",
 	".go", ".rs", ".rb", ".php", ".cs", ".cpp", ".cc", ".c", ".h", ".hpp",
 	".swift", ".dart", ".lua", ".ex", ".exs", ".clj", ".cljs", ".cljc",
 	".zig", ".sql",
