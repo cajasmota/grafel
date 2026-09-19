@@ -11,6 +11,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -74,16 +75,29 @@ func noImportsDoc(computedAt time.Time) *graph.Document {
 // "Bug-rate" line.
 func renderDoctorBugRateLine(t *testing.T, doc *graph.Document) string {
 	t.Helper()
+	return renderDoctorBugRateLineForRepos(t, doc)
+}
+
+// renderDoctorBugRateLineForRepos is the same wiring for a group of N repos —
+// which is what a group normally is, and the axis the single-repo helper above
+// cannot observe.
+func renderDoctorBugRateLineForRepos(t *testing.T, docs ...*graph.Document) string {
+	t.Helper()
 
 	tmp := t.TempDir()
 	t.Setenv(daemon.EnvRoot, tmp)
 
-	repoPath := writeRepoWithGraph(t, tmp, "svc", doc, doc.Stats.Entities, doc.Stats.Relationships)
+	repos := make([]registry.Repo, 0, len(docs))
+	for i, doc := range docs {
+		slug := fmt.Sprintf("svc%d", i)
+		repoPath := writeRepoWithGraph(t, tmp, slug, doc, doc.Stats.Entities, doc.Stats.Relationships)
+		repos = append(repos, registry.Repo{Slug: slug, Path: repoPath, Stack: registry.StackList{"go"}})
+	}
 
 	cfgPath := filepath.Join(tmp, "group.json")
 	cfg := &registry.GroupConfig{
 		Name:  "g1",
-		Repos: []registry.Repo{{Slug: "svc", Path: repoPath, Stack: registry.StackList{"go"}}},
+		Repos: repos,
 	}
 	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
 		t.Fatalf("SaveGroupConfig: %v", err)
@@ -356,5 +370,119 @@ func TestRecordHealthHistory_StoresTheMeasuredRate(t *testing.T) {
 	}
 	if entries[0].HealthScore == 100 {
 		t.Errorf("health score is a perfect 100 despite a 25%% bug rate: %+v", entries[0])
+	}
+}
+
+// importsDocN builds a graph with exactly total IMPORTS edges, of which
+// unresolved point at raw path strings the resolver never bound. Everything
+// else about the graph is held constant across the repos built with it, so the
+// only thing that varies between them is the rate itself.
+func importsDocN(computedAt time.Time, total, unresolved int) *graph.Document {
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: computedAt,
+		Stats:       graph.Stats{Entities: 2, Relationships: total, Files: 2},
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "A", Kind: "function", SourceFile: "a.go", Language: "go"},
+			{ID: "bbbbbbbbbbbbbbbb", Name: "B", Kind: "function", SourceFile: "b.go", Language: "go"},
+		},
+	}
+	for i := 0; i < total; i++ {
+		to := "aaaaaaaaaaaaaaaa"
+		if i < unresolved {
+			to = fmt.Sprintf("./unresolved/%d", i)
+		}
+		doc.Relationships = append(doc.Relationships,
+			graph.Relationship{FromID: "bbbbbbbbbbbbbbbb", ToID: to, Kind: "IMPORTS"})
+	}
+	return doc
+}
+
+// TestDoctorBugRate_GroupTotalPoolsEveryRepo is the cross-repo pin. `doctor`
+// reports per GROUP, and a group is plural: the reported scenario is a Node
+// backend whose imports are largely unresolved sitting beside a Next.js
+// frontend whose imports mostly resolve. A group figure that silently reflects
+// one of them is a confident wrong number — the same defect class this issue
+// exists to fix, one level up.
+//
+// The two repos are chosen so that every wrong aggregation is distinguishable
+// from the right one:
+//
+//	repo A   1 of 4 unresolved → 25.0%
+//	repo B   3 of 6 unresolved → 50.0%
+//	pooled   4 of 10           → 40.0%   ← the only correct answer
+//	mean-of-means              → 37.5%
+//
+// so first-repo-only, last-repo-only and averaging the rates all produce a
+// number this test rejects.
+func TestDoctorBugRate_GroupTotalPoolsEveryRepo(t *testing.T) {
+	now := time.Now()
+	line := renderDoctorBugRateLineForRepos(t, importsDocN(now, 4, 1), importsDocN(now, 6, 3))
+
+	if !strings.Contains(line, "40.0%") {
+		t.Errorf("group rate is not the pooled 40.0%% of 10 import edges:\n  %s", line)
+	}
+	if !strings.Contains(line, "4 of 10 import edges unresolved") {
+		t.Errorf("group counts are not the pooled 4-of-10:\n  %s", line)
+	}
+	for _, wrong := range []struct{ pct, why string }{
+		{"25.0%", "only the first repo"},
+		{"50.0%", "only the last repo"},
+		{"37.5%", "the mean of the per-repo rates"},
+	} {
+		if strings.Contains(line, wrong.pct) {
+			t.Errorf("group rate reflects %s (%s):\n  %s", wrong.why, wrong.pct, line)
+		}
+	}
+}
+
+// TestDoctorBugRate_GroupTotalSurvivesAnUnmeasurableRepo is the same axis with
+// one repo contributing nothing: a repo with no IMPORTS edge must neither
+// erase the group's measurement nor dilute it toward zero.
+func TestDoctorBugRate_GroupTotalSurvivesAnUnmeasurableRepo(t *testing.T) {
+	now := time.Now()
+	line := renderDoctorBugRateLineForRepos(t, importsDocN(now, 4, 1), noImportsDoc(now))
+
+	if !strings.Contains(line, "25.0%") {
+		t.Errorf("a repo with no IMPORTS edges changed the group rate:\n  %s", line)
+	}
+	if strings.Contains(line, "not measured") {
+		t.Errorf("an unmeasurable repo erased a measured group rate:\n  %s", line)
+	}
+}
+
+// TestRebuildSummaryBugRate_PoolsEveryRepo is the same cross-repo axis on the
+// outbound path. ComputeRebuildSummary accumulates across every rebuilt repo,
+// and the webhook snapshot is built straight from that tally — so a group of
+// two repos with different rates must broadcast the pooled figure, not one
+// repo's.
+//
+//	repo A   1 of 4 unresolved → 25.0%
+//	repo B   3 of 6 unresolved → 50.0%
+//	pooled   4 of 10           → 40.0%   ← the only correct answer
+//	mean-of-means              → 37.5%
+func TestRebuildSummaryBugRate_PoolsEveryRepo(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmp)
+
+	now := time.Now()
+	docA := importsDocN(now, 4, 1)
+	docB := importsDocN(now, 6, 3)
+	repoA := writeRepoWithGraph(t, tmp, "svc0", docA, docA.Stats.Entities, docA.Stats.Relationships)
+	repoB := writeRepoWithGraph(t, tmp, "svc1", docB, docB.Stats.Entities, docB.Stats.Relationships)
+
+	sum := ComputeRebuildSummary("g1", []string{repoA, repoB}, 0)
+
+	if sum.BugRate.TotalImports != 10 || sum.BugRate.ResolvedImports != 6 {
+		t.Fatalf("pooled tally = %+v, want {10 6}", sum.BugRate)
+	}
+	if got := sum.BugRate.Pct(); got != 40.0 {
+		t.Errorf("pooled bug rate = %v, want 40 (25 = first repo only, 50 = last repo only, 37.5 = mean of the per-repo rates)", got)
+	}
+
+	// The wire value the webhook actually carries.
+	snap := rebuildQualitySnapshot("g1", sum, 70)
+	if snap.BugRate == nil || *snap.BugRate != 40.0 {
+		t.Errorf("snapshot bug_rate = %v, want the pooled 40", snap.BugRate)
 	}
 }
