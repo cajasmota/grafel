@@ -101,11 +101,34 @@ func Uninstall(opts Options) error {
 			readPID:  defaultReadEnginePID,
 			isAlive:  process.IsAlive,
 			isGrafel: process.PidIsGrafel,
-			kill:     process.Kill,
+			kill:     sweepOrphanKill,
 		})
 	}
 	return nil
 }
+
+// sweepOrphanKill is the kill Uninstall wires into the orphan-engine sweep:
+// process.KillGuarded, which under `go test` panics naming the pid instead of
+// signalling it (#7268, #7280).
+//
+// This is the more dangerous of the two #7280 sites, and the reason is the line
+// above it: Uninstall resolves daemon.DefaultLayout() — the REAL user root, not
+// a t.TempDir() — so the pid this sweep reads comes from the developer's or CI
+// runner's live engine.pid. No test reaches it today (verified by panic probe
+// over ./internal/daemon/service/, ./internal/install/... and ./internal/cli/:
+// no fire); every caller injects, via install's stopDaemonFn and cli/uninstall.
+// The hazard #7268 exists to close is precisely the test that FORGETS to
+// inject, and that shape was live on this repo:
+// TestRunDoctorStaleDaemons_DryRunOutputsNoneWhenClean drove production with no
+// seam and was proved by panic probe to reach the real process.Kill with the
+// user's live daemon pid.
+//
+// A package-level var rather than `kill: process.KillGuarded` inline, so the
+// wiring can be graded by function identity
+// (uninstall_kill_identity_7280_test.go). Grading it by CALLING it is not an
+// option: the call would drive the sweep against the real daemon root, which is
+// the accident this guards.
+var sweepOrphanKill = process.KillGuarded
 
 // sweepOrphanEngineDeps abstracts the orphan-engine sweep's I/O so it can be
 // unit-tested without touching real processes or a real daemon root.
