@@ -665,7 +665,50 @@ func modulesForJSFile(p string) []string {
 // extensions modulesForJSFile recognises. Order matches the resolver's
 // extractor-side resolveRelativeImport so module derivation and import
 // resolution agree on which extension to strip.
-var jsExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+//
+// `.mts` / `.cts` are the TypeScript sources for `.mjs` / `.cjs`
+// (#7272). internal/classifier maps both to "typescript", so files with
+// those extensions DO get SCOPE.Component file carriers — omitting them
+// here meant modulesForJSFile derived the dotted module `foo.mts`
+// instead of `foo`, isJSImportSource refused to treat them as JS import
+// sources, and resolveRelativeImportTarget could not reach them at all.
+//
+// NOTE: no element of this slice is a string suffix of another
+// (`"x.mjs"` does not end in `".js"`, `"x.tsx"` does not end in
+// `".ts"`, and so on). Every strip loop below breaks on the FIRST
+// match, so that property is what makes the loops order-independent.
+// TestJSExtensionsAreNotSuffixesOfEachOther_7272 grades it; adding an
+// extension like ".es.js" would break it and must reorder the slice.
+var jsExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"}
+
+// jsExtensionReplacements maps a canonical extension appearing on an
+// import specifier to the set of on-disk extensions that specifier may
+// legitimately name, in preference order (#7272).
+//
+// TypeScript under Node16/NodeNext requires the specifier to carry the
+// EMITTED extension, not the source one — `./foo.js` is how you reach
+// `foo.ts`. But the mapping is per-family, not a free-for-all:
+//
+//	.js  <-> .ts .tsx .js .jsx     (the ordinary/ESM-or-CJS family)
+//	.mjs <-> .mts .mjs             (always-ESM family)
+//	.cjs <-> .cts .cjs             (always-CommonJS family)
+//
+// `./x.mjs` can only mean `x.mts` or `x.mjs`; it can NEVER mean `x.ts`.
+// Letting it reach `x.ts` would mint an IMPORTS edge to a file the
+// author did not reference — trading the false negative this change
+// fixes for a false positive, which is precisely the inflated bug-rate
+// #7272 reports. An extensionless specifier has no family signal and
+// falls back to the full jsExtensions list.
+var jsExtensionReplacements = map[string][]string{
+	".ts":  {".ts", ".tsx", ".js", ".jsx"},
+	".tsx": {".ts", ".tsx", ".js", ".jsx"},
+	".js":  {".ts", ".tsx", ".js", ".jsx"},
+	".jsx": {".ts", ".tsx", ".js", ".jsx"},
+	".mjs": {".mts", ".mjs"},
+	".mts": {".mts", ".mjs"},
+	".cjs": {".cts", ".cjs"},
+	".cts": {".cts", ".cjs"},
+}
 
 // isJSImportSource reports whether the importing file path looks like a
 // JS/TS source file. Used to gate ResolveDottedImportTargetForJS so the
@@ -3748,7 +3791,9 @@ func buildPlaceholderModuleRestores(records []types.EntityRecord, prunable []boo
 // extractor's resolveRelativeImport so module derivation and import
 // resolution agree on which extension wins. The replacement step is
 // what makes TypeScript's Node16/NodeNext ESM convention — importing
-// `./foo.js` to reach `foo.ts` — resolve (#7272). Non-relative specifiers (anything
+// `./foo.js` to reach `foo.ts` — resolve (#7272). Replacement is
+// scoped to the specifier extension's family, so `./x.mjs` reaches
+// `x.mts`/`x.mjs` and never `x.ts`. Non-relative specifiers (anything
 // not starting with `./` or `../`) and empty importers return ok=false
 // — those are bare-name or alias-resolved imports and the dotted-import
 // resolver already handled them in ResolveImports.
@@ -3779,21 +3824,31 @@ func resolveRelativeImportTarget(importer, module string, carrierIDByPath map[st
 	// edge landed in bug-extractor (~113 of ~120 "bad" edges in the
 	// reporter's NestJS backend).
 	//
-	// Strip ONE trailing canonical extension, then try each canonical
-	// extension as a replacement. For an extensionless specifier the
-	// strip is a no-op (stem == base), so this single loop subsumes the
-	// old append-only fallback — no separate branch is needed. Only a
-	// CANONICAL extension is stripped: `./data.json` keeps its stem, so
-	// a JSON asset never binds to a same-named `.ts` module, and
-	// `./foo.min.js` strips to `foo.min`, not `foo`.
+	// Strip ONE trailing canonical extension, then try that extension's
+	// family as a replacement (see jsExtensionReplacements). For an
+	// extensionless specifier the strip is a no-op (stem == base) and
+	// the replacement set stays the full jsExtensions list, so this
+	// single loop subsumes the old append-only fallback — no separate
+	// branch is needed.
+	//
+	// Exactly ONE extension is stripped, and only a CANONICAL one:
+	//   - `./data.json` keeps its whole stem, so a JSON asset never
+	//     binds to a same-named `.ts` module;
+	//   - `./foo.min.js` strips to `foo.min`, not `foo`;
+	//   - `./a.ts.js` strips to `a.ts`, not `a`, so it does NOT reach a
+	//     carrier named `a.ts`.
 	stem := base
+	replacements := jsExtensions
 	for _, ext := range jsExtensions {
 		if strings.HasSuffix(base, ext) {
 			stem = strings.TrimSuffix(base, ext)
+			if family, ok := jsExtensionReplacements[ext]; ok {
+				replacements = family
+			}
 			break
 		}
 	}
-	for _, ext := range jsExtensions {
+	for _, ext := range replacements {
 		if id, ok := carrierIDByPath[stem+ext]; ok {
 			return id, true
 		}
