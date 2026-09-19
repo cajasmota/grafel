@@ -316,6 +316,23 @@ REF_MAJOR_DOTTED = re.compile(r"^([0-9]+)(?:\.[0-9]+)+$")
 # retired length threshold, and with one phrase per cause those sentences went
 # unasserted the moment the derived control replaced the hand-written one —
 # measured, two mutants deleting them were ALIVE.
+#
+# WHAT THIS TABLE STILL CANNOT SEE, measured rather than assumed. A site tagged
+# with the WRONG cause is caught in almost every form: a naive copy-paste
+# mis-tag leaves the donor cause unfired, and leg 2's set equality is
+# bidirectional, so it dies. What survives is a PERMUTATION between two causes
+# that are indistinguishable in the output — `floor_workflows` <-> `floor_pins`
+# here, because `Verdict.causes` is consumed only by `__bool__` and is never
+# rendered, and `evidence_stale_at_min` <-> `evidence_stale_below_min` in the
+# refresh, which share one printed label. Both swaps are genuinely unobservable
+# today: nothing downstream can tell the two apart.
+#
+# That is a property of the CONSUMERS, not of this table, and it expires the
+# moment either changes. The day the gate RENDERS its causes — a `--why` flag, a
+# summary line naming them, anything that reads `Verdict.causes` — the swap
+# becomes a wrong message and needs a control asserting which cause a given
+# failure raises. Same for the refresh the day its two evidence arms get
+# distinct labels. Do not read the silence here as "mis-tagging is caught".
 FAILURE_CAUSES: dict[str, tuple[str, ...]] = {
     "below_minimum": ("below its action's first node24 major",),
     "unknown_action": ("no ACTION_RUNTIMES row",),

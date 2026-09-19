@@ -806,8 +806,13 @@ class GateTest(unittest.TestCase):
     #   1. no failure may be raised outside the table  (a new path is caught)
     #   2. every table cause is reachable from the code (a row cannot go stale)
     #   3. every table phrase is in the host header     (prose cannot fall behind)
-    # Adding a failure path without documenting it now fails automatically,
-    # because there is nowhere to add one that leg 3 does not then see.
+    # Adding a failure path without documenting it now fails automatically:
+    # leg 1 closes every way to leave with a non-zero status (the retired flag,
+    # `sys.exit`, an extra `return 1`, and reaching around `fail()` into
+    # `Verdict.causes`), so a new exit must go through the table, and leg 3
+    # then requires a header sentence for it. That claim was FALSE when first
+    # written — leg 1 constrained only the retired shape, and four other
+    # escapes were green. It is asserted now rather than asserted about.
 
     # The two tagging forms, both read from source. The gate tags a violation
     # where it is BUILT (`violations.append((cause, text))`) and everything
@@ -832,22 +837,56 @@ class GateTest(unittest.TestCase):
         return found
 
     def test_no_failure_is_raised_outside_the_cause_table(self) -> None:
-        """LEG 1 — the automatic part. A new failure path cannot be added in the
-        shape every existing one used to have.
+        """LEG 1 — the automatic part: there must be NO WAY to leave with a
+        non-zero status that the table has not seen.
 
-        Both scripts funnel: the gate through `Verdict.fail`, the refresh
-        through `record`. The bare forms are asserted ABSENT, and the funnels
-        asserted PRESENT — otherwise this passes on a file with no failure
-        paths at all, which is the vacuous direction.
+        The first version of this asserted only that the RETIRED shape
+        (`failed = True`) was gone, and a floor on the funnel calls. That left
+        four undocumented exit-1 shapes passing every control in this file:
+        `sys.exit(1)` anywhere in either script, a bare `return 1` in either
+        `main()`, and `verdict.causes.add(...)` reaching around `fail()`. Two
+        docstrings — this file's and the gate's FAILURE_CAUSES banner — claimed
+        there was nowhere to add one. There were four. Prose asserting what no
+        test observes, in the control built to stop exactly that.
         """
         gate_src = open(GATE, encoding="utf-8").read()
         refresh_src = open(REFRESH, encoding="utf-8").read()
+
+        # the retired shape
         self.assertNotIn("failed = True", gate_src)
         self.assertNotIn("failed = False", gate_src)
-        self.assertGreaterEqual(gate_src.count("verdict.fail("), 7)
+
+        # no process-level exit at all: every status leaves through main()'s
+        # single return, so `sys.exit(1)` is an escape by construction. The
+        # module tail is `sys.exit(main())`, which is not a literal 1.
+        for name, src in (("gate", gate_src), ("refresh", refresh_src)):
+            with self.subTest(script=name):
+                self.assertNotIn("sys.exit(1)", src)
+                self.assertNotIn("sys.exit(2)", src)
+                self.assertNotIn("os._exit", src)
+
+        # EXACT counts, not floors: a new `return 1` is a new undocumented exit.
+        self.assertEqual(
+            gate_src.count("return 1"), 1,
+            "the gate has exactly one exit-1 site and it must be the verdict",
+        )
         self.assertIn("return 1 if verdict else 0", gate_src)
-        # the refresh's only literal append is the one inside record() itself
-        self.assertEqual(refresh_src.count("drift.append("), 1)
+        self.assertEqual(
+            refresh_src.count("return 1"), 2,
+            "the refresh has exactly two exit-1 sites: the cut-short path and "
+            "the drift path. A third is an exit the table has not seen.",
+        )
+
+        # `fail()` cannot be reached around. The set is written in exactly one
+        # place — inside Verdict — and read nowhere else.
+        self.assertEqual(gate_src.count("causes.add("), 1)
+        self.assertIn("        self.causes.add(cause)", gate_src)
+        self.assertNotIn("verdict.causes", gate_src)
+
+        # the funnels must EXIST, or all of the above passes on a script with
+        # no failure paths at all — the vacuous direction
+        self.assertGreaterEqual(gate_src.count("verdict.fail("), 7)
+        self.assertEqual(refresh_src.count("drift.append("), 1)  # inside record()
         self.assertGreaterEqual(refresh_src.count("record(\n"), 6)
 
     def test_every_cause_in_the_table_is_reachable(self) -> None:
@@ -899,6 +938,18 @@ class GateTest(unittest.TestCase):
         start = next(i for i, ln in enumerate(lines) if start_marker in ln)
         end = len(lines)
         for i in range(start + 1, len(lines)):
+            # END OF THE SECTION, not end of the banner. Stopping only at the
+            # first non-comment line is a section boundary ONLY when the section
+            # happens to be last: both headers are one contiguous comment block,
+            # so `SECOND JOB` in grammar-freshness.yml ran from line 10 to 85 and
+            # swallowed the whole THIRD JOB section. Measured: moving
+            # "deprecated or non-Node runtime" out of the refresh's own clause
+            # and into the REPORT job's prose left the suite GREEN — the drift
+            # cause "documented" by a different job's paragraph, which is the
+            # very finding this slice was introduced to fix for the gate.
+            if lines[i].startswith("# ── "):
+                end = i
+                break
             if not lines[i].startswith("#"):
                 end = i
                 break
@@ -924,6 +975,24 @@ class GateTest(unittest.TestCase):
         self.assertIn("action-runtime-refresh` exit 1 means one of", per_sec)
         self.assertNotIn("grammars.lock, checks each upstream", per_sec)
         self.assertGreater(len(per_sec.splitlines()), 20)
+
+        # THE END BOUNDARY. Everything above pins that EARLIER siblings are
+        # excluded — which they are by construction, since the slice starts at
+        # the marker; those assertions could never have failed. The end was
+        # never tested, and it was the broken one: this section is followed by
+        # another, and the slice ran straight through it.
+        self.assertNotIn("action-runtime-refresh-report", per_sec)
+        self.assertNotIn("THIRD JOB: the drift report", per_sec)
+        self.assertNotIn("upsert-tracking-issue.sh", per_sec)
+        self.assertLess(len(per_sec.splitlines()), 60)
+        # and the gate's section, which is last today and so would not notice a
+        # missing end boundary at all — a synthetic successor must be excluded
+        gate_all = open(HOST, encoding="utf-8").read().splitlines()
+        marker_lines = [i for i, ln in enumerate(gate_all) if ln.startswith("# ── ")]
+        self.assertGreaterEqual(
+            len(marker_lines), 2, "premise: the host really does use section banners"
+        )
+        self.assertNotIn("SECOND JOB: workflow-event-gate", gate_sec)
 
     def test_every_cause_is_documented_in_its_host_failure_list(self) -> None:
         """LEG 3 — the leg that kept rotting, now derived.
