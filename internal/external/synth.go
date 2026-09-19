@@ -204,6 +204,29 @@ func Synthesize(doc *graph.Document) Stats {
 		}
 	}
 
+	// #7274 — internal JS/TS directory roots. Same guard, same reason: the
+	// slash-bearing JS/TS catch-all in classifyExternal must not turn an
+	// unresolved alias/baseUrl import ("components/Button") into an npm
+	// placeholder when the repo itself owns that directory.
+	// Population is keyed on the SOURCE FILE EXTENSION, not entity.Language.
+	// A components/ directory holding only .vue / .svelte / generated files
+	// would otherwise never register, leaving the guard blind exactly where
+	// a baseUrl alias points; and the named-import route already classifies
+	// "tsx"/"jsx" as JS while entity.Language says "typescript", so the two
+	// routes disagreed about what JS is. The extension is the one signal
+	// both agree on. Residual gap, accepted: a directory whose files grafel
+	// does not index at all contributes nothing, so an alias into it is
+	// still classified as external.
+	internalJSRoots := make(map[string]bool)
+	for k := range doc.Entities {
+		if !isJSFamilySourceFile(doc.Entities[k].SourceFile) {
+			continue
+		}
+		for _, root := range jsFileRoots(doc.Entities[k].SourceFile) {
+			internalJSRoots[root] = true
+		}
+	}
+
 	// #4700-#4704 — per-language internal-root sets. The same false-positive
 	// class that #4695 (TS/JS) and #4699 (Python) closed exists for every
 	// ecosystem with a third-party dependency surface: an unresolved
@@ -277,6 +300,7 @@ func Synthesize(doc *graph.Document) Stats {
 		golang: internalGoRoots,
 		rust:   internalRustRoots,
 		csharp: internalCsharpRoots,
+		js:     internalJSRoots,
 	})
 
 	// #6337 — every name a real (non-external) indexed entity carries. The
@@ -375,6 +399,7 @@ func Synthesize(doc *graph.Document) Stats {
 			golang: internalGoRoots,
 			rust:   internalRustRoots,
 			csharp: internalCsharpRoots,
+			js:     internalJSRoots,
 
 			inTreeNames: inTreeNames,
 		})
@@ -995,6 +1020,12 @@ type internalRoots struct {
 	golang map[string]bool
 	rust   map[string]bool
 	csharp map[string]bool
+	// js is the set of top-level directory roots owned by this repo's
+	// JS/TS sources (#7274). A non-relative import whose root IS one of
+	// them ("components/Button" in a repo with a components/ directory)
+	// is an alias/baseUrl import that failed to resolve — a fidelity bug,
+	// never an npm package. Mirrors python/java/ruby/golang/rust/csharp.
+	js map[string]bool
 	// inTreeNames is every name an indexed (non-external) entity carries,
 	// plus the case-folded half for VB.NET only. #6337's mask guard — see
 	// vbnetHierarchyExternal and inTreeNameSet. Not a "root" set like the
@@ -1434,6 +1465,66 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		}
 		if name == "" {
 			return "", "", false
+		}
+	}
+
+	// #7274 — npm specifiers that carry a path separator. Two distinct
+	// mechanisms used to drop these before jsExternalPackageRoot (the
+	// JS/TS catch-all, ~300 lines below) ever saw them:
+	//
+	//   1. UNSCOPED with a subpath ("better-auth/node",
+	//      "better-auth/adapters/prisma") — killed by the language-agnostic
+	//      path-separator reject below. Bare "better-auth" has no slash, so
+	//      it resolved fine; that is why the observed corpus data split
+	//      along "has a subpath".
+	//   2. SCOPED ("@base-ui/react", "@base-ui/react/toast") — killed by the
+	//      scoped-npm gate immediately below, which collapses to "@scope/pkg"
+	//      (stripping any subpath itself) and then requires allowlist
+	//      membership. Success turned ENTIRELY on the static allowlist, with
+	//      or without a subpath: "@prisma/client/edge" worked, "@base-ui/react"
+	//      did not. The subpath was never the discriminator here.
+	//
+	// Both shapes landed in ImportFormatOther — the same audit bucket a
+	// genuinely malformed reference falls into — so real third-party
+	// dependencies read as extraction bugs.
+	//
+	// Fix: run the existing JS/TS catch-all on slash-bearing names BEFORE
+	// either reject. Deliberately narrow:
+	//   - lang-gated to javascript/typescript, so the path-separator reject
+	//     keeps governing Go import paths, Java FQNs, Python dotted modules,
+	//     file paths and URLs exactly as before;
+	//   - relKind-gated to IMPORTS, so ambiguous bare CALLS/REFERENCES
+	//     operands (which may be local symbols) are untouched;
+	//   - gated on ContainsAny(spec, "/\\") where spec is the SAME string
+	//     jsExternalPackageRoot classifies (jsSpecifierFor: import_path when
+	//     the extractor stamped one, else the stub), so slash-free
+	//     specifiers keep their existing route through every intermediate
+	//     branch down to the original jsExternalPackageRoot call site, and
+	//     this branch can only change the answer for specifiers that are
+	//     rejected today. Gating on `name` while classifying `import_path`
+	//     made that invariant true only by coincidence (F1). The raw `stub`
+	//     is used rather than the kind-prefix-stripped `name` for the same
+	//     reason: stripping turns "pkg:x/sub" into the legal-looking "x/sub",
+	//     and an import specifier is never a kind-tagged stub;
+	//   - the root must be a legal npm package name (isLegalNpmImportSpecifier),
+	//     so a malformed reference still surfaces as an extraction bug
+	//     instead of being handed a placeholder — the #7274 harm inverted.
+	//
+	// The allowlist is intentionally NOT consulted: npm has an unbounded
+	// number of scopes, so a static list can never be the gate for "is this
+	// external at all" (it still earns its keep downstream, deciding
+	// ExternalKnown vs ExternalUnknown). Guard against masking a genuinely
+	// internal import that merely failed alias resolution ("components/Button"
+	// in a repo that owns a components/ directory) via internal.js, the
+	// JS/TS sibling of internalPyRoots (#4699) and friends.
+	if lang == "javascript" || lang == "typescript" {
+		if spec := jsSpecifierFor(stub, relProps); relKind == string(types.RelationshipKindImports) &&
+			strings.ContainsAny(spec, "/\\") {
+			if pkg, ok := jsExternalPackageRoot(spec, nil); ok &&
+				isLegalNpmImportSpecifier(spec, pkg) &&
+				!internal.js[strings.ToLower(pkg)] {
+				return pkg, "package", true
+			}
 		}
 	}
 
@@ -2598,6 +2689,126 @@ func scopedNpmRoot(s string) (string, bool) {
 	return "@" + scope + "/" + pkg, true
 }
 
+// jsSpecifierFor returns the string a JS/TS IMPORTS edge is actually
+// classified on: the verbatim specifier the extractor stamps in
+// Properties["import_path"] when present, else the dotted-module stub.
+//
+// Extracted so the #7274 call site can gate on the SAME string
+// jsExternalPackageRoot classifies. Gating on the stub while classifying
+// import_path made the branch's safety invariant ("can only change the
+// answer for inputs rejected today") true only by coincidence: a stub of
+// "@prisma/client" with import_path "lodash/fp" passed a stub-based
+// separator gate and then classified the unrelated import_path.
+func jsSpecifierFor(stub string, relProps map[string]string) string {
+	spec := stub
+	if relProps != nil {
+		if ip := strings.TrimSpace(relProps["import_path"]); ip != "" {
+			spec = ip
+		}
+	}
+	return strings.TrimSpace(spec)
+}
+
+// isLegalNpmImportSpecifier reports whether spec/root pass npm's package
+// naming rules strictly enough to be worth an ext: placeholder (#7274).
+//
+// The #7274 branch classifies slash-bearing specifiers that every earlier
+// reject used to drop, which puts genuinely malformed references
+// (".hidden/x", "..x/y", "a//b", "pkg/", "com.example.Foo/Bar",
+// "github.com/x") in reach. Handing those an ext: placeholder is the #7274
+// harm with the sign flipped: #7274 is about working dependencies being
+// mis-counted as extraction bugs, and letting malformed references stop
+// counting as bugs HIDES real defects rather than inflating a number.
+// So the root must look like a package someone could actually install.
+//
+// Rules, from npm's documented name grammar and validate-npm-package-name:
+//   - no empty path segment and no trailing '/' (spec-level);
+//   - length <= 214;
+//   - no leading '.' or '_' (npm errors on both);
+//   - URL-safe subset only: [a-z0-9._-];
+//   - lowercase only — npm has refused new mixed-case names for years.
+//
+// Two deliberate departures, each trading recall for the safe bias this
+// file prefers (an unclassified import keeps counting as a bug, which is
+// visible; a wrong placeholder is not):
+//
+//   - Leading '-' is rejected although validate-npm-package-name permits
+//     it. A specifier starting with '-' is overwhelmingly extractor
+//     residue (a CLI flag, a diff marker) rather than a dependency. Cost:
+//     a legal-but-vanishingly-rare package name stays a bug.
+//   - Mixed case is rejected, so legacy registry names that predate the
+//     rule (JSONStream, Base64) stay bugs when imported with a subpath.
+//   - A DOTTED root must additionally be on the allowlist. "github.com/x"
+//     and "socket.io/client" are syntactically identical — a dotted first
+//     segment is either a module host or a package name and nothing in the
+//     string says which. The allowlist is used here only to disambiguate
+//     that genuinely ambiguous alphabet, not as the gate for the whole
+//     population (see the branch comment). Cost: a non-allowlisted dotted
+//     package such as socket.io keeps counting as a bug, exactly as it
+//     does on the base revision — this is a smaller improvement, not a
+//     regression. The cost applies to SCOPED roots too, and the scope key
+//     is what decides: "@socket.io/component-emitter/x" is rejected
+//     because isKnownExternalPackage falls back to the uncatalogued
+//     "@socket.io" scope, despite being a very widely installed package.
+//
+// Known wart, not a regression: an allowlisted DOTTED root canonicalises
+// differently by spelling — "lodash.debounce" folds to ext:lodash through
+// the dotted-module branch below, while "lodash.debounce/x" resolves here
+// to ext:lodash.debounce, so one package can hold two placeholders. The
+// slash spelling never reached any classifier before #7274, so this is
+// newly created rather than newly broken; canonicalising the pair is
+// tracked separately.
+func isLegalNpmImportSpecifier(spec, root string) bool {
+	if spec == "" || root == "" {
+		return false
+	}
+	if strings.HasSuffix(spec, "/") || strings.Contains(spec, "//") {
+		return false
+	}
+	// Validate each name segment of the root: "pkg" or "@scope/pkg".
+	segs := []string{root}
+	if strings.HasPrefix(root, "@") {
+		slash := strings.IndexByte(root, '/')
+		if slash <= 1 || slash == len(root)-1 {
+			return false
+		}
+		segs = []string{root[1:slash], root[slash+1:]}
+	}
+	for _, seg := range segs {
+		if !isLegalNpmName(seg) {
+			return false
+		}
+	}
+	if strings.ContainsRune(root, '.') && !isKnownExternalPackage(root) {
+		return false
+	}
+	return true
+}
+
+// isLegalNpmName reports whether a single npm name segment (a package name
+// or a scope without its '@') satisfies the rules described on
+// isLegalNpmImportSpecifier.
+func isLegalNpmName(s string) bool {
+	if s == "" || len(s) > 214 {
+		return false
+	}
+	switch s[0] {
+	case '.', '_', '-':
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '.' || c == '-' || c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // jsExternalPackageRoot derives the canonical npm package root for a
 // JS/TS IMPORTS edge that survived relative + alias resolution, returning
 // (root, true) when the specifier is a legal third-party npm package
@@ -2617,13 +2828,7 @@ func scopedNpmRoot(s string) (string, bool) {
 // isn't (whitespace, control chars, structural-ref residue) is rejected so
 // genuinely malformed stubs still surface as bugs.
 func jsExternalPackageRoot(stub string, relProps map[string]string) (string, bool) {
-	spec := stub
-	if relProps != nil {
-		if ip := strings.TrimSpace(relProps["import_path"]); ip != "" {
-			spec = ip
-		}
-	}
-	spec = strings.TrimSpace(spec)
+	spec := jsSpecifierFor(stub, relProps)
 	if spec == "" {
 		return "", false
 	}
@@ -2689,6 +2894,129 @@ func isNpmSegment(s string) bool {
 		}
 	}
 	return true
+}
+
+// isJSFamilySourceFile reports whether a source path is part of the JS/TS
+// family by extension — the population signal for internalJSRoots (#7274).
+// Covers the component-file formats whose entities may carry a non-JS
+// Language ("vue", "svelte") but whose directories are still first-party
+// JS/TS source roots.
+func isJSFamilySourceFile(path string) bool {
+	i := strings.LastIndexByte(path, '.')
+	if i < 0 {
+		return false
+	}
+	switch strings.ToLower(path[i:]) {
+	case ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".vue", ".svelte":
+		return true
+	}
+	return false
+}
+
+// jsFileRoots returns the top-level directory roots a JS/TS source file
+// contributes to the repo-owned root set (#7274). Both the raw leading
+// segment and the segment after a well-known source-root prefix are
+// recorded, because a project may import a same-repo module either way
+// depending on its tsconfig `baseUrl` / bundler root:
+//
+//	"src/components/Button.tsx"  → ["src", "components"]
+//	"components/Button.tsx"      → ["components"]
+//	"packages/ui/src/index.ts"   → ["packages", "ui", "src"]
+//	"index.ts"                   → nil  (a root-level FILE is not a root)
+//
+// Returns nil for an empty path or a file that sits at the repo root —
+// only directories can collide with an unscoped npm package root.
+func jsFileRoots(path string) []string {
+	s := strings.TrimSpace(path)
+	if s == "" {
+		return nil
+	}
+	s = strings.ReplaceAll(s, "\\", "/")
+	s = strings.TrimPrefix(s, "./")
+	s = strings.TrimPrefix(s, "/")
+	segs := strings.Split(s, "/")
+	if len(segs) < 2 || segs[0] == "" {
+		// No directory component — the path is a bare filename.
+		return nil
+	}
+	// Walk the CONTAINER PREFIX: consume leading segments that are source-root
+	// wrappers (and, under a monorepo container, the package directory that
+	// follows), recording each, then record the first segment that is not a
+	// container and stop.
+	//
+	// Stopping at the first non-container is what keeps the guard from
+	// swallowing vendored trees: "vendor/better-auth/index.js" yields
+	// ["vendor"] only, so a real `import "better-auth/node"` still
+	// classifies as external. Promoting the second segment unconditionally
+	// would register `better-auth` as repo-owned and re-create the #7274
+	// symptom.
+	//
+	// The example is deliberately an UNCATALOGUED package. An allowlisted
+	// one ("vendor/react/...") would prove nothing here: a known package
+	// root is classified by the earlier allowlist branch (isGoImportPath ->
+	// isKnownExternalPackage, ~150 lines above this file's #7274 branch),
+	// which never consults the internal-root set at all. For those names
+	// this guard is not the mechanism, so a fixture built on one grades
+	// nothing.
+	//
+	// Walking the WHOLE prefix rather than one level is what makes the guard
+	// cover more than a flat src/ layout: "packages/ui/src/components/x.tsx"
+	// yields [packages ui src components], so an unresolved
+	// `import "components/Button"` in a monorepo is still withheld. One
+	// wrapper level covered flat src/ and silently vanished everywhere else.
+	//
+	// The set is pinned by TestJSSourceWrapperDirs_PinnedContents_7274; read
+	// its doc comment before editing.
+	var roots []string
+	for i := 0; i < len(segs)-1; i++ { // never the trailing filename
+		seg := segs[i]
+		if seg == "" {
+			break
+		}
+		roots = append(roots, seg)
+		if !jsSourceWrapperDirs[strings.ToLower(seg)] {
+			break
+		}
+		// packages/ and apps/ hold one extra level — the package directory —
+		// whose own sources typically sit under a further src/. Record it and
+		// keep walking.
+		if jsMonorepoContainerDirs[strings.ToLower(seg)] && i+1 < len(segs)-1 {
+			i++
+			if segs[i] == "" {
+				break
+			}
+			roots = append(roots, segs[i])
+		}
+	}
+	// Case-fold: the wrapper lookup and the internal-root lookup are both
+	// exact-match, so an "Src/" or "App/" layout used to lose the guard
+	// entirely. Lookups lower-case too (npm names are lower-case by rule —
+	// see isLegalNpmName — so folding cannot create a new collision).
+	for i := range roots {
+		roots[i] = strings.ToLower(roots[i])
+	}
+	return roots
+}
+
+// jsMonorepoContainerDirs are the wrapper directories under which the NEXT
+// segment is a package directory rather than an importable root, so
+// jsFileRoots keeps walking past it. Subset of jsSourceWrapperDirs.
+var jsMonorepoContainerDirs = map[string]bool{
+	"packages": true,
+	"apps":     true,
+}
+
+// jsSourceWrapperDirs is the set of directory names that hold FIRST-PARTY
+// JS/TS source rather than being a package root themselves, so their child
+// directory is the name a same-repo import would use. Deliberately small:
+// each entry costs the ability to classify an npm package of that child's
+// name as external. See TestJSSourceWrapperDirs_PinnedContents_7274.
+var jsSourceWrapperDirs = map[string]bool{
+	"src":      true,
+	"lib":      true,
+	"app":      true,
+	"packages": true,
+	"apps":     true,
 }
 
 // pythonFileRoot returns the top-level package root for a Python source
