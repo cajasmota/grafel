@@ -216,11 +216,36 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 		},
 	}
 
+	// unixOnlyRows states, independently of the unixOnly flags themselves, how
+	// many rows depend on isTmpPath's hard-coded unix exclusion zone. It is
+	// deliberately a second, separate statement of the same fact: if a row
+	// gains or loses the flag without this number moving, the cross-check
+	// below fails instead of the table quietly grading less.
+	const unixOnlyRows = 3
+
+	flagged := 0
+	for _, tc := range tests {
+		if tc.unixOnly {
+			flagged++
+		}
+	}
+	if flagged != unixOnlyRows {
+		t.Fatalf("%d rows are marked unixOnly, want %d — change unixOnlyRows deliberately, or drop the flag",
+			flagged, unixOnlyRows)
+	}
+
+	wantRun := len(tests)
+	if runtime.GOOS == "windows" {
+		wantRun -= unixOnlyRows
+	}
+
+	ran := 0
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.unixOnly && runtime.GOOS == "windows" {
 				t.Skip("isTmpPath's exclusion zone is a hard-coded unix path; see unixOnly")
 			}
+			ran++
 			withProcs(t, tc.procs, nil)
 			gotPID, gotExe := findCanonicalDaemon()
 			if gotPID != tc.wantPID || gotExe != tc.wantExe {
@@ -228,6 +253,17 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 					gotPID, gotExe, tc.wantPID, tc.wantExe)
 			}
 		})
+	}
+
+	// A skipped subtest reports SUCCESS. Without this guard the skip predicate
+	// could widen — to `if tc.unixOnly`, or to every row — and the package
+	// would stay green while grading nothing, which is the same hole as a
+	// t.Skipf standing in for a t.Fatalf. Assert how many rows actually ran on
+	// this platform, so skipping more than the unix/windows split justifies is
+	// loud rather than invisible.
+	if ran != wantRun {
+		t.Errorf("%d of %d rows ran on %s, want %d — a widened skip grades less while still reporting ok",
+			ran, len(tests), runtime.GOOS, wantRun)
 	}
 }
 
@@ -240,6 +276,14 @@ func TestFindCanonicalDaemon_Classification(t *testing.T) {
 // and every "a genuine daemon is still matched" row was skipped by the
 // absoluteness guard. This test asserts both halves of that difference rather
 // than leaving it to be rediscovered by CI.
+//
+// It has a platform branch but deliberately NO skip, so it does not need the
+// executed-row guard that TestFindCanonicalDaemon_Classification carries: both
+// branches end in real assertions, and the two platforms expect opposite
+// verdicts on the same fixture (windows: not canonical; unix: canonical). That
+// makes an inverted or mis-targeted branch fail on whichever platform runs it
+// instead of passing silently — measured, by inverting the condition and
+// confirming the test goes red rather than green.
 func TestFindCanonicalDaemon_AbsolutenessIsPlatformSpecific(t *testing.T) {
 	const pid = 62425
 
