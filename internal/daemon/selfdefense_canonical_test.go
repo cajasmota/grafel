@@ -26,31 +26,27 @@ package daemon
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/process"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
-// absFixture makes a unix-style absolute test path absolute for the RUNNING
-// platform, so a fixture is classified by the guard under test rather than
-// rejected wholesale by filepath.IsAbs on windows.
+// absFixture is testsupport.AbsFixture under this package's historical name.
 //
-// filepath.Join("/", "usr", …) does NOT work for this: it yields `\usr\…`,
-// which still has no volume and is still not absolute on windows. A volume is
-// required, so one is taken from os.TempDir() (absolute on every platform).
-func absFixture(path string) string {
-	if runtime.GOOS != "windows" {
-		return path
-	}
-	vol := filepath.VolumeName(os.TempDir())
-	if vol == "" {
-		vol = "C:"
-	}
-	return vol + path
-}
+// It makes a unix-style absolute test path absolute for the RUNNING platform,
+// so a fixture is classified by the guard under test rather than rejected
+// wholesale by filepath.IsAbs on windows. The implementation moved to
+// internal/testsupport on #7268, when it turned out internal/cli and
+// internal/dashboard had each grown their own copy of it for the same reason —
+// three copies of a platform helper being how the drift starts. The alias stays
+// because this file's rows read better short.
+//
+// It must NOT be used on a /tmp-PREFIX fixture; see testsupport.AbsFixture for
+// why that cannot be made portable.
+func absFixture(path string) string { return testsupport.AbsFixture(path) }
 
 // withProcs installs a synthetic process table for the duration of one test.
 func withProcs(t *testing.T, procs []process.Info, err error) {
@@ -296,6 +292,11 @@ func TestFindCanonicalDaemon_AbsolutenessIsPlatformSpecific(t *testing.T) {
 	}
 
 	// Absolute on unix only — no volume, so windows says it is relative.
+	//
+	//absfixture:unrouted routing this through absFixture would graft a volume on
+	// and destroy the only thing this test asserts: that a VOLUME-LESS path is
+	// rejected on windows and accepted on unix. It is the one fixture on this
+	// branch that must stay bare.
 	const unixOnlyAbs = "/usr/local/bin/grafel"
 	withProcs(t, []process.Info{{PID: pid, Name: "grafel", Exe: unixOnlyAbs}}, nil)
 	gotPID, gotExe := findCanonicalDaemon()

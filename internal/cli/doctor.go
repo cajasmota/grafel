@@ -372,16 +372,7 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 
 	var stale []staleProcess
 	for _, p := range procs {
-		isStale := false
-		// Stale criterion 1: PPID=1 (launchd/systemd orphan) + binary under /tmp
-		if p.PPID == 1 && p.IsTmp {
-			isStale = true
-		}
-		// Stale criterion 2: daemon process running from a different binary than self
-		if strings.Contains(strings.ToLower(p.Exe), "daemon") && p.Exe != selfExe {
-			isStale = true
-		}
-		if isStale {
+		if isStaleProc(p, selfExe) {
 			stale = append(stale, p)
 		}
 	}
@@ -407,7 +398,7 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 		}
 		fmt.Fprintf(w, "  pid=%-6d ppid=%-6d %s%s%s\n", p.PID, p.PPID, p.Exe, orphanNote, tmpNote)
 		if kill {
-			if kerr := process.Kill(p.PID); kerr != nil {
+			if kerr := killProc(p.PID); kerr != nil {
 				fmt.Fprintf(w, "    kill: %v\n", kerr)
 			} else {
 				fmt.Fprintf(w, "    killed pid %d\n", p.PID)
@@ -421,10 +412,114 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 	return nil
 }
 
+// isStaleProc reports whether a scanned process is a candidate for SIGTERM by
+// `grafel doctor --kill-stale`.
+//
+// It used to live inline in runDoctorStaleDaemons, with a hand-copied twin in
+// doctor_staleness_test.go; the twin was the only thing any test exercised, so
+// the shipped predicate was ungraded. It is production code now and the tests
+// call THIS function.
+func isStaleProc(p staleProcess, selfExe string) bool {
+	// IDENTITY GATE (#7268), a precondition for EVERY criterion below.
+	//
+	// scanGrafelProcs finds its candidates with process.FindByName("grafel"),
+	// which is a case-insensitive substring match over the whole exec path —
+	// it matches any binary that merely LIVES under a directory named after
+	// this project. Both criteria below then decided kill-eligibility from
+	// path properties (a "daemon" substring, a /tmp prefix) that a stranger's
+	// binary can satisfy just as easily:
+	//
+	//   /Users/jane smith/Library/grafel-daemon-helper/bin/helper
+	//
+	// was eligible for SIGTERM. That is the same class of false positive
+	// #1719 fixed on the daemon path, where a project directory named
+	// "grafel" made every node_modules esbuild look canonical; the answer
+	// there was an exact basename match, and this call site simply never
+	// adopted it.
+	//
+	// So ask the identity question with the same gate findCanonicalDaemon
+	// uses, and ask it FIRST. The criteria that follow stay exactly as they
+	// were: the gate can only narrow what they select, never widen it.
+	if !daemon.IsCanonicalBinaryPath(p.Exe) {
+		return false
+	}
+	// Stale criterion 1: PPID=1 (launchd/systemd orphan) + binary under /tmp
+	if p.PPID == 1 && p.IsTmp {
+		return true
+	}
+	// Stale criterion 2: daemon process running from a different binary than self.
+	//
+	// NOT WIDENED HERE, deliberately. "daemon" is an ARGUMENT, not part of the
+	// exec path: a manual fork spawns it as `<bin> daemon` (watcher_ctl.go),
+	// while the INSTALLED service passes `serve` instead (the launchd plist's
+	// ProgramArguments is {BinPath, "serve"}). Either spelling is an argument,
+	// not a path component, while Info.Exe is the executable path on
+	// every platform (/proc/<pid>/exe on Linux, `ps -eo comm` on darwin — the
+	// `ps aux` fallback takes argv[0] only, see #7259). So this substring fires
+	// for a genuine daemon only when its INSTALL DIRECTORY happens to contain
+	// "daemon", and never because the process is a daemon. Replacing it with
+	// the identity gate alone would make every other grafel process — a
+	// concurrent `grafel status`, the user's mcp-bridge — kill-eligible, which
+	// is a widening of a kill path and needs its own decision. Filed as a
+	// finding on #7268 rather than changed under cover of this fix.
+	//
+	// p.Exe != selfExe is string equality, not identity: a daemon started via
+	// a symlink reports the link path while os.Executable resolves it, so the
+	// two can differ for one binary. Self is excluded by PID in
+	// scanGrafelProcs, so this cannot select the running process; the reachable
+	// consequence is that a sibling launched by a different path spelling is
+	// treated as a different binary. The relative-path spelling is closed by
+	// the absoluteness half of the identity gate above. Also a finding, not
+	// fixed here.
+	if strings.Contains(strings.ToLower(p.Exe), "daemon") && p.Exe != selfExe {
+		return true
+	}
+	return false
+}
+
+// findProcs is process.FindByName, indirected through a package-level variable
+// so tests can drive the REAL runDoctorStaleDaemons — selection AND the kill
+// loop's output — with a synthetic process table. Same seam, same reason, as
+// daemon.findProcs (internal/daemon/selfdefense.go).
+//
+// Without it isStaleProc was gradable but its ONLY CONSUMER was not: changing
+// the call site in runDoctorStaleDaemons to `if isStaleProc(p, selfExe) ||
+// p.PID != 0` — SIGTERM to every process FindByName returns, which is exactly
+// the population #7268 exists to protect — left ./internal/cli green. The
+// platform implementations read /proc or shell out to ps, so the only process
+// table a test could otherwise observe is whatever happens to be running on
+// the test machine. Never reassigned in production code.
+var findProcs = process.FindByName
+
+// killProc is process.KillGuarded, indirected for the same reason findProcs is:
+// so the kill BRANCH of runDoctorStaleDaemons can be graded.
+//
+// The DEFAULT is KillGuarded, not Kill, and that is load-bearing. A seam only
+// protects the tests that remember to install it, and round 4 of #7268 asserted
+// in a comment that every test here did — a claim that was false at package
+// scope on the day it was written (doctor_staleness_test.go drove this same
+// function with no seam installed, reaching the real kill seam and the host
+// process table). KillGuarded makes the protection a property of THIS LINE
+// instead: under `go test` it panics naming the pid rather than signalling.
+//
+// Until this existed, no test could reach the SIGTERM path at all — the only
+// safe way to drive the function was kill=false, which skips it — so `killing`
+// vs `would kill`, the error reporting and the "killed pid N" line were all
+// ungraded, and the kill=false guard in the tests was itself the only thing
+// standing between a synthetic process table of invented PIDs (31001+) and
+// SIGTERM to whatever really holds those PIDs on the host. That made the test
+// suite a hazard, not just under-covered. Tests point this at a recorder.
+// Never reassigned in production code.
+var killProc = process.KillGuarded
+
 // scanGrafelProcs uses the cross-platform process package to find all
 // running grafel processes except myPID.
+//
+// On windows this always returns an error: process.FindByName is unsupported
+// there, so the whole stale-daemon scan is unreachable in production on that
+// platform (the findProcs seam deliberately bypasses that for tests).
 func scanGrafelProcs(myPID int) ([]staleProcess, error) {
-	infos, err := process.FindByName("grafel")
+	infos, err := findProcs("grafel")
 	if err != nil {
 		return nil, fmt.Errorf("process scan: %w", err)
 	}
@@ -442,7 +537,16 @@ func scanGrafelProcs(myPID int) ([]staleProcess, error) {
 			PPID:     p.PPID,
 			Exe:      exe,
 			IsOrphan: p.PPID == 1,
-			IsTmp:    strings.HasPrefix(exe, "/tmp/") || exe == "/tmp",
+			// The `|| exe == "/tmp"` arm this used to carry is deleted (#7268).
+			// It was an ungraded permissive branch on a SIGTERM path whose only
+			// defence was a comment: exe == "/tmp" implies
+			// filepath.Base(exe) == "tmp", which is not in
+			// daemon.canonicalBasenames (pinned to exactly {"grafel"}), so
+			// IsCanonicalBinaryPath rejected the path before either reader of
+			// IsTmp — criterion 1 and the printed [/tmp binary] note, both
+			// post-gate — could ever see it. No mutant could kill it and no
+			// fixture could reach it.
+			IsTmp: strings.HasPrefix(exe, "/tmp/"),
 		})
 	}
 	return result, nil

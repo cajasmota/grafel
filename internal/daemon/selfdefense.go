@@ -58,6 +58,44 @@ var canonicalBasenames = map[string]bool{
 	"grafel": true,
 }
 
+// IsCanonicalBinaryPath reports whether exe is an ABSOLUTE executable path
+// whose basename names the grafel binary (canonicalBasenames).
+//
+// It is the identity test findCanonicalDaemon has applied since #1719, lifted
+// out so the OTHER process-table consumers can share it instead of each
+// re-deciding "is this our binary" with a substring search. "Lifted out" is
+// literal: findCanonicalDaemon CALLS this function, it does not keep a second
+// copy of the rule. That is load-bearing — while it did keep one, the two
+// disagreed about "/opt/grafel/" (accepted there, rejected here) and this
+// sentence was false. Two of those
+// consumers — `grafel doctor --kill-stale` (internal/cli) and
+// POST /api/diagnostics/kill-stale (internal/dashboard) — send SIGTERM to what
+// they select, so a path-substring match standing in for identity there means
+// signalling a stranger's process (#7268).
+//
+// Absoluteness is part of the identity, not a separate concern: an unknown or
+// relative path (a bare comm name from the #7211 Exe-empty fallback, or a
+// `./grafel` invocation) cannot be compared against any directory predicate,
+// so it must read as "not established", never as "ours".
+//
+// It deliberately says nothing about WHERE the binary lives or whether it is
+// a daemon rather than a CLI invocation; callers keep their own criteria for
+// that. It only ever narrows them.
+func IsCanonicalBinaryPath(exe string) bool {
+	if !filepath.IsAbs(exe) {
+		return false
+	}
+	// filepath.Base strips a trailing separator, so "/opt/grafel/" — plainly a
+	// DIRECTORY — would otherwise present the basename "grafel" and be accepted
+	// as an executable. No ps/proc reader produces that spelling today, so this
+	// closes a hole rather than a live bug; on a kill path an unreachable
+	// permissive case is still worth refusing.
+	if strings.HasSuffix(exe, string(filepath.Separator)) {
+		return false
+	}
+	return canonicalBasenames[strings.ToLower(filepath.Base(exe))]
+}
+
 // findProcs is process.FindByName, indirected through a package-level variable
 // so tests can drive the REAL findCanonicalDaemon with a synthetic process
 // table. The platform implementations read /proc or shell out to ps, so
@@ -230,20 +268,31 @@ func findCanonicalDaemon() (pid int, exe string) {
 		// services by absolute path, and unreachable in production anyway
 		// because SelfDefenseCheck returns at its !isTmpPath(self) guard on a
 		// platform whose TMPDIR is /var/folders/... rather than /tmp.
-		if !filepath.IsAbs(cmdBin) {
+		// IsCanonicalBinaryPath asks the identity question — absolute path,
+		// exact basename in canonicalBasenames — and is literally the test
+		// this loop used to spell out inline: a filepath.IsAbs guard plus an
+		// exact basename match rather than a substring search on the full
+		// path, because a full-path substring check false-positives on
+		// executables whose *directory* contains "grafel" (the classic case
+		// is an esbuild binary at
+		// webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild when the
+		// project root is named "grafel" — #1719).
+		//
+		// It is CALLED here rather than re-spelled so the two cannot drift.
+		// They already had: the inline version had no trailing-separator
+		// guard, so "/opt/grafel/" — plainly a directory — was accepted here
+		// and rejected by IsCanonicalBinaryPath, while the doc comment on
+		// that function claimed it was this very test lifted out (#7268).
+		// Closing the divergence is the only behaviour change: a path with a
+		// trailing separator is now skipped. Ordering relative to isTmpPath
+		// is immaterial — both are `continue`s and neither has side effects.
+		if !IsCanonicalBinaryPath(cmdBin) {
 			continue
 		}
 		if isTmpPath(cmdBin) {
 			continue // also a temp daemon — not canonical
 		}
-		// Use an exact basename match rather than a substring search on the
-		// full path. A full-path substring check false-positives on executables
-		// whose *directory* contains "grafel" — the classic example is an
-		// esbuild binary at webui-v2/node_modules/@esbuild/darwin-arm64/bin/esbuild
-		// when the project root is named "grafel" (fixes #1719).
-		if canonicalBasenames[strings.ToLower(filepath.Base(cmdBin))] {
-			return p.PID, cmdBin
-		}
+		return p.PID, cmdBin
 	}
 	return 0, ""
 }

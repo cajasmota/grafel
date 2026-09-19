@@ -16,9 +16,11 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/cli"
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -197,6 +199,41 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, reply)
 }
 
+// findProcs is process.FindByName, indirected through a package-level variable
+// so tests can drive the REAL handleDiagnosticsKillStale — selection AND the
+// reply it builds — with a synthetic process table. Same seam, same reason, as
+// daemon.findProcs (internal/daemon/selfdefense.go) and cli.findProcs.
+//
+// Without it isStaleDiagnosticsProc was gradable but its only consumer was
+// not: no test drove this handler at all, so widening the call-site condition
+// to select every process FindByName returns — the population #7268 exists to
+// protect — left ./internal/dashboard green. The platform implementations read
+// /proc or shell out to ps, so the only process table a test could otherwise
+// observe is whatever happens to be running on the test machine. Never
+// reassigned in production code.
+//
+// On windows process.FindByName is unsupported and returns an error, so this
+// handler answers 500 there and the selection below is unreachable in
+// production on that platform (the seam deliberately bypasses that for tests).
+var findProcs = process.FindByName
+
+// killProc is process.KillGuarded, indirected for the same reason findProcs is:
+// so the SIGTERM branch of handleDiagnosticsKillStale can be graded.
+//
+// The DEFAULT is KillGuarded, not Kill: a seam only protects the tests that
+// remember to install it, so the refusal to signal from a test binary is made a
+// property of this line rather than of every future test author's discipline
+// (#7268 round 5 — the round-4 claim that every test installed the seam was
+// false at package scope in the CLI twin).
+//
+// Until this existed, the only thing keeping the test suite from SIGTERMing
+// whatever really holds the synthetic PIDs it invents was `dry_run=true` in the
+// request URL plus the handler's own one-line parse of it — an ungraded line. A
+// regression there turned the tests into a live hazard. Tests point this at a
+// recorder, so the branch can be asserted without signalling anything. Never
+// reassigned in production code.
+var killProc = process.KillGuarded
+
 // handleDiagnosticsKillStale — POST /api/diagnostics/kill-stale
 //
 // Terminates stale grafel daemon processes (PPID=1 + /tmp binary, or a
@@ -212,7 +249,7 @@ func (s *Server) handleDiagnosticsKillStale(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	procs, err := process.FindByName("grafel")
+	procs, err := findProcs("grafel")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "process scan: "+err.Error())
 		return
@@ -227,14 +264,12 @@ func (s *Server) handleDiagnosticsKillStale(w http.ResponseWriter, r *http.Reque
 		if exe == "" {
 			exe = p.Name
 		}
-		isTmp := len(exe) >= 4 && exe[:4] == "/tmp"
-		isDifferentDaemon := containsLower(exe, "daemon") && exe != selfExe
-		if !(p.PPID == 1 && isTmp) && !isDifferentDaemon {
+		if !isStaleDiagnosticsProc(exe, p.PPID, selfExe) {
 			continue
 		}
 		kp := KilledProcess{PID: p.PID, PPID: p.PPID, Exe: exe}
 		if !dryRun {
-			if kerr := process.Kill(p.PID); kerr != nil {
+			if kerr := killProc(p.PID); kerr != nil {
 				kp.KillErr = kerr.Error()
 			} else {
 				kp.Killed = true
@@ -246,6 +281,38 @@ func (s *Server) handleDiagnosticsKillStale(w http.ResponseWriter, r *http.Reque
 		killed = []KilledProcess{}
 	}
 	writeJSON(w, http.StatusOK, KillStaleReply{Killed: killed, DryRun: dryRun})
+}
+
+// isStaleDiagnosticsProc reports whether a scanned process is a candidate for
+// SIGTERM by POST /api/diagnostics/kill-stale.
+//
+// This is the dashboard's copy of internal/cli's isStaleProc — the same two
+// criteria, re-implemented against the same process.FindByName("grafel") scan
+// (#7258 tracks the duplication itself). It carried the same #7268 defect and
+// takes the same fix: daemon.IsCanonicalBinaryPath is a precondition for every
+// criterion, so a stranger's binary that merely lives under a directory named
+// "grafel" — /Users/jane smith/Library/grafel-daemon-helper/bin/helper — is
+// never signalled. The criteria themselves are unchanged and the gate can only
+// narrow what they select.
+//
+// One drift from the CLI twin is closed here: the /tmp test was
+// `exe[:4] == "/tmp"`, which also matched /tmpfoo/... — a prefix the CLI
+// rejects. Narrowed to agree with it. That is the safe direction on a kill
+// path (fewer processes selected) and leaves the two APIs answering the same
+// question the same way.
+func isStaleDiagnosticsProc(exe string, ppid int, selfExe string) bool {
+	if !daemon.IsCanonicalBinaryPath(exe) {
+		return false
+	}
+	// The `|| exe == "/tmp"` arm is deleted (#7268): exe == "/tmp" implies
+	// filepath.Base(exe) == "tmp", not in daemon.canonicalBasenames, so the
+	// identity gate above rejected it before isTmp was ever read. An ungraded
+	// permissive branch on a SIGTERM path, defended only by a comment.
+	isTmp := strings.HasPrefix(exe, "/tmp/")
+	if ppid == 1 && isTmp {
+		return true
+	}
+	return containsLower(exe, "daemon") && exe != selfExe
 }
 
 // handleDiagnosticsForceRescan — POST /api/diagnostics/force-rescan
