@@ -292,6 +292,11 @@ func TestFindCanonicalDaemon_AbsolutenessIsPlatformSpecific(t *testing.T) {
 	}
 
 	// Absolute on unix only — no volume, so windows says it is relative.
+	//
+	//absfixture:unrouted routing this through absFixture would graft a volume on
+	// and destroy the only thing this test asserts: that a VOLUME-LESS path is
+	// rejected on windows and accepted on unix. It is the one fixture on this
+	// branch that must stay bare.
 	const unixOnlyAbs = "/usr/local/bin/grafel"
 	withProcs(t, []process.Info{{PID: pid, Name: "grafel", Exe: unixOnlyAbs}}, nil)
 	gotPID, gotExe := findCanonicalDaemon()

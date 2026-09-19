@@ -8,6 +8,7 @@ package cli
 // logic (isOrphan, isTmp) and the end-to-end scan function.
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
@@ -20,18 +21,39 @@ import (
 // - canonical binary with different path than self → stale (daemon)
 // - same binary → not stale
 func TestStaleProcessClassification(t *testing.T) {
-	selfExe := "/usr/local/bin/grafel"
+	// PLATFORM. THIS TABLE WENT RED ON THE WINDOWS LEG OF PR #7281, and it is
+	// the fourth instance of one defect on this branch. isStaleProc gates every
+	// criterion on daemon.IsCanonicalBinaryPath, which opens with
+	// filepath.IsAbs — and "/usr/local/lib/grafel/daemon/grafel" is absolute on
+	// unix and NOT absolute on windows, which has no volume in it. So both
+	// wantStale:true rows inverted there while every forbidden row passed for
+	// the unrelated reason that nothing looked absolute.
+	//
+	// Three adversarial reviews and seven rounds enumerated these tables BY HAND
+	// and fixed three of them; this one was in none of the lists, and CI found
+	// it in twenty minutes. internal/testsupport.ScanUnroutedFixtures now
+	// derives the list from code shape instead, and TestNoUnroutedFixtures_7268
+	// in this package fails if a fifth table is ever added unrouted.
+	selfExe := testsupport.AbsFixture("/usr/local/bin/grafel")
 
 	cases := []struct {
 		name      string
 		proc      staleProcess
 		wantStale bool
+		// tmpPrefix marks a row whose Exe carries a literal "/tmp" prefix.
+		// Such a row CANNOT be routed through AbsFixture — criterion 1 is
+		// strings.HasPrefix(exe, "/tmp/"), a byte comparison, so grafting a
+		// volume on moves the fixture off the boundary — and it is therefore
+		// not absolute on windows and is SKIPPED there rather than asserted.
+		// Same flag, same meaning, as the three sibling tables.
+		tmpPrefix bool
 	}{
 		{
 			name: "orphan /tmp daemon",
 			proc: staleProcess{PID: 1, PPID: 1, Exe: "/tmp/arch-test/grafel",
 				IsOrphan: true, IsTmp: true},
 			wantStale: true,
+			tmpPrefix: true,
 		},
 		{
 			// A grafel binary installed under a directory named "daemon",
@@ -57,6 +79,12 @@ func TestStaleProcessClassification(t *testing.T) {
 			wantStale: false,
 		},
 		{
+			// Exe is selfExe, which is ALREADY routed above and gets routed
+			// again by the loop. That is safe precisely because AbsFixture is
+			// idempotent (#7268 round 6): without that, this row would become
+			// "C:C:/usr/local/bin/grafel", which windows' filepath.IsAbs
+			// rejects, and the row would fail as "not absolute" on a path that
+			// visibly starts with a volume.
 			name: "same binary as self — not stale",
 			proc: staleProcess{PID: 3, PPID: 100, Exe: selfExe,
 				IsOrphan: false, IsTmp: false},
@@ -72,13 +100,47 @@ func TestStaleProcessClassification(t *testing.T) {
 		},
 	}
 
+	// COUNT FLOOR. A skipped subtest reports SUCCESS, and so does a row that
+	// quietly stopped being routed. Declared so that adding the flag to a row —
+	// which retires that row's coverage on every platform's windows leg — fails
+	// loudly instead of passing quietly. Same pattern as the sibling tables.
+	const tmpPrefixRows = 1
+	flagged := 0
+	for _, tc := range cases {
+		if tc.tmpPrefix {
+			flagged++
+		}
+	}
+	if flagged != tmpPrefixRows {
+		t.Fatalf("%d rows are marked tmpPrefix, want %d — change the constant deliberately, "+
+			"or drop the flag", flagged, tmpPrefixRows)
+	}
+	wantRun := len(cases)
+	if runtime.GOOS == "windows" {
+		wantRun -= tmpPrefixRows
+	}
+	ran := 0
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := isStaleProc(tc.proc, selfExe)
+			if tc.tmpPrefix && runtime.GOOS == "windows" {
+				t.Skip("criterion 1 is a hard-coded unix /tmp prefix; see tmpPrefix")
+			}
+			ran++
+			proc := tc.proc
+			if !tc.tmpPrefix {
+				proc.Exe = testsupport.AbsFixture(proc.Exe)
+			}
+			got := isStaleProc(proc, selfExe)
 			if got != tc.wantStale {
-				t.Errorf("isStaleProc(%+v, %q) = %v, want %v", tc.proc, selfExe, got, tc.wantStale)
+				t.Errorf("isStaleProc(%+v, %q) = %v, want %v", proc, selfExe, got, tc.wantStale)
 			}
 		})
+	}
+
+	if ran != wantRun {
+		t.Errorf("%d of %d rows ran on %s, want %d — a widened skip grades less while still reporting ok",
+			ran, len(cases), runtime.GOOS, wantRun)
 	}
 }
 
