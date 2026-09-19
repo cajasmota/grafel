@@ -391,10 +391,10 @@ func resolveActionCondition(header string) (actions []string, resolvable bool) {
 // relative: the body runs until the first non-blank line whose indentation is
 // less than or equal to the `def` line's own indentation.
 func extractDefBody(src string) string {
+	// #7200: no length guard needed — strings.Split with a non-empty separator
+	// always returns >= 1 element, so the index below cannot be out of range.
+	// Full derivation: extractIndentBody in internal/extractors/nim/nim.go.
 	lines := strings.Split(src, "\n")
-	if len(lines) == 0 {
-		return ""
-	}
 	defIndent := indentWidth(lines[0])
 	var b strings.Builder
 	for i := 1; i < len(lines); i++ {

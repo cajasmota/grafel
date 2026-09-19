@@ -2941,8 +2941,11 @@ func javaExternalPackageRoot(stub string, relProps map[string]string, internalJa
 	if strings.HasPrefix(spec, ".") || strings.ContainsAny(spec, "/\\:; \t") {
 		return "", false
 	}
+	// #7200: no length guard needed — strings.Split with a non-empty separator
+	// always returns >= 1 element, so the index below cannot be out of range.
+	// Full derivation: extractIndentBody in internal/extractors/nim/nim.go.
 	segs := strings.Split(spec, ".")
-	if len(segs) == 0 || segs[0] == "" {
+	if segs[0] == "" {
 		return "", false
 	}
 	root := segs[0]

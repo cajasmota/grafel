@@ -1294,10 +1294,10 @@ func appendDRFSerializerEdges(ent *types.EntityRecord, body string) {
 // extractClassBody returns the class body text from class_start to the next
 // top-level definition or EOF.
 func extractClassBody(source string, classStart int) string {
+	// #7200: no length guard needed — strings.Split with a non-empty separator
+	// always returns >= 1 element, so the index below cannot be out of range.
+	// Full derivation: extractIndentBody in internal/extractors/nim/nim.go.
 	lines := strings.Split(source[classStart:], "\n")
-	if len(lines) == 0 {
-		return ""
-	}
 	headerLine := lines[0]
 	classIndent := len(headerLine) - len(strings.TrimLeft(headerLine, " \t"))
 

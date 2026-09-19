@@ -1435,9 +1435,6 @@ func importDisplayName(mod string) string {
 func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	rest := src[afterPos:]
 	lines := strings.Split(rest, "\n")
-	if len(lines) == 0 {
-		return ""
-	}
 
 	var bodyLines []string
 	// #7176: the body continues at any column STRICTLY GREATER than the

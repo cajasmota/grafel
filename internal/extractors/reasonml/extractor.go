@@ -376,9 +376,6 @@ func extractBraceBody(src string, afterPos int) string {
 func extractLetBody(src string, afterPos int, baseIndentLen int) string {
 	rest := src[afterPos:]
 	lines := strings.Split(rest, "\n")
-	if len(lines) == 0 {
-		return ""
-	}
 
 	var bodyLines []string
 	for i, line := range lines {

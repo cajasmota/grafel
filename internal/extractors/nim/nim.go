@@ -697,10 +697,24 @@ func spanEndLine(src string, afterPos int, body string) int {
 // For top-level procs (indent=0), collects all lines that start with at least one space/tab.
 func extractIndentBody(src string, afterPos int, baseIndentLen int) string {
 	rest := src[afterPos:]
+	// #7200 (CANONICAL NOTE for this invariant; the other sites point here).
+	// There is no `len(lines) == 0` guard and none should be added back: with a
+	// NON-EMPTY separator strings.Split always returns at least one element.
+	// Walking genSplit in full, since the one step that can SHRINK the result is
+	// easy to skip when checking this against the Go source:
+	//
+	//   1. Split calls genSplit(s, sep, 0, -1), so n == -1 on entry and the
+	//      `n == 0 -> return nil` escape is unreachable;
+	//   2. sep is the literal "\n", so the `sep == "" -> explode(s, n)` escape
+	//      is unreachable too;
+	//   3. n < 0, so n = Count(s, sep) + 1, which is >= 1;
+	//   4. `if n > len(s)+1 { n = len(s)+1 }` CLAMPS n downward — but only to
+	//      len(s)+1, which is itself >= 1, so the floor of 1 survives;
+	//   5. the return is a[:i+1] with i >= 0, hence length >= 1.
+	//
+	// So lines[0] is always safe and `len(lines) == 0` is never true. The same
+	// holds for every non-empty separator, not just "\n".
 	lines := strings.Split(rest, "\n")
-	if len(lines) == 0 {
-		return ""
-	}
 	// #7195: a source that ends in a newline makes strings.Split yield a FINAL
 	// EMPTY ELEMENT — the empty remainder after the last '\n'. It is not a line
 	// of the file, but it satisfies the `TrimSpace(line) == ""` arm below and was

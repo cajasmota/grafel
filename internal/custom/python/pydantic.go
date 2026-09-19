@@ -224,10 +224,10 @@ func (e *PydanticExtractor) Extract(ctx context.Context, file extractor.FileInpu
 // the class header byte offset, up to the first dedent. Mirrors the Django
 // extractClassBody scan but is local to keep the pydantic extractor standalone.
 func pydModelBody(source string, classStart int) string {
+	// #7200: no length guard needed — strings.Split with a non-empty separator
+	// always returns >= 1 element, so the index below cannot be out of range.
+	// Full derivation: extractIndentBody in internal/extractors/nim/nim.go.
 	lines := strings.Split(source[classStart:], "\n")
-	if len(lines) == 0 {
-		return ""
-	}
 	classIndent := len(lines[0]) - len(strings.TrimLeft(lines[0], " \t"))
 	var body []string
 	for i, ln := range lines {
