@@ -120,21 +120,7 @@ func runBugRateCorpus(argv []string) error {
 	// Persist to health history unless suppressed.
 	if !*noHistory && histRoot != "" {
 		for _, r := range results {
-			entry := quality.HealthEntry{
-				Timestamp:     r.MeasuredAt,
-				Group:         r.Name,
-				TotalEntities: r.Entities,
-				OrphanRate:    r.OrphanRatePct,
-			}
-			// Nil for a group whose audit failed (the error result built in
-			// measureCorpus): that row used to persist bug_rate 0 and a
-			// composite score of 0 as if both had been measured (#7283).
-			if bugPct := r.bugRate.PctPtr(); bugPct != nil {
-				entry.BugRate = bugPct
-				score := r.Composite.Score
-				entry.HealthScore = &score
-			}
-			_ = quality.AppendEntry(histRoot, entry)
+			_ = quality.AppendEntry(histRoot, corpusHistoryEntry(r))
 		}
 	}
 
@@ -316,6 +302,29 @@ func buildTop5(rep *audit.Report, orphanPct, bugPct float64) []string {
 // ─────────────────────────────────────────────────────────────────────────────
 // History helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+// corpusHistoryEntry converts one measured group into the record appended to
+// health-history.jsonl.
+//
+// The bug rate and the composite score are written only when a bug rate was
+// actually measured (#7283). A group whose audit failed reaches here as the
+// zero-valued result measureCorpus builds on error, and used to persist
+// bug_rate 0 beside a composite score of 0 as if both had been measured — the
+// same collapse the daemon's own writer had, one command over.
+func corpusHistoryEntry(r corpusGroupResult) quality.HealthEntry {
+	entry := quality.HealthEntry{
+		Timestamp:     r.MeasuredAt,
+		Group:         r.Name,
+		TotalEntities: r.Entities,
+		OrphanRate:    r.OrphanRatePct,
+	}
+	if bugPct := r.bugRate.PctPtr(); bugPct != nil {
+		entry.BugRate = bugPct
+		score := r.Composite.Score
+		entry.HealthScore = &score
+	}
+	return entry
+}
 
 // lastHealthScore reads the most recent HealthEntry for the named group and
 // returns its HealthScore, or -1 when no prior entry exists.
