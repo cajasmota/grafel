@@ -2921,7 +2921,7 @@ func isJSFamilySourceFile(path string) bool {
 //
 //	"src/components/Button.tsx"  → ["src", "components"]
 //	"components/Button.tsx"      → ["components"]
-//	"packages/ui/src/index.ts"   → ["packages", "ui"]
+//	"packages/ui/src/index.ts"   → ["packages", "ui", "src"]
 //	"index.ts"                   → nil  (a root-level FILE is not a root)
 //
 // Returns nil for an empty path or a file that sits at the repo root —
