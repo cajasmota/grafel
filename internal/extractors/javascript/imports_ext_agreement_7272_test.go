@@ -59,7 +59,7 @@ func TestMtsCtsDottedFormAndResolution_7272(t *testing.T) {
 		}
 		// A specifier that already carries the extension must be used
 		// verbatim, not have ".ts" appended onto it.
-		if got, want := resolveRelativeImport("src/app.ts", "./x"+ext), "src/x"+ext; got != want {
+		if got, want := resolveRelativeImport("", "src/app.ts", "./x"+ext), "src/x"+ext; got != want {
 			t.Errorf("resolveRelativeImport(%q, %q) = %q, want %q — an unrecognised extension "+
 				"gets a spurious \".ts\" appended", "src/app.ts", "./x"+ext, got, want)
 		}
@@ -67,7 +67,7 @@ func TestMtsCtsDottedFormAndResolution_7272(t *testing.T) {
 	// Negative control: a genuinely unknown extension still takes the
 	// default ".ts" append, so the assertions above are not passing merely
 	// because the function returns its input unchanged.
-	if got, want := resolveRelativeImport("src/app.ts", "./x.weird"), "src/x.weird.ts"; got != want {
+	if got, want := resolveRelativeImport("", "src/app.ts", "./x.weird"), "src/x.weird.ts"; got != want {
 		t.Errorf("resolveRelativeImport(%q, %q) = %q, want %q", "src/app.ts", "./x.weird", got, want)
 	}
 }

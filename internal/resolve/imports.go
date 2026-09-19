@@ -36,6 +36,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/types"
+
+	"github.com/cajasmota/grafel/internal/jsext"
 )
 
 // importRelKind is the relationship kind emitted by the Python (and any
@@ -757,16 +759,12 @@ var jsExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts"
 // invents one. If a corpus ever shows extensionless specifiers
 // mis-binding to `.mts`/`.cts`, narrow this to the four-entry
 // node10 set; nothing else depends on the wider list.
-var jsExtensionReplacements = map[string][]string{
-	".ts":  {".ts", ".tsx", ".js", ".jsx"},
-	".tsx": {".ts", ".tsx", ".js", ".jsx"},
-	".js":  {".ts", ".tsx", ".js", ".jsx"},
-	".jsx": {".ts", ".tsx", ".js", ".jsx"},
-	".mjs": {".mts", ".mjs"},
-	".mts": {".mts", ".mjs"},
-	".cjs": {".cts", ".cjs"},
-	".cts": {".cts", ".cjs"},
-}
+// The table itself now lives in internal/jsext so the JS/TS extractor
+// (which stamps importBinding.resolvedFile against the filesystem, #7276)
+// applies the SAME families. Two independent derivations of "which
+// extensions correspond" is the #7272 defect class; this is an alias, not
+// a copy.
+var jsExtensionReplacements = jsext.Replacements
 
 // isJSImportSource reports whether the importing file path looks like a
 // JS/TS source file. Used to gate ResolveDottedImportTargetForJS so the
