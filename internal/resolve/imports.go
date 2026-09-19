@@ -616,10 +616,18 @@ func modulesForFile(p string) []string {
 // ALIVE against the whole package before they existed.
 //
 // Case-sensitive, like the `.py` / `.java` / `.scala` / `.php` arms of
-// the same switch. Note this differs from isJSImportSource below, which
-// lowercases. Uppercase extensions (`App.TS`) are therefore not handled
-// by any arm of this switch; that is pre-existing and consistent across
-// the switch, not a property this change relies on.
+// the same switch, and unlike isJSImportSource below, which lowercases.
+// That split is no longer asserted here in prose: it is observed by
+// TestHasJSExtensionIsCaseSensitive_7278 and its four siblings across
+// internal/resolve, internal/classifier and the JS extractor, which pin
+// each of the five case decisions on this path in both directions
+// (#7278). Read those rows for what the policy actually is; before them
+// the case-sensitivity was entirely ungraded (mutant M3 ALIVE).
+//
+// Widening this one site is not a local change: for `src/App.TS` the
+// extractor's dottedModuleFromPath strips nothing and emits the dotted
+// module `src.App.TS`, so lowercasing here alone converts a no-edge into
+// a wrong-edge. Resolver and extractor move together or neither does.
 func hasJSExtension(p string) bool {
 	for _, ext := range jsExtensions {
 		if strings.HasSuffix(p, ext) {
