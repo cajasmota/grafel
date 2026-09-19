@@ -191,6 +191,25 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		if m[6] >= 0 && m[7] >= 0 {
 			params = src[m[6]:m[7]]
 		}
+		// #7231, NOTED NOT FIXED — filed as #7256. The trim above is
+		// load-bearing HERE TOO, and nothing grades it: mutant CM-33 (key on
+		// the UNTRIMMED `indent + ":" + src[m[4]:m[5]]`) is ALIVE against this
+		// whole package — vet clean, suite green. Under it `proc foo*` and
+		// `proc foo` at one indent become two records, both still NAMED `foo`
+		// since Name is built from the trimmed variable, which fold to one
+		// graph node whose relationship loop runs OUTSIDE the fold, so the
+		// second record's CALLS are unioned onto the survivor.
+		//
+		// THAT IS A WEAKER CASE THAN THE EXTENDS DEFECT #7231 FIXED, and the
+		// difference matters to whoever picks up #7256. In legal Nim two
+		// routines sharing a name at one indent must differ in signature, so
+		// they are OVERLOADS, and the folded `foo` node legitimately stands for
+		// all of them — identity carries no signature. A unioned CALLS edge is
+		// therefore a true statement about *a* `foo`, not a fabrication. The
+		// harm is INCONSISTENCY: which overloads survive depends on whether
+		// their export markers happen to differ. The EXTENDS case was
+		// different in kind — there the survivor asserted a base that no
+		// surviving declaration stated.
 		key := indent + ":" + name
 		if seen[key] {
 			continue
@@ -233,7 +252,105 @@ func extractNim(src, filePath string) []types.EntityRecord {
 	}
 
 	// 2. Type declarations — objects, enums, tuples.
-	typeSeen := make(map[string]bool)
+	//
+	// #7231: THERE IS NO NAME-KEYED DEDUP HERE ANY MORE. It used to be
+	// `typeSeen[name]`, first-match-wins, which discarded one record per extra
+	// declaration of a name in a file.
+	//
+	// READ THE NEXT PARAGRAPH BEFORE QUOTING ANY NUMBER BELOW. Every figure in
+	// this comment is an EXTRACTOR-LEVEL count — records in the slice
+	// extractNim returns. It is NOT graph recall, and #7231 originally claimed
+	// it as such. `graph.EntityID(repo, kind, name, sourceFile)`
+	// (internal/graph/graph.go:259) does not hash StartLine, so two records
+	// that share Kind+Name+SourceFile derive the SAME id, and BOTH assembly
+	// seams fold them: cmd/grafel/index.go:6303 keeps the first and drops the
+	// rest under `if !seenEntity[id]`, and internal/extractors/incremental.go's
+	// convertExtractedRecords does the same via entityRecordToGraphEntity
+	// (:2046, the identical derivation) — its own doc calls the collision
+	// "EXPECTED, not erroneous". The subprocess path
+	// (internal/daemon/extract/subproc.go:358) is a transport: its envelopes
+	// decode into extract.Coordinate's Result.Entities, which index.go:1824
+	// assigns to pass1Records and feeds to the SAME assembly loop.
+	//
+	// THAT LIST IS NOT EXHAUSTIVE, and an earlier revision of this comment said
+	// it was. `extractors.MergeWithCustom` (internal/extractors/custom_dispatch.go)
+	// consumes base language-extractor records BEFORE the assembly fold — from
+	// cmd/grafel/index.go's custom-extractor dispatch and from the incremental
+	// twin in incremental.go — and it does NOT fold: it iterates baseEntities
+	// and appends every one, keyed on `identityKey{SourceFile, Kind, Name}`.
+	// The lane is live for nim specifically (internal/custom/nim/ ships several
+	// extractors).
+	//
+	// The conclusion survives it, for a reason worth writing down rather than
+	// assuming: `EntityRecord.ComputeID` (internal/types/entity.go) omits
+	// StartLine too, so both duplicates share an effectiveID, the enriched
+	// record is the lowest-line one and survives the later assembly fold, and
+	// the #4406 gap-fill only fills EMPTY fields. So the extra entities below
+	// still DO NOT REACH THE GRAPH — but they do pass through one seam that
+	// does not fold, and anyone reasoning about a second such seam should start
+	// from that, not from a claim of completeness.
+	//
+	// Whether entity identity should carry a line component is a separate
+	// question with a much larger blast radius and is filed on its own; do not
+	// answer it here.
+	//
+	// What the change is worth, then, stated honestly: the records the
+	// extractor returns now describe the file, the two halves of the fold rule
+	// are written down and graded, and an unreachable map is gone. Recall is
+	// NOT among it.
+	//
+	// UNPINNED MEASUREMENT, 2026-09-18, over a 4431-file Nim population
+	// (nim-lang/Nim, nimbus-eth2, pixie, nitter, jester) — `archigraph-corpora`
+	// contains zero `.nim` files, so nothing in this tree asserts these and
+	// they will drift: type RECORDS 6572 -> 6987 (+415); CONTAINS records 8597,
+	// unchanged byte for byte; EXTENDS records 885, unchanged byte for byte.
+	// 221 of the 255 duplicated (file,name) groups — 86.7% — are declarations
+	// inside DIFFERENT routine bodies (proc/template/macro/block/static), i.e.
+	// genuinely distinct coexisting types in disjoint scopes rather than
+	// competing descriptions of one type; only 17 are `when`-branch conditional
+	// compilation, and only 1 of those 17 differs in Subtype.
+	//
+	// #7231 was directed as "key the dedup on name + StartLine". That key is
+	// INJECTIVE OVER typeRE's MATCHES and therefore can never suppress one:
+	// typeRE is `(?m)^…`-anchored, so every match starts at a line start, and
+	// FindAllStringSubmatchIndex returns successive NON-OVERLAPPING matches
+	// left to right, so match k+1 begins at a line strictly after match k's.
+	// No two matches can share a start line, so no two can share the key —
+	// note `startLine` is itself computed from `m[0]`, so the invariant and the
+	// key are the same quantity. The compound-key form was built and measured
+	// against this one over the same population: byte-identical component,
+	// CONTAINS and EXTENDS dumps, and a probe printing every suppression
+	// printed none. Keeping the map would be a branch no input can reach — the
+	// same thing #7197 removed from this file twice. It is stated here instead.
+	//
+	// The proc loop above keeps ITS dedup (the `key := indent + ":" + name` in
+	// the procRE loop — named, not cited by line: this comment said ":181" and
+	// the 13-line CM-33 note inserted just above that key in the same commit
+	// series moved it, which is the whole reason line citations inside comments
+	// are not used here). That is an OBSERVATION about what this file does,
+	// not an endorsement: the key
+	// is not injective, and the consequence is that three same-indent `show`
+	// overloads yield one record, so overloads 2 and 3 are deleted exactly the
+	// way type declarations used to be. Whether that is right is not decided
+	// here and is not this change's to decide.
+	//
+	// DELIBERATELY NOT DONE HERE, AND A HAZARD THE MOMENT IDENTITY CHANGES:
+	// `local_scope=true` is NOT stamped on the routine-body-nested
+	// declarations. #7231 designed it as part of this change and it is absent.
+	// internal/mcp/denoise.go maps that property to `noiseLocalScope`, which
+	// ranks strictly below every other noise bucket (#6716/#6751), so the
+	// stamp is what would keep `grafel_find`'s default surface clean. Omitting
+	// it is inert TODAY only because the fold above deletes those records
+	// before any surface sees them. If entity identity ever gains a line
+	// component, the ~360 routine-local declarations (UNPINNED MEASUREMENT,
+	// 2026-09-18, same corpus as the block above — nothing in this tree asserts
+	// it) arrive at FULL RANK on the default surface, all at once. Whoever changes
+	// identity owns this stamp; it is not a follow-up that can be scheduled
+	// independently of that change.
+	//
+	// firstDeclSeen is the one thing that still needs per-name state — see the
+	// gate below.
+	firstDeclSeen := make(map[string]bool)
 	// typeRE has exactly 3 capture groups (indent, name, kind alternation); the
 	// `(?:type[ \t]+)?` prefix, the generics and the pragma block are all
 	// non-capturing. FindAllStringSubmatchIndex returns 2*(1+n) = 8 ints per
@@ -247,10 +364,6 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		indent := src[m[2]:m[3]] // #7190: the DECLARATION's own indent
 		name := strings.TrimSuffix(src[m[4]:m[5]], "*")
 		kind := src[m[6]:m[7]]
-		if typeSeen[name] {
-			continue
-		}
-		typeSeen[name] = true
 
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 
@@ -278,37 +391,145 @@ func extractNim(src, filePath string) []types.EntityRecord {
 		// to fall into neither term of the sum.
 		endLine := spanEndLine(src, m[1], body)
 
-		// Find methods declared for this type (methods take first param of this type).
 		var rels []types.RelationshipRecord
+
+		// #7231: EVERY EDGE THIS LOOP OWNS — EXTENDS AND CONTAINS ALIKE — IS
+		// EMITTED ONLY FROM THE FIRST DECLARATION OF A NAME IN THIS FILE. Not
+		// from the first declaration overall, and not from one chosen per
+		// (name, subtype): per NAME, because the name is what identity folds on
+		// downstream and what the CONTAINS scan keys on.
+		//
+		// WHY THE GATE COVERS EXTENDS TOO, WHICH IS THE WHOLE REASON THIS IS A
+		// FIX AND NOT A TIDY-UP. Dropping the name dedup above does not add
+		// nodes to the graph — both assembly seams fold the records by an id
+		// that omits StartLine (see the note at the top of this loop). But
+		// NEITHER SEAM PUTS ITS RELATIONSHIP LOOP INSIDE THE FOLD.
+		// cmd/grafel/index.go:6446 walks `r.Relationships` outside the
+		// `!seenEntity[id]` block, and incremental.go's equivalent carries an
+		// explicit comment saying it is "NOT inside the else", both defaulting
+		// a blank FromID to the derived id. So a DROPPED duplicate's edges are
+		// unioned onto the SURVIVOR. Ungated, two declarations of `Widget` with
+		// different bases make the single surviving Widget node assert
+		// `EXTENDS BaseA` AND `EXTENDS BaseB` — an edge no declaration in the
+		// file states. CONTAINS escapes this only by accident: a duplicate's
+		// CONTAINS shares FromID, ToID and Kind with the survivor's, so
+		// index.go:6453's `seenRel[relID]` folds it. EXTENDS does not share
+		// ToID, so nothing downstream collapses it. That asymmetry is the
+		// defect; gating both here removes it at the source rather than relying
+		// on a downstream dedup that only one of the two edge kinds triggers.
+		//
+		// With the gate, both edge sets are reproduced byte for byte against
+		// the pre-#7231 extractor (see the unpinned measurement above: CONTAINS
+		// 8597, EXTENDS 885, both unchanged).
+		//
+		// THE PRICE OF THE GATE, MEASURED RATHER THAN WAVED THROUGH. An earlier
+		// revision claimed locally-scoped duplicates "carry no edges rather
+		// than false ones". That is FALSE for one ordinary shape: when the
+		// FIRST declaration of a name has no `of` clause and a LATER one does
+		// — `type Dual = object` in one proc body, `type Dual = ref object of
+		// RealBase` in another — the gate suppresses a TRUE edge, and the name
+		// ends up with no base at all.
+		//
+		// Quantified over the same population (UNPINNED MEASUREMENT, 2026-09-19;
+		// same corpus as the block above), by diffing the ungated part-1-only
+		// EXTENDS dump against the gated one: of the 31 edges the gate
+		// suppresses, 22 are duplicates or competitors on a name whose
+		// surviving first declaration already states a base, and 9 — spread
+		// over 8 distinct (file,name) pairs, all in nim-lang/Nim's own test
+		// tree — are TRUE edges whose only source was a non-first declaration.
+		// So #7231's claim that "the +31 were the manufactured edges, not new
+		// recall" holds for 22 of 31 and NOT for the other 9.
+		//
+		// This is not a regression: before #7231 those later declarations were
+		// discarded whole, so those 9 edges never existed, and the gated output
+		// is byte-identical to the pre-#7231 extractor. It is a bound on what
+		// the gate can ever deliver. A rule that preferred the first
+		// declaration THAT HAS A BASE would recover the 9 while keeping the 22
+		// suppressed, at the cost of the gate no longer being one predicate
+		// shared by both edge kinds. That trade is deliberately not taken here
+		// and is left stated for whoever revisits it.
+		//
+		// WHY THE CONTAINS SCAN IS NOT SCOPED TO THIS DECLARATION, AND CANNOT
+		// BE. In Nim a "method" is a free-standing proc taking the type as its
+		// FIRST PARAMETER, declared OUTSIDE the type body, so the scan is the
+		// inner whole-file `procRE.FindAllStringSubmatchIndex(src, -1)` below
+		// and the only thing it matches on is `name`. UNPINNED MEASUREMENT,
+		// 2026-09-18, same corpus as the block at the top of this loop and
+		// asserted by nothing in this tree: over all 9370 (type-declaration,
+		// matching-proc) pairs in the population, pairs with the proc INSIDE
+		// the declaration's span = 0, outside = 9370. Scoping
+		// the scan to the span — the fix #7231 originally prescribed — would
+		// take CONTAINS from 8597 to 0. (Attribution by ENCLOSING ROUTINE scope
+		// is a real and different question; it needs routine-body spans this
+		// loop does not compute, and is its own issue.)
+		//
+		// "First" means LOWEST BYTE OFFSET, and is read off the iteration order
+		// of typeRE's FindAllStringSubmatchIndex — successive non-overlapping
+		// matches, left to right — never off map iteration. firstDeclSeen is
+		// read and written only along that ordered walk, once, here.
+		//
+		// THE KEY IS THE `*`-TRIMMED NAME, AND THE TRIM IS PART OF THE GATE.
+		// `Widget*` and `Widget` are one Nim name — the export marker is
+		// visibility on the declaration, not part of the identifier
+		// (doc/grammar.txt: `identVis = symbol OPR?`) — and it is the trimmed
+		// form that graph.EntityID hashes, so the gate key must agree with it.
+		// Keying on the raw `src[m[4]:m[5]]` gives a file that declares
+		// `Widget*` in one routine body and `Widget` in another TWO gate slots,
+		// and every manufactured edge above comes back for that shape. That was
+		// mutant CM-31 and it was ALIVE until nimExportMarkerDupFixture existed:
+		// every duplicated name in the earlier fixtures was spelled
+		// identically. The opposite error — normalising past the marker and
+		// merging two real names — is scored on the same fixture (CM-32).
+		//
+		// The gate is keyed on `name`, so it fires ONLY for a name this file
+		// declares more than once. A name declared once is untouched and keeps
+		// every edge it had; that direction is the one an over-broad gate
+		// breaks while every duplicate count stays at zero, and it is pinned
+		// for BOTH edge kinds in first_decl_contains_7231_test.go.
+		firstDecl := !firstDeclSeen[name]
+		firstDeclSeen[name] = true
 
 		// Inheritance: `= ref object of Base` (#6370). m[1] is the byte just
 		// past the `object` keyword, which is the ONLY position an `of` can
 		// mean inheritance in Nim — see hierarchy.go.
-		if ext := baseOfEdge(src, m[1], kind, name, startLine); ext != nil {
-			rels = append(rels, *ext)
+		if firstDecl {
+			if ext := baseOfEdge(src, m[1], kind, name, startLine); ext != nil {
+				rels = append(rels, *ext)
+			}
 		}
-		methodSeen := make(map[string]bool)
-		// procRE has 3 capture groups, so len(pm) is invariantly 8 — the same
-		// derivation as the proc loop above, measured with its own panic probe
-		// under #7197 rather than transferred. The `pm[6] >= 0` test below is a
-		// different question and is NOT dead: see the proc loop's note.
-		for _, pm := range procRE.FindAllStringSubmatchIndex(src, -1) {
-			procName := strings.TrimSuffix(src[pm[4]:pm[5]], "*")
-			if methodSeen[procName] {
-				continue
-			}
-			// Check if any parameter references this type name.
-			params := ""
-			if pm[6] >= 0 && pm[7] >= 0 {
-				params = src[pm[6]:pm[7]]
-			}
-			if containsTypeName(params, name) {
-				methodSeen[procName] = true
-				ref := extractor.BuildOperationStructuralRef("nim", filePath, procName)
-				rels = append(rels, types.RelationshipRecord{
-					ToID: ref,
-					Kind: "CONTAINS",
-				})
+		// Find methods declared for this type (methods take first param of this type).
+		if firstDecl {
+			// PER DECLARATION, deliberately — NOT hoisted above the type loop.
+			// Its job is to stop ONE type claiming one proc twice, not to stop
+			// two types claiming the same proc: `proc combine*(x: Alpha, y:
+			// Beta)` legitimately belongs to BOTH, which is ordinary in Nim
+			// because a "method" is a free-standing proc. Hoisting it was ALIVE
+			// against this package until #7231 added
+			// TestFirstDecl7231_OneProcCanBelongToTwoTypes; the construction is
+			// inside this block now, so it is #7231's to grade.
+			methodSeen := make(map[string]bool)
+			// procRE has 3 capture groups, so len(pm) is invariantly 8 — the same
+			// derivation as the proc loop above, measured with its own panic probe
+			// under #7197 rather than transferred. The `pm[6] >= 0` test below is a
+			// different question and is NOT dead: see the proc loop's note.
+			for _, pm := range procRE.FindAllStringSubmatchIndex(src, -1) {
+				procName := strings.TrimSuffix(src[pm[4]:pm[5]], "*")
+				if methodSeen[procName] {
+					continue
+				}
+				// Check if any parameter references this type name.
+				params := ""
+				if pm[6] >= 0 && pm[7] >= 0 {
+					params = src[pm[6]:pm[7]]
+				}
+				if containsTypeName(params, name) {
+					methodSeen[procName] = true
+					ref := extractor.BuildOperationStructuralRef("nim", filePath, procName)
+					rels = append(rels, types.RelationshipRecord{
+						ToID: ref,
+						Kind: "CONTAINS",
+					})
+				}
 			}
 		}
 
