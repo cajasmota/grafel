@@ -12,6 +12,14 @@ import (
 	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
+// NOTE ON WHAT THIS CAN AND CANNOT PROVE. On darwin and linux this test is
+// TAUTOLOGICAL: AbsFixture returns its input unchanged there, and the inputs are
+// already absolute, so a mutant gutting the helper to `return path` survives
+// every package that uses it. That is unavoidable — the behaviour under test is
+// windows-only — but it means the whole apparatus built on this helper is
+// verified by exactly one thing: the windows CI leg. Which is why a fixture row
+// that silently stops being routed through it must fail loudly there, and why
+// the tables carry count floors rather than trusting the flag.
 func TestAbsFixture_IsAbsoluteOnEveryPlatform(t *testing.T) {
 	for _, p := range []string{
 		"/usr/local/bin/grafel",

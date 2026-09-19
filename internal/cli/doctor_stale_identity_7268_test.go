@@ -92,19 +92,29 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		ppid      int
 		wantStale bool
 		why       string
-		// asWritten keeps exe byte-for-byte instead of routing it through
-		// testsupport.AbsFixture. Two kinds of row need it, for opposite
-		// reasons:
+		// Two kinds of row keep their exe byte-for-byte instead of routing it
+		// through testsupport.AbsFixture. Round 4 conflated them under one
+		// `asWritten` flag, which was wrong: they differ in whether the row
+		// still grades anything on windows, and that is exactly what decides
+		// whether it must be SKIPPED there.
 		//
-		//   /tmp-PREFIX rows — scanGrafelProcs asks
-		//     strings.HasPrefix(exe, "/tmp/"), a byte comparison against a
-		//     literal. Gluing a volume on moves the fixture OFF the boundary
-		//     and turns a boundary row into an unrelated row that still
-		//     passes. Such a row cannot be made portable and is ungradable on
-		//     windows; saying so is the honest option.
-		//   deliberately NON-ABSOLUTE rows — their whole point is that
-		//     identity is not established for a relative path.
-		asWritten bool
+		// tmpPrefix — scanGrafelProcs asks strings.HasPrefix(exe, "/tmp/"), a
+		//   byte comparison against a literal, so gluing a volume on moves the
+		//   fixture off the boundary. Such a path is NOT absolute on windows,
+		//   so the identity gate rejects it and the row's verdict is decided by
+		//   the platform rather than by the criterion under test. UNIX ONLY.
+		//
+		//   CONSEQUENCE, WORTH STATING PLAINLY: every row that kills the
+		//   `/tmp/` -> `/tmp` widening is a tmpPrefix row, so that mutant is
+		//   DEAD on unix and would be ALIVE on windows. Criterion 1 is
+		//   therefore not verified end-to-end on the windows leg, by
+		//   construction rather than by oversight — the criterion is itself a
+		//   hard-coded unix path and has no windows behaviour to grade.
+		// relative — the row's whole point is that identity is not established
+		//   for a relative path. Relative is relative on every platform, so
+		//   these grade the same thing everywhere and are NOT skipped.
+		tmpPrefix bool
+		relative  bool
 	}{
 		// ── planted violations: NOT ours, must never be selected ──────────
 		{
@@ -137,7 +147,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 			// equally identity-free: this row is SIGTERM-eligible without the
 			// gate even though "daemon" never appears in the path.
 			exe:       "/tmp/grafel-fixtures/bin/fixture-server",
-			asWritten: true, // /tmp prefix — see asWritten
+			tmpPrefix: true,
 			ppid:      1,
 			wantStale: false,
 			why:       "criterion 1 planted violation",
@@ -145,7 +155,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "relative exec path is never selected",
 			exe:       "grafel-daemon/grafel",
-			asWritten: true, // deliberately relative — see asWritten
+			relative:  true,
 			ppid:      1,
 			wantStale: false,
 			why:       "a non-absolute path cannot be compared against /tmp or resolved to an identity",
@@ -153,7 +163,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "bare command name (Exe empty, Name fallback) is never selected",
 			exe:       "grafel",
-			asWritten: true, // deliberately relative — see asWritten
+			relative:  true,
 			ppid:      1,
 			wantStale: false,
 			why:       "#7211: a bare basename silently skips every path predicate",
@@ -163,7 +173,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "genuine orphaned daemon from a /tmp worktree",
 			exe:       "/tmp/agent-worktree-1/grafel",
-			asWritten: true, // /tmp prefix — see asWritten
+			tmpPrefix: true,
 			ppid:      1,
 			wantStale: true,
 			why:       "criterion 1 positive control — the #857 population",
@@ -194,7 +204,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "canonical basename under /tmp but NOT an orphan",
 			exe:       "/tmp/agent-worktree-1/grafel",
-			asWritten: true, // /tmp prefix — see asWritten
+			tmpPrefix: true,
 			ppid:      4242,
 			wantStale: false,
 			why:       "criterion 1 requires PPID=1; a live parent still owns it",
@@ -214,7 +224,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "/tmpfoo is not under /tmp",
 			exe:       "/tmpfoo/grafel",
-			asWritten: true, // /tmp prefix — see asWritten
+			tmpPrefix: true,
 			ppid:      1,
 			wantStale: false,
 			why:       "prefix boundary: /tmp/ or exactly /tmp, not /tmp*",
@@ -222,7 +232,7 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "/tmpdir is not under /tmp",
 			exe:       "/tmpdir/grafel",
-			asWritten: true, // /tmp prefix — see asWritten
+			tmpPrefix: true,
 			ppid:      1,
 			wantStale: false,
 			why:       "prefix boundary — a sibling directory whose name merely starts with tmp",
@@ -230,17 +240,59 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 		{
 			name:      "/tmp-agent is not under /tmp",
 			exe:       "/tmp-agent/grafel",
-			asWritten: true, // /tmp prefix — see asWritten
+			tmpPrefix: true,
 			ppid:      1,
 			wantStale: false,
 			why:       "prefix boundary — a separator, not a hyphen, ends the /tmp component",
 		},
 	}
 
+	// COUNT FLOORS. A skipped subtest reports SUCCESS, and so does a row that
+	// silently stopped being routed through AbsFixture. Both flags are declared
+	// here so that adding one to a row — M2 in the round-5 review set every row
+	// to asWritten and the package stayed green — fails loudly instead of
+	// retiring the row's coverage. Change these numbers deliberately.
+	const (
+		tmpPrefixRows = 6
+		relativeRows  = 2
+	)
+	gotTmp, gotRel := 0, 0
+	for _, tc := range cases {
+		if tc.tmpPrefix {
+			gotTmp++
+		}
+		if tc.relative {
+			gotRel++
+		}
+		if tc.tmpPrefix && tc.relative {
+			t.Fatalf("row %q is both tmpPrefix and relative; they mean different things", tc.name)
+		}
+	}
+	if gotTmp != tmpPrefixRows || gotRel != relativeRows {
+		t.Fatalf("%d tmpPrefix / %d relative rows, want %d / %d — a flag was added or dropped, "+
+			"which silently changes what this table grades", gotTmp, gotRel, tmpPrefixRows, relativeRows)
+	}
+
+	// On windows every tmpPrefix row is skipped, so the table must still run
+	// the rest. Without this, widening the skip predicate would grade nothing
+	// while the package stayed green.
+	wantRun := len(cases)
+	if runtime.GOOS == "windows" {
+		wantRun -= tmpPrefixRows
+	}
+	ran := 0
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.tmpPrefix && runtime.GOOS == "windows" {
+				// NOT a diagnostic — a skip. Round 4 printed a message saying
+				// the row grades nothing here and then called t.Errorf anyway,
+				// which is how three required rows left the windows leg red.
+				t.Skip("criterion 1 is a hard-coded unix /tmp prefix; see tmpPrefix")
+			}
+			ran++
 			exe := tc.exe
-			if !tc.asWritten {
+			if !tc.tmpPrefix && !tc.relative {
 				exe = testsupport.AbsFixture(exe)
 				// Diagnostic for the windows leg: an unrouted or unroutable
 				// fixture would otherwise fail as a confusing want/got
@@ -263,6 +315,11 @@ func TestIsStaleProc_IdentityGate_7268(t *testing.T) {
 					exe, tc.ppid, got, tc.wantStale, exe, verb)
 			}
 		})
+	}
+
+	if ran != wantRun {
+		t.Errorf("%d of %d rows ran on %s, want %d — a widened skip grades less while still reporting ok",
+			ran, len(cases), runtime.GOOS, wantRun)
 	}
 }
 

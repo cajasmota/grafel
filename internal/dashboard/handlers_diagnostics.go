@@ -214,8 +214,14 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 // production on that platform (the seam deliberately bypasses that for tests).
 var findProcs = process.FindByName
 
-// killProc is process.Kill, indirected for the same reason findProcs is: so the
-// SIGTERM branch of handleDiagnosticsKillStale can be graded.
+// killProc is process.KillGuarded, indirected for the same reason findProcs is:
+// so the SIGTERM branch of handleDiagnosticsKillStale can be graded.
+//
+// The DEFAULT is KillGuarded, not Kill: a seam only protects the tests that
+// remember to install it, so the refusal to signal from a test binary is made a
+// property of this line rather than of every future test author's discipline
+// (#7268 round 5 — the round-4 claim that every test installed the seam was
+// false at package scope in the CLI twin).
 //
 // Until this existed, the only thing keeping the test suite from SIGTERMing
 // whatever really holds the synthetic PIDs it invents was `dry_run=true` in the
@@ -223,7 +229,7 @@ var findProcs = process.FindByName
 // regression there turned the tests into a live hazard. Tests point this at a
 // recorder, so the branch can be asserted without signalling anything. Never
 // reassigned in production code.
-var killProc = process.Kill
+var killProc = process.KillGuarded
 
 // handleDiagnosticsKillStale — POST /api/diagnostics/kill-stale
 //

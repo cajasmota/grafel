@@ -491,8 +491,16 @@ func isStaleProc(p staleProcess, selfExe string) bool {
 // the test machine. Never reassigned in production code.
 var findProcs = process.FindByName
 
-// killProc is process.Kill, indirected for the same reason findProcs is: so the
-// kill BRANCH of runDoctorStaleDaemons can be graded.
+// killProc is process.KillGuarded, indirected for the same reason findProcs is:
+// so the kill BRANCH of runDoctorStaleDaemons can be graded.
+//
+// The DEFAULT is KillGuarded, not Kill, and that is load-bearing. A seam only
+// protects the tests that remember to install it, and round 4 of #7268 asserted
+// in a comment that every test here did — a claim that was false at package
+// scope on the day it was written (doctor_staleness_test.go drove this same
+// function with no seam installed, reaching the real kill seam and the host
+// process table). KillGuarded makes the protection a property of THIS LINE
+// instead: under `go test` it panics naming the pid rather than signalling.
 //
 // Until this existed, no test could reach the SIGTERM path at all — the only
 // safe way to drive the function was kill=false, which skips it — so `killing`
@@ -502,7 +510,7 @@ var findProcs = process.FindByName
 // SIGTERM to whatever really holds those PIDs on the host. That made the test
 // suite a hazard, not just under-covered. Tests point this at a recorder.
 // Never reassigned in production code.
-var killProc = process.Kill
+var killProc = process.KillGuarded
 
 // scanGrafelProcs uses the cross-platform process package to find all
 // running grafel processes except myPID.

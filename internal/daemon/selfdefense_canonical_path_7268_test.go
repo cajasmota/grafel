@@ -28,13 +28,37 @@ func TestIsCanonicalBinaryPath_7268(t *testing.T) {
 		absFixture("/Users/jane smith/Library/grafel"), // spaces are ordinary path characters
 		absFixture("/opt/GRAFEL"),                      // the basename match is case-insensitive
 		absFixture("/opt/Grafel/Daemon/bin/GRAFEL"),
-		// NOT absolutised, and it cannot be: a volume prefix would move a
-		// /tmp-prefix fixture off the boundary the sibling guards test on. So
-		// this row grades the accept side on unix only. It is here because the
-		// gate must accept a /tmp-installed grafel — IsCanonicalBinaryPath says
-		// nothing about WHERE the binary lives — and that is worth pinning
-		// where it can be pinned.
+	}
+
+	// UNIX-ONLY ACCEPT ROWS. A /tmp-prefix fixture cannot be absolutised — a
+	// volume prefix moves it off the boundary the sibling guards test on — so
+	// it is NOT absolute on windows and IsCanonicalBinaryPath correctly rejects
+	// it there. Asserting acceptance anyway is how round 4 left the windows leg
+	// red: the file printed a diagnostic saying the row grades nothing here and
+	// then called t.Errorf regardless. A DIAGNOSTIC IS NOT A SKIP.
+	//
+	// The row is still worth having where it can run: the gate must accept a
+	// /tmp-installed grafel, because IsCanonicalBinaryPath says nothing about
+	// WHERE a binary lives.
+	const unixOnlyAccept = 1
+	acceptUnixOnly := []string{
 		"/tmp/agent-worktree/grafel",
+	}
+	if len(acceptUnixOnly) != unixOnlyAccept {
+		t.Fatalf("%d unix-only accept rows, want %d — change the constant deliberately",
+			len(acceptUnixOnly), unixOnlyAccept)
+	}
+	if runtime.GOOS != "windows" {
+		accept = append(accept, acceptUnixOnly...)
+	}
+	// A count floor, because a skipped row reports SUCCESS: assert how many
+	// rows this platform actually checks, so a widened skip is loud.
+	wantAccept := 5 + unixOnlyAccept
+	if runtime.GOOS == "windows" {
+		wantAccept = 5
+	}
+	if len(accept) != wantAccept {
+		t.Fatalf("%d accept rows on %s, want %d", len(accept), runtime.GOOS, wantAccept)
 	}
 	for _, p := range accept {
 		if !IsCanonicalBinaryPath(p) {

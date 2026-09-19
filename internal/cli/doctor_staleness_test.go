@@ -10,6 +10,9 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/process"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestStaleProcessClassification verifies the stale detection criteria:
@@ -79,21 +82,45 @@ func TestStaleProcessClassification(t *testing.T) {
 	}
 }
 
-// TestRunDoctorStaleDaemons_DryRunOutputsNoneWhenClean verifies the full
-// runDoctorStaleDaemons function returns a clean "none found" message when
-// no stale processes exist. We call it with kill=false (dry-run default).
+// TestRunDoctorStaleDaemons_DryRunOutputsNoneWhenClean verifies that
+// runDoctorStaleDaemons reports "none found" when nothing is stale.
 //
-// Note: this test can only run cleanly on a machine with no stale grafel
-// daemons. On a developer machine with a real daemon it may log stale entries —
-// that's correct behaviour, not a test failure.
+// IT USED TO RUN AGAINST THE REAL HOST (#7268 round 5). It installed neither
+// seam, so findProcs enumerated the live process table and killProc was still
+// the real SIGTERM — a reviewer's panic probe fired here and named the user's
+// launchd-managed daemon as the process the loop had reached. Its only defence
+// was the kill=false argument: one token, ungraded, on a machine where this
+// repo's own agents routinely leave orphaned /tmp/<worktree>/grafel processes
+// with PPID=1 that satisfy criterion 1 with no predicate regression at all.
+//
+// It also asserted nothing. The comment conceded the output was
+// "environment-dependent" and the body only checked for a nil error, so on a
+// developer machine with a real daemon the "none found" the name promises was
+// not a property of anything. With a synthetic table both problems go away: the
+// assertion becomes real AND the scan can no longer see a host process.
 func TestRunDoctorStaleDaemons_DryRunOutputsNoneWhenClean(t *testing.T) {
+	// A non-empty table of processes that are all somebody else's binary, so
+	// "none found" is the selection talking rather than an empty input.
+	withProcs7268(t, []process.Info{
+		{PID: 35001, PPID: 1, Name: "helper",
+			Exe: testsupport.AbsFixture("/Users/jane smith/Library/grafel-daemon-helper/bin/helper")},
+		{PID: 35002, PPID: 400, Name: "esbuild",
+			Exe: testsupport.AbsFixture("/Users/jane/src/grafel/node_modules/.bin/esbuild")},
+	})
+	killed := withNoKills(t)
+
 	var sb strings.Builder
 	if err := runDoctorStaleDaemons(&sb, false); err != nil {
 		t.Fatalf("runDoctorStaleDaemons: %v", err)
 	}
 	out := sb.String()
-	t.Logf("doctor stale scan output:\n%s", out)
-	// We only assert that the function returns without error. The output
-	// content is environment-dependent (depends on what's running on this machine).
-	// The meaningful coverage is that it doesn't panic or crash.
+	if !strings.Contains(out, "none found") {
+		t.Errorf("want the 'stale daemons: none found' line; got:\n%s", out)
+	}
+	if strings.Contains(out, " pid=") {
+		t.Errorf("a table of foreign binaries produced kill candidates:\n%s", out)
+	}
+	if len(*killed) != 0 {
+		t.Errorf("dry run signalled PIDs %v", *killed)
+	}
 }

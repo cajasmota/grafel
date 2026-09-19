@@ -60,13 +60,23 @@ func withProcs7268(t *testing.T, procs []process.Info) {
 
 // withNoKills points the kill seam at a recorder and returns the recorded PIDs.
 //
-// Every test in this file installs it, including the dry-run ones. That is
-// deliberate defence, not ceremony: the tables here invent PIDs (31001+) that
-// on a real host belong to somebody else, and before the seam existed the only
-// thing standing between them and SIGTERM was the kill=false argument. A
-// regression that ignored that argument would have had the SUITE signal real
-// processes. With the recorder installed, production cannot reach
-// process.Kill from a test at all.
+// Every test in this file installs it, including the dry-run ones: the tables
+// here invent PIDs (31001+) that on a real host belong to somebody else, and
+// before the seam existed the only thing standing between them and SIGTERM was
+// the kill=false argument.
+//
+// WHAT THIS DOES NOT ESTABLISH, corrected from round 4. An earlier version of
+// this comment went on to claim "production cannot reach process.Kill from a
+// test at all". That was true of this FILE and false of the PACKAGE:
+// doctor_staleness_test.go drove runDoctorStaleDaemons with neither seam
+// installed, so it enumerated the real host process table with the real kill
+// seam still in place — and a reviewer proved it reachable by swapping the
+// default for a panic, which fired naming the user's live launchd daemon.
+//
+// A per-file habit cannot carry a package-wide invariant, so the invariant is
+// now enforced where it cannot be forgotten: killProc defaults to
+// process.KillGuarded, which panics under `go test` instead of signalling. This
+// helper is the convenience; that default is the guarantee.
 func withNoKills(t *testing.T) *[]int {
 	t.Helper()
 	var killed []int
