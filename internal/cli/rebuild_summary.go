@@ -22,6 +22,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/links"
+	"github.com/cajasmota/grafel/internal/quality/audit"
 )
 
 // RebuildSummary is the aggregated post-rebuild statistics across all repos
@@ -56,6 +57,13 @@ type RebuildSummary struct {
 	// Orphan proxy — entities with no incoming relationships.
 	OrphanEntities int
 	OrphanRate     float64 // 0–100
+
+	// BugRate is the unresolved-import tally across the rebuilt repos,
+	// accumulated in the relationship pass below (#7271). Before it existed the
+	// rebuild path reported a hardcoded 0 to the health history AND to every
+	// configured quality webhook, so a consumer that cannot read this source
+	// had no way to learn the number was fabricated.
+	BugRate audit.BugRate
 
 	// Elapsed is the wall-clock duration of the rebuild.
 	Elapsed time.Duration
@@ -163,6 +171,7 @@ func ComputeRebuildSummary(group string, repoPaths []string, elapsed time.Durati
 			for _, r := range doc.Relationships {
 				s.TotalRelationships++
 				s.RelByKind[r.Kind]++
+				s.BugRate.AddEdge(r.Kind, r.ToID)
 				if r.ToID != "" {
 					hasIncoming[r.ToID] = struct{}{}
 				}

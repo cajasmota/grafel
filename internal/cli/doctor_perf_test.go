@@ -71,7 +71,7 @@ func writeRepoWithGraph(t *testing.T, root, slug string, doc *graph.Document, si
 // replaced the old O(relationships×entities) nested scan (#5689).
 func TestComputeCrossRepoAndOrphans(t *testing.T) {
 	doc := smallDoc(t, time.Now())
-	cross, orphans := computeCrossRepoAndOrphans(doc)
+	cross, orphans, _ := computeCrossRepoAndOrphans(doc)
 	if cross != 1 {
 		t.Errorf("cross-repo edges = %d, want 1", cross)
 	}

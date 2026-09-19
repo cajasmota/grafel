@@ -285,8 +285,7 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 	// Aggregate totals and build per-repo rows.
 	kindEntities := map[string]int{}
 	kindOrphans := map[string]int{}
-	totalImports := 0
-	goodImports := 0
+	var bug audit.BugRate
 	formatCounts := map[audit.ImportFormat]int{}
 
 	for _, rr := range repos {
@@ -296,9 +295,12 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 		reply.Total.Entities += rr.Entities
 		reply.Total.Orphans += rr.Orphans
 
-		totalImports += rr.ImportsTotal
-		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
-			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
+		// #7271 — the rate AND the reference breakdown below are derived from
+		// this one tally, the same helper `grafel doctor` renders from, so the
+		// two surfaces cannot report different figures for the same group. The
+		// parallel totalImports/goodImports counters that used to run beside it
+		// are gone: a second set of numbers is a second thing to drift.
+		bug.Add(audit.BugRateFromReport(rr))
 		for f, c := range rr.ImportsToIDFormat {
 			formatCounts[f] += c
 		}
@@ -361,17 +363,14 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 
 	// Health + fidelity from the REAL measured rates (not an avg risk score).
 	orphanPct := reply.Total.OrphanRate * 100
-	bugPct := 0.0
-	if totalImports > 0 {
-		bugPct = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
-	}
+	bugPct := bug.Pct()
 	reply.BugRatePct = bugPct
 	cr := quality.CompositeScoreFromPcts(orphanPct, bugPct, 0)
 	reply.HealthScore = int(cr.Score + 0.5)
 	fid := fidelityFromBugRate(bugPct)
 	reply.Fidelity = &fid
 
-	reply.References = buildUnresolvedReferences(totalImports, goodImports, formatCounts)
+	reply.References = buildUnresolvedReferences(bug.TotalImports, bug.ResolvedImports, formatCounts)
 
 	return reply
 }
@@ -695,8 +694,7 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 	// Audit each repo and accumulate totals.
 	totalEntities := 0
 	totalOrphans := 0
-	totalImports := 0
-	goodImports := 0
+	var bug audit.BugRate
 	repos := 0
 
 	for _, rp := range repoPaths {
@@ -708,19 +706,14 @@ func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) 
 		repos++
 		totalEntities += rr.Entities
 		totalOrphans += rr.Orphans
-		totalImports += rr.ImportsTotal
-		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
-			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
+		bug.Add(audit.BugRateFromReport(rr)) // #7271 — one shared derivation
 	}
 
 	orphanPct := 0.0
 	if totalEntities > 0 {
 		orphanPct = 100.0 * float64(totalOrphans) / float64(totalEntities)
 	}
-	bugPct := 0.0
-	if totalImports > 0 {
-		bugPct = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
-	}
+	bugPct := bug.Pct()
 
 	cr := quality.CompositeScoreFromPcts(orphanPct, bugPct, 0)
 	writeJSON(w, http.StatusOK, CompositeScoreReply{
