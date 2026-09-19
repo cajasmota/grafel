@@ -704,7 +704,16 @@ func modulesForJSFile(p string) []string {
 // of this set, and internal/extractors/javascript keeps a fifth in
 // jsImportExtensions. All four now agree with the classifier, and
 // TestJSExtensionSetsAgreeWithClassifier_7272 probes each through its
-// production entry point so the next divergence fails at the edit site.
+// production entry point.
+//
+// That guard's scope is the IMPORT-RESOLUTION path only. Other
+// per-feature extension lists outside it still lack `.mts`/`.cts` —
+// engine/http_endpoint_synthesis.go, extractor/httpclient_evidence.go,
+// graph/coverage.go, mcp/dead_code.go among them — so a `.mts` file
+// gets its imports bound but, for example, no HTTP-endpoint synthesis.
+// Those are separate features asking a different question than "what
+// language is this file", and are tracked separately; this guard does
+// not and should not speak for them.
 //
 // NOTE: no element of this slice is a string suffix of another
 // (`"x.mjs"` does not end in `".js"`, `"x.tsx"` does not end in

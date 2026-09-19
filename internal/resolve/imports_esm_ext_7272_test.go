@@ -440,7 +440,6 @@ func TestModulesForFileJSArmRequiresTrailingExtension_7272(t *testing.T) {
 		{"src/x.ts/helper.rb", "a DIRECTORY component named `x.ts` must not make a Ruby file a JS module"},
 		{"src/x.ts/README.md", "same, for a file with no language arm at all"},
 		{"src/x.tsx/a.go", "same, for a `.tsx` directory component and a Go file"},
-		{"src/typescript", "a path segment spelling a language name is not an extension"},
 		{"tsconfig.json", "a JSON config is not a JS/TS source"},
 		// The extension must include its DOT. Without it `HasSuffix(p, "ts")`
 		// matches any extensionless path whose name merely ENDS in those
@@ -528,11 +527,19 @@ func TestJSExtensionSetsAgreeWithClassifier_7272(t *testing.T) {
 // so broadening it risks laundering genuine extractor bugs into Dynamic;
 // these rows pin the guards that must keep holding.
 func TestLooksLikeSourceFilePathStaysNarrow_7272(t *testing.T) {
+	// EVERY row here must END in a recognised source extension. A row that
+	// does not (`scope:...:src/x.mts:foo`, `src/x.mts extra`) is rejected by
+	// the extension loop on its own and returns false for a reason unrelated
+	// to the shape guard its `why` names — it passes without ever exercising
+	// the guard, the same vacuity the `.bicep` / `Dockerfile` cases in
+	// refs_bicep_disposition_6852_test.go document. Both such rows were in
+	// the first cut of this table; deleting the space guard left the whole
+	// package green.
 	forbidden := []struct{ in, why string }{
-		{"scope:operation:ref:typescript:src/x.mts:foo",
-			"a structural ref contains ':' and is not a file path, however it ends"},
+		{"scope:component:file:typescript:src/x.mts",
+			"a structural ref contains ':' and is not a file path, even though it ENDS in .mts"},
 		{"/abs/path/x.mts", "absolute paths are not extractor-emitted"},
-		{"src/x.mts extra", "a space means this is not a single path"},
+		{"src/a.py src/x.mts", "a space means this is not a single path, even though it ENDS in .mts"},
 		{"src\\x.mts", "backslash paths are rejected"},
 		{"x.mtsx", "a longer extension that merely starts with a known one must not match"},
 		{"x.cjsx", "same for the CommonJS family"},
@@ -550,6 +557,23 @@ func TestLooksLikeSourceFilePathStaysNarrow_7272(t *testing.T) {
 	if !looksLikeSourceFilePath("src/x.mts") {
 		t.Error("looksLikeSourceFilePath(\"src/x.mts\") = false — the forbidden rows above are " +
 			"vacuous unless the accepting direction actually works")
+	}
+	// Per-guard positive controls. Each is the forbidden row above with ONLY
+	// the offending character removed, so it isolates that one guard: if the
+	// pair (forbidden row, control) does not straddle the guard, the forbidden
+	// row is not grading it.
+	for _, tc := range []struct{ in, guard, pairedWith string }{
+		{"scope/component/file/typescript/src/x.mts", "colon",
+			"scope:component:file:typescript:src/x.mts"},
+		{"src/a.py_src/x.mts", "space", "src/a.py src/x.mts"},
+		{"abs/path/x.mts", "leading-slash", "/abs/path/x.mts"},
+		{"src/x.mts", "backslash", "src\\x.mts"},
+	} {
+		if !looksLikeSourceFilePath(tc.in) {
+			t.Errorf("control for the %s guard: looksLikeSourceFilePath(%q) = false, so its "+
+				"paired forbidden row %q is rejected by the extension loop rather than by the "+
+				"guard it claims to pin", tc.guard, tc.in, tc.pairedWith)
+		}
 	}
 }
 
