@@ -204,6 +204,21 @@ func Synthesize(doc *graph.Document) Stats {
 		}
 	}
 
+	// #7274 — internal JS/TS directory roots. Same guard, same reason: the
+	// slash-bearing JS/TS catch-all in classifyExternal must not turn an
+	// unresolved alias/baseUrl import ("components/Button") into an npm
+	// placeholder when the repo itself owns that directory.
+	internalJSRoots := make(map[string]bool)
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		if e.Language != "javascript" && e.Language != "typescript" {
+			continue
+		}
+		for _, root := range jsFileRoots(e.SourceFile) {
+			internalJSRoots[root] = true
+		}
+	}
+
 	// #4700-#4704 — per-language internal-root sets. The same false-positive
 	// class that #4695 (TS/JS) and #4699 (Python) closed exists for every
 	// ecosystem with a third-party dependency surface: an unresolved
@@ -277,6 +292,7 @@ func Synthesize(doc *graph.Document) Stats {
 		golang: internalGoRoots,
 		rust:   internalRustRoots,
 		csharp: internalCsharpRoots,
+		js:     internalJSRoots,
 	})
 
 	// #6337 — every name a real (non-external) indexed entity carries. The
@@ -375,6 +391,7 @@ func Synthesize(doc *graph.Document) Stats {
 			golang: internalGoRoots,
 			rust:   internalRustRoots,
 			csharp: internalCsharpRoots,
+			js:     internalJSRoots,
 
 			inTreeNames: inTreeNames,
 		})
@@ -995,6 +1012,12 @@ type internalRoots struct {
 	golang map[string]bool
 	rust   map[string]bool
 	csharp map[string]bool
+	// js is the set of top-level directory roots owned by this repo's
+	// JS/TS sources (#7274). A non-relative import whose root IS one of
+	// them ("components/Button" in a repo with a components/ directory)
+	// is an alias/baseUrl import that failed to resolve — a fidelity bug,
+	// never an npm package. Mirrors python/java/ruby/golang/rust/csharp.
+	js map[string]bool
 	// inTreeNames is every name an indexed (non-external) entity carries,
 	// plus the case-folded half for VB.NET only. #6337's mask guard — see
 	// vbnetHierarchyExternal and inTreeNameSet. Not a "root" set like the
@@ -1434,6 +1457,53 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		}
 		if name == "" {
 			return "", "", false
+		}
+	}
+
+	// #7274 — npm specifiers that carry a path separator. Two distinct
+	// mechanisms used to drop these before jsExternalPackageRoot (the
+	// JS/TS catch-all, ~300 lines below) ever saw them:
+	//
+	//   1. UNSCOPED with a subpath ("better-auth/node",
+	//      "better-auth/adapters/prisma") — killed by the language-agnostic
+	//      path-separator reject below. Bare "better-auth" has no slash, so
+	//      it resolved fine; that is why the observed corpus data split
+	//      along "has a subpath".
+	//   2. SCOPED ("@base-ui/react", "@base-ui/react/toast") — killed by the
+	//      scoped-npm gate immediately below, which collapses to "@scope/pkg"
+	//      (stripping any subpath itself) and then requires allowlist
+	//      membership. Success turned ENTIRELY on the static allowlist, with
+	//      or without a subpath: "@prisma/client/edge" worked, "@base-ui/react"
+	//      did not. The subpath was never the discriminator here.
+	//
+	// Both shapes landed in ImportFormatOther — the same audit bucket a
+	// genuinely malformed reference falls into — so real third-party
+	// dependencies read as extraction bugs.
+	//
+	// Fix: run the existing JS/TS catch-all on slash-bearing names BEFORE
+	// either reject. Deliberately narrow:
+	//   - lang-gated to javascript/typescript, so the path-separator reject
+	//     keeps governing Go import paths, Java FQNs, Python dotted modules,
+	//     file paths and URLs exactly as before;
+	//   - relKind-gated to IMPORTS, so ambiguous bare CALLS/REFERENCES
+	//     operands (which may be local symbols) are untouched;
+	//   - gated on ContainsAny(name, "/\\"), so slash-free names keep their
+	//     existing route through every intermediate branch down to the
+	//     original jsExternalPackageRoot call site — this branch can only
+	//     change the answer for inputs that are rejected today.
+	//
+	// The allowlist is intentionally NOT consulted: npm has an unbounded
+	// number of scopes, so a static list can never be the gate for "is this
+	// external at all" (it still earns its keep downstream, deciding
+	// ExternalKnown vs ExternalUnknown). Guard against masking a genuinely
+	// internal import that merely failed alias resolution ("components/Button"
+	// in a repo that owns a components/ directory) via internal.js, the
+	// JS/TS sibling of internalPyRoots (#4699) and friends.
+	if (lang == "javascript" || lang == "typescript") &&
+		relKind == string(types.RelationshipKindImports) &&
+		strings.ContainsAny(name, "/\\") {
+		if pkg, ok := jsExternalPackageRoot(name, relProps); ok && !internal.js[pkg] {
+			return pkg, "package", true
 		}
 	}
 
@@ -2689,6 +2759,42 @@ func isNpmSegment(s string) bool {
 		}
 	}
 	return true
+}
+
+// jsFileRoots returns the top-level directory roots a JS/TS source file
+// contributes to the repo-owned root set (#7274). Both the raw leading
+// segment and the segment after a well-known source-root prefix are
+// recorded, because a project may import a same-repo module either way
+// depending on its tsconfig `baseUrl` / bundler root:
+//
+//	"src/components/Button.tsx"  → ["src", "components"]
+//	"components/Button.tsx"      → ["components"]
+//	"packages/ui/src/index.ts"   → ["packages", "ui"]
+//	"index.ts"                   → nil  (a root-level FILE is not a root)
+//
+// Returns nil for an empty path or a file that sits at the repo root —
+// only directories can collide with an unscoped npm package root.
+func jsFileRoots(path string) []string {
+	s := strings.TrimSpace(path)
+	if s == "" {
+		return nil
+	}
+	s = strings.ReplaceAll(s, "\\", "/")
+	s = strings.TrimPrefix(s, "./")
+	s = strings.TrimPrefix(s, "/")
+	segs := strings.Split(s, "/")
+	if len(segs) < 2 || segs[0] == "" {
+		// No directory component — the path is a bare filename.
+		return nil
+	}
+	roots := []string{segs[0]}
+	switch segs[0] {
+	case "src", "lib", "app", "packages", "apps":
+		if len(segs) >= 3 && segs[1] != "" {
+			roots = append(roots, segs[1])
+		}
+	}
+	return roots
 }
 
 // pythonFileRoot returns the top-level package root for a Python source
