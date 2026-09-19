@@ -121,11 +121,55 @@ class RouteGuideImpl final : public RouteGuide::Service {
 	}
 }
 
+// TestGrpcClientStreaming pins the ServerReader (client-streaming) arm of
+// cppGrpcParseArgs. What distinguishes client-streaming from the other two
+// kinds is the DIRECTION the streamed type is assigned in: for ServerReader the
+// type inside the angle brackets is the REQUEST (for ServerWriter it is the
+// RESPONSE), and the plain message pointer carries the other side. The fixture
+// therefore uses two distinct type names so a swapped assignment in that arm
+// cannot satisfy the assertions.
+func TestGrpcClientStreaming(t *testing.T) {
+	src := `
+class RouteGuideImpl final : public RouteGuide::Service {
+    Status RecordRoute(ServerContext* ctx, ServerReader<Point>* reader,
+                       RouteSummary* summary) override {
+        return Status::OK;
+    }
+};
+`
+	ents := extract(t, "custom_cpp_grpc", fi("route.cc", "cpp", src))
+	ep := findEndpoint(ents, "RPC /RouteGuide/RecordRoute")
+	if ep == nil {
+		t.Fatalf("expected RPC /RouteGuide/RecordRoute, got %+v", ents)
+	}
+	if got := ep.Props["streaming"]; got != "client_streaming" {
+		t.Errorf("streaming = %q, want client_streaming", got)
+	}
+	// Streamed-in type is the request; the plain out-pointer is the response.
+	if got := ep.Props["request_message"]; got != "Point" {
+		t.Errorf("request_message = %q, want Point", got)
+	}
+	if got := ep.Props["response_message"]; got != "RouteSummary" {
+		t.Errorf("response_message = %q, want RouteSummary", got)
+	}
+	// The DTO roles follow the same direction.
+	if r := propOf(t, ents, "SCOPE.Schema", "grpc_dto:Point", "grpc_message_role"); r != "request" {
+		t.Errorf("Point role = %q, want request", r)
+	}
+	if r := propOf(t, ents, "SCOPE.Schema", "grpc_dto:RouteSummary", "grpc_message_role"); r != "response" {
+		t.Errorf("RouteSummary role = %q, want response", r)
+	}
+}
+
 func TestGrpcBidiStreaming(t *testing.T) {
 	src := `
 class RouteGuideImpl final : public RouteGuide::Service {
     Status RouteChat(ServerContext* ctx,
                      ServerReaderWriter<RouteNote, RouteNote>* stream) override {
+        return Status::OK;
+    }
+    Status Converse(ServerContext* ctx,
+                    ServerReaderWriter<ChatReply, ChatRequest>* stream) override {
         return Status::OK;
     }
 };
@@ -137,6 +181,22 @@ class RouteGuideImpl final : public RouteGuide::Service {
 	}
 	if got := ep.Props["streaming"]; got != "bidi_streaming" {
 		t.Errorf("streaming = %q, want bidi_streaming", got)
+	}
+	// RouteChat streams the same message type both ways, so it cannot tell a
+	// correct ServerReaderWriter<Response, Request> assignment from a swapped or
+	// a missing one. Converse uses two distinct type names, which does.
+	ep2 := findEndpoint(ents, "RPC /RouteGuide/Converse")
+	if ep2 == nil {
+		t.Fatalf("expected RPC /RouteGuide/Converse, got %+v", ents)
+	}
+	if got := ep2.Props["streaming"]; got != "bidi_streaming" {
+		t.Errorf("Converse streaming = %q, want bidi_streaming", got)
+	}
+	if got := ep2.Props["response_message"]; got != "ChatReply" {
+		t.Errorf("Converse response_message = %q, want ChatReply", got)
+	}
+	if got := ep2.Props["request_message"]; got != "ChatRequest" {
+		t.Errorf("Converse request_message = %q, want ChatRequest", got)
 	}
 }
 
