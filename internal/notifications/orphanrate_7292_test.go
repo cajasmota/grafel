@@ -363,11 +363,13 @@ func TestRegressionDetected7292_NeedsTwoMeasuredOrphanRates(t *testing.T) {
 		t.Error("an unmeasured previous orphan rate was read as a flawless baseline")
 	}
 	// NIL-SAFETY ONLY, and labelled so rather than left to read as a decision
-	// guard: with a non-negative previous rate, a nil current read as 0 can
-	// never exceed prev+eps, so this row passes with or without the
-	// curr.OrphanRate != nil clause. It grades that the arm does not panic on a
-	// half-measured pair; it does not grade the clause itself. The prev side is
-	// the one that changes an outcome, and the row above grades it.
+	// guard: this row passes with or without the curr.OrphanRate != nil clause,
+	// so it grades that the arm does not panic on a half-measured pair, not the
+	// clause itself. That is a fact about the caller, not an equivalence — a
+	// negative prev, which the history file is never range-checked for, does
+	// separate the two forms. No fixture here, deliberately: one would pin the
+	// reachability of a snapshot the only production call site cannot build.
+	// The prev side is what changes an outcome, and the row above grades it.
 	if RegressionDetected(good, none) {
 		t.Error("an unmeasured current orphan rate made the comparison panic or fire")
 	}

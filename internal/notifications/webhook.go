@@ -503,9 +503,13 @@ func RegressionDetected(prev, curr QualitySnapshot) bool {
 	// worth the same: the prev one carries the decision — an unmeasured
 	// previous rate read as 0 makes the last run look flawless and reports a
 	// regression that did not happen, which is graded. The curr one is
-	// nil-safety only: with a non-negative previous rate, a nil current read as
-	// 0 can never exceed prev+eps, so no fixture in the reachable input space
-	// separates it, and none is claimed to.
+	// nil-safety only, but NOT because the two forms are equivalent: prev is
+	// read from an unvalidated history file (ReadHistory json.Unmarshals each
+	// line and range-checks nothing), so a negative rate separates them. What
+	// makes the clause unobservable today is the caller — the only production
+	// call site builds curr from rebuildQualitySnapshot, which never leaves
+	// OrphanRate nil. If anything makes curr nil-able there, this clause starts
+	// carrying a decision and needs a row of its own.
 	if curr.OrphanRate != nil && prev.OrphanRate != nil && *curr.OrphanRate > *prev.OrphanRate+eps {
 		return true
 	}
