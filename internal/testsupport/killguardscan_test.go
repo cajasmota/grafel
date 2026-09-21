@@ -279,6 +279,34 @@ func f(pid int) error {
 				"rather than TEXT would accept it",
 		},
 		{
+			name: "PLANTED VIOLATION — a reasoned marker elsewhere in the FILE does not excuse a bare one",
+			src: `package p
+` + procImport + `
+func reasoned(pid int) error {
+	//killguard:direct this one has a real reason
+	return process.Kill(pid)
+}
+func bareOne(pid int) error {
+	//killguard:direct
+	return process.Kill(pid)
+}`,
+			wantHits: 1,
+			wantBare: true,
+			why: "THE REASON IS PER-GROUP, and until this row nothing said so on EITHER half of the " +
+				"exempt/bare pair — found by auditing the two maps against the same questions " +
+				"rather than waiting for a mutant. Reading the reason FILE-GLOBALLY passed every " +
+				"other row in both directions: route everything to exempt once any marker has a " +
+				"reason and hits goes 1 to 0, route everything to bare once any marker lacks one " +
+				"and hits goes 1 to 2. The first direction is the serious one — it is not a " +
+				"misdirected diagnostic but the guard not firing at all, which is the failure " +
+				"mode #7280 exists to prevent, and it would let a bare marker through on the " +
+				"strength of an unrelated justification written elsewhere in the same file. " +
+				"WHAT THIS ROW ACTUALLY OBSERVES: wantHits is what fires in both directions, " +
+				"because a mis-routed group changes the population; wantBare is the weaker " +
+				"second check and only runs once the count is right. It is the ROUTING that is " +
+				"pinned here, not the flag",
+		},
+		{
 			name: "PLANTED VIOLATION — the marker excuses ONE line, not the function",
 			src: `package p
 ` + procImport + `
