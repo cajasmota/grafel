@@ -794,24 +794,58 @@ func TestShape_TypeAliasObjectExpands(t *testing.T) {
 	}
 }
 
-// TestFindClassEntityByName_ResolvesComponentTypeAlias covers #7296. The rust
-// extractor emits a language-level type alias as SCOPE.Component/type_alias
-// (internal/extractors/rust/rust.go buildTypeAlias), while Go/Kotlin/Swift/
-// TS/Python/Dart emit SCOPE.Schema/type_alias. findClassEntityByName admitted
-// only the Schema spelling, so a rust handler returning a type-aliased type
-// resolved no entity and rendered no expandable shape row.
+// TestFindClassEntityByName_ResolvesComponentTypeAlias covers #7296. A
+// language-level type alias is emitted under SCOPE.Schema by Go/Kotlin/Swift/
+// TS/Python/Dart, but under SCOPE.Component by four producers spelling the
+// subtype three different ways:
 //
-// This also grades both ends of the admit-list boundary: widening Component
-// to accept `type_alias` must not admit the field/column/property sub-node
-// subtypes under Component, and must not change what SCOPE.Schema admits.
+//	internal/extractors/rust/rust.go buildTypeAlias   "type_alias"
+//	internal/patterns/type_alias_extractor.go         "type_alias"
+//	internal/extractors/crystal/depth.go              "alias"
+//	internal/extractors/elm/extractor.go              "typealias"
+//	internal/custom/swift/vapor_extended.go           "typealias"
+//
+// findClassEntityByName admitted only the Schema spelling, so an alias from
+// any of those producers resolved nothing while the Go or TS spelling of the
+// same construct resolved. Each of the three Component spellings gets its own
+// positive row here, so a mutant dropping one spelling fails a row the other
+// two do not cover.
+//
+// This also grades both ends of the admit-list boundary: the widening must not
+// admit the field/column/property sub-node subtypes under Component, and must
+// not change what SCOPE.Schema admits — each of Schema's three excluded
+// subtypes has its own forbidden row.
 func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 	entities := []graph.Entity{
+		// Ordered FIRST on purpose: its name has the rust alias's name as a
+		// strict prefix. A match relaxed from equality to HasPrefix returns
+		// this instead of the alias, failing the rs_alias assertion below.
+		{
+			ID: "prefix_decoy", Name: "TransferIdListDecoy",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/x.rs", Language: "rust",
+		},
 		// rust: `type TransferId = u64;` — no CONTAINS field children.
 		{
 			ID: "rs_alias", Name: "TransferId",
 			Kind: "SCOPE.Component", Subtype: "type_alias",
 			SourceFile: "src/domain/ids.rs", Language: "rust",
 			Signature: "type TransferId = u64",
+		},
+		// crystal: `alias UserId = Int64` — SCOPE.Component/"alias".
+		{
+			ID: "cr_alias", Name: "UserId",
+			Kind: "SCOPE.Component", Subtype: "alias",
+			SourceFile: "src/domain/ids.cr", Language: "crystal",
+			Signature: "alias UserId = Int64",
+		},
+		// elm / vapor-swift: `type alias Money = Float` —
+		// SCOPE.Component/"typealias".
+		{
+			ID: "elm_alias", Name: "Money",
+			Kind: "SCOPE.Component", Subtype: "typealias",
+			SourceFile: "src/Domain/Money.elm", Language: "elm",
+			Signature: "type alias Money",
 		},
 		// go/TS spelling of the same construct — the already-accepted end.
 		{
@@ -836,11 +870,31 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 			Kind: "SCOPE.Component", Subtype: "column",
 			SourceFile: "src/x.rs", Language: "rust",
 		},
-		// Forbidden row on the Schema end: a field sub-node stays rejected.
+		// Forbidden rows on the Schema end: each of the three excluded
+		// sub-node subtypes gets its own row, so a mutant that stops
+		// excluding one of them fails a row the other two do not cover.
 		{
 			ID: "sch_field", Name: "SchemaFieldDecoy",
 			Kind: "SCOPE.Schema", Subtype: "field",
 			SourceFile: "src/x.ts", Language: "typescript",
+		},
+		{
+			ID: "sch_col", Name: "SchemaColumnDecoy",
+			Kind: "SCOPE.Schema", Subtype: "column",
+			SourceFile: "src/x.ts", Language: "typescript",
+		},
+		{
+			ID: "sch_prop", Name: "SchemaPropertyDecoy",
+			Kind: "SCOPE.Schema", Subtype: "property",
+			SourceFile: "src/x.ts", Language: "typescript",
+		},
+		// The docstring states the name match is case-sensitive. This decoy
+		// differs from the looked-up token only in case, so a match relaxed
+		// to EqualFold resolves it and fails the forbidden row below.
+		{
+			ID: "case_decoy", Name: "casesensitivedecoy",
+			Kind: "SCOPE.Component", Subtype: "type_alias",
+			SourceFile: "src/x.rs", Language: "rust",
 		},
 		// The patterns pass (internal/patterns/type_alias_extractor.go) emits
 		// SCOPE.Component/type_alias for typescript/javascript/kotlin/scala/
@@ -871,6 +925,14 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 		t.Error("#7296: childless alias must not report field children")
 	}
 
+	// Each Component alias spelling resolves on its own row.
+	if c := findClassEntityByName(grp, "UserId"); c == nil || c.ID != "cr_alias" {
+		t.Errorf(`#7296: SCOPE.Component/"alias" (crystal) must resolve, got %v`, c)
+	}
+	if e := findClassEntityByName(grp, "Money"); e == nil || e.ID != "elm_alias" {
+		t.Errorf(`#7296: SCOPE.Component/"typealias" (elm, vapor-swift) must resolve, got %v`, e)
+	}
+
 	// The SCOPE.Schema spelling is unchanged by the widening.
 	if s := findClassEntityByName(grp, "AccountId"); s == nil || s.ID != "go_alias" {
 		t.Errorf("#7296: SCOPE.Schema/type_alias must still resolve, got %v", s)
@@ -883,6 +945,10 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 		"ComponentPropertyDecoy",
 		"ComponentColumnDecoy",
 		"SchemaFieldDecoy",
+		"SchemaColumnDecoy",
+		"SchemaPropertyDecoy",
+		// Differs from the "casesensitivedecoy" entity only in case.
+		"CaseSensitiveDecoy",
 		// The patterns pass's record for this alias is named
 		// `type_alias_PatternAlias`, so the bare reference name a handler
 		// signature carries resolves nothing.
