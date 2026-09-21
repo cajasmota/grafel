@@ -129,6 +129,14 @@ type DirectKill struct {
 
 // Key is the ledger/diagnostic key: file + enclosing function. Not line-based —
 // a line number churns on every edit above it.
+//
+// It is NOT unique: two sites in one function collapse to one Key. Nothing in
+// this guard depends on that — dedup is by line (seen[p.Line]), the binding
+// sweep never calls Key, and TestDirectKillSweepCanFail collects into a slice
+// that preserves duplicates. Recorded because the sibling #6478 sweep uses the
+// analogous key as a MAP key (seen[o.Key()] / want[o.Key()]), an idiom that
+// would silently collapse two package-level sites in one file. Today's sites
+// live in different files, so the precondition does not arise here.
 func (d DirectKill) Key() string { return d.File + ":" + d.Fn }
 
 func (d DirectKill) String() string {

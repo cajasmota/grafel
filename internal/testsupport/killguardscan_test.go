@@ -355,18 +355,32 @@ func (s *engineSupervisor) start() {
 }
 
 // TestFindDirectKillsDiagnosesEachSiteIndependently pins that the BareMarker
-// diagnosis is keyed to the SITE'S OWN LINE, not to the file.
+// diagnosis is keyed to the SITE'S OWN LINE — not to the file, and not to the
+// enclosing function.
 //
-// The table above cannot express this: wantBare is one bool per row, so a
-// fixture holding one marked and one unmarked site has no way to say that the
+// TWO fixtures, because those are two different claims and the first one only
+// looked like it covered both. Fixture one holds the two sites in SEPARATE
+// FUNCTIONS: it separates per-file keying from per-site, and nothing more.
+// Spreading each bare verdict across its ENCLOSING FUNCTION passed it, passed
+// every row in the table, and passed both diagnosis tests — ALIVE — while an
+// author who marked one line got the bare-marker message on the line below it,
+// which is the misdirection the flag exists to prevent. Fixture two puts both
+// sites in ONE function and is what closes that.
+//
+// THIS IS A TWIN, and the other half was already graded. The table row "the
+// marker excuses ONE line, not the function" pins exactly this hazard for the
+// EXEMPT map, with the reason "a function- or file-scoped opt-out would retire
+// every LATER line added beside the one that earned it". The bare map is the
+// other half of the same pair, produced by one call and consumed side by side,
+// and it had no such row. That row could not have covered it incidentally
+// either: its marker carries a reason, so it exercises exempt and never
+// populates bare at all.
+//
+// The table above cannot express any of this: wantBare is one bool per row, so
+// a fixture holding one marked and one unmarked site has no way to say that the
 // findings must differ. That gap is not hypothetical — it is why the table's
 // "every finding" loop is equivalent to checking got[0], stated there rather
 // than papered over.
-//
-// The hazard it closes is real rather than invented: the flag is carried in a
-// map keyed by LINE, and an implementation that keyed it per FILE — or that
-// spread one group's verdict across the whole file — would pass every row in
-// the table, because no row mixes the two diagnoses.
 func TestFindDirectKillsDiagnosesEachSiteIndependently(t *testing.T) {
 	got := scanKills(t, `package p
 `+procImport+`
@@ -394,6 +408,40 @@ func bareMarked(pid int) error {
 	} else if !g.BareMarker {
 		t.Errorf("the BARE-MARKED site is not diagnosed as such even though an unmarked site "+
 			"sits in the same file: %s", g)
+	}
+
+	// Fixture two: both sites in ONE function. The fixture above cannot see a
+	// function-scoped flag, because its two sites are in different functions
+	// and a per-function verdict is per-site there by accident.
+	//
+	// Keyed by LINE rather than by Fn, necessarily — both findings report the
+	// same enclosing function, which is the whole point — and the two are
+	// sorted before comparing so the assertion does not rest on the order
+	// FindDirectKills happens to emit them in.
+	got = scanKills(t, `package p
+`+procImport+`
+func both(pid int) error {
+	//killguard:direct
+	_ = process.Kill
+	return process.Kill(pid)
+}`)
+	if len(got) != 2 {
+		t.Fatalf("got %d findings, want 2 (a bare-marked line and an unmarked one in the same "+
+			"function): %v", len(got), got)
+	}
+	marked, unmarked := got[0], got[1]
+	if marked.Line > unmarked.Line {
+		marked, unmarked = unmarked, marked
+	}
+	if !marked.BareMarker {
+		t.Errorf("the line the bare marker sits above is not diagnosed as bare-marked: %s", marked)
+	}
+	if unmarked.BareMarker {
+		t.Errorf("a bare marker spread to the next site in the SAME function. An author who "+
+			"marks one line now gets the bare-marker message on the line BELOW it, which is the "+
+			"misdirection the flag was added to prevent. This is the twin of the table row \"the "+
+			"marker excuses ONE line, not the function\", which pins the same hazard for the "+
+			"exempt half of the pair: %s", unmarked)
 	}
 }
 
