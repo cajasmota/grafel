@@ -14,7 +14,7 @@ func TestDottedModuleFromPathIsCaseSensitive_7278(t *testing.T) {
 	if got := dottedModuleFromPath("src/App.TS"); got != "src.App.TS" {
 		t.Fatalf("dottedModuleFromPath(%q) = %q, want %q: no arm of jsImportExtensions matches an uppercase extension, so nothing is stripped and the extension lands inside the module name (#7278)", "src/App.TS", got, "src.App.TS")
 	}
-	if got := dottedModuleFromPath("src/app.ts"); got != "src.app" {
-		t.Fatalf("dottedModuleFromPath(%q) = %q, want %q: the lowercase twin must still have its extension stripped, otherwise the row above is satisfied by a helper that strips nothing at all (#7278)", "src/app.ts", got, "src.app")
+	if got := dottedModuleFromPath("src/App.ts"); got != "src.App" {
+		t.Fatalf("dottedModuleFromPath(%q) = %q, want %q: the lowercase-EXTENSION twin must still have its extension stripped, otherwise the row above is satisfied by a helper that strips nothing at all (#7278)", "src/App.ts", got, "src.App")
 	}
 }

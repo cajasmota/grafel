@@ -618,9 +618,9 @@ func modulesForFile(p string) []string {
 // Case-sensitive, like the `.py` / `.java` / `.scala` / `.php` arms of
 // the same switch, and unlike isJSImportSource below, which lowercases.
 // That split is no longer asserted here in prose: it is observed by
-// TestHasJSExtensionIsCaseSensitive_7278 and its four siblings across
+// TestHasJSExtensionIsCaseSensitive_7278 and its six siblings across
 // internal/resolve, internal/classifier and the JS extractor, which pin
-// each of the five case decisions on this path in both directions
+// each of the six case decisions on this path in both directions
 // (#7278). Read those rows for what the policy actually is; before them
 // the case-sensitivity was entirely ungraded (mutant M3 ALIVE).
 //
