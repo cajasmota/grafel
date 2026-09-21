@@ -85,10 +85,13 @@ func TestLanguageForExtensionFoldIsReachableViaBasenameRoute_7278(t *testing.T) 
 			why:  "dropping the fold answers \"swift_package\" — the case-sensitive exactBasenameLanguageMap is reachable here",
 		},
 		{
-			// Folding EITHER way away from lowercase loses this one:
-			// the extension lookup needs `.json` and the basename
-			// lookup needs `elm.json`, and only the lowercase spelling
-			// satisfies the basename map.
+			// Routed solely by exactBasenameLanguageMap["elm.json"],
+			// which only the lowercase spelling of the base matches.
+			// extensionLanguageMap has no ".json" key at all (153 keys,
+			// none json-bearing), so when the basename lookup misses
+			// there is no extension route to fall back on — which is
+			// why BOTH flips land on "" rather than some generic JSON
+			// answer.
 			ext:  ".x/ELM.JSON",
 			want: "elm",
 			why:  "both dropping the fold and folding to upper answer \"\" — this row kills the site in both directions",

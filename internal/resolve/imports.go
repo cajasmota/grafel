@@ -618,11 +618,15 @@ func modulesForFile(p string) []string {
 // Case-sensitive, like the `.py` / `.java` / `.scala` / `.php` arms of
 // the same switch, and unlike isJSImportSource below, which lowercases.
 // That split is no longer asserted here in prose: it is observed by
-// TestHasJSExtensionIsCaseSensitive_7278 and its six siblings across
-// internal/resolve, internal/classifier and the JS extractor, which pin
-// each of the six case decisions on this path in both directions
-// (#7278). Read those rows for what the policy actually is; before them
-// the case-sensitivity was entirely ungraded (mutant M3 ALIVE).
+// TestHasJSExtensionIsCaseSensitive_7278 and its sibling rows in this
+// package, internal/classifier and the JS extractor, which pin each of
+// the six case decisions on this path in both directions (#7278). Read
+// those rows for what the policy actually is; before them the
+// case-sensitivity was entirely ungraded (mutant M3 ALIVE).
+//
+// The rows are named `*_7278` — grep for them rather than trusting a
+// count here. A count in a comment is a hostage to the next row added,
+// which is exactly how the "four siblings" this replaced went stale.
 //
 // Widening this one site is not a local change: for `src/App.TS` the
 // extractor's dottedModuleFromPath strips nothing and emits the dotted
