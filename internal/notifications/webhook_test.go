@@ -14,14 +14,14 @@ import (
 
 func goodSnap(group string) QualitySnapshot {
 	b := 2.0
-	return QualitySnapshot{Group: group, OrphanRate: 5, BugRate: &b, HealthScore: 93, TotalEntities: 1000}
+	return QualitySnapshot{Group: group, OrphanRate: 5, BugRate: &b, HealthScore: fptr7287(93), TotalEntities: 1000}
 }
 
 func badSnap(group string) QualitySnapshot {
 	s := 5
 	c := 3
 	b := 15.0
-	return QualitySnapshot{Group: group, OrphanRate: 25, BugRate: &b, HealthScore: 60, TotalEntities: 1000, Secrets: &s, Cycles: &c}
+	return QualitySnapshot{Group: group, OrphanRate: 25, BugRate: &b, HealthScore: fptr7287(60), TotalEntities: 1000, Secrets: &s, Cycles: &c}
 }
 
 func payload(event EventType, snap QualitySnapshot) WebhookPayload {
