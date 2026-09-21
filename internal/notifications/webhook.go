@@ -469,9 +469,14 @@ func formatOptionalScore(v *float64) string {
 // CheckBudgets compares snap against budgets and returns any violations.
 func CheckBudgets(snap QualitySnapshot, budgets QualityBudgets) []BudgetViolation {
 	var out []BudgetViolation
-	// An unmeasured orphan rate breaches no budget, for the reason already
-	// written on the bug-rate arm below: a nil read as 0 would report every
-	// unmeasured group as comfortably inside its threshold (#7292).
+	// The nil check is what makes the deref legal (#7292); it is NOT a
+	// behaviour change, and saying so here rather than letting the shape imply
+	// otherwise. This arm only runs when MaxOrphanRate > 0, and a nil read as a
+	// bare 0 exceeds no positive threshold, so the pre-pointer code breached
+	// nothing here either. Reverting it to a nil-as-0 read is undetectable for
+	// that reason — the row covering it is labelled nil-safety, not a
+	// behaviour pin. The comparison below carries the decision, and is graded
+	// with a rate sitting exactly on its budget.
 	if budgets.MaxOrphanRate > 0 && snap.OrphanRate != nil && *snap.OrphanRate > budgets.MaxOrphanRate {
 		out = append(out, BudgetViolation{"orphan_rate", budgets.MaxOrphanRate, *snap.OrphanRate})
 	}
@@ -494,9 +499,13 @@ func CheckBudgets(snap QualitySnapshot, budgets QualityBudgets) []BudgetViolatio
 // avoid noise from floating-point drift).
 func RegressionDetected(prev, curr QualitySnapshot) bool {
 	const eps = 0.5
-	// Same shape as every other arm here since #7292: a regression needs two
-	// measured numbers. An unmeasured side compared as 0 would report a
-	// regression that did not happen, or hide one that did.
+	// A regression needs two measured numbers (#7292). The two guards are not
+	// worth the same: the prev one carries the decision — an unmeasured
+	// previous rate read as 0 makes the last run look flawless and reports a
+	// regression that did not happen, which is graded. The curr one is
+	// nil-safety only: with a non-negative previous rate, a nil current read as
+	// 0 can never exceed prev+eps, so no fixture in the reachable input space
+	// separates it, and none is claimed to.
 	if curr.OrphanRate != nil && prev.OrphanRate != nil && *curr.OrphanRate > *prev.OrphanRate+eps {
 		return true
 	}

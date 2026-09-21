@@ -132,10 +132,12 @@ func TestWire7292_MeasuredValuesSurvive(t *testing.T) {
 // The renderers — one row per site, both directions
 // ────────────────────────────────────────────────────────────────────────────
 
-// orphanFieldValue7292 pulls the rendered "Orphan Rate" value out of a Slack or
-// Discord body. It fails the test when the field is missing rather than
-// returning "", so a renderer that dropped the field cannot read as a pass.
-func orphanFieldValue7292(t *testing.T, flavor WebhookFlavor, snap QualitySnapshot) string {
+// renderedField7292 pulls one rendered field value out of a Slack or Discord
+// body. It fails the test when the field is missing rather than returning "",
+// so a renderer that dropped the field cannot read as a pass. Parameterised by
+// title because "Orphan Rate" and "Bug Rate" share formatOptionalPct: a verdict
+// on one says nothing about the other.
+func renderedField7292(t *testing.T, flavor WebhookFlavor, title string, snap QualitySnapshot) string {
 	t.Helper()
 	body, err := marshalPayload(flavor, WebhookPayload{
 		Event: EventRebuildComplete, Timestamp: time.Unix(0, 0).UTC(), Quality: snap,
@@ -169,12 +171,17 @@ func orphanFieldValue7292(t *testing.T, flavor WebhookFlavor, snap QualitySnapsh
 		t.Fatalf("%s: expected exactly one attachment/embed:\n%s", flavor, body)
 	}
 	for _, f := range fields {
-		if f.Title == "Orphan Rate" || f.Name == "Orphan Rate" {
+		if f.Title == title || f.Name == title {
 			return f.Value
 		}
 	}
-	t.Fatalf("%s: no Orphan Rate field; any assertion on it would grade nothing:\n%s", flavor, body)
+	t.Fatalf("%s: no %s field; any assertion on it would grade nothing:\n%s", flavor, title, body)
 	return ""
+}
+
+func orphanFieldValue7292(t *testing.T, flavor WebhookFlavor, snap QualitySnapshot) string {
+	t.Helper()
+	return renderedField7292(t, flavor, "Orphan Rate", snap)
 }
 
 func TestRenderers7292_OrphanRate(t *testing.T) {
@@ -191,6 +198,48 @@ func TestRenderers7292_OrphanRate(t *testing.T) {
 		if got := orphanFieldValue7292(t, flavor, measuredSnap7292()); got != "12.50%" {
 			t.Errorf("%s measured Orphan Rate = %q, want %q", flavor, got, "12.50%")
 		}
+	}
+}
+
+// TestRenderers7292_MeasuredZeroIsNotNotMeasured is #7292 run backwards, and
+// the direction the fix left ungraded: a rate that WAS measured and came out at
+// zero has to print as "0.00%", not as "not measured". rebuild_summary.go
+// computes 100*orphans/total, so a graph with no orphaned entity and at least
+// one entity yields exactly 0 — the reachability argument is arithmetic; no
+// end-to-end run is claimed here.
+//
+// Orphan rate and bug rate are a pair: both are *float64 rendered by the one
+// formatOptionalPct, so a DEAD verdict on either says nothing about the other,
+// and a nil-or-zero collapse inside that helper would break both at once.
+func TestRenderers7292_MeasuredZeroIsNotNotMeasured(t *testing.T) {
+	zero := QualitySnapshot{
+		Group: "g1", OrphanRate: fptr7287(0), TotalEntities: iptr7292(40),
+		BugRate: fptr7287(0), HealthScore: fptr7287(100),
+	}
+	for _, flavor := range []WebhookFlavor{FlavorSlack, FlavorDiscord} {
+		for _, title := range []string{"Orphan Rate", "Bug Rate"} {
+			if got := renderedField7292(t, flavor, title, zero); got != "0.00%" {
+				t.Errorf("%s measured-zero %s = %q, want %q", flavor, title, got, "0.00%")
+			}
+		}
+	}
+}
+
+// TestFormatOptionalPct7292_ZeroAndNilAreDifferentStrings is the same contract
+// at the helper both fields share, one layer below the renderers. Stated as a
+// difference rather than two independent values so it cannot pass while the two
+// inputs have collapsed onto one output.
+func TestFormatOptionalPct7292_ZeroAndNilAreDifferentStrings(t *testing.T) {
+	measuredZero := formatOptionalPct(fptr7287(0))
+	unmeasured := formatOptionalPct(nil)
+	if measuredZero == unmeasured {
+		t.Fatalf("a measured 0 and an unmeasured value render identically as %q", measuredZero)
+	}
+	if measuredZero != "0.00%" {
+		t.Errorf("formatOptionalPct(0) = %q, want %q", measuredZero, "0.00%")
+	}
+	if unmeasured != "not measured" {
+		t.Errorf("formatOptionalPct(nil) = %q, want %q", unmeasured, "not measured")
 	}
 }
 
@@ -218,16 +267,28 @@ func TestSummaryText7292_DoesNotCarryAnOrphanRate(t *testing.T) {
 // CheckBudgets — a guard that never fires is as wrong as one that always does
 // ────────────────────────────────────────────────────────────────────────────
 
-func orphanViolation7292(t *testing.T, snap QualitySnapshot, budgets QualityBudgets) *BudgetViolation {
+func violation7292(t *testing.T, metric string, snap QualitySnapshot, budgets QualityBudgets) *BudgetViolation {
 	t.Helper()
 	for _, v := range CheckBudgets(snap, budgets) {
-		if v.Metric == "orphan_rate" {
+		if v.Metric == metric {
 			return &v
 		}
 	}
 	return nil
 }
 
+func orphanViolation7292(t *testing.T, snap QualitySnapshot, budgets QualityBudgets) *BudgetViolation {
+	t.Helper()
+	return violation7292(t, "orphan_rate", snap, budgets)
+}
+
+// TestCheckBudgets7292_UnmeasuredOrphanRateBreachesNothing is a NIL-SAFETY row,
+// not a behaviour pin, and is labelled so deliberately. Before #7292 a nil read
+// as a bare 0 also breached nothing (0 > any positive threshold is false), so
+// this outcome is unchanged by the fix and a mutant that reads nil as 0 here
+// passes identically. What it does grade is that the arm neither panics nor
+// invents a violation for a snapshot that measured nothing. The arm's real
+// decision is graded by the two rows below it.
 func TestCheckBudgets7292_UnmeasuredOrphanRateBreachesNothing(t *testing.T) {
 	budgets := QualityBudgets{MaxOrphanRate: 10}
 	if v := orphanViolation7292(t, unmeasuredSnap7292(), budgets); v != nil {
@@ -256,6 +317,39 @@ func TestCheckBudgets7292_MeasuredOrphanRateUnderThresholdDoesNotBreach(t *testi
 	}
 }
 
+// TestCheckBudgets7292_OnTheBoundaryDoesNotBreach sits a rate exactly ON its
+// threshold. Neither 12.5-vs-10 nor 12.5-vs-20 above distinguishes > from >=,
+// so without this row the comparison operator is ungraded. Both percentage arms
+// get a row: the bug-rate arm one line down in CheckBudgets has the identical
+// gap, and a verdict on the orphan arm says nothing about it.
+func TestCheckBudgets7292_OnTheBoundaryDoesNotBreach(t *testing.T) {
+	onBoundary := QualitySnapshot{
+		Group: "g1", OrphanRate: fptr7287(10), BugRate: fptr7287(4),
+		TotalEntities: iptr7292(100),
+	}
+	budgets := QualityBudgets{MaxOrphanRate: 10, MaxBugRate: 4}
+
+	if v := violation7292(t, "orphan_rate", onBoundary, budgets); v != nil {
+		t.Errorf("an orphan rate exactly ON its budget breached it: %+v", *v)
+	}
+	if v := violation7292(t, "bug_rate", onBoundary, budgets); v != nil {
+		t.Errorf("a bug rate exactly ON its budget breached it: %+v", *v)
+	}
+
+	// Positive control on the same fixture: one step over each threshold must
+	// breach, so the two rows above bound the operator from both sides rather
+	// than recording an arm that never fires.
+	over := onBoundary
+	over.OrphanRate = fptr7287(10.01)
+	over.BugRate = fptr7287(4.01)
+	if v := violation7292(t, "orphan_rate", over, budgets); v == nil {
+		t.Error("control: 10.01% over a 10% orphan budget must breach")
+	}
+	if v := violation7292(t, "bug_rate", over, budgets); v == nil {
+		t.Error("control: 4.01% over a 4% bug budget must breach")
+	}
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // RegressionDetected
 // ────────────────────────────────────────────────────────────────────────────
@@ -268,13 +362,40 @@ func TestRegressionDetected7292_NeedsTwoMeasuredOrphanRates(t *testing.T) {
 	if RegressionDetected(none, bad) {
 		t.Error("an unmeasured previous orphan rate was read as a flawless baseline")
 	}
+	// NIL-SAFETY ONLY, and labelled so rather than left to read as a decision
+	// guard: with a non-negative previous rate, a nil current read as 0 can
+	// never exceed prev+eps, so this row passes with or without the
+	// curr.OrphanRate != nil clause. It grades that the arm does not panic on a
+	// half-measured pair; it does not grade the clause itself. The prev side is
+	// the one that changes an outcome, and the row above grades it.
 	if RegressionDetected(good, none) {
-		t.Error("an unmeasured current orphan rate was compared against a measured previous one")
+		t.Error("an unmeasured current orphan rate made the comparison panic or fire")
 	}
 	// Positive control: the same current snapshot IS a regression once the
 	// previous side is measured, so the two rows above are real skips rather
 	// than a RegressionDetected that never fires on this field.
 	if !RegressionDetected(good, bad) {
 		t.Error("control: a measured 5% → 40% orphan rate must be a regression")
+	}
+}
+
+// TestRegressionDetected7292_EpsilonIsBoundedFromAbove pins the noise threshold
+// from the side nothing was holding. The existing noise row only shows eps is
+// above 0.1; without an upper bound, eps could be widened far enough to stop
+// reporting real regressions and every test would stay green.
+func TestRegressionDetected7292_EpsilonIsBoundedFromAbove(t *testing.T) {
+	base := QualitySnapshot{Group: "g1", OrphanRate: fptr7287(5)}
+
+	// 1.0 is comfortably above the 0.5 the code documents, and far below the
+	// ~36.5 that the next-widest assertion in this package would still allow.
+	worse := QualitySnapshot{Group: "g1", OrphanRate: fptr7287(6.0)}
+	if !RegressionDetected(base, worse) {
+		t.Error("a 5% → 6% orphan rate was written off as noise; eps is too wide")
+	}
+	// The lower bound on the same fixture, so this row cannot pass by eps
+	// having collapsed to zero and every drift reading as a regression.
+	quiet := QualitySnapshot{Group: "g1", OrphanRate: fptr7287(5.1)}
+	if RegressionDetected(base, quiet) {
+		t.Error("a 0.1% drift was reported as a regression; eps is too narrow")
 	}
 }

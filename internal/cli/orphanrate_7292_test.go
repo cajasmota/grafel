@@ -8,6 +8,7 @@ package cli
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -50,8 +51,11 @@ func TestRebuildQualitySnapshot_MeasuredBytes(t *testing.T) {
 	if strings.Contains(got, `"orphan_rate":null`) {
 		t.Errorf("rebuild snapshot nulled a measured orphan rate:\n%s", got)
 	}
-	if !strings.Contains(got, `"total_entities":100`) {
-		t.Errorf("rebuild snapshot does not carry the measured entity count:\n%s", got)
+	// Anchored on the value's end: a bare Contains of `"total_entities":100`
+	// is satisfied by 1000, so it would survive a producer that multiplied the
+	// count by ten.
+	if !regexp.MustCompile(`"total_entities":100([,}])`).MatchString(got) {
+		t.Errorf("rebuild snapshot does not carry the measured entity count exactly:\n%s", got)
 	}
 	if strings.Contains(got, `"total_entities":null`) {
 		t.Errorf("rebuild snapshot nulled a measured entity count:\n%s", got)
@@ -71,6 +75,43 @@ func TestRebuildQualitySnapshot_OrphanRatePointerIsNotShared(t *testing.T) {
 	}
 	if snap.TotalEntities == nil || *snap.TotalEntities != 100 {
 		t.Errorf("snapshot entity count followed the summary: %v", snap.TotalEntities)
+	}
+}
+
+// TestRebuildQualitySnapshot_EmptyGraphStillReportsAMeasuredZero pins a
+// decision #7292 deliberately did NOT take. rebuild_summary.go computes the
+// orphan rate only when TotalEntities > 0, so an empty graph leaves it at 0 —
+// arguably "unmeasured" in the same sense the ping is. That was left alone
+// rather than widened, and the choice was invisible to every other row here:
+// nulling both fields for an empty graph passed the whole cli suite. This row
+// makes the current behaviour observable, so reversing it is a decision
+// somebody takes on purpose rather than a silent regression.
+func TestRebuildQualitySnapshot_EmptyGraphStillReportsAMeasuredZero(t *testing.T) {
+	sum := &RebuildSummary{Group: "g1", TotalEntities: 0, OrphanRate: 0}
+	snap := rebuildQualitySnapshot("g1", sum, 100)
+
+	if snap.OrphanRate == nil {
+		t.Error("an empty graph nulled the orphan rate; #7292 left that field measured here")
+	} else if *snap.OrphanRate != 0 {
+		t.Errorf("empty-graph orphan_rate = %v, want 0", *snap.OrphanRate)
+	}
+	if snap.TotalEntities == nil {
+		t.Error("an empty graph nulled the entity count; #7292 left that field measured here")
+	} else if *snap.TotalEntities != 0 {
+		t.Errorf("empty-graph total_entities = %v, want 0", *snap.TotalEntities)
+	}
+
+	// The wire, not just the struct: a receiver has to see the zeros.
+	body, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(body)
+	if !regexp.MustCompile(`"orphan_rate":0([,}])`).MatchString(got) {
+		t.Errorf("empty-graph payload does not carry orphan_rate:0:\n%s", got)
+	}
+	if !regexp.MustCompile(`"total_entities":0([,}])`).MatchString(got) {
+		t.Errorf("empty-graph payload does not carry total_entities:0:\n%s", got)
 	}
 }
 

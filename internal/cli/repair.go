@@ -878,9 +878,10 @@ func rebuildQualitySnapshot(group string, sum *RebuildSummary, healthScore float
 	// #7292 made OrphanRate and TotalEntities pointers so a payload that
 	// measured neither can say so. A rebuild measured both, so both are
 	// carried across non-nil. The locals are copies rather than &sum.Field so
-	// the snapshot owns its own numbers: this runs on the goroutine that
-	// dispatches the webhooks, sharing sum with the caller that spawned it, and
-	// a payload already built must not change underneath it.
+	// the snapshot owns its own numbers and does not alias the summary: a
+	// payload already built does not change when sum is later written to. That
+	// is an aliasing property only — the read of sum here is not synchronised
+	// with any concurrent writer and this does not make it so.
 	orphanRate := sum.OrphanRate
 	totalEntities := sum.TotalEntities
 	snap := notifications.QualitySnapshot{
