@@ -302,16 +302,43 @@ int main() {
     app().run();
 }
 `))
+	// The absence below is only evidence if the registration was recognised at
+	// all: assert the middleware entity that gate always emits first, so a dead
+	// registerFilter recogniser fails here instead of passing the guard.
+	if e := authEntity(guard, "middleware:drogon:registerFilter:PlainFilter"); e == nil {
+		t.Fatalf("registerFilter<PlainFilter> was not recognised, so the guard below proves nothing; got %v", guard)
+	}
 	if e := authEntity(guard, "auth:drogon_filter:PlainFilter"); e != nil {
 		t.Fatalf("PlainFilter is no longer unclassified: registerFilter emitted %+v", *e)
 	}
 
 	// The class-declaration path emits unconditionally, so this input reaches
-	// emitAuth with method == "" and no jwt call site in the file.
+	// emitAuth with method == "". The file carries no jwt call site, so
+	// fileHasJWT is false and the substitution takes its "auth" arm — the
+	// other arm is graded by the sibling test below.
 	src := `class PlainFilter : public drogon::HttpFilter<PlainFilter> {};`
 	ents := extract(t, "custom_cpp_auth_middleware", fi("plain_filter.h", "cpp", src))
 	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_method", "auth")
 	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_subtype", "auth")
+}
+
+// The jwt arm of the same substitution: an unclassified name in a file that
+// DOES carry a jwt-cpp call site. Same input as the test above but for the
+// added `jwt::verify`, so the two rows differ on fileHasJWT alone and each
+// arm is graded by its own fixture.
+//
+// This fixture also carries the package's only auth_subtype assertion whose
+// expected value differs from "auth", so stamping auth_subtype from anything
+// other than the same `method` variable auth_method comes from is visible here.
+func TestCppAuthDrogonClassFilterUnclassifiedJwtFile(t *testing.T) {
+	src := `
+#include <jwt-cpp/jwt.h>
+class PlainFilter : public drogon::HttpFilter<PlainFilter> {};
+void check(const std::string& tok) { jwt::verify(tok); }
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("plain_filter_jwt.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_method", "jwt")
+	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_subtype", "jwt")
 }
 
 // ---------------------------------------------------------------------------
