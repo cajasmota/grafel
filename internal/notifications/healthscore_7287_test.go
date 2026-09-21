@@ -12,6 +12,9 @@ package notifications
 // summaryText lines that put the score in a message title.
 
 import (
+	"encoding/json"
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -105,91 +108,190 @@ func TestWebhookPayload_MeasuredHealthScoreStillSerialises(t *testing.T) {
 var renderSites7287 = []struct {
 	name  string
 	build func(QualitySnapshot) (string, error)
+	// score returns the health score's OWN rendering at this site, extracted
+	// from the site's real output. Every assertion below compares against this
+	// rather than grepping the whole body, because a substring check on the
+	// whole body is satisfied by a superstring: "88.00%" contains "88.0", so a
+	// Contains(got, "88.0") row stays green when a site calls the wrong helper.
+	// formatOptionalPct sits twelve lines from formatOptionalScore, takes the
+	// same *float64, returns the same string for nil, and is named on the very
+	// next line of the same fields slice — so that swap compiles, and the score
+	// ships as a percentage. Extracting the field pins its shape instead of
+	// blacklisting one wrong spelling of it.
+	score func(string) (string, error)
 }{
 	{"slack", func(s QualitySnapshot) (string, error) {
 		b, err := marshalSlack(WebhookPayload{Event: EventRebuildComplete, Timestamp: time.Now().UTC(), Quality: s})
 		return string(b), err
+	}, func(body string) (string, error) {
+		var p struct {
+			Attachments []struct {
+				Fields []struct {
+					Title string `json:"title"`
+					Value string `json:"value"`
+				} `json:"fields"`
+			} `json:"attachments"`
+		}
+		if err := json.Unmarshal([]byte(body), &p); err != nil {
+			return "", err
+		}
+		if len(p.Attachments) != 1 {
+			return "", fmt.Errorf("want 1 attachment, got %d", len(p.Attachments))
+		}
+		var found []string
+		for _, f := range p.Attachments[0].Fields {
+			if f.Title == "Health Score" {
+				found = append(found, f.Value)
+			}
+		}
+		if len(found) != 1 {
+			return "", fmt.Errorf("want exactly 1 \"Health Score\" field, got %d", len(found))
+		}
+		return found[0], nil
 	}},
 	{"discord", func(s QualitySnapshot) (string, error) {
 		b, err := marshalDiscord(WebhookPayload{Event: EventRebuildComplete, Timestamp: time.Now().UTC(), Quality: s})
 		return string(b), err
+	}, func(body string) (string, error) {
+		var p struct {
+			Embeds []struct {
+				Fields []struct {
+					Name  string `json:"name"`
+					Value string `json:"value"`
+				} `json:"fields"`
+			} `json:"embeds"`
+		}
+		if err := json.Unmarshal([]byte(body), &p); err != nil {
+			return "", err
+		}
+		if len(p.Embeds) != 1 {
+			return "", fmt.Errorf("want 1 embed, got %d", len(p.Embeds))
+		}
+		var found []string
+		for _, f := range p.Embeds[0].Fields {
+			if f.Name == "Health Score" {
+				found = append(found, f.Value)
+			}
+		}
+		if len(found) != 1 {
+			return "", fmt.Errorf("want exactly 1 \"Health Score\" field, got %d", len(found))
+		}
+		return found[0], nil
 	}},
 	{"summary/rebuild_complete", func(s QualitySnapshot) (string, error) {
 		return summaryText(WebhookPayload{Event: EventRebuildComplete, Quality: s}), nil
-	}},
+	}, healthParenthetical7287},
 	{"summary/quality_regressed", func(s QualitySnapshot) (string, error) {
 		return summaryText(WebhookPayload{Event: EventQualityRegressed, Quality: s}), nil
-	}},
+	}, healthParenthetical7287},
+}
+
+// healthParenthetical7287 extracts what a summary title puts in its "(health …)"
+// slot. Anchored to the end of the title so it captures the whole slot: a
+// capture that stopped at the first non-digit would itself be satisfied by
+// "88.00%".
+var healthSlotRe7287 = regexp.MustCompile(`\(health (.+)\)$`)
+
+func healthParenthetical7287(title string) (string, error) {
+	m := healthSlotRe7287.FindStringSubmatch(title)
+	if m == nil {
+		return "", fmt.Errorf("no \"(health …)\" slot in %q", title)
+	}
+	return m[1], nil
+}
+
+// scoreAt runs a site and returns the health score's own rendering, failing the
+// test if the extraction itself did not work. Without this, an extractor that
+// silently returned "" would make every equality row below compare "" to "" and
+// grade nothing.
+func scoreAt(t *testing.T, i int, snap QualitySnapshot) string {
+	t.Helper()
+	site := renderSites7287[i]
+	body, err := site.build(snap)
+	if err != nil {
+		t.Fatalf("%s: build: %v", site.name, err)
+	}
+	got, err := site.score(body)
+	if err != nil {
+		t.Fatalf("%s: could not extract the health score from the output, so the "+
+			"assertion would grade nothing: %v\n%s", site.name, err, body)
+	}
+	if got == "" {
+		t.Fatalf("%s: extracted an empty health score from:\n%s", site.name, body)
+	}
+	return got
 }
 
 // TestRenderSites_UncomputedHealthScoreSaysNotMeasured is the forbidden row at
-// every site: no digits where the score goes.
-//
-// The snapshot deliberately carries OrphanRate 12.5 and TotalEntities 100, so
-// "there are no digits anywhere in the output" is not what is being asserted —
-// the assertion is scoped to the score's own rendering.
+// every site, asserted as an exact equality on the score's own rendering rather
+// than as a grep over the whole body. The snapshot deliberately carries
+// OrphanRate 12.5 and TotalEntities 100, so the rows below are scoped to the
+// score's slot and not to "there are no digits anywhere".
 func TestRenderSites_UncomputedHealthScoreSaysNotMeasured(t *testing.T) {
-	for _, site := range renderSites7287 {
+	for i, site := range renderSites7287 {
 		t.Run(site.name, func(t *testing.T) {
-			got, err := site.build(unmeasuredSnap7287())
-			if err != nil {
-				t.Fatalf("build: %v", err)
-			}
-			if !strings.Contains(got, "not measured") {
-				t.Errorf("%s does not say the health score is unmeasured:\n%s", site.name, got)
-			}
-			// The exact shapes the defect produced. ComputeHealthScore returns
-			// 100 for a zeroed bug rate and a zeroed orphan rate; 87.5 is what
-			// it returns for this snapshot's orphan rate with the bug rate read
-			// as 0, which is the number the shipped code actually printed here.
-			for _, forbidden := range []string{"health 100.0", "health 87.5", "health 0.0", `"100.0"`, `"87.5"`, `"0.0"`} {
-				if strings.Contains(got, forbidden) {
-					t.Errorf("%s renders an uncomputed health score as %q:\n%s", site.name, forbidden, got)
-				}
+			if got := scoreAt(t, i, unmeasuredSnap7287()); got != "not measured" {
+				t.Errorf("%s renders an uncomputed health score as %q, want %q",
+					site.name, got, "not measured")
 			}
 		})
 	}
 }
 
-// TestRenderSites_UncomputedHealthScore_PlantedViolationFires proves the
-// forbidden rows above are reachable rather than vacuously green. It feeds the
-// same sites the value the shipped code fed them — the number ComputeHealthScore
-// returns when the bug rate is read as 0 — and requires every site to trip.
+// TestRenderSites_UncomputedHealthScore_PlantedViolationFires proves the rows
+// above are reachable rather than vacuously green, and proves each extractor is
+// reading the score's slot and not some constant. It feeds every site the value
+// the shipped code fed them — what ComputeHealthScore returns when the bug rate
+// is read as 0 — and requires each site to surface it.
 func TestRenderSites_UncomputedHealthScore_PlantedViolationFires(t *testing.T) {
 	planted := unmeasuredSnap7287()
 	planted.HealthScore = fptr7287(87.5) // what the pre-#7287 code passed through
 
-	for _, site := range renderSites7287 {
+	for i, site := range renderSites7287 {
 		t.Run(site.name, func(t *testing.T) {
-			got, err := site.build(planted)
-			if err != nil {
-				t.Fatalf("build: %v", err)
-			}
-			tripped := strings.Contains(got, "health 87.5") || strings.Contains(got, `"87.5"`)
-			if !tripped {
-				t.Errorf("planted violation did not appear at %s, so that site's "+
-					"forbidden row is unreachable and grades nothing:\n%s", site.name, got)
+			got := scoreAt(t, i, planted)
+			if got != "87.5" {
+				t.Errorf("planted violation did not reach %s's health-score slot "+
+					"(extracted %q), so that site's forbidden row grades nothing", site.name, got)
 			}
 		})
 	}
 }
 
 // TestRenderSites_MeasuredHealthScoreStillRenders is the opposite direction at
-// every site: the unknown branch must not swallow a real score.
+// every site. The equality is exact and it is what closes the helper-confusion
+// hole: a Contains(body, "88.0") row here passed with every site swapped to
+// formatOptionalPct, which renders a 0–100 composite score as "88.00%".
 func TestRenderSites_MeasuredHealthScoreStillRenders(t *testing.T) {
-	for _, site := range renderSites7287 {
+	for i, site := range renderSites7287 {
 		t.Run(site.name, func(t *testing.T) {
-			got, err := site.build(measuredSnap7287())
-			if err != nil {
-				t.Fatalf("build: %v", err)
-			}
-			if !strings.Contains(got, "88.0") {
-				t.Errorf("%s lost a measured health score:\n%s", site.name, got)
-			}
-			if strings.Contains(got, "not measured") {
-				t.Errorf("%s calls a measured health score unmeasured:\n%s", site.name, got)
+			got := scoreAt(t, i, measuredSnap7287())
+			if got != "88.0" {
+				t.Errorf("%s renders a measured health score as %q, want %q — a 0–100 "+
+					"composite score is not a percentage, and formatOptionalPct compiles here",
+					site.name, got, "88.0")
 			}
 		})
+	}
+}
+
+// TestRenderSites_ScoreIsNotAPercentage is the same property stated as the
+// class rather than as one value, so a site that starts appending a unit to
+// some other score fails too. It is deliberately separate from the equality row
+// above: that row says what the rendering IS, this one says what the rendering
+// may never be, and the second survives a future change to the first.
+func TestRenderSites_ScoreIsNotAPercentage(t *testing.T) {
+	for _, snap := range []QualitySnapshot{measuredSnap7287(), unmeasuredSnap7287()} {
+		for i, site := range renderSites7287 {
+			t.Run(site.name, func(t *testing.T) {
+				got := scoreAt(t, i, snap)
+				if strings.Contains(got, "%") {
+					t.Errorf("%s renders the health score as %q — the score is a 0–100 "+
+						"composite, not a percentage; formatOptionalPct is the adjacent "+
+						"helper with the same signature", site.name, got)
+				}
+			})
+		}
 	}
 }
 
