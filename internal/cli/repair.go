@@ -838,16 +838,13 @@ func recordHealthHistory(group string, sum *RebuildSummary) {
 	// feeding it a 0 for an unmeasured bug rate inflates the score rather
 	// than blurring it.
 	//
-	// The webhook snapshot built below is NOT at parity, and an earlier
-	// version of this comment wrongly said it was. QualitySnapshot.BugRate is
-	// a *float64 and does go null, but QualitySnapshot.HealthScore is a bare
-	// float64, so a rebuild that measured nothing still emits
-	// {"bug_rate":null,"health_score":100} and the Slack/Discord renderers
-	// print the 100 beside the null. Fixing that is a webhook wire-contract
-	// change plus three renderer branches, tracked separately. It joins the
-	// two other surfaces #7283 deliberately left alone: HealthEntry.OrphanRate
-	// (still a bare float64) and the dashboard's "indexed but no history →
-	// fidelity 1.0 / healthy" fallback in deriveGroupHealth.
+	// #7287 — the webhook snapshot built below is now at parity:
+	// QualitySnapshot.HealthScore is a *float64 too, and rebuildQualitySnapshot
+	// leaves it null on exactly the same condition this record does, so an
+	// unmeasured rebuild no longer emits {"bug_rate":null,"health_score":100}.
+	// Still deliberately left alone by both: HealthEntry.OrphanRate (a bare
+	// float64 with the same collapse) and the dashboard's "indexed but no
+	// history → fidelity 1.0 / healthy" fallback in deriveGroupHealth.
 	healthScore := quality.ComputeHealthScore(sum.OrphanRate, sum.BugRate.Pct())
 	entry := quality.HealthEntry{
 		Timestamp:     time.Now().UTC(),
@@ -872,13 +869,45 @@ func recordHealthHistory(group string, sum *RebuildSummary) {
 // dispatcher: BugRate is nil whenever the rebuild could not measure one. It was
 // previously a literal 0 written beside a real orphan rate, and a webhook
 // consumer — unlike a reader of this file — had no way to tell.
+//
+// #7287 extends the same contract to HealthScore: the caller's healthScore was
+// computed by ComputeHealthScore from sum.BugRate.Pct(), which is 0 for an
+// unmeasured rate, so with no bug rate the score is a perfect 100 nobody
+// measured. The snapshot drops it rather than pass it on.
 func rebuildQualitySnapshot(group string, sum *RebuildSummary, healthScore float64) notifications.QualitySnapshot {
-	return notifications.QualitySnapshot{
+	snap := notifications.QualitySnapshot{
 		Group:         group,
 		OrphanRate:    sum.OrphanRate,
 		BugRate:       sum.BugRate.PctPtr(),
-		HealthScore:   healthScore,
 		TotalEntities: sum.TotalEntities,
+	}
+	if snap.BugRate != nil {
+		snap.HealthScore = &healthScore
+	}
+	return snap
+}
+
+// previousSnapshot converts the prior history entry into the snapshot shape
+// RegressionDetected compares against.
+//
+// Extracted for the same reason as rebuildQualitySnapshot: this mapping decides
+// which of the previous run's metrics count as measured, and it is otherwise
+// only reachable through a live dispatcher.
+func previousSnapshot(group string, prevEntry quality.HealthEntry) notifications.QualitySnapshot {
+	return notifications.QualitySnapshot{
+		Group:      group,
+		OrphanRate: prevEntry.OrphanRate,
+		// Nil when the previous run could not measure one (#7283).
+		// RegressionDetected skips the comparison when either side is nil; a
+		// nil read as 0 here would make the previous run look flawless and
+		// report a regression that did not happen.
+		BugRate: prevEntry.BugRate,
+		// Both *float64 since #7287. RegressionDetected does NOT compare health
+		// scores today — orphan rate, bug rate, secrets and cycles only — so
+		// this field changes no decision; it is carried straight across so the
+		// snapshot stays a faithful picture of the previous run, and so that a
+		// future comparison inherits the nullness rather than a flattened 0.
+		HealthScore: prevEntry.HealthScore,
 	}
 }
 
@@ -926,17 +955,7 @@ func dispatchRebuildWebhooks(group string, sum *RebuildSummary, healthScore floa
 	prev, readErr := quality.ReadHistory(root, group, 2)
 	if readErr == nil && len(prev) >= 2 {
 		prevEntry := prev[len(prev)-2] // second-to-last = prior rebuild
-		prevSnap := notifications.QualitySnapshot{
-			Group:      group,
-			OrphanRate: prevEntry.OrphanRate,
-			// Nil when the previous run could not measure one (#7283).
-			// RegressionDetected needs two measured numbers and already
-			// skips the comparison when either side is nil.
-			BugRate: prevEntry.BugRate,
-		}
-		if prevEntry.HealthScore != nil {
-			prevSnap.HealthScore = *prevEntry.HealthScore
-		}
+		prevSnap := previousSnapshot(group, prevEntry)
 		if notifications.RegressionDetected(prevSnap, snap) {
 			dispatcher.DispatchAll(settings.Webhooks, notifications.WebhookPayload{
 				Event:     notifications.EventQualityRegressed,

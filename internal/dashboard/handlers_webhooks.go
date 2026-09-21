@@ -210,8 +210,15 @@ func (s *Server) handleTestWebhookByID(w http.ResponseWriter, r *http.Request) {
 		Event:     "ping",
 		Timestamp: time.Now().UTC(),
 		Quality: notifications.QualitySnapshot{
-			Group:       "test",
-			HealthScore: 100,
+			Group: "test",
+			// No HealthScore: a ping measures nothing, so it emits an explicit
+			// null alongside the null bug rate rather than a fabricated 100
+			// that the Slack renderer would print beside "not measured" (#7287).
+			// This does NOT make the whole ping honest: OrphanRate and
+			// TotalEntities are still a bare float64 and int with no unknown
+			// state, so the ping also ships orphan_rate:0 and
+			// total_entities:0. Tracked as #7292. Same class as
+			// quality.HealthEntry.OrphanRate, which #7283 defers separately.
 		},
 		Details: map[string]any{"message": "grafel test ping"},
 	}
@@ -262,8 +269,15 @@ func (s *Server) handleTestWebhookAdhoc(w http.ResponseWriter, r *http.Request) 
 		Event:     "ping",
 		Timestamp: time.Now().UTC(),
 		Quality: notifications.QualitySnapshot{
-			Group:       "test",
-			HealthScore: 100,
+			Group: "test",
+			// No HealthScore: a ping measures nothing, so it emits an explicit
+			// null alongside the null bug rate rather than a fabricated 100
+			// that the Slack renderer would print beside "not measured" (#7287).
+			// This does NOT make the whole ping honest: OrphanRate and
+			// TotalEntities are still a bare float64 and int with no unknown
+			// state, so the ping also ships orphan_rate:0 and
+			// total_entities:0. Tracked as #7292. Same class as
+			// quality.HealthEntry.OrphanRate, which #7283 defers separately.
 		},
 		Details: map[string]any{"message": "grafel test ping"},
 	}

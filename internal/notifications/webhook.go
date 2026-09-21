@@ -95,8 +95,15 @@ type QualitySnapshot struct {
 	// measured (#7271). Deliberately a pointer with NO omitempty: a receiver of
 	// this payload cannot read grafel's source to discover that a 0 meant "we
 	// never looked", so the wire has to carry an explicit null instead.
-	BugRate       *float64 `json:"bug_rate"`
-	HealthScore   float64  `json:"health_score"`
+	BugRate *float64 `json:"bug_rate"`
+	// HealthScore is the composite quality score, or nil when it could not be
+	// computed (#7287). ComputeHealthScore has no unknown state: an unmeasured
+	// bug rate enters it as a 0 and leaves it as a perfect 100, so a snapshot
+	// that carries bug_rate:null has nothing honest to put here. Pointer with
+	// NO omitempty for the same reason as BugRate directly above — the wire has
+	// to carry an explicit null rather than let the key vanish, because an
+	// absent key and a never-measured one are not the same claim.
+	HealthScore   *float64 `json:"health_score"`
 	TotalEntities int      `json:"total_entities"`
 	Cycles        *int     `json:"cycles,omitempty"`
 	Secrets       *int     `json:"secrets,omitempty"`
@@ -323,7 +330,7 @@ func marshalSlack(p WebhookPayload) ([]byte, error) {
 
 	fields := []map[string]any{
 		{"title": "Group", "value": p.Quality.Group, "short": true},
-		{"title": "Health Score", "value": fmt.Sprintf("%.1f", p.Quality.HealthScore), "short": true},
+		{"title": "Health Score", "value": formatOptionalScore(p.Quality.HealthScore), "short": true},
 		{"title": "Orphan Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.OrphanRate), "short": true},
 		{"title": "Bug Rate", "value": formatOptionalPct(p.Quality.BugRate), "short": true},
 	}
@@ -356,7 +363,7 @@ func marshalDiscord(p WebhookPayload) ([]byte, error) {
 	}
 
 	fields := []map[string]any{
-		{"name": "Health Score", "value": fmt.Sprintf("%.1f", p.Quality.HealthScore), "inline": true},
+		{"name": "Health Score", "value": formatOptionalScore(p.Quality.HealthScore), "inline": true},
 		{"name": "Orphan Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.OrphanRate), "inline": true},
 		{"name": "Bug Rate", "value": formatOptionalPct(p.Quality.BugRate), "inline": true},
 	}
@@ -385,9 +392,15 @@ func marshalDiscord(p WebhookPayload) ([]byte, error) {
 func summaryText(p WebhookPayload) string {
 	switch p.Event {
 	case EventRebuildComplete:
-		return fmt.Sprintf("[grafel] Rebuild complete — %s (health %.1f)", p.Quality.Group, p.Quality.HealthScore)
+		// "(health not measured)" rather than dropping the parenthetical: a
+		// title that simply omits the score reads as a message someone forgot
+		// to fill in, and a reader comparing two notifications cannot tell an
+		// unmeasured run from an older message format. The words are
+		// formatOptionalScore's, so the title and the Slack/Discord field beside
+		// it say the same thing (#7287).
+		return fmt.Sprintf("[grafel] Rebuild complete — %s (health %s)", p.Quality.Group, formatOptionalScore(p.Quality.HealthScore))
 	case EventQualityRegressed:
-		return fmt.Sprintf("[grafel] Quality regression detected — %s (health %.1f)", p.Quality.Group, p.Quality.HealthScore)
+		return fmt.Sprintf("[grafel] Quality regression detected — %s (health %s)", p.Quality.Group, formatOptionalScore(p.Quality.HealthScore))
 	case EventBudgetExceeded:
 		return fmt.Sprintf("[grafel] Quality budget exceeded — %s", p.Quality.Group)
 	case EventSecretFound:
@@ -429,6 +442,18 @@ func formatOptionalPct(v *float64) string {
 		return "not measured"
 	}
 	return fmt.Sprintf("%.2f%%", *v)
+}
+
+// formatOptionalScore renders a health score that may not have been computed.
+// It borrows formatOptionalPct's wording verbatim rather than inventing a
+// second vocabulary for the same idea, and never falls back to a number: a
+// "100.0" printed beside a "not measured" bug rate is the contradiction #7287
+// was filed about.
+func formatOptionalScore(v *float64) string {
+	if v == nil {
+		return "not measured"
+	}
+	return fmt.Sprintf("%.1f", *v)
 }
 
 // CheckBudgets compares snap against budgets and returns any violations.
