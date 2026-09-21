@@ -26,7 +26,7 @@ func fptr7287(v float64) *float64 { return &v }
 // count but no bug rate and therefore no score — the shape rebuildQualitySnapshot
 // produces for a rebuild that never measured an IMPORTS edge.
 func unmeasuredSnap7287() QualitySnapshot {
-	return QualitySnapshot{Group: "g1", OrphanRate: 12.5, TotalEntities: 100}
+	return QualitySnapshot{Group: "g1", OrphanRate: fptr7287(12.5), TotalEntities: iptr7292(100)}
 }
 
 // measuredSnap7287 differs from unmeasuredSnap7287 on exactly the two fields
@@ -34,7 +34,7 @@ func unmeasuredSnap7287() QualitySnapshot {
 // measuredness alone.
 func measuredSnap7287() QualitySnapshot {
 	return QualitySnapshot{
-		Group: "g1", OrphanRate: 12.5, TotalEntities: 100,
+		Group: "g1", OrphanRate: fptr7287(12.5), TotalEntities: iptr7292(100),
 		BugRate: fptr7287(7.25), HealthScore: fptr7287(88.0),
 	}
 }
@@ -374,7 +374,7 @@ func TestSlackAndDiscord_BothFieldsAgreeWhenNothingWasMeasured(t *testing.T) {
 // is a sentence no test observes — and if it ever starts comparing them, the
 // unmeasured side has to be handled first.
 func TestRegressionDetected_IgnoresTheHealthScore(t *testing.T) {
-	base := QualitySnapshot{Group: "g1", OrphanRate: 5, BugRate: fptr7287(2), HealthScore: fptr7287(93)}
+	base := QualitySnapshot{Group: "g1", OrphanRate: fptr7287(5), BugRate: fptr7287(2), HealthScore: fptr7287(93)}
 	worse := base
 	worse.HealthScore = fptr7287(12) // a catastrophic drop, and nothing else changed
 

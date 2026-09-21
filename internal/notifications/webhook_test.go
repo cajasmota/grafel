@@ -14,14 +14,14 @@ import (
 
 func goodSnap(group string) QualitySnapshot {
 	b := 2.0
-	return QualitySnapshot{Group: group, OrphanRate: 5, BugRate: &b, HealthScore: fptr7287(93), TotalEntities: 1000}
+	return QualitySnapshot{Group: group, OrphanRate: fptr7287(5), BugRate: &b, HealthScore: fptr7287(93), TotalEntities: iptr7292(1000)}
 }
 
 func badSnap(group string) QualitySnapshot {
 	s := 5
 	c := 3
 	b := 15.0
-	return QualitySnapshot{Group: group, OrphanRate: 25, BugRate: &b, HealthScore: fptr7287(60), TotalEntities: 1000, Secrets: &s, Cycles: &c}
+	return QualitySnapshot{Group: group, OrphanRate: fptr7287(25), BugRate: &b, HealthScore: fptr7287(60), TotalEntities: iptr7292(1000), Secrets: &s, Cycles: &c}
 }
 
 func payload(event EventType, snap QualitySnapshot) WebhookPayload {
@@ -264,7 +264,8 @@ func TestRegressionDetected_False(t *testing.T) {
 func TestRegressionDetected_Noise(t *testing.T) {
 	prev := goodSnap("g")
 	curr := goodSnap("g")
-	curr.OrphanRate += 0.1 // below epsilon, should not trigger
+	// goodSnap allocates a fresh *float64 per call, so this mutates curr only.
+	*curr.OrphanRate += 0.1 // below epsilon, should not trigger
 	if RegressionDetected(prev, curr) {
 		t.Error("expected noise below eps to not trigger regression")
 	}
