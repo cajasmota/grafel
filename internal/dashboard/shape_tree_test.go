@@ -896,6 +896,19 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 			Kind: "SCOPE.Component", Subtype: "type_alias",
 			SourceFile: "src/x.rs", Language: "rust",
 		},
+		// The empty-subtype member of the Component admit-list. Every
+		// producer that reaches it emits an IMPORT STUB, not a type: 20
+		// sites, all inside build*Import* / makeImport* / buildInclude*
+		// helpers (go, rust, dart, scala, php, groovy, erlang, elixir,
+		// clojure, lisp, pony, lua, shell, assembly, vhdl, verilog), each
+		// naming the entity after a module/crate/package top-segment and
+		// hanging an IMPORTS edge off it. Modelled faithfully here so the
+		// case is pinned by the shape that actually reaches it.
+		{
+			ID: "import_stub", Name: "serde_json",
+			Kind: "SCOPE.Component", Subtype: "",
+			SourceFile: "src/main.rs", Language: "rust",
+		},
 		// The patterns pass (internal/patterns/type_alias_extractor.go) emits
 		// SCOPE.Component/type_alias for typescript/javascript/kotlin/scala/
 		// rust/go, but names the record `type_alias_<Alias>`. A type
@@ -931,6 +944,15 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 	}
 	if e := findClassEntityByName(grp, "Money"); e == nil || e.ID != "elm_alias" {
 		t.Errorf(`#7296: SCOPE.Component/"typealias" (elm, vapor-swift) must resolve, got %v`, e)
+	}
+
+	// The empty-subtype member resolves. This pins the member, not an
+	// endorsement of it: the shape that reaches it is an import stub, and
+	// the scan returns the first entity-slice hit, so a stub sharing a name
+	// with a real DTO resolves ahead of it whenever extraction happens to
+	// emit the stub first. That ordering hazard is tracked separately.
+	if st := findClassEntityByName(grp, "serde_json"); st == nil || st.ID != "import_stub" {
+		t.Errorf(`#7296: SCOPE.Component with empty Subtype must resolve, got %v`, st)
 	}
 
 	// The SCOPE.Schema spelling is unchanged by the widening.

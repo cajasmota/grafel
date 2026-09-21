@@ -664,7 +664,14 @@ func splitTopLevelComma(s string) []string {
 //
 //   - SCOPE.Component (class/interface/record/enum, and the three alias
 //     spellings type_alias/alias/typealias) — the OO class shape emitted
-//     for Java/TS/etc. classes.
+//     for Java/TS/etc. classes. The list also admits an EMPTY subtype,
+//     which is not a class shape: a grep over the tree finds that every
+//     producer reaching it emits an import stub (a module/crate/package
+//     top-segment carrying an IMPORTS edge, from the build*Import* /
+//     makeImport* / buildInclude* helpers across ~16 languages). That
+//     member is pinned by a test but is not endorsed here — since the
+//     scan returns the first entity-slice hit, a stub sharing a name with
+//     a real DTO resolves ahead of it. Tracked separately.
 //     #7296: a language-level type alias is emitted under SCOPE.Schema by
 //     Go/Kotlin/Swift/TS/Python/Dart, but under SCOPE.Component by four
 //     producers, under three different subtype spellings:
