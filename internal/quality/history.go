@@ -197,12 +197,18 @@ var noUpperBound = math.Inf(1)
 // comment on the struct:
 //
 //   - orphan_rate: 100*orphans/entities, where the orphans are counted among
-//     the entities (cmd/grafel/rebuild_history.go, cmd/grafel/quality_corpus.go).
+//     the entities. Three producers: cmd/grafel/rebuild_history.go,
+//     cmd/grafel/quality_corpus.go, and internal/cli/repair.go via
+//     RebuildSummary.OrphanRate (internal/cli/rebuild_summary.go), whose
+//     OrphanEntities are counted in a second loop over the same per-repo
+//     entities that produced TotalEntities.
 //   - bug_rate: audit.BugRate.Pct, whose numerator is TotalImports-Resolved
 //     and whose denominator is TotalImports, with Resolved only ever
 //     incremented alongside Total (internal/quality/audit/bugrate.go).
-//   - health_score: both producers clamp — ComputeHealthScore above, and
-//     CompositeScoreFromPcts via clamp100 (internal/quality/composite.go).
+//   - health_score: all three producers clamp — ComputeHealthScore above
+//     (used by cmd/grafel/rebuild_history.go and internal/cli/repair.go) and
+//     CompositeScoreFromPcts via clamp100 (internal/quality/composite.go,
+//     reaching the record as Composite.Score in cmd/grafel/quality_corpus.go).
 //   - coverage_pct: 100*CoveredProduction/TotalProduction, where the covered
 //     set is a subset of the production set (internal/graph/coverage.go).
 //   - recall_pct: no in-tree producer; the [0,100] range is the one its field

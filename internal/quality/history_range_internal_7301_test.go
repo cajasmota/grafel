@@ -69,3 +69,46 @@ func TestDecoderRejectsOverflowingFloatLiteral(t *testing.T) {
 		}
 	}
 }
+
+// TestUnmeasuredFieldSurvivesRangeExcludingZero pins the contingency that
+// makes the `!measured` skip in outOfRangeField look redundant today.
+//
+// Every row in numericRanges currently has lo 0, so a nil pointer decoded as a
+// plain 0 would be accepted anyway and dropping the skip changes nothing. That
+// is a property of the table, not of the nil semantics — and nothing else
+// asserts it. This installs two synthetic rows whose lo excludes zero, one per
+// pointer helper, so the two helpers are scored as a pair rather than one of
+// them standing in for the other.
+func TestUnmeasuredFieldSurvivesRangeExcludingZero(t *testing.T) {
+	saved := numericRanges
+	defer func() { numericRanges = saved }()
+	numericRanges = append(append([]numericRange{}, saved...),
+		numericRange{name: "synthetic_float", lo: 1, hi: 100, value: func(e *HealthEntry) (float64, bool) {
+			return fromFloatPtr(e.RecallPct)
+		}},
+		numericRange{name: "synthetic_int", lo: 1, hi: noUpperBound, value: func(e *HealthEntry) (float64, bool) {
+			return fromIntPtr(e.Secrets)
+		}},
+	)
+
+	// RecallPct and Secrets are nil: not measured, so no range applies to
+	// them — not even one that excludes the zero value they decode to.
+	e := HealthEntry{OrphanRate: 5}
+	if got := outOfRangeField(&e); got != "" {
+		t.Fatalf("outOfRangeField(entry with unmeasured %s) = %q, want \"\" — a nil pointer was treated as a measured 0", got, got)
+	}
+
+	// Control: the same rows do reject a MEASURED zero, so the rows are
+	// live and the assertion above is not passing because lo 1 is inert.
+	zero := 0.0
+	e.RecallPct = &zero
+	if got := outOfRangeField(&e); got != "synthetic_float" {
+		t.Fatalf("outOfRangeField(recall_pct=0 under lo 1) = %q, want %q", got, "synthetic_float")
+	}
+	e.RecallPct = nil
+	zeroInt := 0
+	e.Secrets = &zeroInt
+	if got := outOfRangeField(&e); got != "synthetic_int" {
+		t.Fatalf("outOfRangeField(secrets=0 under lo 1) = %q, want %q", got, "synthetic_int")
+	}
+}

@@ -70,28 +70,35 @@ func TestReadHistoryRejectsOutOfRangeField(t *testing.T) {
 		name  string
 		field string
 		bad   any
-		// ok is an in-range value for the same field: the positive control
-		// that proves the line shape itself is acceptable.
-		ok any
+		// oks are in-range values for the same field: the positive controls
+		// that prove the line shape itself is acceptable.
+		//
+		// Every case includes the value AT the bound it is testing. Zero is
+		// the healthy outcome for the counts — rebuild_history.go records
+		// Cycles for any scanned repo and AuthUncovered unconditionally, so
+		// a group with no cycles and full auth coverage writes zeros — and a
+		// lo of 1 on either would silently drop every line such a group
+		// writes. A control of 7 alone grades none of that.
+		oks []any
 	}{
-		{"total_entities/lower", "total_entities", -1, 7},
-		{"total_flows/lower", "total_flows", -1, 7},
-		{"total_endpoints/lower", "total_endpoints", -1, 7},
+		{"total_entities/lower", "total_entities", -1, []any{0, 7}},
+		{"total_flows/lower", "total_flows", -1, []any{0, 7}},
+		{"total_endpoints/lower", "total_endpoints", -1, []any{0, 7}},
 
-		{"orphan_rate/lower", "orphan_rate", -0.5, 0.0},
-		{"orphan_rate/upper", "orphan_rate", 100.5, 100.0},
-		{"bug_rate/lower", "bug_rate", -0.5, 0.0},
-		{"bug_rate/upper", "bug_rate", 100.5, 100.0},
-		{"health_score/lower", "health_score", -0.5, 0.0},
-		{"health_score/upper", "health_score", 100.5, 100.0},
-		{"coverage_pct/lower", "coverage_pct", -0.5, 0.0},
-		{"coverage_pct/upper", "coverage_pct", 100.5, 100.0},
-		{"recall_pct/lower", "recall_pct", -0.5, 0.0},
-		{"recall_pct/upper", "recall_pct", 100.5, 100.0},
+		{"orphan_rate/lower", "orphan_rate", -0.5, []any{0.0, 100.0}},
+		{"orphan_rate/upper", "orphan_rate", 100.5, []any{0.0, 100.0}},
+		{"bug_rate/lower", "bug_rate", -0.5, []any{0.0, 100.0}},
+		{"bug_rate/upper", "bug_rate", 100.5, []any{0.0, 100.0}},
+		{"health_score/lower", "health_score", -0.5, []any{0.0, 100.0}},
+		{"health_score/upper", "health_score", 100.5, []any{0.0, 100.0}},
+		{"coverage_pct/lower", "coverage_pct", -0.5, []any{0.0, 100.0}},
+		{"coverage_pct/upper", "coverage_pct", 100.5, []any{0.0, 100.0}},
+		{"recall_pct/lower", "recall_pct", -0.5, []any{0.0, 100.0}},
+		{"recall_pct/upper", "recall_pct", 100.5, []any{0.0, 100.0}},
 
-		{"cycles/lower", "cycles", -1, 7},
-		{"auth_uncovered/lower", "auth_uncovered", -1, 7},
-		{"secrets/lower", "secrets", -1, 7},
+		{"cycles/lower", "cycles", -1, []any{0, 7}},
+		{"auth_uncovered/lower", "auth_uncovered", -1, []any{0, 7}},
+		{"secrets/lower", "secrets", -1, []any{0, 7}},
 	}
 
 	now := time.Now().UTC()
@@ -108,18 +115,21 @@ func TestReadHistoryRejectsOutOfRangeField(t *testing.T) {
 				t.Fatalf("%s=%v was accepted: got %d entries, want 0 (the guard did not fire)", tc.field, tc.bad, len(got))
 			}
 
-			// Positive control: the same line, in range, is read. Without
-			// this the case above would also pass if the fixture were
-			// simply unparseable.
-			ctl := goodLine(now, 111)
-			ctl[tc.field] = tc.ok
-			root = writeLines(t, ctl)
-			got, err = quality.ReadHistory(root, rangeGroup, 7)
-			if err != nil {
-				t.Fatalf("ReadHistory (control): %v", err)
-			}
-			if len(got) != 1 {
-				t.Fatalf("control %s=%v was rejected: got %d entries, want 1", tc.field, tc.ok, len(got))
+			// Positive controls: the same line, in range, is read. Without
+			// these the case above would also pass if the fixture were
+			// simply unparseable — and without the AT-the-bound value in
+			// the list, a bound moved one step inward would go unnoticed.
+			for _, ok := range tc.oks {
+				ctl := goodLine(now, 111)
+				ctl[tc.field] = ok
+				root = writeLines(t, ctl)
+				got, err = quality.ReadHistory(root, rangeGroup, 7)
+				if err != nil {
+					t.Fatalf("ReadHistory (control %s=%v): %v", tc.field, ok, err)
+				}
+				if len(got) != 1 {
+					t.Fatalf("control %s=%v was rejected: got %d entries, want 1", tc.field, ok, len(got))
+				}
 			}
 		})
 	}
