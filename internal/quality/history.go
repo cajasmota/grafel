@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -159,6 +160,17 @@ func ReadHistory(root, group string, maxDays int) ([]HealthEntry, error) {
 		if e.Group != group {
 			continue
 		}
+		// #7301 — a numeric field outside the range its producers can emit
+		// is corruption, and skipping the line is what this loop already
+		// does with a line that does not parse. Not clamped: substituting
+		// an invented number is the defect class #7283/#7287/#7292 were
+		// about. Consumers fail in both directions on such a value — a
+		// negative prev lowers RegressionDetected's bar, and an
+		// out-of-range rate trips CheckBudgets — so one bad line can
+		// fabricate both a regression and a budget breach.
+		if outOfRangeField(&e) != "" {
+			continue
+		}
 		if maxDays > 0 && e.Timestamp.Before(cutoff) {
 			continue
 		}
@@ -168,4 +180,92 @@ func ReadHistory(root, group string, maxDays int) ([]HealthEntry, error) {
 		return nil, fmt.Errorf("quality/history: scan: %w", err)
 	}
 	return entries, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Range validation (#7301)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// noUpperBound is the hi of a field that is a count rather than a percentage:
+// counts have a floor at zero and no ceiling this package can justify.
+var noUpperBound = math.Inf(1)
+
+// numericRange describes one numeric field of HealthEntry and the values
+// ReadHistory will accept for it.
+//
+// Every range here is taken from the field's producers, not from the doc
+// comment on the struct:
+//
+//   - orphan_rate: 100*orphans/entities, where the orphans are counted among
+//     the entities (cmd/grafel/rebuild_history.go, cmd/grafel/quality_corpus.go).
+//   - bug_rate: audit.BugRate.Pct, whose numerator is TotalImports-Resolved
+//     and whose denominator is TotalImports, with Resolved only ever
+//     incremented alongside Total (internal/quality/audit/bugrate.go).
+//   - health_score: both producers clamp — ComputeHealthScore above, and
+//     CompositeScoreFromPcts via clamp100 (internal/quality/composite.go).
+//   - coverage_pct: 100*CoveredProduction/TotalProduction, where the covered
+//     set is a subset of the production set (internal/graph/coverage.go).
+//   - recall_pct: no in-tree producer; the [0,100] range is the one its field
+//     comment states.
+//   - the counts: cardinalities of scans, so >= 0.
+type numericRange struct {
+	// name is the JSON field name, used only in tests.
+	name string
+	lo   float64
+	hi   float64
+	// value reports the field's value and whether it was measured at all. A
+	// nil pointer field is "not measured" (#7283/#7287/#7292) — that is not
+	// an out-of-range value and must survive the read.
+	value func(e *HealthEntry) (v float64, measured bool)
+}
+
+func bare(v float64) (float64, bool) { return v, true }
+
+func fromFloatPtr(p *float64) (float64, bool) {
+	if p == nil {
+		return 0, false
+	}
+	return *p, true
+}
+
+func fromIntPtr(p *int) (float64, bool) {
+	if p == nil {
+		return 0, false
+	}
+	return float64(*p), true
+}
+
+// numericRanges is the full set of numeric fields ReadHistory range-checks.
+var numericRanges = []numericRange{
+	{name: "total_entities", lo: 0, hi: noUpperBound, value: func(e *HealthEntry) (float64, bool) { return bare(float64(e.TotalEntities)) }},
+	{name: "total_flows", lo: 0, hi: noUpperBound, value: func(e *HealthEntry) (float64, bool) { return bare(float64(e.TotalFlows)) }},
+	{name: "total_endpoints", lo: 0, hi: noUpperBound, value: func(e *HealthEntry) (float64, bool) { return bare(float64(e.TotalEndpoints)) }},
+	{name: "orphan_rate", lo: 0, hi: 100, value: func(e *HealthEntry) (float64, bool) { return bare(e.OrphanRate) }},
+	{name: "bug_rate", lo: 0, hi: 100, value: func(e *HealthEntry) (float64, bool) { return fromFloatPtr(e.BugRate) }},
+	{name: "health_score", lo: 0, hi: 100, value: func(e *HealthEntry) (float64, bool) { return fromFloatPtr(e.HealthScore) }},
+	{name: "coverage_pct", lo: 0, hi: 100, value: func(e *HealthEntry) (float64, bool) { return fromFloatPtr(e.CoveragePct) }},
+	{name: "recall_pct", lo: 0, hi: 100, value: func(e *HealthEntry) (float64, bool) { return fromFloatPtr(e.RecallPct) }},
+	{name: "cycles", lo: 0, hi: noUpperBound, value: func(e *HealthEntry) (float64, bool) { return fromIntPtr(e.Cycles) }},
+	{name: "auth_uncovered", lo: 0, hi: noUpperBound, value: func(e *HealthEntry) (float64, bool) { return fromIntPtr(e.AuthUncovered) }},
+	{name: "secrets", lo: 0, hi: noUpperBound, value: func(e *HealthEntry) (float64, bool) { return fromIntPtr(e.Secrets) }},
+}
+
+// outOfRangeField returns the JSON name of the first numeric field of e whose
+// value falls outside the range its producers can emit, or "" when every
+// measured field is in range.
+//
+// The comparison is written as a rejected-unless-inside test rather than
+// `v < lo || v > hi` so that a NaN — which compares false against everything —
+// is rejected rather than accepted.
+func outOfRangeField(e *HealthEntry) string {
+	for _, r := range numericRanges {
+		v, measured := r.value(e)
+		if !measured {
+			continue
+		}
+		if !(v >= r.lo && v <= r.hi) {
+			return r.name
+		}
+	}
+	return ""
 }
