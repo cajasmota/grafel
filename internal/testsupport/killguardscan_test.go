@@ -205,6 +205,26 @@ func f(pid int) error {
 				"wrapping, which is how reaper.go's real justification is written",
 		},
 		{
+			name: "PLANTED VIOLATION — a comment line BELOW a TRAILING marker is not its reason",
+			src: `package p
+` + procImport + `
+func f(pid int) error { return process.Kill(pid) } //killguard:direct
+// the reason wraps onto this line`,
+			wantHits: 1,
+			why: "THE LOAD-BEARING INPUT IS go/parser, NOT THIS PACKAGE. killguardscan.go says a " +
+				"trailing marker \"has no continuation lines available\", and that is true only " +
+				"because go/parser cuts a comment group that begins on the same line as a " +
+				"preceding token with a zero-line lookahead: the trailing marker and the `//` " +
+				"line beneath it land in SEPARATE CommentGroups, so cg.List[idx:] holds the " +
+				"marker alone. Upstream behaviour this repo does not control — which makes it " +
+				"worth MORE pinning than a property of our own HasPrefix, not less. Letting the " +
+				"reason continue into the next group when it starts at end+1 is a plausible " +
+				"\"let the reason wrap\" change, it is the accommodation this code already makes " +
+				"WITHIN a group, and it flips this row from 1 hit to 0 — silently restoring the " +
+				"bare-marker hole for every marker trailing a line that happens to be followed " +
+				"by a comment",
+		},
+		{
 			name: "PLANTED VIOLATION — prose ABOVE the marker is not the reason",
 			src: `package p
 ` + procImport + `

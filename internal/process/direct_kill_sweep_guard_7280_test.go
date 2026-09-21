@@ -276,6 +276,52 @@ func TestDirectKillSweepIsNotVacuous(t *testing.T) {
 		}
 	}
 
+	// EVERY DECLARED TREE, not just the one the sites live in. The list above
+	// pins the internal/daemon subtree, so `|| d.Name() == "cmd"` was ALIVE:
+	// cmd/ is 56 non-test files, far below any sane floor, and nothing
+	// observed that the walk reached it at all.
+	//
+	// It hides no hole today — cmd/ contains no kill primitive of any kind, so
+	// this closes a shape rather than a defect. It is closed anyway because
+	// enumeration is this guard's entire purpose, and "the walk reaches every
+	// tree it claims to scan" is the same property the list above pins one
+	// level down.
+	//
+	// Asserted by PREFIX rather than by naming a file under cmd/. A path list
+	// there would be pure churn: there is no site to pin, so any file named
+	// would be an arbitrary hostage to the next rename. The prefix asks the
+	// only question that has an answer — did this tree arrive at all. It is
+	// deliberately weaker than the list above, and weaker in the right place:
+	// where the population lives, the exact paths are named.
+	//
+	// THE "internal/" ENTRY IS A PROVABLY EQUIVALENT MUTANT, disclosed rather
+	// than left for the next reviewer to find. Deleting it is ALIVE, and the
+	// reason is algebra rather than a gap: the loop above already requires
+	// "internal/daemon/reaper.go" to be in visited, every string with prefix
+	// "internal/daemon/" has prefix "internal/", and that loop runs FIRST, so
+	// its t.Fatalf pre-empts. No input can fail the "internal/" check while the
+	// path list passes.
+	//
+	// It is kept anyway, and the standing "an ALIVE mutant means add a test,
+	// not delete a line" rule is why the alternative was rejected: the only
+	// test that could kill it is one that deletes the stronger path list, which
+	// is strictly worse. Kept so this loop states the scope it claims — every
+	// declared tree — instead of silently covering one of the two and relying
+	// on a reader to notice the other is pinned twenty lines up.
+	for _, top := range []string{"internal/", "cmd/"} {
+		reached := false
+		for rel := range visited {
+			if strings.HasPrefix(rel, top) {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Fatalf("the repo walk delivered nothing under %s, a tree this sweep declares it "+
+				"scans. It walked %d files, so the count floor cannot see this either", top, len(visited))
+		}
+	}
+
 	// The remaining check grades the DETECTOR, not the walker: that removing
 	// the marker from reaper.go's source makes the site visible again, so the
 	// live clean verdict is the marker talking and not a dead scan. It reads
