@@ -143,6 +143,30 @@ func TestRebuildFiveSequentialAlwaysComplete(t *testing.T) {
 		return nil
 	}
 
+	// rpcHangGuard bounds ONE Rebuild RPC. It is a hang guard, not a
+	// performance assertion: the substantive claim of this test is that every
+	// RPC completes, so the only thing a larger constant can weaken is how
+	// long the suite takes to report a genuine wedge. It was 5s and went red
+	// on `test (windows-latest)` as "Rebuild RPC 3 hung after 5s" with
+	// ubuntu-latest green on the same run, across unrelated PRs (#7298).
+	//
+	// The arithmetic, taken from the per-repo figure this file already
+	// measured on TestRebuildPerRepoTimeoutSurfacesStalledRepo below ("a
+	// hardcoded 100ms flaked; 1.5s was still marginal under `-race`; 3s gives
+	// the fast mocks ~200× their real cost of headroom"): 3s is the budget
+	// that comment found safe for ONE repo's bookkeeping (status-file flush,
+	// foreground claim, gate acquire) on a contended `-race` Windows runner.
+	// One RPC here indexes 2 repos at concurrency=1, i.e. 2 bookkeeping units
+	// back-to-back, so the worst case that measurement licenses is
+	// 2 × 3s = 6s — the old 5s budget was BELOW its own file's figure, which
+	// is the defect. The remaining ×5 (6s → 30s) is a choice, not a
+	// measurement: the 3s figure was taken on a test whose fast repos ran
+	// while the rest of the batch sat on a single stalled repo, a quieter
+	// neighbourhood than five back-to-back RPCs under `go test -parallel`,
+	// and a per-unit cost can compound. Over-sizing a pure hang guard costs
+	// only the time taken to report a real hang.
+	const rpcHangGuard = 30 * time.Second
+
 	for i := 0; i < 5; i++ {
 		done := make(chan struct{})
 		go func() {
@@ -152,8 +176,8 @@ func TestRebuildFiveSequentialAlwaysComplete(t *testing.T) {
 		select {
 		case <-done:
 			// OK — completed
-		case <-time.After(5 * time.Second):
-			t.Fatalf("Rebuild RPC %d hung after 5s", i+1)
+		case <-time.After(rpcHangGuard):
+			t.Fatalf("Rebuild RPC %d hung after %s", i+1, rpcHangGuard)
 		}
 	}
 }
@@ -248,15 +272,48 @@ func TestRebuildResultsSliceNotRacedOnConcurrentCalls(t *testing.T) {
 		return nil
 	}
 
+	const concurrentCalls = 4
+
+	// #7298, second defect — vacuity, independent of any deadline. This
+	// goroutine used to `return` on a non-nil error under a bare "errors are
+	// acceptable", which meant a run in which ALL FOUR calls errored executed
+	// no assertion whatsoever and still passed: a test named
+	// …NotRacedOnConcurrentCalls reporting green on "everything failed".
+	// Record the outcome of every call instead, and require below that at
+	// least one of them actually reached the rebuilt-length check.
+	var succeeded int32
+	var errMu sync.Mutex
+	var callErrs []error
+
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
+	for i := 0; i < concurrentCalls; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn)
 			if err != nil {
-				return // errors are acceptable
+				// A per-call error is recorded and tolerated rather than
+				// failed outright, and that tolerance is not a hedge: with
+				// this mock the observed outcome is 3 of the 4 calls returning
+				// "index p: rebuild cancelled (group deleted): context
+				// cancelled". daemon.GroupRebuildContext registers ONE
+				// cancellable entry per GROUP NAME and cancels whatever
+				// predecessor it finds under that name, so four concurrent
+				// rebuilds of one group necessarily cancel each other. Failing
+				// on any error would therefore make this test permanently red
+				// rather than stricter.
+				//
+				// That same mechanism is why the floor below is exactly one
+				// and not four: registrations are serialised under the
+				// registry mutex and each registrant cancels only its
+				// predecessor, so the LAST registrant is never cancelled by a
+				// sibling — at least one call must get through.
+				errMu.Lock()
+				callErrs = append(callErrs, err)
+				errMu.Unlock()
+				return
 			}
+			atomic.AddInt32(&succeeded, 1)
 			if len(rebuilt) != 2 {
 				t.Errorf("got %d rebuilt repos, want 2", len(rebuilt))
 			}
@@ -269,10 +326,39 @@ func TestRebuildResultsSliceNotRacedOnConcurrentCalls(t *testing.T) {
 		close(done)
 	}()
 
+	// concurrentHangGuard: same derivation as rpcHangGuard in
+	// TestRebuildFiveSequentialAlwaysComplete above, with this test's unit
+	// count. It was 10s and went red on `test (windows-latest)` as
+	// "concurrent Rebuild RPCs hung after 10s" with ubuntu-latest green on
+	// the same run (#7298).
+	//
+	// 4 concurrent calls × 2 repos = 8 per-repo bookkeeping units. They do not
+	// run 8-wide: repolock.DefaultRegistry.ClaimForeground (internal/repolock,
+	// taken inside each per-repo index closure of daemonRebuildFuncCore) is
+	// mutually exclusive PER REPO PATH and all four calls share the same two
+	// paths, so at most 2 units are ever in flight and the 8 drain as 4
+	// serialised waves. At the 3s per-unit figure this file measured (see
+	// TestRebuildPerRepoTimeoutSurfacesStalledRepo) that is 4 × 3s = 12s worst
+	// case, and the old 10s sat below it. The mock's own sleep adds
+	// 8 × 5ms = 40ms, i.e. nothing. 60s is the same ×5 margin as above, for
+	// the same reason.
+	const concurrentHangGuard = 60 * time.Second
+
 	select {
 	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("concurrent Rebuild RPCs hung after 10s")
+	case <-time.After(concurrentHangGuard):
+		t.Fatalf("concurrent Rebuild RPCs hung after %s", concurrentHangGuard)
+	}
+
+	errMu.Lock()
+	errs := append([]error(nil), callErrs...)
+	errMu.Unlock()
+	for _, e := range errs {
+		t.Logf("concurrent Rebuild call returned a tolerated error: %v", e)
+	}
+	if n := atomic.LoadInt32(&succeeded); n == 0 {
+		t.Fatalf("all %d concurrent Rebuild calls errored, so the rebuilt-length check never ran and this test asserted nothing; errors: %v",
+			concurrentCalls, errs)
 	}
 }
 
