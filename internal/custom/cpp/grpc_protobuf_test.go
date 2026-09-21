@@ -309,10 +309,11 @@ service Greeter {
 
 // protoStreamKind — the two arms no .proto fixture selected (#7270).
 //
-// The arms are told apart by WHICH side carries `stream`, so each fixture puts
-// a different message type on each side and asserts the label by name rather
-// than asserting it is non-empty. A fixture symmetric in either respect would
-// not separate one arm from its neighbours.
+// The arms are separated by the `streaming` label, which each fixture asserts
+// by name rather than asserting it is non-empty. Each fixture additionally
+// puts a different message type on each side; that asymmetry does NOT separate
+// the arms — it pins the request/response assignment the extractor makes
+// alongside the label, which is a different property.
 
 func TestProtobufProtoClientStreaming(t *testing.T) {
 	src := `
@@ -571,9 +572,10 @@ void from_json(const json& j, Color& c) {
 // serialization-direction switch (#7270).
 //
 // The two types are opposites in one file: Outbound has only to_json and
-// Inbound only from_json. That asymmetry is what grades the pair — exchanging
-// the two arms' labels fails this test, which a fixture carrying a single type
-// (or a bidirectional one) could not detect.
+// Inbound only from_json, so exchanging the two arms' labels fails this test.
+// They are two types rather than one because the role map is per-type:
+// aggregating to_json/from_json across the whole file instead labels BOTH of
+// them "bidirectional", and this test is what rejects that.
 func TestNlohmannSingleDirectionFreeFunctions(t *testing.T) {
 	src := `
 void to_json(json& j, const Outbound& o) {

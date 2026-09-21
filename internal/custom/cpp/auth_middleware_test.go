@@ -205,12 +205,12 @@ func TestCppAuthSession(t *testing.T) {
 // ---------------------------------------------------------------------------
 // cppClassifyAuthMethod — arms no fixture selected (#7270)
 //
-// Each of these drives the classifier through a Drogon HttpFilter class name
-// (the shortest path to it) and asserts the auth_method that arm produces.
-// The names are chosen so that removing the arm under test changes the value
-// the fixture sees — none of them is a "...AuthFilter", because a name whose
-// only auth signal is the substring "auth" ends up stamped "auth" either way
-// and the assertion would not move.
+// Each of these drives the classifier through a Drogon symbol name and asserts
+// the auth_method that arm produces. Every name is chosen so that removing the
+// arm under test changes what the fixture sees. That constrains the gate as
+// well as the name: where the HttpFilter class-declaration path could not
+// offer that, the fixture reaches the classifier through a different gate —
+// see the fallback-arm test at the end of this block.
 // ---------------------------------------------------------------------------
 
 // api_key: the arm matches two spellings ("apikey" and "api_key"), so both are
@@ -261,6 +261,24 @@ func TestCppAuthDrogonBearerFilter(t *testing.T) {
 	src := `class BearerCredentialFilter : public drogon::HttpFilter<BearerCredentialFilter> {};`
 	ents := extract(t, "custom_cpp_auth_middleware", fi("bearer_filter.h", "cpp", src))
 	assertProp(t, ents, "auth:drogon_filter:BearerCredentialFilter", "auth_method", "bearer")
+}
+
+// auth (the fallback arm), anchored at the registerFilter<X> gate rather than
+// through an HttpFilter class declaration: that gate emits no auth entity at
+// all when the name classifies to "", so removing the arm removes the entity
+// this test demands — which is what makes this anchor non-vacuous.
+// LoginAuthFilter's only auth signal is the substring "auth", so no earlier
+// arm claims it.
+func TestCppAuthDrogonRegisterFilterAuthFallback(t *testing.T) {
+	src := `
+#include <drogon/drogon.h>
+int main() {
+    app().registerFilter<LoginAuthFilter>();
+    app().run();
+}
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("register_auth.cc", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:LoginAuthFilter", "auth_method", "auth")
 }
 
 // ---------------------------------------------------------------------------
