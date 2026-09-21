@@ -203,6 +203,85 @@ func TestCppAuthSession(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// cppClassifyAuthMethod — arms no fixture selected (#7270)
+//
+// Each of these drives the classifier through a Drogon symbol name and asserts
+// the auth_method that arm produces. Every name is chosen so that removing the
+// arm under test changes what the fixture sees. That constrains the gate as
+// well as the name: where the HttpFilter class-declaration path could not
+// offer that, the fixture reaches the classifier through a different gate —
+// see the fallback-arm test at the end of this block.
+// ---------------------------------------------------------------------------
+
+// api_key: the arm matches two spellings ("apikey" and "api_key"), so both are
+// exercised — a fixture using only one would leave the other half ungraded.
+func TestCppAuthDrogonApiKeyFilter(t *testing.T) {
+	src := `
+class ApiKeyFilter : public drogon::HttpFilter<ApiKeyFilter> {};
+class Api_KeyHeaderFilter : public drogon::HttpFilter<Api_KeyHeaderFilter> {};
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("apikey_filter.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:ApiKeyFilter", "auth_method", "api_key")
+	assertProp(t, ents, "auth:drogon_filter:Api_KeyHeaderFilter", "auth_method", "api_key")
+}
+
+// session: likewise a two-spelling arm ("session" and "cookie").
+func TestCppAuthDrogonSessionFilter(t *testing.T) {
+	src := `
+class SessionFilter : public drogon::HttpFilter<SessionFilter> {};
+class CookieCheckFilter : public drogon::HttpFilter<CookieCheckFilter> {};
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("session_filter.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:SessionFilter", "auth_method", "session")
+	assertProp(t, ents, "auth:drogon_filter:CookieCheckFilter", "auth_method", "session")
+}
+
+// oauth: the name also contains "auth", so this additionally pins that the
+// oauth arm is reached BEFORE the generic "auth" arm — without that ordering
+// the value would be "auth".
+func TestCppAuthDrogonOAuthFilter(t *testing.T) {
+	src := `class OAuthCallbackFilter : public drogon::HttpFilter<OAuthCallbackFilter> {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("oauth_filter.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:OAuthCallbackFilter", "auth_method", "oauth")
+}
+
+// token: an arm whose return value is not its own label — a "token"-named
+// symbol is classified as "bearer". The fixture name contains no "bearer", so
+// nothing but this arm can stamp that value on it.
+func TestCppAuthDrogonTokenFilter(t *testing.T) {
+	src := `class TokenValidationFilter : public drogon::HttpFilter<TokenValidationFilter> {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("token_filter.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:TokenValidationFilter", "auth_method", "bearer")
+}
+
+// bearer: also exercised by TestCppMwDrogonFilterAdd, whose subject is the
+// FILTER_ADD binding rather than the classifier. Anchored here directly so the
+// arm does not rest on the class name an unrelated fixture happens to use.
+func TestCppAuthDrogonBearerFilter(t *testing.T) {
+	src := `class BearerCredentialFilter : public drogon::HttpFilter<BearerCredentialFilter> {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("bearer_filter.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:BearerCredentialFilter", "auth_method", "bearer")
+}
+
+// auth (the fallback arm), anchored at the registerFilter<X> gate rather than
+// through an HttpFilter class declaration: that gate emits no auth entity at
+// all when the name classifies to "", so removing the arm removes the entity
+// this test demands — which is what makes this anchor non-vacuous.
+// LoginAuthFilter's only auth signal is the substring "auth", so no earlier
+// arm claims it.
+func TestCppAuthDrogonRegisterFilterAuthFallback(t *testing.T) {
+	src := `
+#include <drogon/drogon.h>
+int main() {
+    app().registerFilter<LoginAuthFilter>();
+    app().run();
+}
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("register_auth.cc", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:LoginAuthFilter", "auth_method", "auth")
+}
+
+// ---------------------------------------------------------------------------
 // Negative cases
 // ---------------------------------------------------------------------------
 

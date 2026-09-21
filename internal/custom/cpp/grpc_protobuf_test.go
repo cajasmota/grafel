@@ -307,6 +307,63 @@ service Greeter {
 	}
 }
 
+// protoStreamKind — the two arms no .proto fixture selected (#7270).
+//
+// The arms are separated by the `streaming` label, which each fixture asserts
+// by name rather than asserting it is non-empty. Each fixture additionally
+// puts a different message type on each side; that asymmetry does NOT separate
+// the arms — it pins the request/response assignment the extractor makes
+// alongside the label, which is a different property.
+
+func TestProtobufProtoClientStreaming(t *testing.T) {
+	src := `
+service RouteGuide {
+  rpc RecordRoute (stream Point) returns (RouteSummary);
+}
+`
+	ents := extract(t, "custom_cpp_protobuf", fi("route.proto", "protobuf", src))
+	ep := findEndpoint(ents, "RPC /RouteGuide/RecordRoute")
+	if ep == nil {
+		t.Fatalf("expected RPC /RouteGuide/RecordRoute, got %+v", ents)
+	}
+	// stream on the request side only: client_streaming, not server_ or bidi_.
+	if got := ep.Props["streaming"]; got != "client_streaming" {
+		t.Errorf("streaming = %q, want client_streaming", got)
+	}
+	if got := ep.Props["request_message"]; got != "Point" {
+		t.Errorf("request_message = %q, want Point", got)
+	}
+	if got := ep.Props["response_message"]; got != "RouteSummary" {
+		t.Errorf("response_message = %q, want RouteSummary", got)
+	}
+}
+
+func TestProtobufProtoBidiStreaming(t *testing.T) {
+	src := `
+service RouteGuide {
+  rpc Chat (stream ChatRequest) returns (stream ChatReply);
+}
+`
+	ents := extract(t, "custom_cpp_protobuf", fi("chat.proto", "protobuf", src))
+	ep := findEndpoint(ents, "RPC /RouteGuide/Chat")
+	if ep == nil {
+		t.Fatalf("expected RPC /RouteGuide/Chat, got %+v", ents)
+	}
+	// stream on BOTH sides. Both flags are load-bearing: widening the arm's
+	// condition to either-flag would label one-sided RPCs bidi as well, which
+	// TestProtobufProtoServiceRpc and the client-streaming fixture above
+	// reject.
+	if got := ep.Props["streaming"]; got != "bidi_streaming" {
+		t.Errorf("streaming = %q, want bidi_streaming", got)
+	}
+	if got := ep.Props["request_message"]; got != "ChatRequest" {
+		t.Errorf("request_message = %q, want ChatRequest", got)
+	}
+	if got := ep.Props["response_message"]; got != "ChatReply" {
+		t.Errorf("response_message = %q, want ChatReply", got)
+	}
+}
+
 func TestProtobufProtoEnum(t *testing.T) {
 	src := `
 enum Corpus {
@@ -508,6 +565,32 @@ void from_json(const json& j, Color& c) {
 	}
 	if got := propOf(t, ents, "SCOPE.Schema", "nlohmann_dto:Color", "serialization_direction"); got != "bidirectional" {
 		t.Errorf("serialization_direction = %q, want bidirectional", got)
+	}
+}
+
+// TestNlohmannSingleDirectionFreeFunctions pins the two one-sided arms of the
+// serialization-direction switch (#7270).
+//
+// The two types are opposites in one file: Outbound has only to_json and
+// Inbound only from_json, so exchanging the two arms' labels fails this test.
+// They are two types rather than one because the role map is per-type:
+// aggregating to_json/from_json across the whole file instead labels BOTH of
+// them "bidirectional", and this test is what rejects that.
+func TestNlohmannSingleDirectionFreeFunctions(t *testing.T) {
+	src := `
+void to_json(json& j, const Outbound& o) {
+    j = json{{"id", o.id}};
+}
+void from_json(const json& j, Inbound& i) {
+    j.at("id").get_to(i.id);
+}
+`
+	ents := extract(t, "custom_cpp_nlohmann_json", fi("dirs.cpp", "cpp", src))
+	if got := propOf(t, ents, "SCOPE.Schema", "nlohmann_dto:Outbound", "serialization_direction"); got != "serialize" {
+		t.Errorf("Outbound serialization_direction = %q, want serialize", got)
+	}
+	if got := propOf(t, ents, "SCOPE.Schema", "nlohmann_dto:Inbound", "serialization_direction"); got != "deserialize" {
+		t.Errorf("Inbound serialization_direction = %q, want deserialize", got)
 	}
 }
 

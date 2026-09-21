@@ -83,6 +83,61 @@ auto rl = drogon::RateLimiter::newRateLimiter(30, 2min);`
 	}
 }
 
+// --- 2a. hours window -> cppChronoSeconds' "hours" arm (#7270) ------------
+//
+// What the hours arm contributes is its multiplier, so the fixture asserts the
+// product rather than the presence of a window. n=2 is chosen because 7200
+// differs from n (2), from n*60 (120) and from a bare 3600, so an arm that
+// dropped or altered the multiplier cannot satisfy the assertion.
+
+func TestCppRateLimit_DrogonRateLimiterChronoHours(t *testing.T) {
+	src := `
+#include <drogon/drogon.h>
+auto rl = drogon::RateLimiter::newRateLimiter(50, std::chrono::hours(2));`
+	ents := extract(t, "custom_cpp_rate_limit", fi("svc.cc", "cpp", src))
+	e := findRateLimit(ents, func(s entitySummary) bool {
+		return s.Props["rate_limit_source"] == "drogon_ratelimiter"
+	})
+	if e == nil {
+		t.Fatalf("expected drogon_ratelimiter entity, got %+v", ents)
+	}
+	if e.Props["limit"] != "50" {
+		t.Errorf("limit = %q, want 50", e.Props["limit"])
+	}
+	if e.Props["period"] != "7200" { // 2h -> 7200s
+		t.Errorf("period = %q, want 7200", e.Props["period"])
+	}
+	if e.Props["rate_limit"] != "50/7200s" {
+		t.Errorf("rate_limit = %q, want 50/7200s", e.Props["rate_limit"])
+	}
+}
+
+// --- 2b. sub-second window -> cppChronoSeconds' "milliseconds" arm (#7270) --
+//
+// A sub-second window has to survive as milliseconds: the rate is reported in
+// ms and `period` (a whole-seconds field) stays unset rather than rounding
+// 250ms to 0s or relabelling it 250s. Both halves are asserted, so a window
+// that reached the seconds side of the split would fail here.
+
+func TestCppRateLimit_DrogonRateLimiterChronoMilliseconds(t *testing.T) {
+	src := `
+#include <drogon/drogon.h>
+auto rl = drogon::RateLimiter::newRateLimiter(120, std::chrono::milliseconds(250));`
+	ents := extract(t, "custom_cpp_rate_limit", fi("svc.cc", "cpp", src))
+	e := findRateLimit(ents, func(s entitySummary) bool {
+		return s.Props["rate_limit_source"] == "drogon_ratelimiter"
+	})
+	if e == nil {
+		t.Fatalf("expected drogon_ratelimiter entity, got %+v", ents)
+	}
+	if e.Props["rate_limit"] != "120/250ms" {
+		t.Errorf("rate_limit = %q, want 120/250ms", e.Props["rate_limit"])
+	}
+	if e.Props["period"] != "" {
+		t.Errorf("period = %q, want omitted (sub-second window)", e.Props["period"])
+	}
+}
+
 // --- 3. RateLimiter with a non-literal window → honest-partial (rate omitted) -
 
 func TestCppRateLimit_DrogonRateLimiterPartialWindow(t *testing.T) {
