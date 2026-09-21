@@ -350,7 +350,7 @@ func (s *engineSupervisor) start(ctx context.Context) error {
 		readPID:  readPID,
 		isAlive:  process.IsAlive,
 		isGrafel: process.PidIsGrafel,
-		kill:     process.Kill,
+		kill:     reapStaleKill,
 		waitDead: waitPIDDead,
 	})
 
@@ -360,6 +360,29 @@ func (s *engineSupervisor) start(ctx context.Context) error {
 	go s.run(ctx)
 	return nil
 }
+
+// reapStaleKill is the kill engineSupervisor.start wires into the pre-spawn
+// stale-engine reap: process.KillGuarded, which under `go test` panics naming
+// the pid instead of signalling it (#7268, #7280).
+//
+// Before #7280 this was the raw process.Kill, and ~10 tests call
+// sup.start(ctx). They were safe only because reapStaleEngine short-circuits on
+// an absent engine.pid inside a t.TempDir() root — a property of the FIXTURE
+// DATA, not of this code. A test that pre-seeded an engine.pid with a pid it
+// did not create, or whose root resolution changed, would have signalled a
+// stranger. Established empirically that no existing test reaches the kill
+// (panic probe over ./internal/daemon/: no fire), so this swap breaks nothing
+// and no test needed a seam.
+//
+// It is a package-level var rather than `kill: process.KillGuarded` inline for
+// one reason: #7268's review found that nothing observed KillGuarded being the
+// DEFAULT at either doctor site, because the only test naming KillGuarded lived
+// in internal/process — replacing the default with an inert function was ALIVE
+// in both packages. A named var can be graded by function identity
+// (supervise_kill_identity_7280_test.go), which is the only way to grade this
+// wiring without CALLING it: a call-and-assert-panic test would drive the real
+// kill path in exactly the failure mode the guard exists to detect.
+var reapStaleKill = process.KillGuarded
 
 // reapStaleEngineDeps abstracts the pre-spawn stale-engine reap's I/O so it
 // can be unit-tested without touching real processes or a real daemon root.

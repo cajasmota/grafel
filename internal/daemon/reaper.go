@@ -480,7 +480,24 @@ func (r *Reaper) unloadOrphanedWatcherUnits(killedRepos map[string]bool, deadPID
 }
 
 // sigtermPID sends SIGTERM to pid via the process package's portable Kill.
+//
+// This is the one place in the repository that deliberately keeps the UNGUARDED
+// Kill, and #7280 records why so a later sweep does not "complete the coverage"
+// and regress it. sigtermPID is reached by tests, and the pids it receives are
+// children the test spawned ITSELF: TestReaper_sweepWatchers_LiveDaemonPIDFromPidfile
+// reaches it through watchreg.Sweep with a pid from pidfile_test.go's
+// spawnLiveChild (`exec.Command("sleep","30")`, cmd.Process.Pid). Verified by
+// panic probe rather than assumed. Swapping in process.KillGuarded — which
+// panics under `go test` instead of signalling — would break a legitimate test
+// that kills its own child, not protect anything.
+//
+// Every OTHER pid that reaches this function in a test is injected:
+// ReaperConfig.KillWatchProc exists for exactly that, and reaper_watch_test.go's
+// deadPID = 999_999_999 is never signalled because watchreg.Sweep only calls
+// Kill for entries Alive reports live.
 func sigtermPID(pid int) error {
+	//killguard:direct the pids here are children the test spawned itself (see
+	// above); KillGuarded would break that test rather than protect anything.
 	return process.Kill(pid)
 }
 
