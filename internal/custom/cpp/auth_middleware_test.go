@@ -281,6 +281,66 @@ int main() {
 	assertProp(t, ents, "auth:drogon_filter:LoginAuthFilter", "auth_method", "auth")
 }
 
+// emitAuth's unclassified default (#7295), on the HttpFilter class-declaration
+// path — a separate mechanism from the classifier fallback arm above, which it
+// happens to agree with on the value "auth". Because the two agree, a fixture
+// whose name contains "auth" cannot say which of them produced the stamped
+// value; this one carries a name the classifier does not recognise, so it
+// reaches emitAuth with method == "". Kept as its own test on its own fixture
+// for that reason: folding it into the test above would grade neither.
+func TestCppAuthDrogonClassFilterUnclassifiedDefault(t *testing.T) {
+	// Drift guard: "PlainFilter" must carry no signal the classifier knows.
+	// The registerFilter<X> gate emits an auth entity only when
+	// cppClassifyAuthMethod(X) != "", so the absence of that entity here is
+	// an assertion about the classifier's return for this exact name. If a
+	// future edit adds an arm this name matches, this half fails rather than
+	// letting the half below silently stop exercising the substitution.
+	guard := extract(t, "custom_cpp_auth_middleware", fi("register_plain.cc", "cpp", `
+#include <drogon/drogon.h>
+int main() {
+    app().registerFilter<PlainFilter>();
+    app().run();
+}
+`))
+	// The absence below is only evidence if the registration was recognised at
+	// all: assert the middleware entity that gate always emits first, so a dead
+	// registerFilter recogniser fails here instead of passing the guard.
+	if e := authEntity(guard, "middleware:drogon:registerFilter:PlainFilter"); e == nil {
+		t.Fatalf("registerFilter<PlainFilter> was not recognised, so the guard below proves nothing; got %v", guard)
+	}
+	if e := authEntity(guard, "auth:drogon_filter:PlainFilter"); e != nil {
+		t.Fatalf("PlainFilter is no longer unclassified: registerFilter emitted %+v", *e)
+	}
+
+	// The class-declaration path emits unconditionally, so this input reaches
+	// emitAuth with method == "". The file carries no jwt call site, so
+	// fileHasJWT is false and the substitution takes its "auth" arm — the
+	// other arm is graded by the sibling test below.
+	src := `class PlainFilter : public drogon::HttpFilter<PlainFilter> {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("plain_filter.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_method", "auth")
+	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_subtype", "auth")
+}
+
+// The jwt arm of the same substitution: an unclassified name in a file that
+// DOES carry a jwt-cpp call site. Same input as the test above but for the
+// added `jwt::verify`, so the two rows differ on fileHasJWT alone and each
+// arm is graded by its own fixture.
+//
+// This fixture also carries the package's only auth_subtype assertion whose
+// expected value differs from "auth", so stamping auth_subtype from anything
+// other than the same `method` variable auth_method comes from is visible here.
+func TestCppAuthDrogonClassFilterUnclassifiedJwtFile(t *testing.T) {
+	src := `
+#include <jwt-cpp/jwt.h>
+class PlainFilter : public drogon::HttpFilter<PlainFilter> {};
+void check(const std::string& tok) { jwt::verify(tok); }
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("plain_filter_jwt.h", "cpp", src))
+	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_method", "jwt")
+	assertProp(t, ents, "auth:drogon_filter:PlainFilter", "auth_subtype", "jwt")
+}
+
 // ---------------------------------------------------------------------------
 // Negative cases
 // ---------------------------------------------------------------------------
