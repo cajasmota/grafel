@@ -217,8 +217,8 @@ func (s *Server) handleTestWebhookByID(w http.ResponseWriter, r *http.Request) {
 			// This does NOT make the whole ping honest: OrphanRate and
 			// TotalEntities are still a bare float64 and int with no unknown
 			// state, so the ping also ships orphan_rate:0 and
-			// total_entities:0. Same class, explicitly deferred by #7287 along
-			// with quality.HealthEntry.OrphanRate.
+			// total_entities:0. Tracked as #7292. Same class as
+			// quality.HealthEntry.OrphanRate, which #7283 defers separately.
 		},
 		Details: map[string]any{"message": "grafel test ping"},
 	}
@@ -276,8 +276,8 @@ func (s *Server) handleTestWebhookAdhoc(w http.ResponseWriter, r *http.Request) 
 			// This does NOT make the whole ping honest: OrphanRate and
 			// TotalEntities are still a bare float64 and int with no unknown
 			// state, so the ping also ships orphan_rate:0 and
-			// total_entities:0. Same class, explicitly deferred by #7287 along
-			// with quality.HealthEntry.OrphanRate.
+			// total_entities:0. Tracked as #7292. Same class as
+			// quality.HealthEntry.OrphanRate, which #7283 defers separately.
 		},
 		Details: map[string]any{"message": "grafel test ping"},
 	}

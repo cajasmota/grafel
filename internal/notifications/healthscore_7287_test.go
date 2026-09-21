@@ -114,8 +114,8 @@ var renderSites7287 = []struct {
 	// whole body is satisfied by a superstring: "88.00%" contains "88.0", so a
 	// Contains(got, "88.0") row stays green when a site calls the wrong helper.
 	// formatOptionalPct sits twelve lines from formatOptionalScore, takes the
-	// same *float64, returns the same string for nil, and is named on the very
-	// next line of the same fields slice — so that swap compiles, and the score
+	// same *float64, returns the same string for nil, and is named two lines
+	// below in the same fields slice — so that swap compiles, and the score
 	// ships as a percentage. Extracting the field pins its shape instead of
 	// blacklisting one wrong spelling of it.
 	score func(string) (string, error)
@@ -275,11 +275,17 @@ func TestRenderSites_MeasuredHealthScoreStillRenders(t *testing.T) {
 	}
 }
 
-// TestRenderSites_ScoreIsNotAPercentage is the same property stated as the
-// class rather than as one value, so a site that starts appending a unit to
-// some other score fails too. It is deliberately separate from the equality row
-// above: that row says what the rendering IS, this one says what the rendering
-// may never be, and the second survives a future change to the first.
+// TestRenderSites_ScoreIsNotAPercentage states the same property as a class
+// rather than as one value: the equality row above says what the rendering IS,
+// this says what it may never be.
+//
+// It is strictly subsumed by that row today, and the distinction is worth
+// stating plainly rather than dressing up: a rendering containing "%" cannot
+// equal "88.0", so the equality row has already failed by the time this one
+// looks, this row can never fail alone, and any mutant it kills is a duplicate
+// kill. Its value is entirely prospective — it is the row that still rejects a
+// percentage if someone later loosens the expected values — not extra grading
+// of anything the equality row leaves open.
 func TestRenderSites_ScoreIsNotAPercentage(t *testing.T) {
 	for _, snap := range []QualitySnapshot{measuredSnap7287(), unmeasuredSnap7287()} {
 		for i, site := range renderSites7287 {
