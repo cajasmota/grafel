@@ -662,8 +662,20 @@ func splitTopLevelComma(s string) []string {
 //
 // Two entity shapes resolve:
 //
-//   - SCOPE.Component (class/interface/record/enum) — the OO class shape
-//     emitted for Java/TS/etc. classes.
+//   - SCOPE.Component (class/interface/record/enum/type_alias) — the OO
+//     class shape emitted for Java/TS/etc. classes.
+//     #7296: `type_alias` is admitted here as well as under SCOPE.Schema.
+//     The rust extractor emits a language-level type alias as
+//     SCOPE.Component/type_alias (internal/extractors/rust/rust.go
+//     buildTypeAlias), while Go/Kotlin/Swift/TS/Python/Dart emit
+//     SCOPE.Schema/type_alias, so a rust handler returning a type-aliased
+//     type resolved no entity and rendered no expandable shape row where
+//     the equivalent Go or TS handler did. Admitting the Component
+//     spelling here fixes the consumer without moving any entity kind.
+//     Note the alias entity itself need not own CONTAINS field children —
+//     the path-detail callers gate HasChildren on classHasFieldChildren,
+//     so a childless alias resolves for type-source navigation and
+//     reports no expandable children.
 //   - SCOPE.Schema object/model nodes — the shape emitted for DTOs and
 //     ORM/GraphQL models (NestJS response DTOs under dto/response/, Mongoose
 //     @Schema classes, Prisma/Drizzle/Mongoose models, GraphQL types, …).
@@ -693,7 +705,7 @@ func findClassEntityByName(g *DashGroup, name string) *graph.Entity {
 			switch e.Kind {
 			case "SCOPE.Component":
 				switch e.Subtype {
-				case "class", "interface", "record", "enum", "":
+				case "class", "interface", "record", "enum", "type_alias", "":
 					return e
 				}
 			case "SCOPE.Schema":
