@@ -278,8 +278,14 @@ func TestDirectKillSweepIsNotVacuous(t *testing.T) {
 
 	// EVERY DECLARED TREE, not just the one the sites live in. The list above
 	// pins the internal/daemon subtree, so `|| d.Name() == "cmd"` was ALIVE:
-	// cmd/ is 56 non-test files, far below any sane floor, and nothing
-	// observed that the walk reached it at all.
+	// the walk delivers 43 non-test files from cmd/, far below any sane floor,
+	// and nothing observed that it reached the tree at all.
+	//
+	// 43, not the 56 a raw `find` reports: 13 sit under testdata/, which
+	// repowalk.SkippedDir prunes. Re-derived here rather than taken on trust,
+	// and it reconciles — 2112 delivered in total, 2069 of them under
+	// internal/, which is exactly the figure the cmd-pruned walk reports in the
+	// diagnostic below.
 	//
 	// It hides no hole today — cmd/ contains no kill primitive of any kind, so
 	// this closes a shape rather than a defect. It is closed anyway because
@@ -296,11 +302,17 @@ func TestDirectKillSweepIsNotVacuous(t *testing.T) {
 	//
 	// THE "internal/" ENTRY IS A PROVABLY EQUIVALENT MUTANT, disclosed rather
 	// than left for the next reviewer to find. Deleting it is ALIVE, and the
-	// reason is algebra rather than a gap: the loop above already requires
-	// "internal/daemon/reaper.go" to be in visited, every string with prefix
-	// "internal/daemon/" has prefix "internal/", and that loop runs FIRST, so
-	// its t.Fatalf pre-empts. No input can fail the "internal/" check while the
-	// path list passes.
+	// reason is a SET IMPLICATION over one map, not an ordering argument: the
+	// loop above requires the exact key "internal/daemon/reaper.go" in visited,
+	// and any map containing that key contains a key with prefix "internal/".
+	// Keys are always filepath.ToSlash(filepath.Rel(root, path)) — see the
+	// walker — so no separator or prefix form can separate the two.
+	//
+	// Stated that way on purpose. An earlier draft justified it by this loop
+	// running SECOND, so the path list's t.Fatalf pre-empts; that is true and
+	// it is not the reason, and a reader could have concluded that reordering
+	// the two loops would make this line live. It would not: the implication
+	// holds under any order, and with Errorf as readily as Fatalf.
 	//
 	// It is kept anyway, and the standing "an ALIVE mutant means add a test,
 	// not delete a line" rule is why the alternative was rejected: the only

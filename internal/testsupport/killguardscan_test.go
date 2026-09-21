@@ -37,6 +37,28 @@ func TestFindDirectKills(t *testing.T) {
 		name     string
 		src      string
 		wantHits int
+
+		// wantBare is the DIAGNOSIS each finding must carry, asserted for every
+		// row rather than only where a test remembers to look.
+		//
+		// It exists because these rows graded their COUNT and not their REASON.
+		// A row named "a BARE marker ... does not excuse it" asserted only that
+		// the site was reported — which it is either way, marked or not — so
+		// suppressing DirectKill.BareMarker for TRAILING markers alone was
+		// ALIVE: two of the three marker positions the scanner accepts had
+		// their diagnosis ungraded, and the only test that looked at the flag
+		// exercised the third. Under that mutant an author writing a bare
+		// trailing marker is told to "mark the line" on a line already carrying
+		// the marker, which is the misdirection round 3 added the flag to
+		// prevent.
+		//
+		// A field on the table rather than more rows in the diagnosis test, so
+		// the assertion matches the row's NAME for every row present and
+		// future, instead of closing the two shapes named in review and leaving
+		// the next one to be found the same way. The zero value is the common
+		// case and asserts the useful negative: a site with no honoured-marker
+		// story must NOT claim one.
+		wantBare bool
 		why      string
 	}{
 		{
@@ -165,6 +187,7 @@ func f(pid int) error {
 	return process.Kill(pid)
 }`,
 			wantHits: 1,
+			wantBare: true,
 			why: "the marker's whole advantage over a file allowlist is the FORCED justification. " +
 				"Honouring a bare one makes it a line-scoped allowlist and makes this package's " +
 				"own design section a claim no test can kill — the repo's dominant defect class",
@@ -175,6 +198,7 @@ func f(pid int) error {
 ` + procImport + `
 func f(pid int) error { return process.Kill(pid) } //killguard:direct`,
 			wantHits: 1,
+			wantBare: true,
 			why: "the scanner accepts the marker in three positions, so the rule has to behave " +
 				"identically in all three; a trailing marker simply has no continuation line to " +
 				"put the reason on",
@@ -188,6 +212,7 @@ func f(pid int) error {
 	return process.Kill(pid)
 }`,
 			wantHits: 1,
+			wantBare: true,
 			why: "the cheapest way to defeat a naive `len(rest) > 0` check, and gofmt would strip it " +
 				"from the file leaving a bare marker that had once passed review",
 		},
@@ -211,6 +236,7 @@ func f(pid int) error {
 func f(pid int) error { return process.Kill(pid) } //killguard:direct
 // the reason wraps onto this line`,
 			wantHits: 1,
+			wantBare: true,
 			why: "THE LOAD-BEARING INPUT IS go/parser, NOT THIS PACKAGE. killguardscan.go says a " +
 				"trailing marker \"has no continuation lines available\", and that is true only " +
 				"because go/parser cuts a comment group that begins on the same line as a " +
@@ -234,6 +260,7 @@ func f(pid int) error {
 	return process.Kill(pid)
 }`,
 			wantHits: 1,
+			wantBare: true,
 			why: "text before the marker explains the CODE, not the exemption. Counting it would " +
 				"let a bare marker dropped under any existing comment pass, which is most of them",
 		},
@@ -247,6 +274,7 @@ func f(pid int) error {
 	return process.Kill(pid)
 }`,
 			wantHits: 1,
+			wantBare: true,
 			why: "`//` on its own is the blank line of a comment group; a check counting COMMENTS " +
 				"rather than TEXT would accept it",
 		},
@@ -280,6 +308,22 @@ func b() { reap(deps{kill: process.Kill}) }`,
 			if len(got) != tc.wantHits {
 				t.Fatalf("got %d findings, want %d (%s)\nfindings: %v", len(got), tc.wantHits, tc.why, got)
 			}
+			// Every finding, which today is EQUIVALENT to checking got[0] and
+			// is disclosed as such: no row yields two findings whose diagnosis
+			// could differ, so narrowing this loop to got[0] is ALIVE. It is a
+			// scalar field, so a row cannot even encode disagreement.
+			//
+			// Kept because it costs nothing and becomes load-bearing the moment
+			// a multi-finding row is added — but the PROPERTY it gestures at,
+			// that each site is diagnosed on its own line rather than per file,
+			// is graded for real by TestFindDirectKillsDiagnosesEachSiteIndependently
+			// below, which this loop cannot express.
+			for i, g := range got {
+				if g.BareMarker != tc.wantBare {
+					t.Errorf("finding %d BareMarker = %v, want %v (%s)\n  %s",
+						i, g.BareMarker, tc.wantBare, tc.why, g)
+				}
+			}
 		})
 	}
 }
@@ -307,6 +351,49 @@ func (s *engineSupervisor) start() {
 		if !strings.Contains(s, want) {
 			t.Errorf("finding %q does not name %q", s, want)
 		}
+	}
+}
+
+// TestFindDirectKillsDiagnosesEachSiteIndependently pins that the BareMarker
+// diagnosis is keyed to the SITE'S OWN LINE, not to the file.
+//
+// The table above cannot express this: wantBare is one bool per row, so a
+// fixture holding one marked and one unmarked site has no way to say that the
+// findings must differ. That gap is not hypothetical — it is why the table's
+// "every finding" loop is equivalent to checking got[0], stated there rather
+// than papered over.
+//
+// The hazard it closes is real rather than invented: the flag is carried in a
+// map keyed by LINE, and an implementation that keyed it per FILE — or that
+// spread one group's verdict across the whole file — would pass every row in
+// the table, because no row mixes the two diagnoses.
+func TestFindDirectKillsDiagnosesEachSiteIndependently(t *testing.T) {
+	got := scanKills(t, `package p
+`+procImport+`
+func unmarked() { reap(deps{kill: process.Kill}) }
+func bareMarked(pid int) error {
+	//killguard:direct
+	return process.Kill(pid)
+}`)
+	if len(got) != 2 {
+		t.Fatalf("got %d findings, want 2 (one unmarked site, one bare-marked): %v", len(got), got)
+	}
+	byFn := map[string]testsupport.DirectKill{}
+	for _, g := range got {
+		byFn[g.Fn] = g
+	}
+	if g, ok := byFn["unmarked"]; !ok {
+		t.Errorf("no finding for the unmarked site; got %v", got)
+	} else if g.BareMarker {
+		t.Errorf("the UNMARKED site is diagnosed as carrying a bare marker — the flag is "+
+			"leaking across sites, so an author who marks one line gets the wrong message on "+
+			"another: %s", g)
+	}
+	if g, ok := byFn["bareMarked"]; !ok {
+		t.Errorf("no finding for the bare-marked site; got %v", got)
+	} else if !g.BareMarker {
+		t.Errorf("the BARE-MARKED site is not diagnosed as such even though an unmarked site "+
+			"sits in the same file: %s", g)
 	}
 }
 
