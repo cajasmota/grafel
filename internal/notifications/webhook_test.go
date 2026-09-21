@@ -14,14 +14,14 @@ import (
 
 func goodSnap(group string) QualitySnapshot {
 	b := 2.0
-	return QualitySnapshot{Group: group, OrphanRate: 5, BugRate: &b, HealthScore: fptr7287(93), TotalEntities: 1000}
+	return QualitySnapshot{Group: group, OrphanRate: fptr7287(5), BugRate: &b, HealthScore: fptr7287(93), TotalEntities: iptr7292(1000)}
 }
 
 func badSnap(group string) QualitySnapshot {
 	s := 5
 	c := 3
 	b := 15.0
-	return QualitySnapshot{Group: group, OrphanRate: 25, BugRate: &b, HealthScore: fptr7287(60), TotalEntities: 1000, Secrets: &s, Cycles: &c}
+	return QualitySnapshot{Group: group, OrphanRate: fptr7287(25), BugRate: &b, HealthScore: fptr7287(60), TotalEntities: iptr7292(1000), Secrets: &s, Cycles: &c}
 }
 
 func payload(event EventType, snap QualitySnapshot) WebhookPayload {
@@ -264,7 +264,14 @@ func TestRegressionDetected_False(t *testing.T) {
 func TestRegressionDetected_Noise(t *testing.T) {
 	prev := goodSnap("g")
 	curr := goodSnap("g")
-	curr.OrphanRate += 0.1 // below epsilon, should not trigger
+	// Enforced, not asserted in prose: the mutation below writes through a
+	// pointer, so if goodSnap ever handed out a shared *float64 this test would
+	// bump prev too, compare 5.1 against 5.1, pass for the wrong reason, and
+	// leave the contaminated value behind for every other test in the package.
+	if prev.OrphanRate == curr.OrphanRate {
+		t.Fatal("goodSnap returned a shared *float64; the mutation below would move both sides")
+	}
+	*curr.OrphanRate += 0.1 // below epsilon, should not trigger
 	if RegressionDetected(prev, curr) {
 		t.Error("expected noise below eps to not trigger regression")
 	}

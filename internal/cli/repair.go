@@ -875,11 +875,20 @@ func recordHealthHistory(group string, sum *RebuildSummary) {
 // unmeasured rate, so with no bug rate the score is a perfect 100 nobody
 // measured. The snapshot drops it rather than pass it on.
 func rebuildQualitySnapshot(group string, sum *RebuildSummary, healthScore float64) notifications.QualitySnapshot {
+	// #7292 made OrphanRate and TotalEntities pointers so a payload that
+	// measured neither can say so. A rebuild measured both, so both are
+	// carried across non-nil. The locals are copies rather than &sum.Field so
+	// the snapshot owns its own numbers and does not alias the summary: a
+	// payload already built does not change when sum is later written to. That
+	// is an aliasing property only — the read of sum here is not synchronised
+	// with any concurrent writer and this does not make it so.
+	orphanRate := sum.OrphanRate
+	totalEntities := sum.TotalEntities
 	snap := notifications.QualitySnapshot{
 		Group:         group,
-		OrphanRate:    sum.OrphanRate,
+		OrphanRate:    &orphanRate,
 		BugRate:       sum.BugRate.PctPtr(),
-		TotalEntities: sum.TotalEntities,
+		TotalEntities: &totalEntities,
 	}
 	if snap.BugRate != nil {
 		snap.HealthScore = &healthScore
@@ -894,9 +903,14 @@ func rebuildQualitySnapshot(group string, sum *RebuildSummary, healthScore float
 // which of the previous run's metrics count as measured, and it is otherwise
 // only reachable through a live dispatcher.
 func previousSnapshot(group string, prevEntry quality.HealthEntry) notifications.QualitySnapshot {
+	orphanRate := prevEntry.OrphanRate
 	return notifications.QualitySnapshot{
-		Group:      group,
-		OrphanRate: prevEntry.OrphanRate,
+		Group: group,
+		// *float64 since #7292. HealthEntry.OrphanRate is still a bare float64
+		// — #7283 defers it — so the previous run's rate is carried across as
+		// measured. This snapshot can be no more precise than the history
+		// record it reads.
+		OrphanRate: &orphanRate,
 		// Nil when the previous run could not measure one (#7283).
 		// RegressionDetected skips the comparison when either side is nil; a
 		// nil read as 0 here would make the previous run look flawless and

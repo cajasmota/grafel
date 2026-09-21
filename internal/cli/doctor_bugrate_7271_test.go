@@ -356,7 +356,7 @@ func TestRebuildQualitySnapshot_CarriesTheMeasuredRate(t *testing.T) {
 	if *snap.BugRate != 25.0 {
 		t.Errorf("snapshot bug_rate = %v, want 25", *snap.BugRate)
 	}
-	if snap.OrphanRate != 12.5 {
+	if snap.OrphanRate == nil || *snap.OrphanRate != 12.5 {
 		t.Errorf("snapshot orphan_rate = %v, want 12.5 (control)", snap.OrphanRate)
 	}
 }
@@ -370,7 +370,7 @@ func TestRebuildQualitySnapshot_UnmeasuredIsNull(t *testing.T) {
 	if snap.BugRate != nil {
 		t.Errorf("snapshot bug_rate = %v for an unmeasured rate, want null", *snap.BugRate)
 	}
-	if snap.OrphanRate != 12.5 {
+	if snap.OrphanRate == nil || *snap.OrphanRate != 12.5 {
 		t.Errorf("snapshot orphan_rate = %v, want 12.5 (control: the rest of the snapshot is still built)", snap.OrphanRate)
 	}
 }

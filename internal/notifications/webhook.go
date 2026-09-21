@@ -89,8 +89,14 @@ type WebhookConfig struct {
 
 // QualitySnapshot is the measured state at the time of the event.
 type QualitySnapshot struct {
-	Group      string  `json:"group"`
-	OrphanRate float64 `json:"orphan_rate"`
+	Group string `json:"group"`
+	// OrphanRate is the percentage of entities with no relationships, or nil
+	// when it was not measured (#7292). Pointer with NO omitempty for the same
+	// reason as BugRate directly below: as a bare float64 an unset field
+	// rendered as "0.00%" — a perfect orphan rate nobody computed — and a
+	// receiver of this payload cannot read grafel's source to tell that apart
+	// from a measured zero.
+	OrphanRate *float64 `json:"orphan_rate"`
 	// BugRate is the unresolved-import percentage, or nil when it could not be
 	// measured (#7271). Deliberately a pointer with NO omitempty: a receiver of
 	// this payload cannot read grafel's source to discover that a 0 meant "we
@@ -103,8 +109,12 @@ type QualitySnapshot struct {
 	// NO omitempty for the same reason as BugRate directly above — the wire has
 	// to carry an explicit null rather than let the key vanish, because an
 	// absent key and a never-measured one are not the same claim.
-	HealthScore   *float64 `json:"health_score"`
-	TotalEntities int      `json:"total_entities"`
+	HealthScore *float64 `json:"health_score"`
+	// TotalEntities is the size of the graph the metrics above describe, or nil
+	// when nothing was counted (#7292). Pointer with NO omitempty for the same
+	// reason as OrphanRate above: a 0 on the wire claims an empty graph, which
+	// is a different statement from "this event never counted one".
+	TotalEntities *int     `json:"total_entities"`
 	Cycles        *int     `json:"cycles,omitempty"`
 	Secrets       *int     `json:"secrets,omitempty"`
 	CoveragePct   *float64 `json:"coverage_pct,omitempty"`
@@ -331,7 +341,7 @@ func marshalSlack(p WebhookPayload) ([]byte, error) {
 	fields := []map[string]any{
 		{"title": "Group", "value": p.Quality.Group, "short": true},
 		{"title": "Health Score", "value": formatOptionalScore(p.Quality.HealthScore), "short": true},
-		{"title": "Orphan Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.OrphanRate), "short": true},
+		{"title": "Orphan Rate", "value": formatOptionalPct(p.Quality.OrphanRate), "short": true},
 		{"title": "Bug Rate", "value": formatOptionalPct(p.Quality.BugRate), "short": true},
 	}
 	if p.Quality.Secrets != nil {
@@ -364,7 +374,7 @@ func marshalDiscord(p WebhookPayload) ([]byte, error) {
 
 	fields := []map[string]any{
 		{"name": "Health Score", "value": formatOptionalScore(p.Quality.HealthScore), "inline": true},
-		{"name": "Orphan Rate", "value": fmt.Sprintf("%.2f%%", p.Quality.OrphanRate), "inline": true},
+		{"name": "Orphan Rate", "value": formatOptionalPct(p.Quality.OrphanRate), "inline": true},
 		{"name": "Bug Rate", "value": formatOptionalPct(p.Quality.BugRate), "inline": true},
 	}
 	if p.Quality.Secrets != nil {
@@ -459,8 +469,16 @@ func formatOptionalScore(v *float64) string {
 // CheckBudgets compares snap against budgets and returns any violations.
 func CheckBudgets(snap QualitySnapshot, budgets QualityBudgets) []BudgetViolation {
 	var out []BudgetViolation
-	if budgets.MaxOrphanRate > 0 && snap.OrphanRate > budgets.MaxOrphanRate {
-		out = append(out, BudgetViolation{"orphan_rate", budgets.MaxOrphanRate, snap.OrphanRate})
+	// The nil check is what makes the deref legal (#7292); it is NOT a
+	// behaviour change, and saying so here rather than letting the shape imply
+	// otherwise. This arm only runs when MaxOrphanRate > 0, and a nil read as a
+	// bare 0 exceeds no positive threshold, so the pre-pointer code breached
+	// nothing here either. Reverting it to a nil-as-0 read is undetectable for
+	// that reason — the row covering it is labelled nil-safety, not a
+	// behaviour pin. The comparison below carries the decision, and is graded
+	// with a rate sitting exactly on its budget.
+	if budgets.MaxOrphanRate > 0 && snap.OrphanRate != nil && *snap.OrphanRate > budgets.MaxOrphanRate {
+		out = append(out, BudgetViolation{"orphan_rate", budgets.MaxOrphanRate, *snap.OrphanRate})
 	}
 	// An unmeasured bug rate breaches no budget: reading nil as 0 would report
 	// every unmeasured group as comfortably inside its threshold (#7271).
@@ -481,7 +499,18 @@ func CheckBudgets(snap QualitySnapshot, budgets QualityBudgets) []BudgetViolatio
 // avoid noise from floating-point drift).
 func RegressionDetected(prev, curr QualitySnapshot) bool {
 	const eps = 0.5
-	if curr.OrphanRate > prev.OrphanRate+eps {
+	// A regression needs two measured numbers (#7292). The two guards are not
+	// worth the same: the prev one carries the decision — an unmeasured
+	// previous rate read as 0 makes the last run look flawless and reports a
+	// regression that did not happen, which is graded. The curr one is
+	// nil-safety only, but NOT because the two forms are equivalent: prev is
+	// read from an unvalidated history file (ReadHistory json.Unmarshals each
+	// line and range-checks nothing), so a negative rate separates them. What
+	// makes the clause unobservable today is the caller — the only production
+	// call site builds curr from rebuildQualitySnapshot, which never leaves
+	// OrphanRate nil. If anything makes curr nil-able there, this clause starts
+	// carrying a decision and needs a row of its own.
+	if curr.OrphanRate != nil && prev.OrphanRate != nil && *curr.OrphanRate > *prev.OrphanRate+eps {
 		return true
 	}
 	// Same shape as the Secrets/Cycles comparisons below: a regression needs

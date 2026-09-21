@@ -14,7 +14,7 @@ func TestQualitySnapshot_UnmeasuredBugRateRendersAsNotMeasured(t *testing.T) {
 	p := WebhookPayload{
 		Event:     EventRebuildComplete,
 		Timestamp: time.Now().UTC(),
-		Quality:   QualitySnapshot{Group: "g", OrphanRate: 12, HealthScore: fptr7287(88)},
+		Quality:   QualitySnapshot{Group: "g", OrphanRate: fptr7287(12), HealthScore: fptr7287(88)},
 	}
 
 	for _, tc := range []struct {
@@ -43,7 +43,7 @@ func TestQualitySnapshot_MeasuredBugRateStillRenders(t *testing.T) {
 	p := WebhookPayload{
 		Event:     EventRebuildComplete,
 		Timestamp: time.Now().UTC(),
-		Quality:   QualitySnapshot{Group: "g", OrphanRate: 12, BugRate: &b, HealthScore: fptr7287(88)},
+		Quality:   QualitySnapshot{Group: "g", OrphanRate: fptr7287(12), BugRate: &b, HealthScore: fptr7287(88)},
 	}
 	body, err := marshalSlack(p)
 	if err != nil {
@@ -100,7 +100,7 @@ func TestWebhookPayload_UnmeasuredBugRateIsExplicitNull(t *testing.T) {
 	body, err := marshalPayload(FlavorGeneric, WebhookPayload{
 		Event:     EventRebuildComplete,
 		Timestamp: time.Now().UTC(),
-		Quality:   QualitySnapshot{Group: "g", OrphanRate: 12, HealthScore: fptr7287(88)},
+		Quality:   QualitySnapshot{Group: "g", OrphanRate: fptr7287(12), HealthScore: fptr7287(88)},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -115,7 +115,7 @@ func TestWebhookPayload_UnmeasuredBugRateIsExplicitNull(t *testing.T) {
 	body, err = marshalPayload(FlavorGeneric, WebhookPayload{
 		Event:     EventRebuildComplete,
 		Timestamp: time.Now().UTC(),
-		Quality:   QualitySnapshot{Group: "g", OrphanRate: 12, BugRate: &b, HealthScore: fptr7287(88)},
+		Quality:   QualitySnapshot{Group: "g", OrphanRate: fptr7287(12), BugRate: &b, HealthScore: fptr7287(88)},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

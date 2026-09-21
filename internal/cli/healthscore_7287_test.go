@@ -44,7 +44,7 @@ func TestPreviousSnapshot_CarriesMeasurednessAcross(t *testing.T) {
 		if got.BugRate != nil {
 			t.Errorf("previous bug_rate = %v, want nil", *got.BugRate)
 		}
-		if got.OrphanRate != 3.5 || got.Group != "g1" {
+		if got.OrphanRate == nil || *got.OrphanRate != 3.5 || got.Group != "g1" {
 			t.Errorf("control: the rest of the snapshot is still mapped: %+v", got)
 		}
 	})
@@ -69,7 +69,7 @@ func TestPreviousSnapshot_CarriesMeasurednessAcross(t *testing.T) {
 // flawless baseline that the current run then "regresses" from.
 func TestPreviousSnapshot_NoRegressionFromAnUnmeasuredPrevious(t *testing.T) {
 	prev := previousSnapshot("g1", quality.HealthEntry{Group: "g1", OrphanRate: 3.5})
-	curr := notifications.QualitySnapshot{Group: "g1", OrphanRate: 3.5, BugRate: fptr7287(40), HealthScore: fptr7287(56.5)}
+	curr := notifications.QualitySnapshot{Group: "g1", OrphanRate: fptr7287(3.5), BugRate: fptr7287(40), HealthScore: fptr7287(56.5)}
 
 	if notifications.RegressionDetected(prev, curr) {
 		t.Error("a previous run that measured nothing was treated as a baseline to regress from")
@@ -104,7 +104,7 @@ func TestRebuildQualitySnapshot_UncomputedHealthScoreIsNull(t *testing.T) {
 	if snap.BugRate != nil {
 		t.Errorf("control: bug_rate = %v, want null", *snap.BugRate)
 	}
-	if snap.OrphanRate != 12.5 || snap.TotalEntities != 100 {
+	if snap.OrphanRate == nil || *snap.OrphanRate != 12.5 || snap.TotalEntities == nil || *snap.TotalEntities != 100 {
 		t.Errorf("control: the rest of the snapshot is still built: %+v", snap)
 	}
 }

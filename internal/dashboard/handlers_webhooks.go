@@ -211,13 +211,12 @@ func (s *Server) handleTestWebhookByID(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now().UTC(),
 		Quality: notifications.QualitySnapshot{
 			Group: "test",
-			// No HealthScore: a ping measures nothing, so it emits an explicit
-			// null alongside the null bug rate rather than a fabricated 100
-			// that the Slack renderer would print beside "not measured" (#7287).
-			// This does NOT make the whole ping honest: OrphanRate and
-			// TotalEntities are still a bare float64 and int with no unknown
-			// state, so the ping also ships orphan_rate:0 and
-			// total_entities:0. Tracked as #7292. Same class as
+			// Group is the only thing a ping knows. HealthScore (#7287),
+			// OrphanRate and TotalEntities (#7292) are all left nil, so the
+			// payload carries health_score:null, orphan_rate:null and
+			// total_entities:null rather than a fabricated 100, a "0.00%"
+			// orphan rate nobody computed, and an entity count of 0. BugRate
+			// has been null here since #7271. Still a bare float64 elsewhere:
 			// quality.HealthEntry.OrphanRate, which #7283 defers separately.
 		},
 		Details: map[string]any{"message": "grafel test ping"},
@@ -270,13 +269,12 @@ func (s *Server) handleTestWebhookAdhoc(w http.ResponseWriter, r *http.Request) 
 		Timestamp: time.Now().UTC(),
 		Quality: notifications.QualitySnapshot{
 			Group: "test",
-			// No HealthScore: a ping measures nothing, so it emits an explicit
-			// null alongside the null bug rate rather than a fabricated 100
-			// that the Slack renderer would print beside "not measured" (#7287).
-			// This does NOT make the whole ping honest: OrphanRate and
-			// TotalEntities are still a bare float64 and int with no unknown
-			// state, so the ping also ships orphan_rate:0 and
-			// total_entities:0. Tracked as #7292. Same class as
+			// Group is the only thing a ping knows. HealthScore (#7287),
+			// OrphanRate and TotalEntities (#7292) are all left nil, so the
+			// payload carries health_score:null, orphan_rate:null and
+			// total_entities:null rather than a fabricated 100, a "0.00%"
+			// orphan rate nobody computed, and an entity count of 0. BugRate
+			// has been null here since #7271. Still a bare float64 elsewhere:
 			// quality.HealthEntry.OrphanRate, which #7283 defers separately.
 		},
 		Details: map[string]any{"message": "grafel test ping"},
