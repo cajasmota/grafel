@@ -657,11 +657,16 @@ func splitTopLevelComma(s string) []string {
 // findClassEntityByName scans the group's repos for a class-like model
 // entity whose simple name matches `name`. The match is case-sensitive;
 // the first hit — repos in sorted-slug order, entities in slice order
-// within a repo — wins. #7316: that sentence is pinned by
-// TestFindClassEntityByName_FirstSliceHitWins7316, which resolves two
-// same-named entities distinguishable by id/subtype/line and asserts
-// which one comes back; before it, reversing the entity loop left the
-// whole package green. Returns nil when no
+// within a repo — wins. #7316 pins both halves, each by its own test,
+// because each has its own mutant: the entity half by
+// TestFindClassEntityByName_FirstSliceHitWins7316 (two same-named
+// entities in one repo, distinguishable by id/subtype/line, asserting
+// which comes back — before it, reversing the entity loop left the whole
+// package green) and the repo half by
+// TestFindClassEntityByName_SortedRepoOrderWins7316 (three repos sharing
+// one entity name, asserting the a-slug one wins, repeated so that
+// dropping the sort for a raw map range dies rather than flakes).
+// Returns nil when no
 // model matches — primitives, JDK types, and container element types
 // with no in-group DTO definition all fall through.
 //
@@ -777,13 +782,19 @@ func splitTopLevelComma(s string) []string {
 //     separately. Nothing here grades the deferral: a mutant adding "trait"
 //     back fails no row, which is recorded rather than implied.
 //
-//     #7316: the arm's TOP boundary is graded too, not just its excluded
-//     sub-node spellings. "interface" now carries a POSITIVE row (java.go:
-//     362-367 interface_declaration, golang/extractor.go:1827 and php.go:5
-//     emit it for a real declaration), so a mutant dropping it fails —
-//     #7314's "the same hazard is already accepted for interface" had
-//     previously rested on the subtype's presence in this list and on no
-//     assertion. "impl" and "struct" carry FORBIDDEN rows: rust's buildImpl
+//     #7316: three members that were present here and required by NO row —
+//     "interface", "record" and "enum" — now carry POSITIVE rows (one
+//     java.go switch emits all three for real declarations: interface at :367,
+//     enum at :416-417, record at :418-423; golang/extractor.go:1827 and
+//     php.go:5 also emit the interface spelling), so a mutant dropping any
+//     one of them fails. #7314's "the same hazard is already accepted for
+//     interface" had previously rested on the subtype's presence in this list
+//     and on no assertion.
+//
+//     Two spellings — and ONLY those two — are graded as EXCLUDED at the top of
+//     the arm: "impl" and "struct". The arm is not closed: any other subtype,
+//     "trait" included (deferred by #7314, and deliberately ungraded), still
+//     lands in it with nothing failing. rust's buildImpl
 //     (rust.go:769-798) names an impl_item after the IMPLEMENTED TYPE, which
 //     is the same Name rust emits the declaration itself under
 //     (SCOPE.Component/"struct", rust.go:103), and
