@@ -656,7 +656,17 @@ func splitTopLevelComma(s string) []string {
 
 // findClassEntityByName scans the group's repos for a class-like model
 // entity whose simple name matches `name`. The match is case-sensitive;
-// the first hit (by sorted-repo iteration) wins. Returns nil when no
+// the first hit — repos in sorted-slug order, entities in slice order
+// within a repo — wins. #7316 pins both halves, each by its own test,
+// because each has its own mutant: the entity half by
+// TestFindClassEntityByName_FirstSliceHitWins7316 (two same-named
+// entities in one repo, distinguishable by id/subtype/line, asserting
+// which comes back — before it, reversing the entity loop left the whole
+// package green) and the repo half by
+// TestFindClassEntityByName_SortedRepoOrderWins7316 (three repos sharing
+// one entity name, asserting the a-slug one wins, repeated so that
+// dropping the sort for a raw map range dies rather than flakes).
+// Returns nil when no
 // model matches — primitives, JDK types, and container element types
 // with no in-group DTO definition all fall through.
 //
@@ -671,7 +681,10 @@ func splitTopLevelComma(s string) []string {
 //     makeImport* / buildInclude* helpers across ~16 languages). That
 //     member is pinned by a test but is not endorsed here — since the
 //     scan returns the first entity-slice hit, a stub sharing a name with
-//     a real DTO resolves ahead of it. Tracked separately.
+//     a real DTO resolves ahead of it — recorded as a baseline row (the
+//     shadowing half of TestFindClassEntityByName_FirstSliceHitWins7316,
+//     #7316) so that changing it is a visible behaviour change. Tracked
+//     separately (#7312).
 //     #7296: a language-level type alias is emitted under SCOPE.Schema by
 //     Go/Kotlin/Swift/TS/Python/Dart, but under SCOPE.Component by four
 //     producers, under three different subtype spellings:
@@ -768,6 +781,28 @@ func splitTopLevelComma(s string) []string {
 //     prefer a non-stub hit) before "trait" can be admitted. Tracked
 //     separately. Nothing here grades the deferral: a mutant adding "trait"
 //     back fails no row, which is recorded rather than implied.
+//
+//     #7316: three members that were present here and required by NO row —
+//     "interface", "record" and "enum" — now carry POSITIVE rows (one
+//     java.go switch emits all three for real declarations: interface at :367,
+//     enum at :416-417, record at :418-423; golang/extractor.go:1827 and
+//     php.go:5 also emit the interface spelling), so a mutant dropping any
+//     one of them fails. #7314's "the same hazard is already accepted for
+//     interface" had previously rested on the subtype's presence in this list
+//     and on no assertion.
+//
+//     Two spellings — and ONLY those two — are graded as EXCLUDED at the top of
+//     the arm: "impl" and "struct". The arm is not closed: any other subtype,
+//     "trait" included (deferred by #7314, and deliberately ungraded), still
+//     lands in it with nothing failing. rust's buildImpl
+//     (rust.go:769-798) names an impl_item after the IMPLEMENTED TYPE, which
+//     is the same Name rust emits the declaration itself under
+//     (SCOPE.Component/"struct", rust.go:103), and
+//     cross/hierarchy/extractor.go:834-844 emits a line-0, wrong-file
+//     SCOPE.Component/"struct" stub for an embedded go struct — the shadow
+//     shape #7312 measured. Both rows are in
+//     TestFindClassEntityByName_ComponentAdmitListBoundary7316 and a mutant
+//     admitting either subtype fails its own row.
 //
 //     What admitting "case_class" delivers. A `case class` carries a CONTAINS
 //     edge to one SCOPE.Schema/field child per class parameter
