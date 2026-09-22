@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -1365,5 +1366,357 @@ func TestFindClassEntityByName_SortedRepoOrderWins7316(t *testing.T) {
 			t.Fatalf("#7316: repo iteration is not sorted-slug-first — draw %d resolved %q (%s, line %d), want repo_a (class, line 100)",
 				i, got.ID, got.Subtype, got.StartLine)
 		}
+	}
+}
+
+// shapeTree7309Fixture models one request DTO whose three field rows sit on
+// the three distinct sides of the #7309 gate, so has_children=true and
+// has_children=false are genuinely distinguishable inside ONE response:
+//
+//   - alias    → Order7309Id, a SCOPE.Component/type_alias that owns no
+//     CONTAINS field child and no EXTENDS base. It RESOLVES (so
+//     type_entity_id / type_source_file are populated) but expanding it
+//     yields zero rows.
+//
+//   - customer → Customer7309DTO, which owns a CONTAINS field child
+//     directly.
+//
+//   - meta     → Meta7309View, which owns NO field child of its own but
+//     EXTENDS Base7309Meta, which does. This row separates
+//     classHasFieldChildren (which recurses through EXTENDS, #4845) from a
+//     direct-CONTAINS-only test that would look equally correct on the
+//     other two rows.
+//
+//   - handler  → Audit7309Listener, a SCOPE.Component/interface that HAS a
+//     CONTAINS child — a SCOPE.Operation method — which `isFieldEntity`
+//     rejects. `alias` is childless by owning no CONTAINS edge at all, so
+//     it cannot reach the predicate that COUNTS the children; this row
+//     can. Without it, dropping `isFieldEntity` from the gate's CONTAINS
+//     loop fails nothing and the empty expander returns one level down.
+//
+//     This shape is taken from the primary, default-on Java extractor
+//     rather than invented. Anchored on symbols, not line ranges, because
+//     an earlier revision of this comment cited a range that stopped one
+//     line short of the assignment it described:
+//
+//   - In internal/extractors/java/java.go, `walk`'s post-walk loop
+//     over a type's freshly-emitted children switches on exactly two
+//     Kinds — `case child.Kind == "SCOPE.Operation"` (methods, and
+//     nested types per #65) and `case child.Kind == "SCOPE.Schema" &&
+//     child.Subtype == "field"` — and its `default:` arm `continue`s,
+//     so a type gets CONTAINS edges to nothing else.
+//
+//   - `walk`'s `case "interface_declaration":` arm sets
+//     `subtype = "interface"`, and `buildComponent` stamps
+//     `Kind: "SCOPE.Component"` on the record it returns.
+//
+//   - `buildOperation` stamps `Kind: "SCOPE.Operation"`, which
+//     isFieldEntity rejects (it requires Subtype "field").
+//
+//     findClassEntityByName admits Component/"interface" and #7316 pinned
+//     it. So a Java interface with methods and no fields — an ordinary
+//     thing for a DTO field to be typed as — is a real type, really
+//     resolvable, whose every CONTAINS child really fails isFieldEntity.
+//
+// Entity and field names are unique to this fixture — no name here is a
+// prefix, suffix or case-fold of a name in shapeTreeFixture or in the
+// #7296/#7314/#7316 findClassEntityByName sets — so no row here can take
+// over a kill belonging to those.
+func shapeTree7309Fixture() *DashGroup {
+	entities := []graph.Entity{
+		{
+			ID: "cls_order_7309", Name: "Order7309Request",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/Order7309Request.java", Language: "java",
+		},
+		{
+			ID: "fld_order_alias_7309", Name: "Order7309Request.alias",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/Order7309Request.java", Language: "java",
+			Signature: "Order7309Id alias",
+		},
+		{
+			ID: "fld_order_customer_7309", Name: "Order7309Request.customer",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/Order7309Request.java", Language: "java",
+			Signature: "Customer7309DTO customer",
+		},
+		{
+			ID: "fld_order_meta_7309", Name: "Order7309Request.meta",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/Order7309Request.java", Language: "java",
+			Signature: "Meta7309View meta",
+		},
+		{
+			ID: "fld_order_handler_7309", Name: "Order7309Request.handler",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/Order7309Request.java", Language: "java",
+			Signature: "Audit7309Listener handler",
+		},
+		// An interface that HAS a CONTAINS child which isFieldEntity rejects.
+		{
+			ID: "iface_audit_7309", Name: "Audit7309Listener",
+			Kind: "SCOPE.Component", Subtype: "interface",
+			SourceFile: "src/Audit7309Listener.java", Language: "java",
+		},
+		{
+			ID: "op_audit_on_event_7309", Name: "Audit7309Listener.onEvent",
+			Kind: "SCOPE.Operation", Subtype: "method",
+			SourceFile: "src/Audit7309Listener.java", Language: "java",
+			Signature: "void onEvent(String name)",
+		},
+		// The childless alias. No CONTAINS edge, no EXTENDS edge — childless
+		// for exactly the reason this test claims.
+		{
+			ID: "als_order_id_7309", Name: "Order7309Id",
+			Kind: "SCOPE.Component", Subtype: "type_alias",
+			SourceFile: "src/types7309.go", StartLine: 12, Language: "go",
+		},
+		// Has a field child of its own.
+		{
+			ID: "cls_customer_7309", Name: "Customer7309DTO",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/Customer7309DTO.java", Language: "java",
+		},
+		{
+			ID: "fld_customer_name_7309", Name: "Customer7309DTO.fullName",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/Customer7309DTO.java", Language: "java",
+			Signature: "String fullName",
+		},
+		// Owns nothing; inherits one field from its EXTENDS base.
+		{
+			ID: "cls_meta_view_7309", Name: "Meta7309View",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/Meta7309View.java", Language: "java",
+		},
+		{
+			ID: "cls_base_meta_7309", Name: "Base7309Meta",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/Base7309Meta.java", Language: "java",
+		},
+		{
+			ID: "fld_base_meta_tag_7309", Name: "Base7309Meta.tag",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/Base7309Meta.java", Language: "java",
+			Signature: "String tag",
+		},
+	}
+	rels := []graph.Relationship{
+		{FromID: "cls_order_7309", ToID: "fld_order_alias_7309", Kind: "CONTAINS"},
+		{FromID: "cls_order_7309", ToID: "fld_order_customer_7309", Kind: "CONTAINS"},
+		{FromID: "cls_order_7309", ToID: "fld_order_meta_7309", Kind: "CONTAINS"},
+		{FromID: "cls_order_7309", ToID: "fld_order_handler_7309", Kind: "CONTAINS"},
+		// The interface's only child is a method — a CONTAINS edge that
+		// exists and that isFieldEntity must not count.
+		{FromID: "iface_audit_7309", ToID: "op_audit_on_event_7309", Kind: "CONTAINS"},
+		{FromID: "cls_customer_7309", ToID: "fld_customer_name_7309", Kind: "CONTAINS"},
+		{FromID: "cls_meta_view_7309", ToID: "cls_base_meta_7309", Kind: "EXTENDS"},
+		{FromID: "cls_base_meta_7309", ToID: "fld_base_meta_tag_7309", Kind: "CONTAINS"},
+	}
+	return makePathsTestGroup(entities, rels)
+}
+
+// fixtureRepo7309 returns the fixture's single repo, failing with a readable
+// message rather than a nil-pointer panic if the slug or Doc ever changes. A
+// helper whose failure mode is a panic tells you less than one that names what
+// it could not find.
+func fixtureRepo7309(t *testing.T, grp *DashGroup) *DashRepo {
+	t.Helper()
+	const slug = "api-backend"
+	repo := grp.Repos[slug]
+	if repo == nil {
+		have := make([]string, 0, len(grp.Repos))
+		for s := range grp.Repos {
+			have = append(have, s)
+		}
+		sort.Strings(have)
+		t.Fatalf("fixture: no repo with slug %q; group has %v", slug, have)
+	}
+	if repo.Doc == nil {
+		t.Fatalf("fixture: repo %q has a nil Doc, so it carries no entities to check", slug)
+	}
+	return repo
+}
+
+// assertNoContainsChild7309 fails unless the named entity owns NO CONTAINS
+// child at all. It is the mirror of assertNonFieldChildOnly7309 and guards the
+// `alias` row's distinctness: alias is childless by ABSENCE (it never reaches
+// the gate's counting predicate) while handler is childless by REJECTION (it
+// reaches the predicate and is turned away). Give alias a non-field CONTAINS
+// child and it silently becomes a second copy of handler — every assertion in
+// the test still passes, and the absence case stops being covered by anything.
+// This asserts decay-resistance, not correctness: nothing in the production
+// change is false without it.
+func assertNoContainsChild7309(t *testing.T, grp *DashGroup, entityID string) {
+	t.Helper()
+	repo := fixtureRepo7309(t, grp)
+	for _, rel := range repo.Doc.Relationships {
+		if rel.Kind == "CONTAINS" && rel.FromID == entityID {
+			t.Fatalf("fixture: %s owns a CONTAINS child (%q), so it is no longer childless "+
+				"by absence — it now duplicates the `handler` row and the no-CONTAINS-edge "+
+				"case this row exists to cover is graded by nothing", entityID, rel.ToID)
+		}
+	}
+}
+
+// assertNonFieldChildOnly7309 fails unless the named entity owns at least one
+// CONTAINS child and NONE of its children satisfies isFieldEntity. It pins the
+// premise that makes the `handler` row grade the gate's counting predicate
+// rather than merely repeating the `alias` row's childless-by-absence case.
+func assertNonFieldChildOnly7309(t *testing.T, grp *DashGroup, entityID string) {
+	t.Helper()
+	repo := fixtureRepo7309(t, grp)
+	byID := map[string]*graph.Entity{}
+	for i := range repo.Doc.Entities {
+		byID[repo.Doc.Entities[i].ID] = &repo.Doc.Entities[i]
+	}
+	children := 0
+	for _, rel := range repo.Doc.Relationships {
+		if rel.Kind != "CONTAINS" || rel.FromID != entityID {
+			continue
+		}
+		child, ok := byID[rel.ToID]
+		if !ok {
+			t.Fatalf("fixture: %s CONTAINS %q, which is not in the entity set", entityID, rel.ToID)
+		}
+		children++
+		if isFieldEntity(child) {
+			t.Fatalf("fixture: %s CONTAINS field-like child %q (%s/%s) — this row must own "+
+				"ONLY non-field children or it grades nothing",
+				entityID, child.ID, child.Kind, child.Subtype)
+		}
+	}
+	if children == 0 {
+		t.Fatalf("fixture: %s owns no CONTAINS child, so it is childless by absence and "+
+			"cannot reach the gate's isFieldEntity predicate — the point of this row", entityID)
+	}
+}
+
+// getShape7309 issues one GET /shape and returns the decoded payload.
+func getShape7309(t *testing.T, baseURL, query string) v2ShapeResponse {
+	t.Helper()
+	resp, err := http.Get(baseURL + "/api/v2/groups/testgrp/shape?" + query)
+	if err != nil {
+		t.Fatalf("GET shape?%s: %v", query, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET shape?%s: want 200, got %d", query, resp.StatusCode)
+	}
+	var body struct {
+		OK   bool            `json:"ok"`
+		Data v2ShapeResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode shape?%s: %v", query, err)
+	}
+	if !body.OK {
+		t.Fatalf("shape?%s: ok=false", query)
+	}
+	return body.Data
+}
+
+// TestShape_FieldRowHasChildrenGatedOnFieldChildren7309 pins #7309.
+//
+// buildShapeRow used to set row.HasChildren = true unconditionally for ANY
+// resolved field type, while the four path-detail call sites in v2_paths.go
+// gate the same flag on classHasFieldChildren. The frontend reads it alone —
+// ShapeTree.tsx `expandable = field.has_children` — so a childless type
+// rendered a clickable chevron whose /shape fetch returned zero rows.
+//
+// The assertion is not just "the flag is false": it is that has_children
+// agrees with what expanding the row actually delivers. Each row is checked
+// against its own follow-up /shape call, so a flag that is false while rows
+// exist fails just as loudly as one that is true while none do.
+func TestShape_FieldRowHasChildrenGatedOnFieldChildren7309(t *testing.T) {
+	grp := shapeTree7309Fixture()
+	ts := newPathsTestServer(t, grp)
+	defer ts.Close()
+
+	// Fixture self-check: `handler` only grades the gate's isFieldEntity
+	// predicate while Audit7309Listener actually HAS a CONTAINS child that
+	// is not a field. If that edge is ever dropped the row silently decays
+	// into a second copy of `alias` (childless by absence) and stops
+	// reaching the predicate at all, so assert the premise rather than
+	// trusting the fixture's label.
+	assertNonFieldChildOnly7309(t, grp, "iface_audit_7309")
+	// The mirror: `alias` must stay childless by ABSENCE, or it collapses
+	// into a second `handler` and the no-CONTAINS-edge case goes ungraded.
+	assertNoContainsChild7309(t, grp, "als_order_id_7309")
+
+	data := getShape7309(t, ts.URL, "type=Order7309Request")
+	if len(data.Rows) != 4 {
+		t.Fatalf("Order7309Request rows: want 4, got %d (%+v)", len(data.Rows), data.Rows)
+	}
+	got := map[string]v2ShapeRow{}
+	for _, r := range data.Rows {
+		got[r.Name] = r
+	}
+
+	// Every row must have resolved its type, otherwise the has_children
+	// assertions below would be vacuously satisfied by non-resolution.
+	for _, name := range []string{"alias", "customer", "meta", "handler"} {
+		if got[name].TypeEntityID == "" {
+			t.Fatalf("%s: type_entity_id empty — type did not resolve, so the "+
+				"has_children assertions below would grade nothing", name)
+		}
+	}
+
+	// The gate: has_children must equal "expanding this row yields rows".
+	for _, name := range []string{"alias", "customer", "meta", "handler"} {
+		row := got[name]
+		child := getShape7309(t, ts.URL, "type_entity_id="+row.TypeEntityID)
+		wantExpandable := len(child.Rows) > 0
+		if row.HasChildren != wantExpandable {
+			t.Errorf("#7309: %s.has_children=%v but expanding %s returns %d row(s); "+
+				"the frontend gates the chevron on has_children alone",
+				name, row.HasChildren, row.TypeEntityID, len(child.Rows))
+		}
+	}
+
+	// Pin each side concretely so the loop above cannot pass by having every
+	// row land on the same side of the gate.
+	if got["alias"].HasChildren {
+		t.Error("#7309: alias.has_children=true — Order7309Id is a type_alias with " +
+			"no CONTAINS field child and no EXTENDS base; the chevron would expand to nothing")
+	}
+	if !got["customer"].HasChildren {
+		t.Error("#7309: customer.has_children=false — Customer7309DTO owns a CONTAINS field child")
+	}
+	if !got["meta"].HasChildren {
+		t.Error("#7309: meta.has_children=false — Meta7309View owns no field of its own but " +
+			"EXTENDS Base7309Meta, which does; the gate must recurse through EXTENDS (#4845)")
+	}
+	if got["handler"].HasChildren {
+		t.Error("#7309: handler.has_children=true — Audit7309Listener's only CONTAINS child " +
+			"is a SCOPE.Operation method, which isFieldEntity rejects and collectShapeRowsInto " +
+			"skips. Counting any CONTAINS child here re-opens the empty expander one level down")
+	}
+
+	// The gate withholds the CHEVRON only. Resolution, the prefixed entity id
+	// and the type-source location (which the frontend peeks via
+	// `canPeekType = !!field.type_source_file`, independently of
+	// has_children) must all survive on the childless row — a "fix" that
+	// stopped resolving childless types would fail here.
+	alias := got["alias"]
+	if !strings.Contains(alias.TypeEntityID, "als_order_id_7309") {
+		t.Errorf("#7309: alias.type_entity_id=%q, want it to carry als_order_id_7309", alias.TypeEntityID)
+	}
+	if alias.TypeSourceFile != "src/types7309.go" || alias.TypeSourceLine != 12 {
+		t.Errorf("#7309: alias type-source navigation lost: file=%q line=%d, want src/types7309.go:12",
+			alias.TypeSourceFile, alias.TypeSourceLine)
+	}
+	// TypeRepo is the third leg of that navigation and was graded by nothing
+	// in this package: ShapeTree.tsx's openType passes `repo: field.type_repo`
+	// into openSourcePeek alongside file and line, so an empty repo silently
+	// breaks the peek for a type defined in a different repo than the field.
+	if alias.TypeRepo != "api-backend" {
+		t.Errorf("#7309: alias.type_repo=%q, want api-backend — the frontend passes it "+
+			"to openSourcePeek beside type_source_file/line, so emptying it breaks "+
+			"cross-repo type-source peek", alias.TypeRepo)
+	}
+	if alias.Type != "Order7309Id" {
+		t.Errorf("#7309: alias.type=%q, want Order7309Id", alias.Type)
 	}
 }

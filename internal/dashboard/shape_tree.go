@@ -294,7 +294,38 @@ func buildShapeRow(grp *DashGroup, field *graph.Entity) v2ShapeRow {
 		if target := findClassEntityByName(grp, resolveType); target != nil {
 			tgtSlug, _ := findRepoForEntity(grp, target.ID)
 			row.TypeEntityID = dashPrefixedID(tgtSlug, target.ID)
-			row.HasChildren = true
+			// #7309 — gate the expander on the resolved type actually
+			// owning field children, the way the four path-detail call
+			// sites in v2_paths.go do. This was unconditionally true, so a
+			// childless resolution (a type_alias owns no CONTAINS field
+			// child) rendered a chevron whose /shape fetch returned zero
+			// rows; the frontend gates on this flag alone (ShapeTree.tsx
+			// `expandable = field.has_children`). classHasFieldChildren
+			// applies the same CONTAINS→field walk, with the same EXTENDS
+			// recursion (#4845), that collectShapeRows uses to build the
+			// expansion.
+			//
+			// That equivalence — has_children == "expanding returns rows" —
+			// holds for entities with a NON-EMPTY ID, which is every shape a
+			// real index has been observed to produce. It was checked by
+			// enumerating ~60k random 1-2-repo graphs with colliding IDs,
+			// ghost FromIDs, name-resolved EXTENDS, self-extends and cycles:
+			// zero mismatches. Allowing an EMPTY-ID entity breaks it in both
+			// directions, and there is exactly one located cause: in
+			// collectShapeRowsInto the EXTENDS recursion guards its repo
+			// re-resolution with `if base.ID != ""` and otherwise falls back
+			// to the CHILD's repo, whereas classHasFieldChildrenRec resolves
+			// every base through findRepoForEntity and returns false when
+			// that fails. No counterpart to that guard exists in the gate.
+			// It is left alone here: no extractor has been shown to emit an
+			// empty-ID shape entity, so removing the guard would be a
+			// behaviour change on an input demonstrated only by an
+			// enumerator. Tracked as its own issue.
+			//
+			// Only the chevron is withheld: TypeEntityID and the
+			// TypeSource* type-source navigation below still resolve, and
+			// the frontend peeks source off type_source_file independently.
+			row.HasChildren = classHasFieldChildren(grp, target)
 			// Carry the type's definition location so the frontend can open
 			// the type's source on a type-name click (#4869).
 			row.TypeSourceFile = target.SourceFile
@@ -722,11 +753,11 @@ func splitTopLevelComma(s string) []string {
 //     What resolving one delivers, per caller, since the callers differ:
 //     buildShapeRow (a nested field row) is the only site that populates
 //     TypeSourceFile/TypeSourceLine/TypeRepo, so only there does an alias
-//     gain type-source navigation. The four path-detail sites set
-//     type_entity_id and compute HasChildren via classHasFieldChildren;
-//     an alias owning no CONTAINS field child therefore yields
-//     has_children=false, and the frontend gates on it
-//     (webui-v2 paths.tsx `has_children && type_entity_id`,
+//     gain type-source navigation. Every site — the four path-detail ones
+//     and, since #7309, buildShapeRow too — sets type_entity_id and computes
+//     HasChildren via classHasFieldChildren; an alias owning no CONTAINS
+//     field child therefore yields has_children=false, and the frontend
+//     gates on it (webui-v2 paths.tsx `has_children && type_entity_id`,
 //     ShapeTree.tsx `expandable = !!row.has_children`), so those rows
 //     render unchanged.
 //
@@ -809,8 +840,9 @@ func splitTopLevelComma(s string) []string {
 //     (emitScalaCaseClassFields, scala.go:711-770), so a resolved case class
 //     has field children to render — asserted through classHasFieldChildren.
 //     The path-detail callers compute has_children from that helper and the
-//     frontend gates on it; buildShapeRow (the nested-field-row site) sets
-//     HasChildren unconditionally, which is #7309 and is untouched here.
+//     frontend gates on it. buildShapeRow (the nested-field-row site) used to
+//     set HasChildren unconditionally; #7309 gated it on the same helper, so
+//     all five call sites now agree.
 //
 //   - SCOPE.Schema object/model nodes — the shape emitted for DTOs and
 //     ORM/GraphQL models (NestJS response DTOs under dto/response/, Mongoose
