@@ -717,6 +717,66 @@ func splitTopLevelComma(s string) []string {
 //     ShapeTree.tsx `expandable = !!row.has_children`), so those rows
 //     render unchanged.
 //
+//     #7314: the Scala AST extractor (internal/extractors/scala, default-on,
+//     no gate) emits SCOPE.Component with four subtypes — "class" from
+//     class_definition, "case_class" from case_class_definition (or a
+//     class_definition whose source text starts `case class `), "trait" from
+//     trait_definition and "object" from object_definition, all through
+//     buildComponent (scala.go:141-161, :775). Only "class" was admitted, so a
+//     handler returning a `case class` — the ordinary way to spell a DTO in
+//     Scala — resolved no shape entity while the same handler returning a
+//     plain `class` did. "case_class" is admitted here. "object" is excluded
+//     and "trait" is deferred; both exclusions are reasoned below.
+//
+//     "object" is not a type. The callers reach this lookup from a type-name
+//     position — the /shape?type= fallback (a response/body type name), the
+//     EXTENDS base name in extendsBaseEntities, and a field's unwrapped
+//     element type in buildShapeRow. A Scala `object Registry` introduces a
+//     TERM: `val r: Registry` does not compile, only `val r: Registry.type`
+//     does. The Scala extractor's own by-name type-target resolver refuses
+//     "object" on that exact reasoning and records the refusal as zero-delta
+//     on the corpus (field_type_refs.go:490-495, admit-list at :536 — of which
+//     this list is otherwise a replica). A companion pair — `case class Order`
+//     beside its `object Order` — also shares one Name, and this scan returns
+//     the first entity-slice hit, so admitting "object" could resolve the
+//     companion ahead of the case class. jsonschema's object shape is
+//     SCOPE.Schema/"object" (jsonschema.go:152-155) and resolves through the
+//     Schema arm below, so it does not need the Component spelling. That
+//     exclusion has a forbidden row, and a mutant adding "object" fails it.
+//
+//     "trait" is DEFERRED, and not because it is the wrong shape — a trait is
+//     interface-like, and `interface` is admitted. It is deferred because
+//     admitting it DOWNGRADES an existing resolution. Measured on this tree:
+//     with a php `use Cache;` hierarchy stub
+//     (internal/extractors/cross/hierarchy/extractor.go:774, and :873 for
+//     rust `impl … for`) sitting ahead of a real `class Cache`, admitting
+//     "trait" resolved the stub — subtype "trait", StartLine 0, no CONTAINS
+//     field child — instead of the real class at its real line with its field
+//     child. Those stubs carry provenance INFERRED_FROM_CLASS_HIERARCHY, are
+//     not deduped against the real declaration, and a first-match win by one
+//     of them makes buildShapeRow stamp TypeEntityID onto the stub,
+//     TypeSourceFile onto the IMPLEMENTING file and TypeSourceLine 0, while
+//     collectShapeRows over it yields no row. Three primary, default-on
+//     extractors also emit SCOPE.Component/trait —
+//     internal/extractors/rust/rust.go:137-138 (trait_item),
+//     internal/extractors/php/php.go:215-219 (trait_declaration) and
+//     internal/extractors/pony/extractor.go:7-8, :109 (the subtype set) — and
+//     a php trait is not a type in a type-name position either: no value is
+//     ever of that type.
+//     A predicate here cannot separate those from a Scala trait by subtype
+//     alone, so the shadowing has to be handled (exclude stub-shaped hits, or
+//     prefer a non-stub hit) before "trait" can be admitted. Tracked
+//     separately. Nothing here grades the deferral: a mutant adding "trait"
+//     back fails no row, which is recorded rather than implied.
+//
+//     What admitting "case_class" delivers. A `case class` carries a CONTAINS
+//     edge to one SCOPE.Schema/field child per class parameter
+//     (emitScalaCaseClassFields, scala.go:711-770), so a resolved case class
+//     has field children to render — asserted through classHasFieldChildren.
+//     The path-detail callers compute has_children from that helper and the
+//     frontend gates on it; buildShapeRow (the nested-field-row site) sets
+//     HasChildren unconditionally, which is #7309 and is untouched here.
+//
 //   - SCOPE.Schema object/model nodes — the shape emitted for DTOs and
 //     ORM/GraphQL models (NestJS response DTOs under dto/response/, Mongoose
 //     @Schema classes, Prisma/Drizzle/Mongoose models, GraphQL types, …).
@@ -747,7 +807,8 @@ func findClassEntityByName(g *DashGroup, name string) *graph.Entity {
 			case "SCOPE.Component":
 				switch e.Subtype {
 				case "class", "interface", "record", "enum",
-					"type_alias", "alias", "typealias", "":
+					"type_alias", "alias", "typealias",
+					"case_class", "":
 					return e
 				}
 			case "SCOPE.Schema":

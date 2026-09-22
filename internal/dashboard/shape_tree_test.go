@@ -982,3 +982,85 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 		}
 	}
 }
+
+// TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314 covers #7314.
+// The Scala AST extractor (internal/extractors/scala — default-on, ungated)
+// emits SCOPE.Component with subtypes "class", "case_class", "trait" and
+// "object" (scala.go:141-161 → buildComponent :775). Before this change only
+// "class" was in the Component admit-list, so a handler returning a `case
+// class` — the ordinary way to spell a DTO in Scala — resolved no shape
+// entity while the same handler returning a plain `class` did.
+//
+// "case_class" gets the positive row, in its own entity set so no row here can
+// take over a kill that belongs to the #7296 set (no name here prefixes,
+// suffixes or case-folds onto a name in that set). A mutant dropping
+// "case_class" fails that row.
+//
+// "object" gets a forbidden row: an object name is a term, not a type, in the
+// type-name positions this lookup serves, and a companion object shares its
+// case class's Name while this scan returns the first entity-slice hit. The
+// row is not vacuous — a mutant adding "object" to the admit-list fails it.
+//
+// "trait" has NO row, positive or forbidden, and that is deliberate: it is
+// deferred, not decided. Admitting it downgrades an existing resolution (a
+// line-0 INFERRED_FROM_CLASS_HIERARCHY stub wins over the real class of the
+// same name), so a positive row would block the stub-exclusion fix, and a
+// forbidden row would grade a deferral as a decision. A mutant adding "trait"
+// back therefore fails nothing.
+//
+// Every entity here carries a StartLine, so a future row can distinguish a
+// real declaration from a line-0 hierarchy stub — an all-line-0 fixture cannot
+// tell those axes apart, which is the flaw that let the dropped "trait" row
+// look satisfied by a stub-shaped entity.
+func TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314(t *testing.T) {
+	entities := []graph.Entity{
+		// scala: `case class OrderSummary(id: Int, total: BigDecimal)` —
+		// emitScalaCaseClassFields hangs one SCOPE.Schema/field child off the
+		// class per class parameter, so this one has field children.
+		{
+			ID: "sc_case_class", Name: "OrderSummary",
+			Kind: "SCOPE.Component", Subtype: "case_class",
+			SourceFile: "src/main/scala/orders/OrderSummary.scala", Language: "scala",
+			StartLine: 12, EndLine: 12,
+			Signature: "case class OrderSummary(id: Int, total: BigDecimal)",
+		},
+		{
+			ID: "sc_case_class_field", Name: "OrderSummary.id",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/main/scala/orders/OrderSummary.scala", Language: "scala",
+			StartLine: 12, EndLine: 12,
+		},
+		// scala: `object Registry { … }` — deliberately NOT admitted.
+		{
+			ID: "sc_object", Name: "Registry",
+			Kind: "SCOPE.Component", Subtype: "object",
+			SourceFile: "src/main/scala/reg/Registry.scala", Language: "scala",
+			StartLine: 7, EndLine: 21,
+			Signature: "object Registry",
+		},
+	}
+	rels := []graph.Relationship{
+		{FromID: "sc_case_class", ToID: "sc_case_class_field", Kind: "CONTAINS"},
+	}
+	grp := makePathsTestGroup(entities, rels)
+
+	cc := findClassEntityByName(grp, "OrderSummary")
+	if cc == nil || cc.ID != "sc_case_class" {
+		t.Fatalf(`#7314: SCOPE.Component/"case_class" (scala) must resolve, got %v`, cc)
+	}
+	// The case class's class parameters are CONTAINS field children, so the
+	// resolved entity has rows for an expander to open.
+	if !classHasFieldChildren(grp, cc) {
+		t.Error("#7314: a case class with a class-parameter field child must report field children")
+	}
+	// The resolved entity is the real declaration, not a line-0 stub shape.
+	if cc.StartLine == 0 {
+		t.Error("#7314: the resolved case class must carry its declaration line")
+	}
+
+	// Forbidden row: an `object` is a term, not a type.
+	if o := findClassEntityByName(grp, "Registry"); o != nil {
+		t.Errorf(`#7314: SCOPE.Component/"object" must not resolve as a shape, got %q (%s/%s)`,
+			o.ID, o.Kind, o.Subtype)
+	}
+}
