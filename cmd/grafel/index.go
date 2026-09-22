@@ -471,6 +471,17 @@ type Indexer struct {
 	// found — only the static test-reachability sub-pass (#5037) then runs,
 	// since it needs no external report. Wired via WithCoverage.
 	coverageCfg coverage.Config
+
+	// facetLoss records the #7335 diagnostic for the most recent
+	// buildDocument call: every #4406 dedup drop, plus — for those whose
+	// dropped record carried a SCALAR facet the gap-fill provably cannot
+	// transfer onto the survivor — what was destroyed and where. It is purely
+	// observational: no entity, id, edge or property depends on it. It is a
+	// field rather than a return value so tests can assert WHICH pair
+	// collided, not merely that a counter moved, and so a test can require
+	// that a fixture actually entered this branch before reading a zero as
+	// evidence of anything. See cmd/grafel/facet_loss_7335.go.
+	facetLoss facetLossStats
 }
 
 // IndexOption configures optional behaviour on the Indexer. Used as a
@@ -6292,6 +6303,9 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 	entities := make([]graph.Entity, 0, len(merged))
 	relationships := make([]graph.Relationship, 0)
 
+	// #7335 — one run's worth of diagnostic, not an accumulation across calls.
+	i.facetLoss = facetLossStats{}
+
 	seenEntity := make(map[string]bool, len(merged))
 	// entityPos maps a survivor's graph ID → its index in `entities` so that a
 	// later duplicate (same EntityID) can gap-fill base-only state onto the
@@ -6391,6 +6405,13 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 					surv.QualifiedName = ""
 				}
 			}
+			// #7335 — observe the loss BEFORE the gap-fill runs. Everything
+			// the chain below can repair is, by its own condition, a field the
+			// survivor left empty; everything it cannot repair is a field both
+			// records filled differently. That complement is the report. The
+			// #6275 blanking above has already run, so a sentinel-vs-real pair
+			// presents as recoverable here and is correctly silent.
+			i.facetLoss.observe(i.repoTag, id, r, facetLossConflicts(surv, r))
 			if surv.QualifiedName == "" && r.QualifiedName != "" {
 				surv.QualifiedName = r.QualifiedName
 			}
@@ -6478,6 +6499,10 @@ func (i *Indexer) buildDocument(pass1, pass2 *[]types.EntityRecord, pass2Rels []
 		// (dedup branch), so nil-ing the slot cannot lose output state.
 		merged[k] = types.EntityRecord{}
 	}
+
+	// #7335 — report what the dedup destroyed. Silent when it destroyed
+	// nothing unrecoverable.
+	i.facetLoss.report(os.Stderr)
 
 	// Pass 2.5 standalone relationships: synthesise FromID/ToID from the
 	// engine's "kind:name" stub strings. We look those up in the merged
