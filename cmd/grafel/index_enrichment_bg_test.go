@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -87,12 +88,54 @@ func TestIndex_GraphWrittenBeforeEnrichment(t *testing.T) {
 	}
 }
 
+// hookHoldEscape bounds how long the enrichment job parks inside the
+// test's "enrichment_started" hook: an inline run calls that hook on
+// Index()'s own goroutine, so an unbounded park would park the test
+// itself. releaseSendEscape is a last-resort deadlock escape on the
+// other side of the same handshake, for a job that is registered with the
+// scheduler yet never reaches the hook at all.
+//
+// Neither constant decides a verdict in the cases this test grades: "no
+// job parked" is decided by the scheduler's own completion event, not by
+// a timer (see the select below), and an expiry of either constant makes
+// the test FAIL rather than pass. So raising them cannot turn a red run
+// green.
+const (
+	hookHoldEscape    = 30 * time.Second
+	releaseSendEscape = 120 * time.Second
+)
+
 // TestIndex_LargeGraphDefersEnrichmentToBackground confirms that a graph
 // above enrichment.InlineEntityThreshold schedules enrichment on the
 // background worker rather than running it inline — i.e. Index() returns
 // (and the caller can treat the index as "done") before enrichment_done
 // fires, and enrichment-candidates.json still eventually appears once the
 // background job completes (#5720 requirement 6 + "eventually appears").
+//
+// #7298 row 1: the observation is a handshake, not a sampled gap. Before
+// this, the test set indexReturned immediately after Index() returned and
+// the background job raced those few statements. #7298's census recorded
+// the assertion below firing on four unrelated PRs, ubuntu green on the
+// same runs, and that gap is the only window it can fire through — there
+// is no Windows repro (windows.yml is disabled_manually, #7248), so the
+// contention mechanism is that triage's reading, not a measurement. The
+// hook now parks the job in
+// "enrichment_started" on an UNBUFFERED receive from release, and the test
+// releases it with a send — a send that can only complete against a job
+// actually parked there. So the job cannot reach enrichment_done until
+// after the send, and the send is issued after indexReturned is set. The
+// few statements between Index()'s return and that assignment are still
+// raced, but nothing can pass the park while they run.
+//
+// Splitting this into "signal that I arrived" + "wait to be released"
+// would put the gap back on the test's side; one unbuffered send carries
+// both directions, and `released` below is what grades it.
+//
+// What is NOT graded by any single local run: the order of the two
+// statements below (take the reading, then send). Inverting them is the
+// pre-#7298 race exactly, and a race is what no local run can observe —
+// that is the whole reason this row reached CI four times. `released`
+// grades that a job was parked, not the order in which we released it.
 func TestIndex_LargeGraphDefersEnrichmentToBackground(t *testing.T) {
 	t.Setenv("GRAFEL_DAEMON_ROOT", t.TempDir())
 	tmp := t.TempDir()
@@ -102,12 +145,29 @@ func TestIndex_LargeGraphDefersEnrichmentToBackground(t *testing.T) {
 	var enrichmentDoneBeforeIndexReturned bool
 	indexReturned := false
 
+	// release is UNBUFFERED: the job parks on the receive, and the test's
+	// send completes only once a job is parked there.
+	release := make(chan struct{})
+	// hookStarts counts entries into the "enrichment_started" arm so a
+	// failure can say whether the job never ran at all or ran without
+	// parking.
+	var hookStarts atomic.Int32
+
 	prev := enrichmentOrderHook
 	enrichmentOrderHook = func(stage string) {
-		mu.Lock()
-		defer mu.Unlock()
-		if stage == "enrichment_done" && !indexReturned {
-			enrichmentDoneBeforeIndexReturned = true
+		switch stage {
+		case "enrichment_started":
+			hookStarts.Add(1)
+			select {
+			case <-release:
+			case <-time.After(hookHoldEscape):
+			}
+		case "enrichment_done":
+			mu.Lock()
+			defer mu.Unlock()
+			if !indexReturned {
+				enrichmentDoneBeforeIndexReturned = true
+			}
 		}
 	}
 	defer func() { enrichmentOrderHook = prev }()
@@ -130,15 +190,48 @@ func TestIndex_LargeGraphDefersEnrichmentToBackground(t *testing.T) {
 	indexReturned = true
 	mu.Unlock()
 
-	if enrichmentDoneBeforeIndexReturned {
+	// Release the parked job. The send completing is positive evidence
+	// that a job was held at the hook across the lines above, rather than
+	// having been sampled and hoped about.
+	//
+	// The losing case is decided by an EVENT, not a timer: if the job
+	// finished (or was never scheduled), Wait returns and jobDone closes,
+	// so "nothing was parked" is reported immediately instead of after a
+	// timeout. A job that IS parked keeps Wait blocked, so jobDone cannot
+	// close while the handshake is still pending — and a job that trickles
+	// slowly, or that waits on the scheduler's single worker slot behind
+	// another repo, keeps the send pending rather than failing the test.
+	schedKey := daemon.StateDirForRepo(absRepo)
+	jobDone := make(chan struct{})
+	go func() {
+		enrichment.DefaultScheduler.Wait(schedKey)
+		close(jobDone)
+	}()
+
+	released := false
+	select {
+	case release <- struct{}{}:
+		released = true
+	case <-jobDone:
+	case <-time.After(releaseSendEscape):
+	}
+
+	mu.Lock()
+	doneBefore := enrichmentDoneBeforeIndexReturned
+	mu.Unlock()
+
+	if doneBefore {
 		t.Fatalf("expected enrichment to still be running (or not yet started) when Index() returned for a graph above the inline threshold")
+	}
+	if !released {
+		t.Fatalf("no enrichment job was parked in the hook to release (enrichment_started fired %d time(s)) — the reading above was sampled, not held open, and asserted nothing", hookStarts.Load())
 	}
 
 	// Eventually (once the background worker finishes) the candidates file
 	// must appear and be valid.
-	enrichment.DefaultScheduler.Wait(daemon.StateDirForRepo(absRepo))
+	enrichment.DefaultScheduler.Wait(schedKey)
 
-	candPath := filepath.Join(daemon.StateDirForRepo(absRepo), "enrichment-candidates.json")
+	candPath := filepath.Join(schedKey, "enrichment-candidates.json")
 	if _, err := os.Stat(candPath); err != nil {
 		t.Fatalf("expected enrichment-candidates.json to eventually appear after the background worker completes: %v", err)
 	}
