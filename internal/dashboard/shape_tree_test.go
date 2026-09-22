@@ -1064,3 +1064,209 @@ func TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314(t *testing.T) 
 			o.ID, o.Kind, o.Subtype)
 	}
 }
+
+// TestFindClassEntityByName_ComponentAdmitListBoundary7316 covers #7316 (1) and
+// (2): the SCOPE.Component admit-list was open at the top — only the
+// field/column/property decoys (#7296) and "object" (#7314) were forbidden, so
+// any other subtype could be added to the arm with nothing failing — and
+// "interface" sat in the list required by no row at all.
+//
+// The two subtypes graded here are the ones a widening is most likely to reach
+// for, and both are shadow-shaped:
+//
+//   - "impl": internal/extractors/rust/rust.go buildImpl (:769-798, documented
+//     at :12) emits SCOPE.Component/"impl" for an impl_item and names it after
+//     the IMPLEMENTED TYPE, not after any declaration of its own. The same file
+//     emits the type's own declaration as SCOPE.Component/"struct" (:4, :103)
+//     under that identical Name, so `struct Order` and `impl Order` are two
+//     Component entities sharing one Name in one file. Neither subtype is
+//     admitted today; admitting "impl" alone would resolve the impl block in
+//     place of the declaration, and admitting both would leave the slice order
+//     to decide (see TestFindClassEntityByName_FirstSliceHitWins7316).
+//
+//   - "struct": besides the real rust/zig/lisp declarations,
+//     internal/extractors/cross/hierarchy/extractor.go:834-844 emits
+//     SCOPE.Component/"struct" for an EMBEDDED go struct with NO StartLine and
+//     a SourceFile pointing at the embedding file, carrying provenance
+//     INFERRED_FROM_CLASS_HIERARCHY. That is the identical line-0 stub shape
+//     #7312 measured for the "interface"/"trait" hierarchy stubs, so admitting
+//     "struct" would import that shadowing hazard wholesale.
+//
+// Each forbidden subtype gets its OWN entity under its OWN name, so a mutant
+// admitting one fails a row the other does not cover, and neither rejection can
+// be produced by some other entity of the same name winning the scan.
+//
+// The "interface" row is positive rather than forbidden: java.go:362-367
+// (interface_declaration), golang/extractor.go:1827 (an interface type_spec)
+// and php.go:5 all emit SCOPE.Component/"interface" for a real declaration at a
+// real line, and such a type is a legitimate response/field type. Before this
+// row, #7314's "the same hazard is already accepted for interface" rested on
+// the subtype's mere presence in the list; a mutant dropping it now fails here.
+// The row asserts StartLine, so it cannot be satisfied by a line-0
+// INFERRED_FROM_CLASS_HIERARCHY interface stub (hierarchy/extractor.go:384-391)
+// — #7312's fix must keep real interfaces resolving, and may drop stub ones.
+func TestFindClassEntityByName_ComponentAdmitListBoundary7316(t *testing.T) {
+	entities := []graph.Entity{
+		// java: `public interface PricingPolicy { … }` — a real declaration at
+		// a real line, the shape the positive row is about.
+		{
+			ID: "java_iface", Name: "PricingPolicy",
+			Kind: "SCOPE.Component", Subtype: "interface",
+			SourceFile: "src/main/java/pricing/PricingPolicy.java", Language: "java",
+			StartLine: 14, EndLine: 29,
+			Signature: "interface PricingPolicy",
+		},
+		// rust: `impl LedgerEntry { … }` — buildImpl names the entity after the
+		// impl'd type. Forbidden: it is a block of methods, not the shape.
+		{
+			ID: "rs_impl", Name: "ImplOnlyDecoy",
+			Kind: "SCOPE.Component", Subtype: "impl",
+			SourceFile: "src/ledger.rs", Language: "rust",
+			StartLine: 30, EndLine: 58,
+			Signature: "impl ImplOnlyDecoy",
+		},
+		// go, via cross/hierarchy: an embedded struct stub — no StartLine, the
+		// embedding file as SourceFile, INFERRED_FROM_CLASS_HIERARCHY.
+		// Forbidden: admitting "struct" admits this shape too.
+		graph.Entity{
+			ID: "hier_struct", Name: "StructOnlyDecoy",
+			Kind: "SCOPE.Component", Subtype: "struct",
+			SourceFile: "internal/billing/invoice.go", Language: "go",
+		}.WithProperties(map[string]string{
+			"role": "struct", "provenance": "INFERRED_FROM_CLASS_HIERARCHY",
+		}),
+	}
+	grp := makePathsTestGroup(entities, nil)
+
+	// Positive row: "interface" is required, not merely present.
+	iface := findClassEntityByName(grp, "PricingPolicy")
+	if iface == nil || iface.ID != "java_iface" {
+		t.Fatalf(`#7316: SCOPE.Component/"interface" must resolve, got %v`, iface)
+	}
+	// A line-0 hierarchy interface stub could not satisfy this.
+	if iface.StartLine == 0 {
+		t.Error("#7316: the resolved interface must carry its declaration line")
+	}
+
+	// Forbidden rows, one subtype each.
+	for _, tc := range []struct{ name, subtype string }{
+		{"ImplOnlyDecoy", "impl"},
+		{"StructOnlyDecoy", "struct"},
+	} {
+		if d := findClassEntityByName(grp, tc.name); d != nil {
+			t.Errorf(`#7316: SCOPE.Component/%q must not resolve as a shape, got %q (%s/%s)`,
+				tc.subtype, d.ID, d.Kind, d.Subtype)
+		}
+	}
+}
+
+// TestFindClassEntityByName_FirstSliceHitWins7316 covers #7316 (3). The
+// docstring on findClassEntityByName says "the first hit (by sorted-repo
+// iteration) wins"; before this test nothing observed it — reversing the entity
+// loop to `for i := len(r.Doc.Entities) - 1; i >= 0; i--` left the whole
+// ./internal/dashboard/ suite green. This test is what makes that sentence
+// true, and it is the only thing in the package that does.
+//
+// That semantics is load-bearing for two arguments already written into
+// shape_tree.go: #7314's "object" holdback (a Scala companion `object Order`
+// shares one Name with its `case class Order`, so admitting "object" could
+// resolve the companion first) and #7312's shadowing analysis (a childless
+// import stub or a line-0 hierarchy stub resolving ahead of the real
+// declaration). Reverse the loop and both invert.
+//
+// Two rows, two mechanisms:
+//
+//   - The ORDERING row uses two entities that are both real, both admitted, and
+//     differ only in slice position — so it grades the iteration direction and
+//     nothing else. A prefer-non-stub fix (#7312) leaves it green.
+//   - The SHADOWING row records the consequence: an import stub placed ahead of
+//     the real class wins today. It is a baseline, not an endorsement — #7312
+//     proposes to change exactly this outcome, and this row is what makes that
+//     fix a visible behaviour change instead of an invisible one. If a fix
+//     lands, this row flips to asserting `shadow_real`; it must not be deleted.
+//
+// Both same-named pairs differ in ID, Subtype, StartLine, SourceFile and (for
+// the shadowing pair) whether they own a CONTAINS field child, so each
+// assertion names WHICH entity came back. Asserting merely that something
+// resolved would pass under either direction.
+func TestFindClassEntityByName_FirstSliceHitWins7316(t *testing.T) {
+	entities := []graph.Entity{
+		// --- ordering pair: two real declarations, one Name, distinct in
+		// every observable field. Slice order is the only thing separating
+		// them.
+		{
+			ID: "order_first", Name: "LedgerEntry",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/main/java/ledger/LedgerEntry.java", Language: "java",
+			StartLine: 11, EndLine: 40,
+			Signature: "class LedgerEntry",
+		},
+		{
+			ID: "order_second", Name: "LedgerEntry",
+			Kind: "SCOPE.Component", Subtype: "record",
+			SourceFile: "src/main/java/report/LedgerEntry.java", Language: "java",
+			StartLine: 77, EndLine: 79,
+			Signature: "record LedgerEntry(long id)",
+		},
+		// --- shadowing pair: the #7312 shape. A rust import stub
+		// (SCOPE.Component, empty subtype, named after a crate top-segment)
+		// ahead of a real class of the same name that owns a field child.
+		{
+			ID: "shadow_stub", Name: "Cache",
+			Kind: "SCOPE.Component", Subtype: "",
+			SourceFile: "src/main.rs", Language: "rust",
+		},
+		{
+			ID: "shadow_real", Name: "Cache",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/Cache.php", Language: "php",
+			StartLine: 12, EndLine: 33,
+			Signature: "class Cache",
+		},
+		{
+			ID: "shadow_real_field", Name: "Cache.ttl",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/Cache.php", Language: "php",
+			StartLine: 13, EndLine: 13,
+		},
+	}
+	rels := []graph.Relationship{
+		{FromID: "shadow_real", ToID: "shadow_real_field", Kind: "CONTAINS"},
+	}
+	grp := makePathsTestGroup(entities, rels)
+
+	// Ordering row — the EARLIER slice entry wins, and the assertion names it.
+	got := findClassEntityByName(grp, "LedgerEntry")
+	if got == nil {
+		t.Fatal("#7316: neither LedgerEntry entity resolved")
+	}
+	if got.ID != "order_first" {
+		t.Errorf("#7316: first-match-wins broken — resolved %q (%s, line %d), want order_first (class, line 11)",
+			got.ID, got.Subtype, got.StartLine)
+	}
+	if got.Subtype != "class" || got.StartLine != 11 {
+		t.Errorf("#7316: resolved entity is not the first slice entry: subtype=%q startline=%d",
+			got.Subtype, got.StartLine)
+	}
+
+	// Shadowing row — today's baseline: the stub placed first wins over the
+	// real class behind it, childless and line-0 though it is. #7312 tracks
+	// changing this; the row exists so that change cannot be silent.
+	sh := findClassEntityByName(grp, "Cache")
+	if sh == nil {
+		t.Fatal("#7316: neither Cache entity resolved")
+	}
+	if sh.ID != "shadow_stub" {
+		t.Errorf("#7316/#7312: the first slice hit no longer wins over a later real class — "+
+			"resolved %q (subtype %q, line %d). If this is a deliberate prefer-non-stub fix, "+
+			"flip this row to shadow_real and say so; do not delete it.",
+			sh.ID, sh.Subtype, sh.StartLine)
+	}
+	// The two Cache entities are distinguishable on more than ID: the winner
+	// is the childless, line-0 one, the loser owns a field child. Without this
+	// the row could not tell a stub win from a real win.
+	if sh.StartLine != 0 || classHasFieldChildren(grp, sh) {
+		t.Errorf("#7316: resolved Cache is not the stub shape: startline=%d hasFieldChildren=%v",
+			sh.StartLine, classHasFieldChildren(grp, sh))
+	}
+}
