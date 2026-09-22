@@ -252,6 +252,231 @@ func TestCppMwOatppResponseInterceptor(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// oatpp base-class NAMESPACE QUALIFIER (#7321)
+//
+// Both oatpp recognisers admit an optional qualifier before the base class —
+// `(?:[\w:]*::)?` — and every fixture above spells the base class with the
+// full `oatpp::web::server::…::` path, so the group is held constant across
+// all of them. Two of its values were graded by nothing:
+//
+//   - ABSENT entirely, legal after `using namespace oatpp::web::server::handler;`
+//     or a `using`-declaration of the class itself;
+//   - a SINGLE segment, legal after `using namespace oatpp::web::server;`.
+//
+// The four fixtures below vary only that group and hold everything else
+// constant against the fixtures above: same flavour capture, same phase, same
+// three assertions each. Narrowing the qualifier is a NO-EDGE failure — the
+// class is simply not recognised and no entity is emitted — so what each of
+// these really grades is the entity's EXISTENCE. The two handler names are
+// deliberately value-COINCIDENT (flavour capture and name classifier both
+// yield "basic"): this axis is recognition, not value attribution, and the
+// coincidence keeps these fixtures out of the kill sets of #7303's producer
+// mutants, which grade attribution. The price of that choice, stated plainly:
+// the `auth_method` assertion on the handler pair is graded by nothing — it
+// survives both #7303 mutants precisely because the two producers agree. It
+// is kept so a future mis-stamp fails here loudly, not because it is pinned.
+//
+// The `using` lines are DECORATION. The extractor never reads them and
+// performs no name resolution whatsoever; each recogniser is a single regex
+// over the file text. They are here to document why the bare spelling is
+// legal C++, and they grade nothing about how the bare spelling is matched.
+//
+// Deliberately NOT covered, each verified by probe rather than assumed:
+//
+//   - A leading global-scope qualifier (`: public ::BearerAuthorizationHandler`)
+//     MATCHES today, because `[\w:]*` may match empty. Legal C++, but not a
+//     spelling observed in oatpp code, and no corpus was checked.
+//
+//   - BASE-CLAUSE ORDERING, a different axis and likelier in real code than
+//     anything else on this list. The oatpp base must be the FIRST
+//     base-specifier: `[\w:]*` cannot cross a comma, so
+//     `class G : public oatpp::base::Countable, public handler::BearerAuthorizationHandler {};`
+//     is NO-MATCH at both recognisers, while the same two bases in the other
+//     order MATCH. `oatpp::base::Countable` is a real oatpp base that
+//     application types routinely inherit. Being filed as a follow-up.
+//
+//   - ACCESS SPECIFIER — a neighbouring axis, now PARTLY graded. The rule is
+//     not "only `public` inheritance is recognised": it is that a WRITTEN
+//     specifier must be exactly `public`, with nothing between it and the
+//     qualifier. Probed end to end at both recognisers: no specifier at all
+//     MATCHES (and that is *private* inheritance in C++); `private` and
+//     `protected` spelled out are NO-MATCH; `public virtual` and
+//     `virtual public` are both NO-MATCH.
+//
+//     The omitted-specifier half is graded by the two rows further down, added
+//     once a mandatory-`public` mutant was found ALIVE. The four NO-MATCH
+//     spellings are deliberately NOT fixtured: a row asserting their absence
+//     is a forbidden row, and no mutant can detect a vacuous one — it would
+//     need a planted violation proving the row fires. They stay on this list
+//     with the measurement instead.
+//
+//     The same optional-`public` group is on FOUR recognisers in this file:
+//     these two, plus drogon `HttpFilter` and pistache `Handler`. Those two
+//     are unscored and untouched here; the axis exists at four sites and is
+//     graded at two.
+// ---------------------------------------------------------------------------
+
+// Handler base class with NO qualifier at all.
+func TestCppAuthOatppUnqualifiedHandlerBaseClass(t *testing.T) {
+	src := `
+using namespace oatpp::web::server::handler;
+class PlainBasicGuard : public BasicAuthorizationHandler {};
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("unqualified_handler.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:PlainBasicGuard", "auth_symbol", "PlainBasicGuard")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:PlainBasicGuard", "auth_method", "basic")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:PlainBasicGuard", "framework", "oatpp")
+}
+
+// Handler base class with a SINGLE-segment qualifier. Not reached by the
+// fixture above — an unqualified base class satisfies any predicate that only
+// constrains what a PRESENT qualifier may contain.
+func TestCppAuthOatppSingleSegmentQualifiedHandlerBaseClass(t *testing.T) {
+	src := `
+using namespace oatpp::web::server;
+class BasicScopedGuard : public handler::BasicAuthorizationHandler {};
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("scoped_handler.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:BasicScopedGuard", "auth_symbol", "BasicScopedGuard")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:BasicScopedGuard", "auth_method", "basic")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:BasicScopedGuard", "framework", "oatpp")
+}
+
+// Interceptor base class with NO qualifier at all. Scored separately from the
+// handler twin: the two recognisers carry the same optional group but are
+// distinct regexes, and a verdict on one says nothing about the other.
+func TestCppMwOatppUnqualifiedInterceptorBaseClass(t *testing.T) {
+	src := `
+using oatpp::web::server::interceptor::RequestInterceptor;
+class PlainGate : public RequestInterceptor {};
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("unqualified_interceptor.hpp", "cpp", src))
+	assertProp(t, ents, "middleware:oatpp_interceptor:PlainGate", "middleware_symbol", "PlainGate")
+	assertProp(t, ents, "middleware:oatpp_interceptor:PlainGate", "middleware_kind", "interceptor")
+	assertProp(t, ents, "middleware:oatpp_interceptor:PlainGate", "interceptor_phase", "request")
+}
+
+// Interceptor base class with a SINGLE-segment qualifier.
+func TestCppMwOatppSingleSegmentQualifiedInterceptorBaseClass(t *testing.T) {
+	src := `
+using namespace oatpp::web::server;
+class ScopedGate : public interceptor::RequestInterceptor {};
+`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("scoped_interceptor.hpp", "cpp", src))
+	assertProp(t, ents, "middleware:oatpp_interceptor:ScopedGate", "middleware_symbol", "ScopedGate")
+	assertProp(t, ents, "middleware:oatpp_interceptor:ScopedGate", "middleware_kind", "interceptor")
+	assertProp(t, ents, "middleware:oatpp_interceptor:ScopedGate", "interceptor_phase", "request")
+}
+
+// ---------------------------------------------------------------------------
+// oatpp base-class ACCESS SPECIFIER (#7321, second round)
+//
+// One regex group to the LEFT of the qualifier, and the same shape of hole:
+// both recognisers spell the specifier `(?:public\s+)?`, optional, and every
+// fixture in the package spelled `public`. Making it MANDATORY at both sites
+// was ALIVE.
+//
+// Each of the two rows below has a pre-existing twin: TestCppAuthOatppBasicHandler
+// for the handler, TestCppMwOatppRequestInterceptor for the interceptor. Stated
+// precisely, because "identical but for one token" would be false: across every
+// group either regex actually grades — access specifier, namespace qualifier,
+// and the `(Bearer|Basic|)` / `(Request|Response)` capture — the ONLY difference
+// is the `public ` keyword. Each twin pair holds the full oatpp qualifier and
+// the same capture value (Basic / Request) constant.
+//
+// The remaining differences are outside those groups and are named here rather
+// than glossed: the class NAME differs (so the interceptor twin also emits an
+// auth entity from its auth-ish name, while ImplicitGate does not), the
+// interceptor twin has a body and an include while ImplicitGate is a one-liner,
+// and the assertion sets differ in one slot. None of those is a group either
+// recogniser discriminates on, which is why the pairing is still informative —
+// but it is a pair of near-twins, not a one-token differential.
+//
+// Both rows deliberately carry the FULL oatpp qualifier, not the single-segment
+// one, so they grade the specifier axis alone and stay out of the qualifier
+// mutants' kill sets.
+//
+// C++ note, because it is counter-intuitive: omitting the specifier on a
+// `class` is PRIVATE inheritance, so these two inputs are semantically the
+// private-inheritance case that the spelled-out `private` form — NO-MATCH
+// today — would express. The recognisers discriminate on the keyword being
+// written, not on the inheritance the C++ actually has.
+// ---------------------------------------------------------------------------
+
+// Handler base class with NO access specifier written.
+func TestCppAuthOatppImplicitAccessSpecifierHandler(t *testing.T) {
+	src := `class ImplicitBasicGuard : oatpp::web::server::handler::BasicAuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("implicit_access_handler.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:ImplicitBasicGuard", "auth_symbol", "ImplicitBasicGuard")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:ImplicitBasicGuard", "auth_method", "basic")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:ImplicitBasicGuard", "framework", "oatpp")
+}
+
+// Interceptor base class with NO access specifier written. Scored separately
+// from the handler twin: the group is textually identical at both sites but
+// they are distinct regexes, and a verdict on one says nothing about the other.
+func TestCppMwOatppImplicitAccessSpecifierInterceptor(t *testing.T) {
+	src := `class ImplicitGate : oatpp::web::server::interceptor::RequestInterceptor {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("implicit_access_interceptor.hpp", "cpp", src))
+	assertProp(t, ents, "middleware:oatpp_interceptor:ImplicitGate", "middleware_symbol", "ImplicitGate")
+	assertProp(t, ents, "middleware:oatpp_interceptor:ImplicitGate", "middleware_kind", "interceptor")
+	assertProp(t, ents, "middleware:oatpp_interceptor:ImplicitGate", "interceptor_phase", "request")
+}
+
+// CHARACTERISATION ROW — asserts what the extractor does TODAY, not what it
+// ought to do. The fixtures above widen the qualifier coverage of a surface
+// that has no framework gate at all, and this row keeps that fact visible
+// rather than letting the widening bury it.
+//
+// Neither oatpp recogniser consults the detected framework: detectCPPFramework
+// is computed, but both emit sites pass the literal "oatpp". So a base class
+// merely NAMED *AuthorizationHandler (or *Interceptor), under any namespace
+// whatsoever, in a file with no oatpp reference anywhere, is stamped
+// framework=oatpp. Note the detector would not save it either — both
+// `AuthorizationHandler` and `RequestInterceptor`/`ResponseInterceptor` are
+// themselves oatpp markers in cppFrameworkMarkers, so substituting the
+// detected framework for the literal changes nothing at either site. A real
+// gate would have to require an oatpp token in the source.
+//
+// That is a claim about BOTH recognisers, so BOTH are observed: the handler
+// row below and its interceptor twin. Scoring one end of a two-ended pattern
+// and asserting both is the defect this branch exists to remove.
+//
+// This behaviour is PRE-EXISTING and is not introduced by the fixtures above.
+// If this row ever fails, that is very likely the good news: if it is a
+// deliberate framework-gating fix, FLIP this row to assert the new behaviour
+// and say so in the commit — do not delete it.
+func TestCppAuthOatppFrameworkStampIsUngated(t *testing.T) {
+	src := `class MyLibGuard : public mylib::BasicAuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("no_oatpp_anywhere.hpp", "cpp", src))
+	e := authEntity(ents, "auth:oatpp_authorization_handler:MyLibGuard")
+	if e == nil {
+		t.Fatalf("mylib::BasicAuthorizationHandler is no longer recognised at all; this row characterises the FRAMEWORK stamp and cannot do so if nothing is emitted. Got %v", ents)
+	}
+	if got := e.Props["framework"]; got != "oatpp" {
+		t.Fatalf("framework = %q, want %q. This row CHARACTERISES today's ungated stamp: a non-oatpp namespace in a file with no oatpp token is still stamped oatpp. If this is a deliberate framework-gating fix, flip this row and say so; do not delete it.", got, "oatpp")
+	}
+}
+
+// The INTERCEPTOR end of the same characterisation. Identical hole, identical
+// shape: the interceptor emit hardcodes "oatpp" exactly as the handler one
+// does, and `RequestInterceptor` is itself an oatpp marker, so the detected
+// framework would not discriminate either. Gating the handler emit on an
+// oatpp token is DEAD against the row above; gating the INTERCEPTOR emit was
+// ALIVE with an empty kill set until this row existed.
+func TestCppMwOatppFrameworkStampIsUngatedInterceptor(t *testing.T) {
+	src := `class MyLibGate : public mylib::RequestInterceptor {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("no_oatpp_anywhere_interceptor.hpp", "cpp", src))
+	e := authEntity(ents, "middleware:oatpp_interceptor:MyLibGate")
+	if e == nil {
+		t.Fatalf("mylib::RequestInterceptor is no longer recognised at all; this row characterises the FRAMEWORK stamp and cannot do so if nothing is emitted. Got %v", ents)
+	}
+	if got := e.Props["framework"]; got != "oatpp" {
+		t.Fatalf("framework = %q, want %q. This row CHARACTERISES today's ungated stamp: a non-oatpp namespace in a file with no oatpp token is still stamped oatpp. If this is a deliberate framework-gating fix, flip this row and say so; do not delete it.", got, "oatpp")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Crow — middleware structs + ordered templates
 // ---------------------------------------------------------------------------
 
