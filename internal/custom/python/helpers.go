@@ -36,6 +36,7 @@ func lineOf(source string, offset int) int {
 // honest extent IS one line. If a caller knows a wider extent it should widen
 // EndLine after calling; MergeWithCustom's span union never narrows it.
 func entity(name, kind, subtype, sourceFile string, startLine int, props map[string]string) types.EntityRecord {
+	types.ValidateProducedEntityKind("internal/custom/python.entity", kind)
 	return types.EntityRecord{
 		Name:               name,
 		Kind:               kind,

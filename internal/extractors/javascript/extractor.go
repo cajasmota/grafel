@@ -740,6 +740,7 @@ func (x *extractor) emit(name, kind string, n ts.Node, subtype string, sig strin
 // emitWithRels appends an entity to the extraction results carrying the
 // supplied embedded relationships.
 func (x *extractor) emitWithRels(name, kind string, n ts.Node, subtype string, sig string, rels []types.RelationshipRecord) {
+	types.ValidateProducedEntityKind("internal/extractors/javascript.(*extractor).emitWithRels", kind)
 	if name == "" || name == "?" {
 		return
 	}
@@ -786,6 +787,7 @@ func (x *extractor) tagLocalScope(from int) {
 // Properties map rather than the default {"kind": ..., "subtype": ...} map.
 // Used by handlers that need to store structured metadata (fields, generics, etc.).
 func (x *extractor) emitWithProps(name, kind string, n ts.Node, subtype string, sig string, props map[string]string, rels []types.RelationshipRecord) {
+	types.ValidateProducedEntityKind("internal/extractors/javascript.(*extractor).emitWithProps", kind)
 	if name == "" || name == "?" {
 		return
 	}

@@ -14,6 +14,7 @@ func lineOf(source string, offset int) int {
 }
 
 func makeEntity(name, kind, subtype, filePath, language string, lineNum int) types.EntityRecord {
+	types.ValidateProducedEntityKind("internal/custom/kotlin.makeEntity", kind)
 	e := types.EntityRecord{
 		Name:             name,
 		Kind:             kind,
