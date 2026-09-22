@@ -1,0 +1,309 @@
+{
+  "totals": {
+    "fixtures": 38,
+    "fixtures_colliding": 10,
+    "fixtures_losing": 5,
+    "drops": 34,
+    "lost_records": 13,
+    "lost_entities": 12,
+    "conflicts": 34
+  },
+  "fixtures": {
+    "angular-http-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "ansible-playbook-modules-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "clojure-protocols-mini": {
+      "drops": 3,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "csharp-aspnet-core-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "csharp-hangfire-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "csharp-quartz-net-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "docker-compose-services-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "elixir-phoenix-mini": {
+      "drops": 4,
+      "lost_records": 1,
+      "lost_entities": 1,
+      "conflicts": 3,
+      "by_field": {
+        "end_line": 1,
+        "signature": 1,
+        "start_line": 1
+      },
+      "losses": [
+        "SCOPE.Operation|handle_cast|lib/demo/cache_server.ex|end_line|42|46",
+        "SCOPE.Operation|handle_cast|lib/demo/cache_server.ex|signature|def handle_cast({:put, key, value}, state)|def handle_cast(:flush, _state)",
+        "SCOPE.Operation|handle_cast|lib/demo/cache_server.ex|start_line|39|44"
+      ]
+    },
+    "erlang-otp-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "express-baseurl-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "github-actions-workflows-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "go-chi-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "graphql-schema-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "groovy-grails-mini": {
+      "drops": 1,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "haskell-warp-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "java-quartz-mini": {
+      "drops": 1,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "java-spring-mini": {
+      "drops": 5,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "kotlin-spring-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "lisp-clos-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "nim-objects-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "ocaml-objects-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "php-slim-mini": {
+      "drops": 1,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "pony-traits-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "proto-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "python-django-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "python-dramatiq-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "python-fastapi-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "python-pytest-sqlalchemy-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "python-rq-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "razor-blazor-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "ruby-sinatra-modular-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "rust-tokio-mini": {
+      "drops": 2,
+      "lost_records": 2,
+      "lost_entities": 1,
+      "conflicts": 8,
+      "by_field": {
+        "end_line": 2,
+        "signature": 2,
+        "start_line": 2,
+        "subtype": 2
+      },
+      "losses": [
+        "SCOPE.Component|MemoryStore|store.rs|end_line|16|22",
+        "SCOPE.Component|MemoryStore|store.rs|end_line|16|31",
+        "SCOPE.Component|MemoryStore|store.rs|signature|pub struct MemoryStore|impl MemoryStore",
+        "SCOPE.Component|MemoryStore|store.rs|signature|pub struct MemoryStore|impl UserStore for MemoryStore",
+        "SCOPE.Component|MemoryStore|store.rs|start_line|14|18",
+        "SCOPE.Component|MemoryStore|store.rs|start_line|14|24",
+        "SCOPE.Component|MemoryStore|store.rs|subtype|struct|impl",
+        "SCOPE.Component|MemoryStore|store.rs|subtype|struct|impl"
+      ]
+    },
+    "scala-play-mini": {
+      "drops": 15,
+      "lost_records": 8,
+      "lost_entities": 8,
+      "conflicts": 19,
+      "by_field": {
+        "end_line": 8,
+        "signature": 3,
+        "start_line": 8
+      },
+      "losses": [
+        "SCOPE.Operation|create|UserService.scala|end_line|9|31",
+        "SCOPE.Operation|create|UserService.scala|start_line|9|26",
+        "SCOPE.Operation|deleteById|UserRepository.scala|end_line|10|32",
+        "SCOPE.Operation|deleteById|UserRepository.scala|start_line|10|28",
+        "SCOPE.Operation|delete|UserService.scala|end_line|10|37",
+        "SCOPE.Operation|delete|UserService.scala|start_line|10|33",
+        "SCOPE.Operation|findAll|UserRepository.scala|end_line|7|20",
+        "SCOPE.Operation|findAll|UserRepository.scala|signature|def findAll(): Future[List[User]]|def findAll(): Future[List[User]] =",
+        "SCOPE.Operation|findAll|UserRepository.scala|start_line|7|17",
+        "SCOPE.Operation|findAll|UserService.scala|end_line|7|21",
+        "SCOPE.Operation|findAll|UserService.scala|start_line|7|21",
+        "SCOPE.Operation|findById|UserRepository.scala|end_line|8|23",
+        "SCOPE.Operation|findById|UserRepository.scala|signature|def findById(id: Int): Future[Option[User]]|def findById(id: Int): Future[Option[User]] =",
+        "SCOPE.Operation|findById|UserRepository.scala|start_line|8|20",
+        "SCOPE.Operation|findById|UserService.scala|end_line|8|26",
+        "SCOPE.Operation|findById|UserService.scala|signature|def findById(id: Int): Future[Option[User]]|def findById(id: Int): Future[Option[User]] =",
+        "SCOPE.Operation|findById|UserService.scala|start_line|8|23",
+        "SCOPE.Operation|save|UserRepository.scala|end_line|9|26",
+        "SCOPE.Operation|save|UserRepository.scala|start_line|9|23"
+      ]
+    },
+    "solidity-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "swift-package-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    },
+    "swift-swiftui-mini": {
+      "drops": 1,
+      "lost_records": 1,
+      "lost_entities": 1,
+      "conflicts": 3,
+      "by_field": {
+        "end_line": 1,
+        "start_line": 1,
+        "subtype": 1
+      },
+      "losses": [
+        "SCOPE.Component|User|Sources/App/User.swift|end_line|42|54",
+        "SCOPE.Component|User|Sources/App/User.swift|start_line|8|44",
+        "SCOPE.Component|User|Sources/App/User.swift|subtype|struct|class"
+      ]
+    },
+    "typescript-react-mini": {
+      "drops": 1,
+      "lost_records": 1,
+      "lost_entities": 1,
+      "conflicts": 1,
+      "by_field": {
+        "subtype": 1
+      },
+      "losses": [
+        "SCOPE.Operation|AuthProvider|context/AuthContext.tsx|subtype|react_component|function"
+      ]
+    },
+    "vbnet-mini": {
+      "drops": 0,
+      "lost_records": 0,
+      "lost_entities": 0,
+      "conflicts": 0
+    }
+  }
+}
