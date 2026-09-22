@@ -172,6 +172,30 @@ class GateKeeper : public oatpp::web::server::interceptor::RequestInterceptor {}
 	assertProp(t, ents, "auth:oatpp_authorization_handler:GateKeeper", "auth_symbol", "GateKeeper")
 }
 
+// The Basic end of the same pattern. The flavour capture has two non-empty
+// values and scoring one says nothing about the other: a change that consulted
+// the capture only for "Bearer" would still pass the test above AND
+// TestCppAuthOatppBasicHandler, whose MyBasicAuth name the classifier maps to
+// "basic" on its own. As with GateKeeper, the guard pins that the classifier
+// returns "" for this name, so "basic" can only have come from the capture.
+func TestCppAuthOatppBasicFlavourUnclassifiedName(t *testing.T) {
+	guard := extract(t, "custom_cpp_auth_middleware", fi("doorman_interceptor.hpp", "cpp", `
+#include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
+class DoorMan : public oatpp::web::server::interceptor::RequestInterceptor {};
+`))
+	if e := authEntity(guard, "middleware:oatpp_interceptor:DoorMan"); e == nil {
+		t.Fatalf("DoorMan interceptor was not recognised, so the guard below proves nothing; got %v", guard)
+	}
+	if e := authEntity(guard, "auth:oatpp_interceptor:DoorMan"); e != nil {
+		t.Fatalf("DoorMan is no longer unclassified: the interceptor path emitted %+v", *e)
+	}
+
+	src := `class DoorMan : public oatpp::web::server::handler::BasicAuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("basic_unclassified.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:DoorMan", "auth_method", "basic")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:DoorMan", "auth_symbol", "DoorMan")
+}
+
 func TestCppMwOatppRequestInterceptor(t *testing.T) {
 	src := `
 #include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
