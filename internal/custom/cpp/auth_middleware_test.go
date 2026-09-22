@@ -111,6 +111,67 @@ func TestCppAuthOatppBasicHandler(t *testing.T) {
 	assertProp(t, ents, "auth:oatpp_authorization_handler:MyBasicAuth", "auth_method", "basic")
 }
 
+// ---------------------------------------------------------------------------
+// oatpp AuthorizationHandler — the two producers of `method` at that call site
+// (#7303). The handler loop does not reach emitAuth the way the drogon class
+// path does: it first converts the macro's Bearer/Basic flavour capture with
+// strings.ToLower, and only falls back to cppClassifyAuthMethod(name) when
+// that capture is empty. Both producers can yield the same string, so the two
+// tests below are a PAIR, each built so that exactly one producer can have
+// stamped its expected value:
+//
+//   - the flavourless test asserts "session", which strings.ToLower of an
+//     empty flavour cannot produce and emitAuth's own unclassified default
+//     (graded on the drogon path by #7295) cannot produce either;
+//   - the Bearer-flavoured test asserts "bearer" for a name the classifier
+//     returns "" for, so only the flavour conversion can have produced it.
+//
+// Folding them into one fixture would grade neither: the existing
+// TestCppAuthOatppBearerHandler above names its class MyBearerAuth, which both
+// producers map to "bearer", so it cannot attribute the value to either.
+// ---------------------------------------------------------------------------
+
+// Flavourless AuthorizationHandler whose name the classifier DOES recognise.
+// This is the only shape that reaches the `if method == ""` fallback at this
+// call site with the classifier able to return a distinguishing value:
+// deleting that fallback leaves method == "" and emitAuth substitutes "auth",
+// so "session" here is an assertion about this call site's own fallback and
+// not about the shared substitution.
+func TestCppAuthOatppFlavourlessHandlerClassifiedByName(t *testing.T) {
+	src := `class SessionGuard : public oatpp::web::server::handler::AuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("flavourless.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:SessionGuard", "auth_method", "session")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:SessionGuard", "auth_subtype", "session")
+}
+
+// Bearer-flavoured handler whose NAME carries no auth signal, so "bearer" can
+// only have come from strings.ToLower of the flavour capture. The guard below
+// pins that premise: the interceptor path emits an auth entity only when
+// cppClassifyAuthMethod(name) != "", so the absence of one for this exact name
+// is an assertion that the classifier returns "" for it. Without the guard a
+// future classifier arm matching "gatekeeper" would silently turn this test
+// back into the un-attributable shape TestCppAuthOatppBearerHandler already has.
+func TestCppAuthOatppBearerFlavourUnclassifiedName(t *testing.T) {
+	guard := extract(t, "custom_cpp_auth_middleware", fi("gatekeeper_interceptor.hpp", "cpp", `
+#include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
+class GateKeeper : public oatpp::web::server::interceptor::RequestInterceptor {};
+`))
+	// The absence below is only evidence if the interceptor was recognised at
+	// all: assert the middleware entity that path always emits first, so a dead
+	// recogniser fails here instead of passing the guard vacuously.
+	if e := authEntity(guard, "middleware:oatpp_interceptor:GateKeeper"); e == nil {
+		t.Fatalf("GateKeeper interceptor was not recognised, so the guard below proves nothing; got %v", guard)
+	}
+	if e := authEntity(guard, "auth:oatpp_interceptor:GateKeeper"); e != nil {
+		t.Fatalf("GateKeeper is no longer unclassified: the interceptor path emitted %+v", *e)
+	}
+
+	src := `class GateKeeper : public oatpp::web::server::handler::BearerAuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("bearer_unclassified.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:GateKeeper", "auth_method", "bearer")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:GateKeeper", "auth_symbol", "GateKeeper")
+}
+
 func TestCppMwOatppRequestInterceptor(t *testing.T) {
 	src := `
 #include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
