@@ -662,8 +662,61 @@ func splitTopLevelComma(s string) []string {
 //
 // Two entity shapes resolve:
 //
-//   - SCOPE.Component (class/interface/record/enum) — the OO class shape
-//     emitted for Java/TS/etc. classes.
+//   - SCOPE.Component (class/interface/record/enum, and the three alias
+//     spellings type_alias/alias/typealias) — the OO class shape emitted
+//     for Java/TS/etc. classes. The list also admits an EMPTY subtype,
+//     which is not a class shape: a grep over the tree finds that every
+//     producer reaching it emits an import stub (a module/crate/package
+//     top-segment carrying an IMPORTS edge, from the build*Import* /
+//     makeImport* / buildInclude* helpers across ~16 languages). That
+//     member is pinned by a test but is not endorsed here — since the
+//     scan returns the first entity-slice hit, a stub sharing a name with
+//     a real DTO resolves ahead of it. Tracked separately.
+//     #7296: a language-level type alias is emitted under SCOPE.Schema by
+//     Go/Kotlin/Swift/TS/Python/Dart, but under SCOPE.Component by four
+//     producers, under three different subtype spellings:
+//     internal/extractors/rust/rust.go buildTypeAlias   "type_alias"
+//     internal/patterns/type_alias_extractor.go         "type_alias"
+//     internal/extractors/crystal/depth.go              "alias"
+//     internal/extractors/elm/extractor.go              "typealias"
+//     internal/custom/swift/vapor_extended.go           "typealias"
+//     Only the Schema spelling resolved here, so an alias from any of
+//     those producers was invisible to this lookup while the Go or TS
+//     spelling of the same construct resolved. All three Component
+//     spellings are admitted, which fixes the consumer without moving any
+//     entity kind. (SCOPE.Type/type_alias, emitted by
+//     internal/custom/scala/type_system.go, is a third KIND that neither
+//     arm admits; it needs its own arm and is tracked separately.)
+//
+//     How such an alias is reached. Not, as far as this was traced, via a
+//     rust/crystal/elm-rooted endpoint: the four path-detail call sites in
+//     v2_paths.go read the response_type / jp.Type / request_body_type /
+//     api_responses properties, and no file under internal/custom/rust or
+//     internal/extractors/rust sets any of them (cross/endpoint's
+//     extractor.go writes response_type as "" — "reserved: populated by
+//     future AST-based pass"). The producers that do populate them are
+//     the NestJS and Java route passes. This lookup instead scans the
+//     WHOLE group by bare name, so an alias is reached from a
+//     Java/NestJS-rooted shape walk that names the type, and from a direct
+//     GET /shape?type=<name>.
+//
+//     That producer inventory is grep-derived over the property keys, not
+//     taken from an index run over a rust fixture. If some pass later
+//     stamps response_type onto a rust endpoint, the reachability story
+//     above changes; the widening stays correct either way, since it is
+//     the by-name scan that resolves the alias.
+//
+//     What resolving one delivers, per caller, since the callers differ:
+//     buildShapeRow (a nested field row) is the only site that populates
+//     TypeSourceFile/TypeSourceLine/TypeRepo, so only there does an alias
+//     gain type-source navigation. The four path-detail sites set
+//     type_entity_id and compute HasChildren via classHasFieldChildren;
+//     an alias owning no CONTAINS field child therefore yields
+//     has_children=false, and the frontend gates on it
+//     (webui-v2 paths.tsx `has_children && type_entity_id`,
+//     ShapeTree.tsx `expandable = !!row.has_children`), so those rows
+//     render unchanged.
+//
 //   - SCOPE.Schema object/model nodes — the shape emitted for DTOs and
 //     ORM/GraphQL models (NestJS response DTOs under dto/response/, Mongoose
 //     @Schema classes, Prisma/Drizzle/Mongoose models, GraphQL types, …).
@@ -693,7 +746,8 @@ func findClassEntityByName(g *DashGroup, name string) *graph.Entity {
 			switch e.Kind {
 			case "SCOPE.Component":
 				switch e.Subtype {
-				case "class", "interface", "record", "enum", "":
+				case "class", "interface", "record", "enum",
+					"type_alias", "alias", "typealias", "":
 					return e
 				}
 			case "SCOPE.Schema":

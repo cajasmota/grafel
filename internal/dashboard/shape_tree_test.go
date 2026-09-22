@@ -793,3 +793,192 @@ func TestShape_TypeAliasObjectExpands(t *testing.T) {
 		t.Errorf("object type alias Pet should expose field name, got rows=%+v", body.Data.Rows)
 	}
 }
+
+// TestFindClassEntityByName_ResolvesComponentTypeAlias covers #7296. A
+// language-level type alias is emitted under SCOPE.Schema by Go/Kotlin/Swift/
+// TS/Python/Dart, but under SCOPE.Component by four producers spelling the
+// subtype three different ways:
+//
+//	internal/extractors/rust/rust.go buildTypeAlias   "type_alias"
+//	internal/patterns/type_alias_extractor.go         "type_alias"
+//	internal/extractors/crystal/depth.go              "alias"
+//	internal/extractors/elm/extractor.go              "typealias"
+//	internal/custom/swift/vapor_extended.go           "typealias"
+//
+// findClassEntityByName admitted only the Schema spelling, so an alias from
+// any of those producers resolved nothing while the Go or TS spelling of the
+// same construct resolved. Each of the three Component spellings gets its own
+// positive row here, so a mutant dropping one spelling fails a row the other
+// two do not cover.
+//
+// This also grades both ends of the admit-list boundary: the widening must not
+// admit the field/column/property sub-node subtypes under Component, and must
+// not change what SCOPE.Schema admits — each of Schema's three excluded
+// subtypes has its own forbidden row.
+func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
+	entities := []graph.Entity{
+		// Ordered FIRST on purpose: its name has the rust alias's name as a
+		// strict prefix. A match relaxed from equality to HasPrefix returns
+		// this instead of the alias, failing the rs_alias assertion below.
+		{
+			ID: "prefix_decoy", Name: "TransferIdListDecoy",
+			Kind: "SCOPE.Component", Subtype: "class",
+			SourceFile: "src/x.rs", Language: "rust",
+		},
+		// rust: `type TransferId = u64;` — no CONTAINS field children.
+		{
+			ID: "rs_alias", Name: "TransferId",
+			Kind: "SCOPE.Component", Subtype: "type_alias",
+			SourceFile: "src/domain/ids.rs", Language: "rust",
+			Signature: "type TransferId = u64",
+		},
+		// crystal: `alias UserId = Int64` — SCOPE.Component/"alias".
+		{
+			ID: "cr_alias", Name: "UserId",
+			Kind: "SCOPE.Component", Subtype: "alias",
+			SourceFile: "src/domain/ids.cr", Language: "crystal",
+			Signature: "alias UserId = Int64",
+		},
+		// elm / vapor-swift: `type alias Money = Float` —
+		// SCOPE.Component/"typealias".
+		{
+			ID: "elm_alias", Name: "Money",
+			Kind: "SCOPE.Component", Subtype: "typealias",
+			SourceFile: "src/Domain/Money.elm", Language: "elm",
+			Signature: "type alias Money",
+		},
+		// go/TS spelling of the same construct — the already-accepted end.
+		{
+			ID: "go_alias", Name: "AccountId",
+			Kind: "SCOPE.Schema", Subtype: "type_alias",
+			SourceFile: "internal/domain/ids.go", Language: "go",
+		},
+		// Forbidden rows: sub-field nodes under SCOPE.Component must stay
+		// rejected — the widening adds `type_alias` only.
+		{
+			ID: "cmp_field", Name: "ComponentFieldDecoy",
+			Kind: "SCOPE.Component", Subtype: "field",
+			SourceFile: "src/x.rs", Language: "rust",
+		},
+		{
+			ID: "cmp_prop", Name: "ComponentPropertyDecoy",
+			Kind: "SCOPE.Component", Subtype: "property",
+			SourceFile: "src/x.rs", Language: "rust",
+		},
+		{
+			ID: "cmp_col", Name: "ComponentColumnDecoy",
+			Kind: "SCOPE.Component", Subtype: "column",
+			SourceFile: "src/x.rs", Language: "rust",
+		},
+		// Forbidden rows on the Schema end: each of the three excluded
+		// sub-node subtypes gets its own row, so a mutant that stops
+		// excluding one of them fails a row the other two do not cover.
+		{
+			ID: "sch_field", Name: "SchemaFieldDecoy",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/x.ts", Language: "typescript",
+		},
+		{
+			ID: "sch_col", Name: "SchemaColumnDecoy",
+			Kind: "SCOPE.Schema", Subtype: "column",
+			SourceFile: "src/x.ts", Language: "typescript",
+		},
+		{
+			ID: "sch_prop", Name: "SchemaPropertyDecoy",
+			Kind: "SCOPE.Schema", Subtype: "property",
+			SourceFile: "src/x.ts", Language: "typescript",
+		},
+		// The docstring states the name match is case-sensitive. This decoy
+		// differs from the looked-up token only in case, so a match relaxed
+		// to EqualFold resolves it and fails the forbidden row below.
+		{
+			ID: "case_decoy", Name: "casesensitivedecoy",
+			Kind: "SCOPE.Component", Subtype: "type_alias",
+			SourceFile: "src/x.rs", Language: "rust",
+		},
+		// The empty-subtype member of the Component admit-list. Every
+		// producer that reaches it emits an IMPORT STUB, not a type: 20
+		// sites, all inside build*Import* / makeImport* / buildInclude*
+		// helpers (go, rust, dart, scala, php, groovy, erlang, elixir,
+		// clojure, lisp, pony, lua, shell, assembly, vhdl, verilog), each
+		// naming the entity after a module/crate/package top-segment and
+		// hanging an IMPORTS edge off it. Modelled faithfully here so the
+		// case is pinned by the shape that actually reaches it.
+		{
+			ID: "import_stub", Name: "serde_json",
+			Kind: "SCOPE.Component", Subtype: "",
+			SourceFile: "src/main.rs", Language: "rust",
+		},
+		// The patterns pass (internal/patterns/type_alias_extractor.go) emits
+		// SCOPE.Component/type_alias for typescript/javascript/kotlin/scala/
+		// rust/go, but names the record `type_alias_<Alias>`. A type
+		// reference carries the bare alias name, so this record is not what
+		// a lookup for `PatternAlias` finds — pinned below rather than
+		// assumed, since the widening makes its Kind/Subtype admissible.
+		{
+			ID: "pat_alias", Name: "type_alias_PatternAlias",
+			Kind: "SCOPE.Component", Subtype: "type_alias",
+			SourceFile: "src/x.ts", Language: "typescript",
+		},
+	}
+	grp := makePathsTestGroup(entities, nil)
+
+	got := findClassEntityByName(grp, "TransferId")
+	if got == nil {
+		t.Fatal("#7296: SCOPE.Component/type_alias (rust) not resolved by findClassEntityByName")
+	}
+	if got.ID != "rs_alias" {
+		t.Errorf("#7296: resolved %q, want rs_alias", got.ID)
+	}
+	// The alias owns no CONTAINS field child, so the path-detail callers,
+	// which gate HasChildren on classHasFieldChildren, report no expandable
+	// children for it. Resolution is still what carries TypeEntityID and the
+	// type-source location.
+	if classHasFieldChildren(grp, got) {
+		t.Error("#7296: childless alias must not report field children")
+	}
+
+	// Each Component alias spelling resolves on its own row.
+	if c := findClassEntityByName(grp, "UserId"); c == nil || c.ID != "cr_alias" {
+		t.Errorf(`#7296: SCOPE.Component/"alias" (crystal) must resolve, got %v`, c)
+	}
+	if e := findClassEntityByName(grp, "Money"); e == nil || e.ID != "elm_alias" {
+		t.Errorf(`#7296: SCOPE.Component/"typealias" (elm, vapor-swift) must resolve, got %v`, e)
+	}
+
+	// The empty-subtype member resolves. This pins the member, not an
+	// endorsement of it: the shape that reaches it is an import stub, and
+	// the scan returns the first entity-slice hit, so a stub sharing a name
+	// with a real DTO resolves ahead of it whenever extraction happens to
+	// emit the stub first. That ordering hazard is tracked separately.
+	if st := findClassEntityByName(grp, "serde_json"); st == nil || st.ID != "import_stub" {
+		t.Errorf(`#7296: SCOPE.Component with empty Subtype must resolve, got %v`, st)
+	}
+
+	// The SCOPE.Schema spelling is unchanged by the widening.
+	if s := findClassEntityByName(grp, "AccountId"); s == nil || s.ID != "go_alias" {
+		t.Errorf("#7296: SCOPE.Schema/type_alias must still resolve, got %v", s)
+	}
+
+	// Forbidden rows — every one of these was rejected before the widening
+	// and must remain rejected after it.
+	for _, name := range []string{
+		"ComponentFieldDecoy",
+		"ComponentPropertyDecoy",
+		"ComponentColumnDecoy",
+		"SchemaFieldDecoy",
+		"SchemaColumnDecoy",
+		"SchemaPropertyDecoy",
+		// Differs from the "casesensitivedecoy" entity only in case.
+		"CaseSensitiveDecoy",
+		// The patterns pass's record for this alias is named
+		// `type_alias_PatternAlias`, so the bare reference name a handler
+		// signature carries resolves nothing.
+		"PatternAlias",
+	} {
+		if d := findClassEntityByName(grp, name); d != nil {
+			t.Errorf("#7296: %s must not resolve as a shape, got %q (%s/%s)",
+				name, d.ID, d.Kind, d.Subtype)
+		}
+	}
+}
