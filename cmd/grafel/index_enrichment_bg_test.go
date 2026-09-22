@@ -95,13 +95,24 @@ func TestIndex_GraphWrittenBeforeEnrichment(t *testing.T) {
 // other side of the same handshake, for a job that is registered with the
 // scheduler yet never reaches the hook at all.
 //
-// Neither constant decides a verdict in the cases this test grades: "no
-// job parked" is decided by the scheduler's own completion event, not by
-// a timer (see the select below), and an expiry of either constant makes
-// the test FAIL rather than pass. So raising them cannot turn a red run
-// green.
+// hookHoldEscape DOES decide verdicts, and can decide them wrongly. Cut
+// to 1ns with production untouched, this test goes red at "no enrichment
+// job was parked ... fired 1 time(s)" — a correct tree failing purely
+// because the constant expired. So the window is held open for at most
+// hookHoldEscape, NOT indefinitely: if the test goroutine is descheduled
+// for longer than that between Index() returning and indexReturned being
+// set, the parked job escapes without a send, runs, and fires
+// enrichment_done. Whichever assertion then wins — doneBefore if the
+// event beats the assignment, !released otherwise (the 1ns probe hit the
+// second) — the run is red with nothing wrong in production. That is why
+// this is minutes rather than seconds: `go test -timeout` is per test
+// BINARY (15m on the no-race PR leg, test.yml:505-509) and this package
+// measures ~160s, so one expiry's worth of headroom is affordable.
+//
+// What IS true of both constants: an expiry FAILS rather than passing, so
+// neither can make a red run green.
 const (
-	hookHoldEscape    = 30 * time.Second
+	hookHoldEscape    = 4 * time.Minute
 	releaseSendEscape = 120 * time.Second
 )
 
@@ -119,23 +130,29 @@ const (
 // same runs, and that gap is the only window it can fire through — there
 // is no Windows repro (windows.yml is disabled_manually, #7248), so the
 // contention mechanism is that triage's reading, not a measurement. The
-// hook now parks the job in
-// "enrichment_started" on an UNBUFFERED receive from release, and the test
-// releases it with a send — a send that can only complete against a job
-// actually parked there. So the job cannot reach enrichment_done until
-// after the send, and the send is issued after indexReturned is set. The
-// few statements between Index()'s return and that assignment are still
-// raced, but nothing can pass the park while they run.
+// hook now parks the job in "enrichment_started" on an UNBUFFERED receive
+// from release, and the test releases it with a send — a send that can
+// only complete against a job actually parked there.
+//
+// The park is BOUNDED, not indefinite: hookHoldEscape is a second path
+// past it (see the constants above). Within that bound, a parked job
+// cannot reach enrichment_done before the send, and the send is issued
+// after indexReturned is set — so the few statements between Index()'s
+// return and that assignment are still raced, but nothing can pass the
+// park while they run. Beyond the bound the job escapes on its own and
+// the guarantee is gone.
 //
 // Splitting this into "signal that I arrived" + "wait to be released"
 // would put the gap back on the test's side; one unbuffered send carries
 // both directions, and `released` below is what grades it.
 //
-// What is NOT graded by any single local run: the order of the two
-// statements below (take the reading, then send). Inverting them is the
-// pre-#7298 race exactly, and a race is what no local run can observe —
-// that is the whole reason this row reached CI four times. `released`
-// grades that a job was parked, not the order in which we released it.
+// What is NOT graded by any single local run: that `indexReturned = true`
+// is executed BEFORE the `release <- struct{}{}` send (not the later
+// `doneBefore := ...` read, which is after the send by design). Swapping
+// the assignment past the send is the pre-#7298 race exactly, and a race
+// is what no local run can observe — that is the whole reason this row
+// reached CI four times. `released` grades that a job was parked, not the
+// order in which we released it.
 func TestIndex_LargeGraphDefersEnrichmentToBackground(t *testing.T) {
 	t.Setenv("GRAFEL_DAEMON_ROOT", t.TempDir())
 	tmp := t.TempDir()
@@ -146,12 +163,21 @@ func TestIndex_LargeGraphDefersEnrichmentToBackground(t *testing.T) {
 	indexReturned := false
 
 	// release is UNBUFFERED: the job parks on the receive, and the test's
-	// send completes only once a job is parked there.
+	// send completes only once a job is parked there. Adding a buffer of
+	// one is enough to make `released` below assert nothing at all — the
+	// send then completes into the buffer with no job parked anywhere —
+	// so the capacity is pinned rather than left to a reader's care.
 	release := make(chan struct{})
+	if cap(release) != 0 {
+		t.Fatalf("release must stay unbuffered — a buffered send completes with no job parked, and `released` then asserts nothing")
+	}
 	// hookStarts counts entries into the "enrichment_started" arm so a
 	// failure can say whether the job never ran at all or ran without
 	// parking.
 	var hookStarts atomic.Int32
+	// releaseOnce keeps the release path single-shot: either the send
+	// below happens, or the cleanup closes the channel — never both.
+	var releaseOnce sync.Once
 
 	prev := enrichmentOrderHook
 	enrichmentOrderHook = func(stage string) {
@@ -196,22 +222,53 @@ func TestIndex_LargeGraphDefersEnrichmentToBackground(t *testing.T) {
 	//
 	// The losing case is decided by an EVENT, not a timer: if the job
 	// finished (or was never scheduled), Wait returns and jobDone closes,
-	// so "nothing was parked" is reported immediately instead of after a
-	// timeout. A job that IS parked keeps Wait blocked, so jobDone cannot
-	// close while the handshake is still pending — and a job that trickles
-	// slowly, or that waits on the scheduler's single worker slot behind
-	// another repo, keeps the send pending rather than failing the test.
+	// so "nothing was parked" is reported at once instead of after a
+	// timeout. A job that IS parked keeps Wait blocked: `done` is closed
+	// only by `defer close(done)` at the job goroutine's exit
+	// (background.go:98), and Schedule registers the job under s.mu before
+	// returning (background.go:86-95), so no reachable state closes
+	// jobDone while a job is parked in the hook.
+	//
+	// That exclusivity is what keeps the select honest. Go picks uniformly
+	// at random among ready cases, so if `release <-` and `<-jobDone` were
+	// ever both ready the verdict would be a coin flip reported with the
+	// wrong message. Nothing grades that invariant — it rests on the two
+	// source facts cited above.
+	//
+	// NOT handled: a job queued behind another repo on the scheduler's
+	// single worker slot. It blocks at `s.sem <- struct{}{}`
+	// (background.go:118) without ever reaching the hook, so jobDone stays
+	// open, the send stays unready, and this select sits until
+	// releaseSendEscape and then fails with the misleading "nothing was
+	// parked" message. Reaching that state needs a second job on the
+	// scheduler, i.e. another index in this package crossing the
+	// 2000-entity default (background.go:37) — this test is the only
+	// writer of that var, and review found no cmd/grafel fixture near it.
+	// So the case is unexercised, not handled.
 	schedKey := daemon.StateDirForRepo(absRepo)
 	jobDone := make(chan struct{})
 	go func() {
 		enrichment.DefaultScheduler.Wait(schedKey)
 		close(jobDone)
 	}()
+	// Every t.Fatalf below returns before the final Wait, which would
+	// leave a parked job live: t.TempDir's cleanup would then delete the
+	// state dir under it, and — the hook having been restored by the defer
+	// above — a later test's hook would receive its stages. Closing
+	// release unparks it and this Wait reaps it. Registered after
+	// t.TempDir/t.Setenv, so t.Cleanup's documented LIFO order runs it
+	// BEFORE their cleanups. It also retires the jobDone goroutine, which
+	// is otherwise left blocked on a fatal path.
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		enrichment.DefaultScheduler.Wait(schedKey)
+	})
 
 	released := false
 	select {
 	case release <- struct{}{}:
 		released = true
+		releaseOnce.Do(func() {}) // the send stands in for the close
 	case <-jobDone:
 	case <-time.After(releaseSendEscape):
 	}
