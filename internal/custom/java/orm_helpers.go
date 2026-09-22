@@ -66,6 +66,7 @@ func referencesClassRel(fieldRef, targetClass, fieldName, framework string) Rela
 // Java ORM extractors (Ebean / EclipseLink / MyBatis) emit registry-shaped
 // records via the custom_java_* dispatch path.
 func makeEntity(name, kind, subtype, filePath, language string, lineNum int) types.EntityRecord {
+	types.ValidateProducedEntityKind("internal/custom/java.makeEntity", kind)
 	e := types.EntityRecord{
 		Name:             name,
 		Kind:             kind,

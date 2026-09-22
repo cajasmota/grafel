@@ -423,6 +423,7 @@ func itoa(i int) string { return strconv.Itoa(i) }
 
 // entity builds a typed EntityRecord with required fields set.
 func entity(kind, name, subtype, qualifiedName, sourcefile, language string, startLine, endLine int) types.EntityRecord {
+	types.ValidateProducedEntityKind("internal/extractors/yaml.entity", kind)
 	return types.EntityRecord{
 		Kind:          kind,
 		Name:          name,

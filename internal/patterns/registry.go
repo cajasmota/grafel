@@ -78,6 +78,7 @@ func normalizeLanguage(lang string) string {
 // already encodes kind + line (e.g. "error_handling:try_catch:179"),
 // keeping the QN unique within a file and stable across runs.
 func makeEntity(filePath, name, kind, subtype, language string, startLine int, props map[string]string) types.EntityRecord {
+	types.ValidateProducedEntityKind("internal/patterns.makeEntity", kind)
 	e := types.EntityRecord{
 		Name:          name,
 		QualifiedName: derivePatternQualifiedName(filePath, name),

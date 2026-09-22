@@ -211,6 +211,10 @@ var FrameworkClassKindTwins = map[string]ClassKindTwin{
 	"Middleware": {
 		State:     TwinProducedNonClass,
 		Producers: []string{"internal/custom/scala/frameworks.go"},
+		// #7328 arm (c): produced_entity_kind.go RECORDS the nine sites on its
+		// known-undeclared roster so the constructor guard does not reject
+		// them; it emits nothing itself.
+		KnownSites: []string{"internal/types/produced_entity_kind.go"},
 		NotClassShaped: `every one of the nine sites builds Name from a literal prefix — "middleware:http4s:"+mw, ` +
 			`"middleware:akka:"+directive, "middleware:play:filters:"+order — so the Name is a synthesised ` +
 			`registration key that no AST class node can carry, and the pair can never share a (source_file, name)`,
@@ -235,8 +239,10 @@ var FrameworkClassKindTwins = map[string]ClassKindTwin{
 
 	// ── Unpaired, opposite spelling produced FOR A CLASS: a live miss ──
 	"Interface": {
-		State:             TwinProducedClassLike,
-		Producers:         []string{"internal/custom/scala/type_system.go"},
+		State:     TwinProducedClassLike,
+		Producers: []string{"internal/custom/scala/type_system.go"},
+		// #7328 arm (c): as for "Middleware" above — a roster row, not a producer.
+		KnownSites:        []string{"internal/types/produced_entity_kind.go"},
 		FoldSourceSubtype: "trait",
 		Why: `the Scala type-system extractor emits "SCOPE.Interface" for a trait and for an abstract class, ` +
 			`keyed on the declaration's own name and file — the same (source_file, name) the Scala AST ` +

@@ -19,6 +19,7 @@ func lineOf(source string, offset int) int {
 
 // makeEntity builds a minimal EntityRecord with all required fields set.
 func makeEntity(name, kind, subtype, filePath, language string, lineNum int) types.EntityRecord {
+	types.ValidateProducedEntityKind("internal/custom/javascript.makeEntity", kind)
 	e := types.EntityRecord{
 		Name:             name,
 		Kind:             kind,

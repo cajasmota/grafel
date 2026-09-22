@@ -67,6 +67,7 @@ func cppNormalizeRoutePath(p string) string {
 }
 
 func makeEntity(name, kind, subtype, filePath, language string, lineNum int) types.EntityRecord {
+	types.ValidateProducedEntityKind("internal/custom/cpp.makeEntity", kind)
 	e := types.EntityRecord{
 		Name:             name,
 		Kind:             kind,
