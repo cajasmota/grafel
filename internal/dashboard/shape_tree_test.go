@@ -991,17 +991,27 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 // class` — the ordinary way to spell a DTO in Scala — resolved no shape
 // entity while the same handler returning a plain `class` did.
 //
-// "case_class" and "trait" each get their own positive row, built from their
-// own entity set so a mutant dropping one spelling fails a row the other does
-// not cover, and so neither row can take over a kill that belongs to the
-// #7296 set (no name here collides with, prefixes or case-folds onto a name
-// in that set).
+// "case_class" gets the positive row, in its own entity set so no row here can
+// take over a kill that belongs to the #7296 set (no name here prefixes,
+// suffixes or case-folds onto a name in that set). A mutant dropping
+// "case_class" fails that row.
 //
-// "object" gets a forbidden row: an object name is a term, not a type, in all
-// three type-name positions this lookup serves, and a companion object shares
-// its case class's Name while this scan returns the first entity-slice hit.
-// The row is not vacuous — a mutant adding "object" to the admit-list fails
-// it.
+// "object" gets a forbidden row: an object name is a term, not a type, in the
+// type-name positions this lookup serves, and a companion object shares its
+// case class's Name while this scan returns the first entity-slice hit. The
+// row is not vacuous — a mutant adding "object" to the admit-list fails it.
+//
+// "trait" has NO row, positive or forbidden, and that is deliberate: it is
+// deferred, not decided. Admitting it downgrades an existing resolution (a
+// line-0 INFERRED_FROM_CLASS_HIERARCHY stub wins over the real class of the
+// same name), so a positive row would block the stub-exclusion fix, and a
+// forbidden row would grade a deferral as a decision. A mutant adding "trait"
+// back therefore fails nothing.
+//
+// Every entity here carries a StartLine, so a future row can distinguish a
+// real declaration from a line-0 hierarchy stub — an all-line-0 fixture cannot
+// tell those axes apart, which is the flaw that let the dropped "trait" row
+// look satisfied by a stub-shaped entity.
 func TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314(t *testing.T) {
 	entities := []graph.Entity{
 		// scala: `case class OrderSummary(id: Int, total: BigDecimal)` —
@@ -1011,26 +1021,21 @@ func TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314(t *testing.T) 
 			ID: "sc_case_class", Name: "OrderSummary",
 			Kind: "SCOPE.Component", Subtype: "case_class",
 			SourceFile: "src/main/scala/orders/OrderSummary.scala", Language: "scala",
+			StartLine: 12, EndLine: 12,
 			Signature: "case class OrderSummary(id: Int, total: BigDecimal)",
 		},
 		{
 			ID: "sc_case_class_field", Name: "OrderSummary.id",
 			Kind: "SCOPE.Schema", Subtype: "field",
 			SourceFile: "src/main/scala/orders/OrderSummary.scala", Language: "scala",
-		},
-		// scala: `trait Shape { … }` — the interface-shaped declaration.
-		// Declares no val/var member here, so it owns no field child.
-		{
-			ID: "sc_trait", Name: "Shape",
-			Kind: "SCOPE.Component", Subtype: "trait",
-			SourceFile: "src/main/scala/geo/Shape.scala", Language: "scala",
-			Signature: "trait Shape",
+			StartLine: 12, EndLine: 12,
 		},
 		// scala: `object Registry { … }` — deliberately NOT admitted.
 		{
 			ID: "sc_object", Name: "Registry",
 			Kind: "SCOPE.Component", Subtype: "object",
 			SourceFile: "src/main/scala/reg/Registry.scala", Language: "scala",
+			StartLine: 7, EndLine: 21,
 			Signature: "object Registry",
 		},
 	}
@@ -1048,16 +1053,9 @@ func TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314(t *testing.T) 
 	if !classHasFieldChildren(grp, cc) {
 		t.Error("#7314: a case class with a class-parameter field child must report field children")
 	}
-
-	tr := findClassEntityByName(grp, "Shape")
-	if tr == nil || tr.ID != "sc_trait" {
-		t.Fatalf(`#7314: SCOPE.Component/"trait" (scala) must resolve, got %v`, tr)
-	}
-	// A trait declaring no val/var member owns no field child: resolution
-	// carries TypeEntityID and the type-source location, and the path-detail
-	// callers gate has_children on classHasFieldChildren.
-	if classHasFieldChildren(grp, tr) {
-		t.Error("#7314: a trait with no val/var member must not report field children")
+	// The resolved entity is the real declaration, not a line-0 stub shape.
+	if cc.StartLine == 0 {
+		t.Error("#7314: the resolved case class must carry its declaration line")
 	}
 
 	// Forbidden row: an `object` is a term, not a type.
