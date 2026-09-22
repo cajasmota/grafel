@@ -62,6 +62,20 @@ type scalaDTOField struct {
 	WireName string // @key/@JsonKey override, empty if none
 }
 
+// scalaDTOEntityName is the synthetic, non-colliding name carried by the parent
+// DTO entity of a case class.
+//
+// types.ComputeID hashes OrgID+ProjectID+SourceFile+Kind+Name and does NOT hash
+// Subtype, so a parent DTO emitted under the bare case-class name lands on the
+// exact entity ID that type_system.go's SCOPE.Type/case_class record already
+// owns for the same file — issue #7327. The "dto:" qualifier is the same
+// "<subtype>:<name>" shape the dto_field children below already use, and honours
+// the package contract stated at the top of this file: every entity carries a
+// synthetic, non-colliding name so it never shadows a real class node.
+//
+// The bare class name stays available to consumers as the "dto" property.
+func scalaDTOEntityName(caseClass string) string { return "dto:" + caseClass }
+
 // extractScalaDTOFields parses every case class in src into field-level entities.
 // It returns one SCOPE.Type/dto entity per case class (carrying a fields summary)
 // plus one SCOPE.Type/dto_field entity per field so consumers can navigate to a
@@ -82,8 +96,8 @@ func extractScalaDTOFields(src, framework string, file fileMeta) []types.EntityR
 		if len(fields) == 0 {
 			// Parameterless case class (rare for a DTO) — still record the type
 			// so name-only detection is preserved, matching prior behavior.
-			ent := makeEntity(name, "SCOPE.Type", "dto", file.Path, file.Language, line)
-			setProps(&ent, "framework", framework, "provenance", "CASE_CLASS_DTO")
+			ent := makeEntity(scalaDTOEntityName(name), "SCOPE.Type", "dto", file.Path, file.Language, line)
+			setProps(&ent, "framework", framework, "provenance", "CASE_CLASS_DTO", "dto", name)
 			if codec := codecByDTO[name]; codec != "" {
 				setProps(&ent, "codec", codec)
 			}
@@ -92,8 +106,9 @@ func extractScalaDTOFields(src, framework string, file fileMeta) []types.EntityR
 		}
 
 		// Parent DTO entity with a fields summary + codec attribution.
-		ent := makeEntity(name, "SCOPE.Type", "dto", file.Path, file.Language, line)
+		ent := makeEntity(scalaDTOEntityName(name), "SCOPE.Type", "dto", file.Path, file.Language, line)
 		setProps(&ent, "framework", framework, "provenance", "CASE_CLASS_DTO",
+			"dto", name,
 			"field_count", itoa(len(fields)),
 			"fields", scalaFieldSummary(fields))
 		if codec := codecByDTO[name]; codec != "" {

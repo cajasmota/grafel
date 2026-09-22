@@ -672,9 +672,15 @@ object CreateUserRequest {
 	got := dumpEntities(ents)
 
 	// Parent DTO carries the full field shape, nullability, and codec.
-	dto, ok := findBySubtype(ents, "dto", "CreateUserRequest")
+	// The parent DTO carries a synthetic "dto:"-qualified name: the bare class
+	// name collided with type_system.go's SCOPE.Type/case_class record for the
+	// same file, because ComputeID does not hash Subtype (issue #7327).
+	dto, ok := findBySubtype(ents, "dto", "dto:CreateUserRequest")
 	if !ok {
-		t.Fatalf("expected dto CreateUserRequest; got:%s", got)
+		t.Fatalf("expected dto dto:CreateUserRequest; got:%s", got)
+	}
+	if dto.Props["dto"] != "CreateUserRequest" {
+		t.Errorf("expected dto=CreateUserRequest prop to carry the bare class name, got %q", dto.Props["dto"])
 	}
 	if dto.Props["field_count"] != "4" {
 		t.Errorf("expected field_count=4, got %q", dto.Props["field_count"])
@@ -722,9 +728,13 @@ object Account { implicit val fmt = Json.format[Account] }
 	ents := extract(t, "custom_scala_frameworks", fi("Account.scala", "scala", src))
 	got := dumpEntities(ents)
 
-	dto, ok := findBySubtype(ents, "dto", "Account")
+	// Synthetic "dto:"-qualified parent name — see issue #7327.
+	dto, ok := findBySubtype(ents, "dto", "dto:Account")
 	if !ok {
-		t.Fatalf("expected dto Account; got:%s", got)
+		t.Fatalf("expected dto dto:Account; got:%s", got)
+	}
+	if dto.Props["dto"] != "Account" {
+		t.Errorf("expected dto=Account prop to carry the bare class name, got %q", dto.Props["dto"])
 	}
 	if dto.Props["codec"] != "play-json" {
 		t.Errorf("expected codec=play-json (Json.format[Account]), got %q", dto.Props["codec"])
