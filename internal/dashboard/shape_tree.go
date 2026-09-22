@@ -717,6 +717,45 @@ func splitTopLevelComma(s string) []string {
 //     ShapeTree.tsx `expandable = !!row.has_children`), so those rows
 //     render unchanged.
 //
+//     #7314: the Scala AST extractor (internal/extractors/scala, default-on,
+//     no gate) emits SCOPE.Component with four subtypes — "class" from
+//     class_definition, "case_class" from case_class_definition (or a
+//     class_definition whose source text starts `case class `), "trait" from
+//     trait_definition and "object" from object_definition, all through
+//     buildComponent (scala.go:141-161, :775). "case_class" and "trait" are
+//     admitted here; "object" is not, for two reasons:
+//
+//     The callers reach this lookup from a type-name position — the
+//     /shape?type= fallback (a response/body type name), the EXTENDS base
+//     name in extendsBaseEntities, and a field's unwrapped element type in
+//     buildShapeRow. A Scala `object Registry` introduces a TERM, not a type
+//     — `val r: Registry` does not compile, only `Registry.type` does — so an
+//     object name does not appear in any of those positions. The Scala
+//     extractor's own by-name type-target resolver refuses "object" on that
+//     exact reasoning and records the refusal as zero-delta on the corpus
+//     (field_type_refs.go:490-495, admit-list at :536). Second, a companion
+//     pair (`case class Order` + `object Order`) shares one Name, and this
+//     scan returns the first entity-slice hit, so admitting "object" could
+//     resolve the companion ahead of the case class — turning "no shape" into
+//     a shape built from the object's members. jsonschema's object shape is
+//     SCOPE.Schema/"object" (jsonschema.go:152-155) and resolves through the
+//     Schema arm below, so it does not need the Component spelling.
+//
+//     What admitting them delivers. A `case class` carries a CONTAINS edge to
+//     one SCOPE.Schema/field child per class parameter
+//     (emitScalaCaseClassFields, scala.go:711-770), so a resolved case class
+//     has field children to render. A trait's field children come from its
+//     val/var members (scala.go:248-260), so a trait declaring only abstract
+//     defs resolves with none — it gains TypeEntityID and type-source
+//     navigation, and the path-detail callers compute has_children from
+//     classHasFieldChildren, which the frontend gates on. Admitting "trait"
+//     also admits the INFERRED_FROM_CLASS_HIERARCHY trait stubs that
+//     internal/extractors/cross/hierarchy/extractor.go:774 (php `use`) and
+//     :873 (rust `impl … for`) emit, which carry no field child and no start
+//     line. That is the same stub-shadowing hazard the empty-subtype note
+//     above describes, and the same one already accepted for "interface",
+//     which that producer emits in the same shape (extractor.go:384-387).
+//
 //   - SCOPE.Schema object/model nodes — the shape emitted for DTOs and
 //     ORM/GraphQL models (NestJS response DTOs under dto/response/, Mongoose
 //     @Schema classes, Prisma/Drizzle/Mongoose models, GraphQL types, …).
@@ -747,7 +786,8 @@ func findClassEntityByName(g *DashGroup, name string) *graph.Entity {
 			case "SCOPE.Component":
 				switch e.Subtype {
 				case "class", "interface", "record", "enum",
-					"type_alias", "alias", "typealias", "":
+					"type_alias", "alias", "typealias",
+					"case_class", "trait", "":
 					return e
 				}
 			case "SCOPE.Schema":

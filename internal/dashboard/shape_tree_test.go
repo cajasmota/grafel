@@ -982,3 +982,87 @@ func TestFindClassEntityByName_ResolvesComponentTypeAlias(t *testing.T) {
 		}
 	}
 }
+
+// TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314 covers #7314.
+// The Scala AST extractor (internal/extractors/scala — default-on, ungated)
+// emits SCOPE.Component with subtypes "class", "case_class", "trait" and
+// "object" (scala.go:141-161 → buildComponent :775). Before this change only
+// "class" was in the Component admit-list, so a handler returning a `case
+// class` — the ordinary way to spell a DTO in Scala — resolved no shape
+// entity while the same handler returning a plain `class` did.
+//
+// "case_class" and "trait" each get their own positive row, built from their
+// own entity set so a mutant dropping one spelling fails a row the other does
+// not cover, and so neither row can take over a kill that belongs to the
+// #7296 set (no name here collides with, prefixes or case-folds onto a name
+// in that set).
+//
+// "object" gets a forbidden row: an object name is a term, not a type, in all
+// three type-name positions this lookup serves, and a companion object shares
+// its case class's Name while this scan returns the first entity-slice hit.
+// The row is not vacuous — a mutant adding "object" to the admit-list fails
+// it.
+func TestFindClassEntityByName_ResolvesScalaComponentSubtypes7314(t *testing.T) {
+	entities := []graph.Entity{
+		// scala: `case class OrderSummary(id: Int, total: BigDecimal)` —
+		// emitScalaCaseClassFields hangs one SCOPE.Schema/field child off the
+		// class per class parameter, so this one has field children.
+		{
+			ID: "sc_case_class", Name: "OrderSummary",
+			Kind: "SCOPE.Component", Subtype: "case_class",
+			SourceFile: "src/main/scala/orders/OrderSummary.scala", Language: "scala",
+			Signature: "case class OrderSummary(id: Int, total: BigDecimal)",
+		},
+		{
+			ID: "sc_case_class_field", Name: "OrderSummary.id",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/main/scala/orders/OrderSummary.scala", Language: "scala",
+		},
+		// scala: `trait Shape { … }` — the interface-shaped declaration.
+		// Declares no val/var member here, so it owns no field child.
+		{
+			ID: "sc_trait", Name: "Shape",
+			Kind: "SCOPE.Component", Subtype: "trait",
+			SourceFile: "src/main/scala/geo/Shape.scala", Language: "scala",
+			Signature: "trait Shape",
+		},
+		// scala: `object Registry { … }` — deliberately NOT admitted.
+		{
+			ID: "sc_object", Name: "Registry",
+			Kind: "SCOPE.Component", Subtype: "object",
+			SourceFile: "src/main/scala/reg/Registry.scala", Language: "scala",
+			Signature: "object Registry",
+		},
+	}
+	rels := []graph.Relationship{
+		{FromID: "sc_case_class", ToID: "sc_case_class_field", Kind: "CONTAINS"},
+	}
+	grp := makePathsTestGroup(entities, rels)
+
+	cc := findClassEntityByName(grp, "OrderSummary")
+	if cc == nil || cc.ID != "sc_case_class" {
+		t.Fatalf(`#7314: SCOPE.Component/"case_class" (scala) must resolve, got %v`, cc)
+	}
+	// The case class's class parameters are CONTAINS field children, so the
+	// resolved entity has rows for an expander to open.
+	if !classHasFieldChildren(grp, cc) {
+		t.Error("#7314: a case class with a class-parameter field child must report field children")
+	}
+
+	tr := findClassEntityByName(grp, "Shape")
+	if tr == nil || tr.ID != "sc_trait" {
+		t.Fatalf(`#7314: SCOPE.Component/"trait" (scala) must resolve, got %v`, tr)
+	}
+	// A trait declaring no val/var member owns no field child: resolution
+	// carries TypeEntityID and the type-source location, and the path-detail
+	// callers gate has_children on classHasFieldChildren.
+	if classHasFieldChildren(grp, tr) {
+		t.Error("#7314: a trait with no val/var member must not report field children")
+	}
+
+	// Forbidden row: an `object` is a term, not a type.
+	if o := findClassEntityByName(grp, "Registry"); o != nil {
+		t.Errorf(`#7314: SCOPE.Component/"object" must not resolve as a shape, got %q (%s/%s)`,
+			o.ID, o.Kind, o.Subtype)
+	}
+}
