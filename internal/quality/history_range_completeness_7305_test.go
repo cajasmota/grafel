@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -65,42 +66,71 @@ func writeHistoryLine(t *testing.T, o map[string]any) string {
 	return root
 }
 
-// TestReadHistoryAcceptsUnboundedCount grades `hi: noUpperBound` by enlarging
-// past it. The value is math.MaxInt — the largest number the Go field can hold
-// at all — so the row survives only while its hi is genuinely not a number.
+// unboundedCountFields lists, by name, every numericRanges row whose hi is
+// noUpperBound. It is spelled out rather than derived so that a row LOSING its
+// unbounded hi is a failure instead of one fewer subtest: selecting the rows
+// dynamically and only checking that some were found proves something was
+// enlarged past, not that everything unbounded was — which is #7305's own
+// defect one level down.
 //
-// The rows are selected from numericRanges rather than listed, so a count
-// field added later is enlarged past by this test on the day it gets a row.
+// Adding a count field means adding its name here. That is the intended cost:
+// it asks whoever adds it to say out loud that the field is a cardinality with
+// no ceiling this package can justify, rather than inheriting that by copying a
+// neighbouring row.
+var unboundedCountFields = []string{
+	"total_entities", "total_flows", "total_endpoints", "cycles", "auth_uncovered", "secrets",
+}
+
+// TestReadHistoryAcceptsUnboundedCount grades `hi: noUpperBound`.
+//
+// The exact-set assertion is what grades the sentinel, not the magnitude the
+// subtests plant. Replace noUpperBound with any finite number and no row is
+// selected, so the set comparison fails naming all six; give one row a finite
+// hi and the set fails naming that row. The math.MaxInt below kills neither of
+// those — a row with a finite hi is simply not selected, so nothing ever
+// compares MaxInt against it. It is the behavioural read-through: ReadHistory
+// does return an entry carrying the largest count the field can hold, which is
+// what "no ceiling" has to mean at the only place it is observable.
 func TestReadHistoryAcceptsUnboundedCount(t *testing.T) {
-	unbounded := 0
+	var unbounded []string
 	for _, r := range numericRanges {
-		if !math.IsInf(r.hi, 1) {
-			continue
+		if math.IsInf(r.hi, 1) {
+			unbounded = append(unbounded, r.name)
 		}
-		unbounded++
-		t.Run(r.name, func(t *testing.T) {
+	}
+	got, want := slices.Clone(unbounded), slices.Clone(unboundedCountFields)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("rows with an unbounded hi = %v, want %v — a row that lost its unbounded hi has a ceiling nothing enlarges past, and a row that gained one is not enlarged past by this test until it is listed in unboundedCountFields", got, want)
+	}
+
+	for _, name := range unboundedCountFields {
+		t.Run(name, func(t *testing.T) {
 			line := inRangeLine()
-			line[r.name] = math.MaxInt
+			line[name] = math.MaxInt
 			root := writeHistoryLine(t, line)
 			got, err := ReadHistory(root, completenessGroup, 7)
 			if err != nil {
 				t.Fatalf("ReadHistory: %v", err)
 			}
 			if len(got) != 1 {
-				t.Fatalf("%s=%d was rejected: got %d entries, want 1 — hi stopped being an absence of a ceiling and became one", r.name, math.MaxInt, len(got))
+				t.Fatalf("%s=%d was rejected: got %d entries, want 1 — a count the field can hold did not survive the read", name, math.MaxInt, len(got))
 			}
 		})
 	}
-	if unbounded == 0 {
-		t.Fatal("no row in numericRanges has an infinite hi, so this test enlarged past nothing")
-	}
 }
 
-// numericFieldTags returns the JSON name of every HealthEntry field a history
-// line can carry a number into: exported (encoding/json cannot populate the
-// others), carrying a json tag, and of an integer or floating-point kind after
-// at most one pointer indirection — the "omitted means not measured" encoding
-// this struct uses for its optional fields.
+// numericFieldTags returns the name a history line can carry a number into for
+// every HealthEntry field that can carry one: exported (encoding/json cannot
+// populate the others) and of an integer or floating-point kind after at most
+// one pointer indirection — the "omitted means not measured" encoding this
+// struct uses for its optional fields.
+//
+// The name is the json tag, or the GO FIELD NAME when there is no tag:
+// encoding/json falls back to the field name, so an UNTAGGED exported field is
+// decodable and would ship unvalidated, not unreachable. Only `json:"-"` is
+// genuinely unreachable, and only that is skipped.
 //
 // The filter is on the kind CLASS, not on the concrete types in use today, so
 // a future int64/uint/float32 field is covered without editing it. Strings,
@@ -118,9 +148,13 @@ func numericFieldTags(t *testing.T) []string {
 		if f.PkgPath != "" {
 			continue
 		}
-		name := strings.Split(f.Tag.Get("json"), ",")[0]
-		if name == "" || name == "-" {
+		tag := f.Tag.Get("json")
+		if tag == "-" {
 			continue
+		}
+		name := strings.Split(tag, ",")[0]
+		if name == "" {
+			name = f.Name
 		}
 		ft := f.Type
 		if ft.Kind() == reflect.Pointer {
@@ -134,6 +168,25 @@ func numericFieldTags(t *testing.T) []string {
 		}
 	}
 	return out
+}
+
+// TestDecoderPopulatesUntaggedField pins the premise numericFieldTags rests
+// on. encoding/json matches a field with no tag by its Go name, so an untagged
+// exported numeric field on HealthEntry would decode from a history line and
+// ship unvalidated — which is why the walk names such a field rather than
+// skipping it. Checked rather than assumed: a wrong justification is worse than
+// none, because it stops the next reader looking.
+func TestDecoderPopulatesUntaggedField(t *testing.T) {
+	var v struct {
+		Group    string `json:"group"`
+		NewCount int
+	}
+	if err := json.Unmarshal([]byte(`{"group":"g","NewCount":-999999}`), &v); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if v.NewCount != -999999 {
+		t.Fatalf("untagged NewCount = %d, want -999999 — if an untagged field cannot be populated, numericFieldTags need not name one", v.NewCount)
+	}
 }
 
 // missingRows returns the fields with no row among have, in field order.
