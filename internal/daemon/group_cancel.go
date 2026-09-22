@@ -72,8 +72,19 @@ func GroupRebuildContext(group string) (ctx context.Context, cancel context.Canc
 
 	r := groupRebuildCancels
 	r.mu.Lock()
-	// Defensive: cancel a stale predecessor still registered under this name
-	// (single-flight upstream should prevent it, but never leave one orphaned).
+	// Defensive: cancel a stale predecessor still registered under this name,
+	// so one is never left orphaned.
+	//
+	// Is the "single-flight upstream" this relies on real? Both production
+	// entrypoints into RebuildFunc serialise same-group rebuilds before either
+	// can reach here (#7307): Service.Rebuild takes a per-group capacity-1
+	// semaphore (s.groupRebuildMu) in monolith/engine mode, released from the
+	// rebuild's own worker goroutine only after RebuildFunc returns; and on the
+	// split-mode engine drain applyRequest holds engineGroupRebuildGuard around
+	// the rebuildFn call. daemonRebuildFuncCore's deferred end() deregisters
+	// before either guard is released, so within one daemon process this branch
+	// is defensive rather than load-bearing. It is graded regardless — see
+	// TestRegisterSameGroupTwice_CancelsPredecessor.
 	if prev, ok := r.m[group]; ok {
 		prev.cancel()
 	}
