@@ -111,6 +111,125 @@ func TestCppAuthOatppBasicHandler(t *testing.T) {
 	assertProp(t, ents, "auth:oatpp_authorization_handler:MyBasicAuth", "auth_method", "basic")
 }
 
+// ---------------------------------------------------------------------------
+// oatpp AuthorizationHandler — the two producers of `method` at that call site
+// (#7303). The handler loop does not reach emitAuth the way the drogon class
+// path does: it first converts the macro's Bearer/Basic flavour capture with
+// strings.ToLower, and only falls back to cppClassifyAuthMethod(name) when
+// that capture is empty. Both producers can yield the same string, so the two
+// tests below are a PAIR, each built so that exactly one producer can have
+// stamped its expected value:
+//
+//   - the flavourless test asserts "session", which strings.ToLower of an
+//     empty flavour cannot produce and emitAuth's own unclassified default
+//     (graded on the drogon path by #7295) cannot produce either;
+//   - the Bearer-flavoured test asserts "bearer" for a name the classifier
+//     returns "" for, so only the flavour conversion can have produced it.
+//
+// Folding them into one fixture would grade neither: the existing
+// TestCppAuthOatppBearerHandler above names its class MyBearerAuth, which both
+// producers map to "bearer", so it cannot attribute the value to either.
+// ---------------------------------------------------------------------------
+
+// Flavourless AuthorizationHandler whose name the classifier DOES recognise.
+// This is the only shape that reaches the `if method == ""` fallback at this
+// call site with the classifier able to return a distinguishing value:
+// deleting that fallback leaves method == "" and emitAuth substitutes "auth",
+// so "session" here is an assertion about this call site's own fallback and
+// not about the shared substitution.
+//
+// emitAuth stamps auth_subtype and auth_method from the same variable, so the
+// two assertions below are one observation of the stamped method, not two.
+func TestCppAuthOatppFlavourlessHandlerClassifiedByName(t *testing.T) {
+	src := `class SessionGuard : public oatpp::web::server::handler::AuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("flavourless.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:SessionGuard", "auth_method", "session")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:SessionGuard", "auth_subtype", "session")
+}
+
+// Bearer-flavoured handler whose NAME carries no auth signal, so "bearer" can
+// only have come from strings.ToLower of the flavour capture. The guard below
+// pins that premise: the interceptor path emits an auth entity only when
+// cppClassifyAuthMethod(name) != "", so the absence of one for this exact name
+// is an assertion that the classifier returns "" for it. Without the guard a
+// future classifier arm matching "gatekeeper" would silently turn this test
+// back into the un-attributable shape TestCppAuthOatppBearerHandler already has.
+func TestCppAuthOatppBearerFlavourUnclassifiedName(t *testing.T) {
+	guard := extract(t, "custom_cpp_auth_middleware", fi("gatekeeper_interceptor.hpp", "cpp", `
+#include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
+class GateKeeper : public oatpp::web::server::interceptor::RequestInterceptor {};
+`))
+	// The absence below is only evidence if the interceptor was recognised at
+	// all: assert the middleware entity that path always emits first, so a dead
+	// recogniser fails here instead of passing the guard vacuously.
+	if e := authEntity(guard, "middleware:oatpp_interceptor:GateKeeper"); e == nil {
+		t.Fatalf("GateKeeper interceptor was not recognised, so the guard below proves nothing; got %v", guard)
+	}
+	if e := authEntity(guard, "auth:oatpp_interceptor:GateKeeper"); e != nil {
+		t.Fatalf("GateKeeper is no longer unclassified: the interceptor path emitted %+v", *e)
+	}
+
+	src := `class GateKeeper : public oatpp::web::server::handler::BearerAuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("bearer_unclassified.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:GateKeeper", "auth_method", "bearer")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:GateKeeper", "auth_symbol", "GateKeeper")
+}
+
+// The Basic end of the same pattern. The flavour capture has two non-empty
+// values and scoring one says nothing about the other: a change that consulted
+// the capture only for "Bearer" would still pass the test above AND
+// TestCppAuthOatppBasicHandler, whose MyBasicAuth name the classifier maps to
+// "basic" on its own. As with GateKeeper, the guard pins that the classifier
+// returns "" for this name, so "basic" can only have come from the capture.
+func TestCppAuthOatppBasicFlavourUnclassifiedName(t *testing.T) {
+	guard := extract(t, "custom_cpp_auth_middleware", fi("doorman_interceptor.hpp", "cpp", `
+#include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
+class DoorMan : public oatpp::web::server::interceptor::RequestInterceptor {};
+`))
+	if e := authEntity(guard, "middleware:oatpp_interceptor:DoorMan"); e == nil {
+		t.Fatalf("DoorMan interceptor was not recognised, so the guard below proves nothing; got %v", guard)
+	}
+	if e := authEntity(guard, "auth:oatpp_interceptor:DoorMan"); e != nil {
+		t.Fatalf("DoorMan is no longer unclassified: the interceptor path emitted %+v", *e)
+	}
+
+	src := `class DoorMan : public oatpp::web::server::handler::BasicAuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("basic_unclassified.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:DoorMan", "auth_method", "basic")
+	assertProp(t, ents, "auth:oatpp_authorization_handler:DoorMan", "auth_symbol", "DoorMan")
+}
+
+// The PRECEDENCE between the two producers, which the three fixtures above
+// cannot see. Each of them is built so that exactly one producer can produce
+// the asserted value — that is what makes them attribute it — and that same
+// property makes their ORDER invisible: a handler only one producer speaks for
+// stamps the same string whichever is consulted first. This fixture is the one
+// shape where both speak and disagree, so only its assertion depends on the
+// order. Inverting the two (classifier first, flavour as the fallback) leaves
+// both producers present and consulted, so no producer-deletion mutant reaches
+// it either.
+//
+// Under inversion this input stamps "jwt" instead of "bearer" — a wrong value,
+// not a missing entity. The shape is idiomatic oatpp: a Bearer handler named
+// for the token format it carries. The file has no jwt-cpp or libjwt CALL, so
+// fileHasJWT is false here and "jwt" could only come from the classifier
+// reading the name.
+//
+// The guard pins the premise in the positive direction: if the classifier ever
+// stopped returning "jwt" for this name, only one producer would speak for the
+// input and the assertion below would keep passing while grading nothing.
+func TestCppAuthOatppFlavourWinsOverClassifiedName(t *testing.T) {
+	guard := extract(t, "custom_cpp_auth_middleware", fi("jwtguard_interceptor.hpp", "cpp", `
+#include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
+class JwtGuard : public oatpp::web::server::interceptor::RequestInterceptor {};
+`))
+	assertProp(t, guard, "auth:oatpp_interceptor:JwtGuard", "auth_method", "jwt")
+
+	src := `class JwtGuard : public oatpp::web::server::handler::BearerAuthorizationHandler {};`
+	ents := extract(t, "custom_cpp_auth_middleware", fi("jwt_named_bearer.hpp", "cpp", src))
+	assertProp(t, ents, "auth:oatpp_authorization_handler:JwtGuard", "auth_method", "bearer")
+}
+
 func TestCppMwOatppRequestInterceptor(t *testing.T) {
 	src := `
 #include <oatpp/web/server/interceptor/RequestInterceptor.hpp>
@@ -327,9 +446,10 @@ int main() {
 // added `jwt::verify`, so the two rows differ on fileHasJWT alone and each
 // arm is graded by its own fixture.
 //
-// This fixture also carries the package's only auth_subtype assertion whose
-// expected value differs from "auth", so stamping auth_subtype from anything
-// other than the same `method` variable auth_method comes from is visible here.
+// This fixture's auth_subtype assertion expects "jwt" rather than "auth", so
+// stamping auth_subtype from anything other than the same `method` variable
+// auth_method comes from is visible here. It is no longer the package's only
+// such assertion: the oatpp SessionGuard fixture above expects "session".
 func TestCppAuthDrogonClassFilterUnclassifiedJwtFile(t *testing.T) {
 	src := `
 #include <jwt-cpp/jwt.h>
