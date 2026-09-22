@@ -36,6 +36,13 @@ import (
 // than by an earlier fold is unverified for every pair except ormlink", and
 // for swift "which mechanism collapses it is undetermined". It is this
 // mechanism, and these are the pairs.
+//
+// THE FIVE NAMES BELOW ARE NO LONGER THE POPULATION. #7335 arm 2 added
+// facet_loss_population_7335_test.go, which derives the fixture list from disk
+// and pins every fixture's measurement — so a fixture outside this roster that
+// starts or stops losing a facet now fails there. What stays here is what a
+// derived baseline cannot carry: the per-pair prose saying WHICH producers
+// collide and why that shape matters.
 
 func facetLossOnFixture(t *testing.T, fixture string) facetLossStats {
 	t.Helper()
