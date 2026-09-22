@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -166,5 +168,51 @@ func TestDeleteGroup_CancelsInFlightRebuild(t *testing.T) {
 	case <-stopped:
 	case <-time.After(2 * time.Second):
 		t.Fatal("in-flight rebuild context was NOT cancelled by DeleteGroup")
+	}
+}
+
+// TestRegisterSameGroupTwice_CancelsPredecessor grades the REGISTER path's
+// defensive branch in GroupRebuildContext — `if prev, ok := r.m[group]; ok {
+// prev.cancel() }` — which nothing asserted before (#7307). Its sibling
+// TestEndGroupRebuild_OnlyDeletesOwnEntry asserts only that the SUCCESSOR stays
+// live, which passes identically whether the predecessor was cancelled or
+// merely forgotten; that half is the one this test pins. Kept separate from
+// that test on purpose: this is the register path, that one is the delete path,
+// and one test asserting both could not say which mechanism produced the
+// outcome.
+//
+// The first select is a positive control, not decoration: a Done() channel that
+// is closed because the context was never properly created would satisfy the
+// post-condition on its own, so #1 is asserted LIVE before the second
+// registration and CANCELLED after it.
+func TestRegisterSameGroupTwice_CancelsPredecessor(t *testing.T) {
+	drainRegistry("gPrev")
+
+	ctx1, _, end1 := GroupRebuildContext("gPrev")
+	defer end1()
+
+	// Positive control: #1 must be live BEFORE the re-registration.
+	select {
+	case <-ctx1.Done():
+		t.Fatalf("rebuild #1 was already done before the second registration (err=%v) — "+
+			"the post-condition below would then hold for a context that was never live", ctx1.Err())
+	default:
+	}
+	if err := ctx1.Err(); err != nil {
+		t.Fatalf("rebuild #1 ctx.Err() before re-registration = %v, want nil", err)
+	}
+
+	// Re-register under the SAME group name (rapid delete→recreate).
+	_, _, end2 := GroupRebuildContext("gPrev")
+	defer end2()
+
+	select {
+	case <-ctx1.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("stale predecessor was NOT cancelled by a re-registration under the same name — " +
+			"its rebuild goroutines keep churning with no registered cancel (orphaned)")
+	}
+	if !errors.Is(ctx1.Err(), context.Canceled) {
+		t.Fatalf("predecessor ctx.Err() = %v, want context.Canceled", ctx1.Err())
 	}
 }

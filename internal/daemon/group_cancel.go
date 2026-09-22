@@ -72,8 +72,35 @@ func GroupRebuildContext(group string) (ctx context.Context, cancel context.Canc
 
 	r := groupRebuildCancels
 	r.mu.Lock()
-	// Defensive: cancel a stale predecessor still registered under this name
-	// (single-flight upstream should prevent it, but never leave one orphaned).
+	// Defensive: cancel a stale predecessor still registered under this name,
+	// so one is never left orphaned.
+	//
+	// Is the "single-flight upstream" this relies on real? Both production
+	// entrypoints into RebuildFunc serialise same-group rebuilds before either
+	// can reach here (#7307): Service.Rebuild takes a per-group capacity-1
+	// semaphore (s.groupRebuildMu) in monolith/engine mode, released from the
+	// rebuild's own worker goroutine only after RebuildFunc returns; and on the
+	// split-mode engine drain applyRequest holds engineGroupRebuildGuard around
+	// the rebuildFn call. daemonRebuildFuncCore's deferred end() deregisters
+	// before either guard is released.
+	//
+	// That makes the branch defensive rather than load-bearing only while the
+	// two guards stay MUTUALLY EXCLUSIVE, which is a premise, not a given: both
+	// the semaphore path (Service.Rebuild's split-mode early return) and the
+	// drain loop's start gate (startRequestsDrainLoop's call site in
+	// startEnginePlane) decide by calling SplitModeEnabled, which re-reads
+	// os.Getenv on EVERY call rather than latching a boot-time value. With the
+	// env stable — production — exclusivity holds. Flip it mid-process (only
+	// t.Setenv does that today) and a monolith can run the semaphore path while
+	// its own drain loop applies a queued rebuild under the other guard, and
+	// this branch becomes load-bearing.
+	//
+	// Both paragraphs above are TRACED, not enforced: they are claims about
+	// call-graph topology, nothing in the tree asserts that topology, and so no
+	// mutant can kill them. They were traced by hand at 32916e1c4 and may have
+	// gone stale since — re-walk them before relying on them. What IS graded is
+	// the branch's own behaviour: TestRegisterSameGroupTwice_CancelsPredecessor
+	// asserts the predecessor is cancelled here.
 	if prev, ok := r.m[group]; ok {
 		prev.cancel()
 	}
